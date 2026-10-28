@@ -5,94 +5,132 @@ description: Learn from the SQL your database already runs. Import query history
 deepToC: true
 ---
 
-A semantic knowledge base (KB) describes a database's tables and columns, and the relationships between them that its foreign keys declare. Most real databases also join tables that no foreign key connects. The SQL that people already run against the database records those joins every time it runs.
+A semantic knowledge base (KB) describes a database's tables and columns, and the relationships its foreign keys declare between them. Most real databases also join tables without a connecting foreign key. The SQL running against the database records those joins on every execution.
 
-Query history reads that SQL from `pg_stat_statements`, keeps the statements that join tables in the KB's schemas, and puts them to two uses:
+Query history reads the recorded SQL from `pg_stat_statements`, keeps the statements joining tables in the KB's schemas, and supports the following tasks:
 
 | You want to                                           | Use                                                               |
 | ----------------------------------------------------- | ----------------------------------------------------------------- |
 | Find past queries that answer a question in English   | [`aidb.semantic_kb_search()`](#searching-history) with the `history` source |
 | See what was learned, and from whom                   | [`aidb.list_query_history()`](#browsing-history)                  |
-| Find joins that no foreign key declares               | [`aidb.relationship_candidates()`](#reviewing-candidates)         |
+| Find joins without a declared foreign key             | [`aidb.relationship_candidates()`](#reviewing-candidates)         |
 | Make such a join usable by the join-route functions   | [`aidb.accept_relationship_candidates()`](#accepting-candidates)  |
 | Keep an application's generated SQL out               | [`aidb.update_semantic_kb_history_filter()`](#excluding-an-applications-sql) |
 | Check why a statement would or wouldn't be kept       | [`aidb.classify_query_history_statement()`](#what-the-import-keeps-out) |
 
-Nothing is learned automatically. A person, or a scheduled job, runs `aidb.import_query_history()`, and a person decides which proposed joins to accept. Query history never changes how data is stored or queried.
+Nothing is learned automatically. You or a scheduled job run `aidb.import_query_history()`, and you decide which proposed joins to accept. Query history never changes how data is stored or queried.
 
-The examples on this page use the `shop` schema and the roles described in [Example schema](#example-schema). For every function's full parameters and return columns, see the [reference](../reference/semantic-knowledge-bases#aidbimport_query_history).
+A typical workflow:
+
+1. [Set up](#requirements-and-setup) `pg_stat_statements` and a KB.
+1. [Import](#importing-history) the history.
+1. [Exclude](#excluding-an-applications-sql) the roles of text-to-SQL applications.
+1. [Review and accept](#join-candidates) the proposed joins.
+1. [Search](#searching-history) past queries.
+
+The examples use the `shop` schema and the roles described in [Example schema](#example-schema). For every function's full parameters and return columns, see the [reference](../reference/semantic-knowledge-bases#aidbimport_query_history).
 
 ## Concepts
 
-| Term                   | Meaning                                                                                                                                                                                                                                                  |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| History store          | One table per KB, `aidb_internal.query_history_<kb_name>`. It holds one row per distinct statement: its normalized text, the tables it reads, the join conditions it uses, how often it ran, when it was first and last seen, which role ran it, and an embedding of the text for search. |
-| Import                 | One run of `aidb.import_query_history()`. It reads `pg_stat_statements` for the current database, keeps the statements that qualify, embeds the new ones, and proposes join candidates. You can repeat an import at any time. Each run refreshes what is already stored. |
-| Qualifying statement   | A single `SELECT` (a `WITH` query included) that a client sent, that ran at least `min_calls` times (default 5), that reads at least two tables, and whose tables are all in the KB's schemas.                                                          |
-| Join predicate         | A column equality between two tables that the statement joins on, such as `o.customer_id = c.id`.                                                                                                                                                      |
-| Join candidate         | A join that history proposes as a relationship, with `source = 'history'` and `status = 'proposed'`. It records how many stored statements use it and how many times they ran. The join-route functions don't use a candidate until a person accepts it. |
-| Excluded role          | A role listed on the KB so that its statements, and those of the roles that are members of it, aren't learned from. Use it for text-to-SQL applications. See [Excluding an application's SQL](#excluding-an-applications-sql).                          |
+Learn the following terms before you set up query history:
 
-Each statement the import doesn't keep is counted under one skip reason, returned in the import's `skipped` column:
+**History store:** One table per KB, `aidb_internal.query_history_<kb_name>`, with one row per distinct statement. Each row holds the normalized text, the tables read, the join conditions, the run count, the first and last time seen, the role that ran it, and an embedding for search.
 
-| Skip reason             | The statement wasn't kept because                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `not_qualifying`        | It reads fewer than two tables, so there's no join to learn.                                                                    |
-| `out_of_scope`          | It reads a table outside the KB's schemas, such as the system catalog behind psql's `\d`, or another schema.                     |
-| `excluded_role`         | It was run by an excluded role, or by a member of one.                                                                          |
-| `unresolvable_relation` | It names a table in a covered schema that doesn't exist there, usually a dropped or renamed table.                              |
-| `unparseable`           | PostgreSQL's parser rejected it, it isn't a single `SELECT`, or a `FROM` clause couldn't be fully read.                          |
-| `redacted`              | `pg_stat_statements` hid the text, because the caller can't read that role's statements.                                         |
-| `text_unavailable`      | `pg_stat_statements` returned no text, which happens after its query-text file is garbage-collected.                             |
-| `self_generated`        | It carries AIDB's own marker for SQL that AIDB generated.                                                                       |
+**Import:** One run of `aidb.import_query_history()`. It reads `pg_stat_statements` for the current database, keeps qualifying statements, embeds the new ones, and proposes join candidates. You can repeat an import at any time, and each run refreshes what's already stored.
 
-Each import reports one of three outcomes:
+**Qualifying statement:** A single `SELECT` (a `WITH` query included) sent by a client, run at least `min_calls` times (default 5), and reading at least two tables, all in the KB's schemas.
 
-| `outcome`           | Meaning                                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `ok`                | At least one statement was kept.                                                                                                 |
-| `nothing_to_read`   | Nothing met the bar. This is normal on a new database. On a busy one, `min_calls` is probably too high.                           |
-| `mostly_unreadable` | More than half of what the import tried to read was `redacted` or `text_unavailable`. The caller usually lacks `pg_read_all_stats`. |
+**Join predicate:** A column equality between two joined tables, such as `o.customer_id = c.id`.
+
+**Join candidate:** A join proposed by history as a relationship, with `source = 'history'` and `status = 'proposed'`. It records how many stored statements use the join and how often they ran. The join-route functions ignore a candidate until you accept it.
+
+**Excluded role:** A role listed on the KB so that its statements, and its members' statements, aren't learned from. Use it for text-to-SQL applications. See [Excluding an application's SQL](#excluding-an-applications-sql).
 
 ## Requirements and setup
 
-`pg_stat_statements` is required, and it's the only source of query history. No other function fills the store. Two separate things must both be true:
+Set up `pg_stat_statements` in three steps. It's required, and it's the only source of query history. No other function fills the store:
 
-1. The server loads the library. `pg_stat_statements` must be in `shared_preload_libraries`. This is a cluster-wide setting, and changing it requires a PostgreSQL restart. See [Configuring shared_preload_libraries](../install/configure#configuring-shared_preload_libraries).
-2. The database has the extension: `CREATE EXTENSION pg_stat_statements;`.
+1. Load the library on the server. Add `pg_stat_statements` to the `shared_preload_libraries` parameter in `postgresql.conf`. See [Configuring shared_preload_libraries](../install/configure#configuring-shared_preload_libraries).
 
-Installing the extension without loading the library is the usual mistake. `CREATE EXTENSION` succeeds, but nothing is recorded. Both settings are outside AIDB's control. On a managed PostgreSQL service where you can't set either, query history is unavailable.
+   ```ini
+   shared_preload_libraries = 'aidb, pg_stat_statements'
+   ```
 
-Check both before you rely on anything else on this page:
+   !!!note
+   If `shared_preload_libraries` already lists other extensions, append `pg_stat_statements` using a comma separator. The order doesn't matter.
+   !!!
+
+1. Restart Postgres. `shared_preload_libraries` is a cluster-wide setting, and a change takes effect only after a restart. A restart interrupts all connections to the server, so schedule it accordingly.
+
+   After the restart, check that the library is loaded:
+
+   ```sql
+   SELECT current_setting('shared_preload_libraries') AS preloaded;
+   __OUTPUT__
+               preloaded
+   ----------------------------------
+    aidb, vchord, pg_stat_statements
+   (1 row)
+   ```
+
+   The output lists the libraries the server loads, and `pg_stat_statements` must be among them.
+
+1. Create the extension in the database:
+
+   ```sql
+   CREATE EXTENSION pg_stat_statements;
+   ```
+
+   Then check that the extension is installed:
+
+   ```sql
+   SELECT extname, extversion FROM pg_extension WHERE extname IN ('aidb', 'pg_stat_statements') ORDER BY 1;
+   __OUTPUT__
+         extname       | extversion
+   --------------------+------------
+    aidb               | 7.9.0
+    pg_stat_statements | 1.12
+   (2 rows)
+   ```
+
+   The output shows each installed extension with its version, and both `aidb` and `pg_stat_statements` must appear.
+
+   In a database without the extension, the import stops with an error instead of returning nothing:
+
+   ```sql
+   SELECT * FROM aidb.import_query_history('shop_kb');
+   __OUTPUT__
+   ERROR:  pg_stat_statements is not installed in this database. Query history reads from it and has no other source. Install it with CREATE EXTENSION pg_stat_statements; note that it also requires shared_preload_libraries, which needs a restart.
+   ```
+
+Installing the extension without loading the library is the usual mistake. `CREATE EXTENSION` succeeds, but nothing is recorded. AIDB can't change either setting for you. If a managed PostgreSQL service doesn't let you set them, query history is unavailable.
+
+### Example schema
+
+Create the following schema and roles to follow the examples. The `shop` tables have no foreign keys, and `crm` is a second schema used to show what the import keeps out.
 
 ```sql
-SELECT current_setting('shared_preload_libraries') AS preloaded;
-__OUTPUT__
-            preloaded
-----------------------------------
- aidb, vchord, pg_stat_statements
-(1 row)
+CREATE SCHEMA shop;
+CREATE TABLE shop.customers(id int PRIMARY KEY, region text);
+CREATE TABLE shop.orders(id int PRIMARY KEY, customer_id int NOT NULL, placed_on date);
+CREATE TABLE shop.returns(id int PRIMARY KEY, order_id int);
+CREATE TABLE shop.instalments(order_id int, no int, due date, PRIMARY KEY (order_id, no));
+CREATE TABLE shop.payments(id int PRIMARY KEY, order_id int NOT NULL, no int NOT NULL);
+CREATE TABLE shop."Vouchers"(id int PRIMARY KEY, order_id int NOT NULL);
+CREATE SCHEMA crm;
+CREATE TABLE crm.notes(id int PRIMARY KEY, customer_id int);
+
+CREATE ROLE text2sql_app LOGIN;                          -- a text-to-SQL application
+CREATE ROLE text2sql_worker LOGIN IN ROLE text2sql_app;  -- a member of it
+CREATE ROLE analyst LOGIN;                               -- a person
+CREATE ROLE dba_admin SUPERUSER;                         -- an unlisted superuser
+GRANT USAGE ON SCHEMA shop, crm TO text2sql_app, analyst;
+GRANT SELECT ON ALL TABLES IN SCHEMA shop, crm TO text2sql_app, analyst;
 ```
 
-```sql
-SELECT extname, extversion FROM pg_extension WHERE extname IN ('aidb', 'pg_stat_statements') ORDER BY 1;
-__OUTPUT__
-      extname       | extversion
---------------------+------------
- aidb               | 7.9.0
- pg_stat_statements | 1.12
-(2 rows)
-```
+### Creating a model and a KB
 
-In a database without the extension, the import stops with an error instead of returning nothing:
-
-```sql
-SELECT * FROM aidb.import_query_history('shop_kb');
-__OUTPUT__
-ERROR:  pg_stat_statements is not installed in this database. Query history reads from it and has no other source. Install it with CREATE EXTENSION pg_stat_statements; note that it also requires shared_preload_libraries, which needs a restart.
-```
-
-You also need an embedding model and a KB over the schemas to learn from. Create the KB with a vector index so the history store gets one too (see [Keeping the store clean](#keeping-the-store-clean)). Use `auto_processing => 'Live'` so the store stays clean as tables change:
+Create an embedding model and a KB over the schemas to learn from. Give the KB a vector index so the history store gets one too (see [Keeping the store clean](#keeping-the-store-clean)), and use `auto_processing => 'Live'` so the store stays clean as tables change:
 
 ```sql
 SELECT aidb.create_model('bge_small', 'llamacpp_embeddings',
@@ -107,11 +145,28 @@ __OUTPUT__
 (1 row)
 ```
 
-The KB covers `shop` only. The example database also has a `crm` schema, used to show what the import keeps out.
+The KB covers `shop` only.
 
 ## Importing history
 
-For these examples, `pg_stat_statements` is reset, and each statement in the [example workload](#example-schema) runs five times, the default `min_calls`. A statement that ran four times isn't imported.
+Run `aidb.import_query_history()` to read `pg_stat_statements` for the current database, store the statements that qualify, and propose join candidates. Nothing runs automatically, so run it after the workload changes, or from a scheduled job.
+
+Run the import as a role that can read every role's statements: a superuser or a member of `pg_read_all_stats`. Otherwise, `pg_stat_statements` hides other roles' statements and the import skips most of the workload as `redacted`. See [Permissions and auditing](#permissions-and-auditing).
+
+All arguments are optional. Pass `kb_name` when the database has more than one KB:
+
+| Argument            | Default             | Description                                                                                                |
+| ------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `kb_name`           | the only KB         | Which KB to import into.                                                                                    |
+| `min_calls`         | `5`                 | Minimum number of runs before a statement is learned from.                                                  |
+| `max_statements`    | `1000`              | Maximum statements read per import, most-run first. Excluded roles' statements don't count against it.      |
+| `derive_candidates` | `true`              | Pass `false` to store statements without proposing joins.                                                   |
+
+Re-importing is cheap. A statement that's already stored isn't embedded again. Its run count and last-seen time are refreshed. If the KB's embedding model changes, statements stored under the old model are embedded again on the next import.
+
+### Example
+
+Reset `pg_stat_statements` so the counts start clean:
 
 ```sql
 SELECT pg_stat_statements_reset() IS NOT NULL AS reset;
@@ -120,6 +175,25 @@ __OUTPUT__
 -------
  t
 ```
+
+Then run each statement in the following workload five times, the default `min_calls`, as the role in the first column. A statement run four times isn't imported. The workload has no foreign keys, so history is the only source of its joins. In psql, `\g` re-sends the last statement.
+
+| Run as                | Statement                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| The KB's owner        | `SELECT c.region FROM shop.customers c JOIN shop.orders o ON o.customer_id = c.id`                              |
+| The KB's owner        | `SELECT count(*) FROM shop.customers c JOIN shop.orders o ON o.customer_id = c.id`                              |
+| The KB's owner        | `SELECT p.id FROM shop.payments p JOIN shop.instalments i ON i.order_id = p.order_id AND i.no = p.no`           |
+| The KB's owner        | `SELECT r.id FROM shop.returns r JOIN shop.orders o ON o.id = r.order_id`                                       |
+| The KB's owner        | `SELECT v.id FROM shop."Vouchers" v JOIN shop.orders o ON o.id = v.order_id`                                    |
+| The KB's owner        | `SELECT n.id FROM shop.customers c JOIN crm.notes n ON n.customer_id = c.id`                                    |
+| The KB's owner        | `SELECT 1 FROM shop.orders WHERE id = 1`                                                                        |
+| The KB's owner        | `\d shop.orders`                                                                                                |
+| `text2sql_app`        | `SELECT o.placed_on FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                           |
+| `text2sql_worker`     | `SELECT o.id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                                  |
+| `analyst`             | `SELECT c.id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                                  |
+| `dba_admin`           | `SELECT o.customer_id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                         |
+
+Run the other roles' statements with `SET ROLE`, which `pg_stat_statements` records as that role.
 
 The workload includes the application role `text2sql_app` and its member `text2sql_worker`, before either is excluded. The first import keeps everything that qualifies:
 
@@ -134,7 +208,9 @@ __OUTPUT__
 (1 row)
 ```
 
-| Column                | Meaning                                                                                                                  |
+The result columns:
+
+| Column                | Description                                                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `import_id`           | An ID for this run, also written to the audit log.                                                                        |
 | `statements_read`     | Statements in `pg_stat_statements` for this database that ran at least `min_calls` times, including those then skipped.    |
@@ -145,30 +221,38 @@ __OUTPUT__
 | `statements_embedded` | Statements that needed a new embedding. It's `0` on a re-import of an unchanged workload.                                  |
 | `rows_pruned`         | Stored statements removed because a table or join column they use no longer exists, or left the KB's schemas.              |
 
-All arguments are optional:
+Each import reports one of three outcomes:
 
-| Argument            | Default             | Meaning                                                                                                    |
-| ------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `kb_name`           | the only KB         | Which KB to import into.                                                                                    |
-| `min_calls`         | `5`                 | Minimum number of runs before a statement is learned from.                                                  |
-| `max_statements`    | `1000`              | Maximum statements read per import, most-run first. Excluded roles' statements don't count against it.      |
-| `derive_candidates` | `true`              | Pass `false` to store statements without proposing joins.                                                   |
-
-Re-importing is cheap. A statement that's already stored isn't embedded again. Its run count and last-seen time are refreshed. If the KB's embedding model changes, statements stored under the old model are embedded again on the next import.
-
-Importing is a deliberate act and you can repeat it. Run it again after the workload changes, or on a schedule.
+| `outcome`           | Description                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ok`                | At least one statement was kept.                                                                                                 |
+| `nothing_to_read`   | Nothing met the bar. This is normal on a new database. On a busy one, `min_calls` is probably too high.                           |
+| `mostly_unreadable` | More than half of what the import tried to read was `redacted` or `text_unavailable`. The caller usually lacks `pg_read_all_stats`. |
 
 ## What the import keeps out
 
-The import learns only from SQL that a person or client wrote. These rules decide what that means.
+Review the skip reasons to see which statements the import ignores. It learns only from SQL written by a user or client, and counts each statement it doesn't keep under one skip reason, returned in the import's `skipped` column:
+
+| Skip reason             | The statement wasn't kept because                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `not_qualifying`        | It reads fewer than two tables, so there's no join to learn.                                                                    |
+| `out_of_scope`          | It reads a table outside the KB's schemas, such as the system catalog behind psql's `\d`, or another schema.                     |
+| `excluded_role`         | It was run by an excluded role, or by a member of one.                                                                          |
+| `unresolvable_relation` | It names a table in a covered schema that doesn't exist there, usually a dropped or renamed table.                              |
+| `unparseable`           | PostgreSQL's parser rejected it, it isn't a single `SELECT`, or a `FROM` clause couldn't be fully read.                          |
+| `redacted`              | `pg_stat_statements` hid the text, because the caller can't read that role's statements.                                         |
+| `text_unavailable`      | `pg_stat_statements` returned no text, which happens after its query-text file is garbage-collected.                             |
+| `self_generated`        | It carries AIDB's own marker for SQL that AIDB generated.                                                                       |
+
+The following rules cover the most common reasons. Role exclusion has its own section, [Excluding an application's SQL](#excluding-an-applications-sql).
 
 ### SQL that AIDB runs itself
 
-Statements that ran inside a function are never imported. That covers everything AIDB runs on a user's behalf: semantic aliases, Tools Hub tools, Agent Hub steps, and the Model Context Protocol (MCP) server. `pg_stat_statements` marks each statement as sent by a client or run inside a function, and the import reads only client-sent statements. No configuration is needed.
+Don't expect AIDB's own SQL in the store. Statements run inside a function are never imported, including everything AIDB runs on a user's behalf: semantic aliases, Tools Hub tools, Agent Hub steps, and the Model Context Protocol (MCP) server. `pg_stat_statements` marks each statement as sent by a client or run inside a function, and the import reads only client-sent statements. No configuration is needed.
 
 ### Only the KB's own schemas
 
-A statement is kept only if every table it reads is in one of the KB's schemas. Everything else is skipped as `out_of_scope`: psql's `\d` queries over `pg_catalog`, other KBs' traffic, and joins that reach another schema.
+Keep the statements you want learned inside the KB's schemas. The import keeps a statement only if every table it reads is in one of them, and skips everything else as `out_of_scope`: psql's `\d` queries over `pg_catalog`, other KBs' traffic, and joins reaching another schema.
 
 `aidb.classify_query_history_statement(statement, kb_name)` applies the same rule as the import, so you can test any statement before importing:
 
@@ -221,7 +305,7 @@ __OUTPUT__
 
 ### Only equalities that join
 
-A column equality is recorded as a join only when it's one of the `AND`ed conditions of an `ON` or `WHERE` clause. These aren't joins:
+Write joins as column equalities among the `AND`ed conditions of an `ON` or `WHERE` clause. The import records a column equality as a join only in that form. The following aren't joins:
 
 - `a.x = b.y OR a.z = b.w`
 - `NOT a.x = b.y`
@@ -295,17 +379,13 @@ __OUTPUT__
 (1 row)
 ```
 
-### SQL from roles you exclude
-
-SQL that a text-to-SQL application generates and runs is ordinary client traffic, so the rules above keep it. See [Excluding an application's SQL](#excluding-an-applications-sql).
-
 !!!tip
 When an import keeps less than you expected, pass the statement to `aidb.classify_query_history_statement()` with the KB's name. It reports the same skip reason the import would.
 !!!
 
 ## Excluding an application's SQL
 
-A text-to-SQL application that runs its own generated SQL would otherwise teach the KB from its own output. A wrong join it produced once would come back as a "past query", and every repeat would strengthen it. You exclude the application's role per KB.
+Exclude the role of each text-to-SQL application, per KB. An application running its own generated SQL would otherwise teach the KB from its own output. A wrong join it produced once would come back as a "past query", and every repeat would strengthen it.
 
 After the first import, the application's statements are in the store:
 
@@ -386,6 +466,8 @@ __OUTPUT__
 
 ### Which roles are excluded
 
+Check which roles the exclusion covers:
+
 - The listed roles, and every role that's a member of one through `GRANT`.
 - On PostgreSQL 16 and later, a membership counts only if it lets the member act as the role (`INHERIT` or `SET`). A `CREATEROLE` user gets an `ADMIN`-only membership in every role it creates, and that membership doesn't exclude it.
 - A superuser is excluded only if listed. In the example, `dba_admin`, an unlisted superuser, is still learned from.
@@ -395,13 +477,13 @@ The KB keeps each role by name together with its object identifier (OID). A rena
 
 ### What happens to candidates
 
-A proposed candidate that only the purged statements supported is removed with them and counted under `candidates_retired`. It's deleted, or retired if someone wrote a description or label on it. A candidate that's already accepted stays accepted, and the `statements` and `executions` counts in its provenance follow the statements that remain, down to zero.
+Expect candidates to follow their statements. A proposed candidate supported only by the purged statements is removed with them and counted under `candidates_retired`. It's deleted, or retired if someone wrote a description or label on it. An already accepted candidate stays accepted, and the `statements` and `executions` counts in its provenance follow the remaining statements, down to zero.
 
 Removals and count reductions run only for a caller who can read every role's history: a superuser or a member of `pg_read_all_stats`. For anyone else, an import can raise counts but never lower them, because they see only part of the evidence.
 
 ### Clearing the list
 
-Pass an empty array. `NULL` is refused, so you can't clear the list by accident:
+Pass an empty array to clear the list. `NULL` is refused, so you can't clear it by accident:
 
 ```sql
 SELECT jsonb_pretty(aidb.update_semantic_kb_history_filter('shop_kb', ARRAY[]::text[]));
@@ -422,7 +504,7 @@ __OUTPUT__
 
 ### Deployment requirements
 
-Give each text-to-SQL application its own login role, not one shared with people, and list that role on every KB it queries. Exclusion can't split one login that both an application and people use.
+Give each text-to-SQL application its own login role, not one shared with human users, and list the role on every KB it queries. Exclusion can't split a login used by both an application and human users.
 
 Don't list `aidb_users`. Every AIDB user holds it, so listing it excludes everyone's statements. The function warns but doesn't refuse:
 
@@ -436,9 +518,11 @@ WARNING:  aidb_users holds every aidb user's grants, so excluding it excludes ev
 
 ## Browsing and searching history
 
+Browse the stored statements, or search them in English to find a past query that answers a question.
+
 ### Browsing history
 
-`aidb.list_query_history()` returns the stored statements, most-run first. Every filter is optional:
+Run `aidb.list_query_history()` to return the stored statements, most-run first. Every filter is optional:
 
 ```sql
 SELECT normalized_sql, referenced_objects, exec_count, executed_by
@@ -477,8 +561,6 @@ executed_by        | kb_owner
 
 Callers see only their own statements unless they hold `pg_read_all_stats`. See [Permissions and auditing](#permissions-and-auditing).
 
-### How tables are named
-
 The store names each table as SQL would, quoting where needed: `shop.orders`, or `shop."Vouchers"` for a mixed-case name.
 
 ```sql
@@ -510,7 +592,7 @@ __OUTPUT__
 
 ### Searching history
 
-`aidb.semantic_kb_search()` includes stored statements as results of type `Query`. Pass `sources => ARRAY['history']` to search history alone. Each stored statement is its own result, even when several statements read the same tables:
+Run `aidb.semantic_kb_search()` to search the stored statements, which return as results of type `Query`. Pass `sources => ARRAY['history']` to search history alone. Each stored statement is its own result, even when several statements read the same tables:
 
 ```sql
 SELECT rank, entity_type, object_ref, left(definition, 72) AS statement
@@ -530,9 +612,11 @@ A stored statement is a worked example of how the database is queried. Search re
 
 ## Join candidates
 
+Review the joins that history proposes, and accept the ones you trust.
+
 ### Reviewing candidates
 
-Each import proposes, as a candidate, every join in the stored statements that the KB doesn't already know. The example workload's four joins have no foreign keys, so all four are proposed:
+Run `aidb.relationship_candidates()` to review every join in the stored statements not already known to the KB. Each import proposes them as candidates. The example workload's four joins have no foreign keys, so all four are proposed:
 
 ```sql
 SELECT left_object, left_columns, right_object, right_columns, confidence, statements, executions
@@ -589,7 +673,7 @@ __OUTPUT__
 
 ### Accepting candidates
 
-`aidb.accept_relationship_candidates()` takes explicit IDs, and `kb_name` second. Where you know better than the database's definitions, the `cardinality` and `is_nullable` arguments override the proposed shape. Here `shop.returns.order_id` allows `NULL`, but every return has an order:
+Accept candidates by passing their IDs to `aidb.accept_relationship_candidates()`, with `kb_name` second. Where you know better than the database's definitions, override the proposed shape with the `cardinality` and `is_nullable` arguments. Here `shop.returns.order_id` allows `NULL`, but every return has an order:
 
 ```sql
 SELECT * FROM aidb.accept_relationship_candidates(
@@ -645,7 +729,7 @@ Acceptance is by explicit ID only. The function deliberately takes no filter, to
 
 ### After accepting
 
-A join that already exists isn't proposed again. That includes one you accepted earlier and one the foreign-key crawl found. Each import refreshes the `statements` and `executions` counts on that relationship instead. After three more runs of the `returns` join:
+Re-run the import to refresh the evidence on an accepted join. A join that already exists isn't proposed again, whether you accepted it earlier or the foreign-key crawl found it. Each import refreshes the `statements` and `executions` counts on the relationship instead. After three more runs of the `returns` join:
 
 ```sql
 SELECT statements_ingested, statements_embedded, rows_pruned, candidates_derived, outcome
@@ -681,7 +765,7 @@ Nothing history proposes is used until a person accepts it by ID. For how accept
 
 ## Keeping the store clean
 
-A stored statement over a table that no longer exists is an example of a query that now fails. Two mechanisms remove such statements.
+Rely on two mechanisms to remove stale statements. A stored statement over a table no longer in the database is an example of a now-failing query.
 
 **When the schema changes**, for a KB whose `auto_processing` is `Live` or `Background`:
 
@@ -740,7 +824,7 @@ Rows are removed when their tables go, not when they get old. There's no time-ba
 
 ## Permissions and auditing
 
-Every query history function is granted `EXECUTE` to `aidb_users`:
+Check the grants on the query history functions. Every query history function is granted `EXECUTE` to `aidb_users`:
 
 ```sql
 SELECT p.proname, array_to_string(p.proacl, ', ') AS grants
@@ -818,7 +902,7 @@ For reading the audit log with `aidb.semantic_kb_audit()`, see [Auditing changes
 
 ## Common errors
 
-There are no custom SQLSTATEs. `Invalid parameters: ...` marks a value that can't work, and `Missing value: ...` marks one that's absent.
+Match errors by message text. There are no custom SQLSTATEs. `Invalid parameters: ...` marks an unusable value, and `Missing value: ...` marks an absent one.
 
 | Message                                                                                                                                                                                                                                                 | Cause and fix                                                                                                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -835,6 +919,8 @@ Filters are matched, not validated. A misspelled `relation` returns zero rows, n
 
 ## Limitations
 
+Plan around the following limitations:
+
 - **No time-based retention.** Statements are removed when their tables or join columns go, or when their role is excluded, never for age.
 - **Self-joins aren't proposed.** `employees e JOIN employees m ON e.manager_id = m.id` is read, but no candidate is proposed. The foreign-key crawl finds a self-referencing foreign key.
 - **Text normalization merges some statements.** Whitespace runs are collapsed throughout the stored text, including inside `--` comments and quoted names. A `--` comment then appears to run to the end of the stored statement, and two quoted names that differ only in spacing are stored as one statement. The joins learned aren't affected.
@@ -842,49 +928,9 @@ Filters are matched, not validated. A misspelled `relation` returns zero rows, n
 - **PostgreSQL 18 groups statements by name.** From PostgreSQL 18, `pg_stat_statements` identifies a table by name rather than by OID. The same SQL over same-named tables in two schemas is one entry, recorded under the text of whichever schema ran it first. A KB over the other schema may therefore skip it as `out_of_scope`.
 - **Exclusion matches the role a statement ran as**, not the session user. See [Which roles are excluded](#which-roles-are-excluded).
 
-## Example schema
-
-The examples on this page use the following schema, roles, and workload.
-
-```sql
-CREATE SCHEMA shop;
-CREATE TABLE shop.customers(id int PRIMARY KEY, region text);
-CREATE TABLE shop.orders(id int PRIMARY KEY, customer_id int NOT NULL, placed_on date);
-CREATE TABLE shop.returns(id int PRIMARY KEY, order_id int);
-CREATE TABLE shop.instalments(order_id int, no int, due date, PRIMARY KEY (order_id, no));
-CREATE TABLE shop.payments(id int PRIMARY KEY, order_id int NOT NULL, no int NOT NULL);
-CREATE TABLE shop."Vouchers"(id int PRIMARY KEY, order_id int NOT NULL);
-CREATE SCHEMA crm;
-CREATE TABLE crm.notes(id int PRIMARY KEY, customer_id int);
-
-CREATE ROLE text2sql_app LOGIN;                          -- a text-to-SQL application
-CREATE ROLE text2sql_worker LOGIN IN ROLE text2sql_app;  -- a member of it
-CREATE ROLE analyst LOGIN;                               -- a person
-CREATE ROLE dba_admin SUPERUSER;                         -- an unlisted superuser
-GRANT USAGE ON SCHEMA shop, crm TO text2sql_app, analyst;
-GRANT SELECT ON ALL TABLES IN SCHEMA shop, crm TO text2sql_app, analyst;
-```
-
-There are no foreign keys, so every join is one only history can teach. Run each statement five times. In psql, `\g` re-sends the last statement.
-
-| Run as                | Statement                                                                                                       |
-| --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| The KB's owner        | `SELECT c.region FROM shop.customers c JOIN shop.orders o ON o.customer_id = c.id`                              |
-| The KB's owner        | `SELECT count(*) FROM shop.customers c JOIN shop.orders o ON o.customer_id = c.id`                              |
-| The KB's owner        | `SELECT p.id FROM shop.payments p JOIN shop.instalments i ON i.order_id = p.order_id AND i.no = p.no`           |
-| The KB's owner        | `SELECT r.id FROM shop.returns r JOIN shop.orders o ON o.id = r.order_id`                                       |
-| The KB's owner        | `SELECT v.id FROM shop."Vouchers" v JOIN shop.orders o ON o.id = v.order_id`                                    |
-| The KB's owner        | `SELECT n.id FROM shop.customers c JOIN crm.notes n ON n.customer_id = c.id`                                    |
-| The KB's owner        | `SELECT 1 FROM shop.orders WHERE id = 1`                                                                        |
-| The KB's owner        | `\d shop.orders`                                                                                                |
-| `text2sql_app`        | `SELECT o.placed_on FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                           |
-| `text2sql_worker`     | `SELECT o.id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                                  |
-| `analyst`             | `SELECT c.id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                                  |
-| `dba_admin`           | `SELECT o.customer_id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id`                         |
-
-Run the other roles' statements with `SET ROLE`, which `pg_stat_statements` records as that role.
-
 ## Related documentation
+
+See the following pages for related topics:
 
 - [Relationships](relationships), which covers the foreign-key crawl, join-path finding, and how accepted relationships are used.
 - [Searching a semantic KB](searching), which covers `semantic_kb_search()` and how sources are fused.
