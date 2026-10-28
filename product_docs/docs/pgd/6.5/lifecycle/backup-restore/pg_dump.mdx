@@ -10,7 +10,7 @@ Back up a database with [pg_dump](https://www.postgresql.org/docs/current/app-pg
 
 Back up the database in separate pre-data, data, and post-data sections to reduce the risk of global lock timeouts. Run the commands in a terminal on the server hosting the node, or on any other machine that has pg_dump installed and can connect to it. Take backups ahead of time, on a schedule you choose, because pg_dump reads from a running node and can't back up a node that's already lost. The commands write the backup files to the machine you run them from, so keep them wherever suits your needs. Anything written after the last backup is lost.
 
-```console
+```shell
 pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=pre-data -Fc -f pgd-pre-data.dump
 pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=data -Fc -f pgd-data.dump
 pg_dump -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -v --exclude-schema='"bdr"' --exclude-extension='"bdr"' --section=post-data -Fc -f pgd-post-data.dump
@@ -45,19 +45,20 @@ Prepare the destination cluster before you restore the backup.
 
 2.  Create the first node as a single-node cluster by running `pgd node setup` on its host. See [Configuring the first node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-the-first-node) for an example.
 
-3.  Temporarily set the following parameters in `postgresql.conf` on every node in the cluster, using the same values on each. The parameters reduce the frequency of checkpoints, increase the memory for building indexes, and allow large transactions to go through and be applied in parallel.
+3.  Temporarily set the following parameters in `postgresql.conf` on every node in the cluster, using the same values on each. The parameters reduce the frequency of checkpoints, increase the memory for building indexes, allow large transactions to go through and be applied in parallel, and give the restore more time to acquire global locks.
 
-    - `max_wal_size = 100GB` increases the default of `1GB` to a large value that's still a fraction of your disk space, since the non-WAL data must also fit. The larger value decreases the frequency of checkpoints.
-    - `maintenance_work_mem = 1GB` increases the memory for building indexes from the default of `64MB`. For example, use `1GB` on a server with 128GB of total RAM.
-    - `wal_receiver_timeout = 1h` and `wal_sender_timeout = 1h` increase the timeouts from 1 minute to allow large transactions through.
-    - `bdr.writers_per_subscription = 5` increases the number of writers from the default of `2` to make better use of parallel apply.
-    - `bdr.raft_global_election_timeout = 20s` and `bdr.raft_group_election_timeout = 10s` increase the Raft-related election timeouts from the defaults of `6s` and `3s`.
-    - `bdr.writer_input_queue_size = 32MB` increases the size of the shared memory queue the receiver uses to send data to the writer process from the default of `1MB`.
+    - [`max_wal_size = 100GB`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-MAX-WAL-SIZE) increases the default of `1GB` to a large value that's still a fraction of your disk space, since the non-WAL data must also fit. The larger value decreases the frequency of checkpoints.
+    - [`maintenance_work_mem = 1GB`](https://www.postgresql.org/docs/current/runtime-config-resource.html#GUC-MAINTENANCE-WORK-MEM) increases the memory for building indexes from the default of `64MB`. For example, use `1GB` on a server with 128GB of total RAM.
+    - [`wal_receiver_timeout = 1h`](https://www.postgresql.org/docs/current/runtime-config-replication.html#GUC-WAL-RECEIVER-TIMEOUT) and [`wal_sender_timeout = 1h`](https://www.postgresql.org/docs/current/runtime-config-replication.html#GUC-WAL-SENDER-TIMEOUT) increase the timeouts from 1 minute to allow large transactions through.
+    - [`bdr.writers_per_subscription = 5`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrwriters_per_subscription) increases the number of writers from the default of `2` to make better use of parallel apply.
+    - [`bdr.raft_global_election_timeout = 20s`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrraft_global_election_timeout) and [`bdr.raft_group_election_timeout = 10s`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrraft_group_election_timeout) increase the Raft-related election timeouts from the defaults of `6s` and `3s`.
+    - [`bdr.writer_input_queue_size = 32MB`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrwriter_input_queue_size) increases the size of the shared memory queue the receiver uses to send data to the writer process from the default of `1MB`.
+    - [`bdr.global_lock_timeout = 30min`](/pgd/current/reference/tables-views-functions/pgd-settings#bdrglobal_lock_timeout) increases the maximum wait for a global lock from the default of 1 minute. The post-data section runs many DDL statements in sequence, such as creating indexes and constraints, and each one can take a long time to acquire the global lock.
 
     Additionally, confirm the following:
 
-    - The default `bdr.streaming_mode = 'auto'` isn't overridden, so transactions are streamed.
-    - Node group-level settings, such as `num_writers`, don't override any session or `postgresql.conf` settings listed above.
+    - The default [`bdr.streaming_mode = 'auto'`](/pgd/current/advanced-functionality/transaction-streaming/) isn't overridden, so transactions are streamed.
+    - Node group-level settings, such as [`num_writers`](/pgd/current/reference/cli/command_ref/group/set-option/), don't override any session or `postgresql.conf` settings listed above.
 
 ## Restoring the backup
 
@@ -65,38 +66,38 @@ Restore the backup to the first node of the new cluster. Run the following steps
 
 1.  Restore the pre-data section:
 
-    ```console
-    PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data pgd-pre-data.dump
+    ```shell
+    PGOPTIONS="-c bdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=pre-data pgd-pre-data.dump
     ```
 
 2.  Restore the data section:
 
-    ```console
-    PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data pgd-data.dump
+    ```shell
+    PGOPTIONS="-c bdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=data pgd-data.dump
     ```
 
 3.  Wait for all replication slots to pass the current write position using [`bdr.wait_slot_confirm_lsn`](/pgd/current/reference/tables-views-functions/functions#bdrwait_slot_confirm_lsn):
 
-    ```console
+    ```shell
     psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
     ```
 
 4.  Restore the post-data section:
 
-    ```console
-    PGOPTIONS="-cbdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data pgd-post-data.dump
+    ```shell
+    PGOPTIONS="-c bdr.commit_scope=local" pg_restore -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB --section=post-data pgd-post-data.dump
     ```
 
 5.  Wait again for all replication slots to pass the current write position:
 
-    ```console
+    ```shell
     psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PGD_DB -c 'SELECT bdr.wait_slot_confirm_lsn(NULL, NULL)'
     ```
 
 Where:
 
 - `$PG_HOST`, `$PG_PORT`, `$PG_USER`, and `$PGD_DB`: The host, port, user, and database of the node you're restoring to.
-- `PGOPTIONS="-cbdr.commit_scope=local"`: Sets the `bdr.commit_scope` parameter to `local` for the restore session.
+- `PGOPTIONS="-c bdr.commit_scope=local"`: Sets the `bdr.commit_scope` parameter to `local` for the restore session.
 - `--section`: The section to restore, either `pre-data`, `data`, or `post-data`.
 - `pgd-pre-data.dump`, `pgd-data.dump`, and `pgd-post-data.dump`: The backup file for each section.
 
@@ -104,7 +105,7 @@ Where:
     The user you connect as needs `bdr_application` privileges to run `bdr.wait_slot_confirm_lsn`.
 
 !!! Note
-    If you get global lock timeouts with pg_restore, add `-cbdr.ddl_locking=off` to `PGOPTIONS`.
+    If you get global lock timeouts with pg_restore, add `-c bdr.ddl_locking=off` to the `PGOPTIONS` value. With DDL locking off, PGD doesn't use global locking for DDL operations, so stop all writes to the other nodes until the restore finishes.
 
 !!! Note
     If you run pg_restore with `-j`/`--jobs`, increase `max_worker_processes` and `max_parallel_maintenance_workers` by the same amount.
@@ -149,17 +150,37 @@ Check the following views to see issues with replication slots, accumulated lag,
 
 ## Adding the remaining nodes
 
-Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored to. The command does a physical join that uses `bdr_init_physical` under the hood and copies the data from that node. See [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
+Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored to. The command does a physical join, which copies the data from that node. See [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
 
 ## Resetting sequence kinds
 
-Reset the sequence kinds after the restore, because pg_dump dumps both local and global sequences as if they were local sequences. This behavior is intentional, to allow a PGD schema to be dumped and ported to other Postgres databases. Sequence-kind metadata is lost at the time of dump, so a restore resets all sequence kinds to the value of `bdr.default_sequence_kind` at the time of restore.
+Reset the sequence kinds after the restore, because pg_dump dumps both local and global sequences as local sequences. This behavior is intentional, so you can dump a PGD schema and port it to other Postgres databases. The dump doesn't keep the sequence kind, so the restore creates every sequence with the kind set by `bdr.default_sequence_kind` at restore time, which can differ from the original kind.
 
-To reset the precise sequence kind for each sequence, create a post-restore script with a SQL query like this:
+The restored cluster holds no record of the original sequence kinds, so record them on the source cluster when you take the backup. Run the following query on the source cluster and keep the output with the backup files:
 
 ```sql
-SELECT 'SELECT bdr.alter_sequence_set_kind('''||
-		nspname||'.'||relname||''','''||seqkind||''');'
-FROM bdr.sequences
-WHERE seqkind != 'local';
+SELECT nspname, relname, seqkind FROM bdr.sequences ORDER BY nspname, relname;
 ```
+
+On the restored cluster, set each sequence back to its original kind with [`bdr.alter_sequence_set_kind`](/pgd/current/reference/tables-views-functions/sequences/#bdralter_sequence_set_kind). For `snowflakeid` sequences, pass only the kind:
+
+```sql
+SELECT bdr.alter_sequence_set_kind('<schema>.<sequence>'::regclass, 'snowflakeid');
+```
+
+For `galloc` sequences, first move the start of the sequence past every value already in use, then set the kind with the same start value, so new values don't collide with existing rows:
+
+```sql
+ALTER SEQUENCE <schema>.<sequence> START WITH <start_value> RESTART;
+SELECT bdr.alter_sequence_set_kind('<schema>.<sequence>'::regclass, 'galloc', <start_value>);
+```
+
+For a sequence that fills a table column, use the largest value in that column on any node plus one as the start value. Get the largest value on every node with [`bdr.run_on_all_nodes`](/pgd/current/reference/tables-views-functions/functions#bdrrun_on_all_nodes):
+
+```sql
+SELECT bdr.run_on_all_nodes('SELECT max(<column>) FROM <schema>.<table>');
+```
+
+For a sequence that doesn't fill a table column, run `SELECT last_value FROM <schema>.<sequence>` the same way and use the largest result plus one as the start value.
+
+Reset the sequence kinds before applications write to the restored cluster, so new values can't collide with existing ones. See [Converting a local sequence to a galloc sequence](/pgd/current/advanced-functionality/sequences/#converting-a-local-sequence-to-a-galloc-sequence) for the other prerequisites.

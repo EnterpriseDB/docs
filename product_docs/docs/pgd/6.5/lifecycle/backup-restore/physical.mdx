@@ -13,7 +13,6 @@ Choose which nodes to back up based on how your data is replicated:
 - If every node has a copy of all data, a backup of one node captures all data.
 - Back up at least one node per site. A single backup doesn't protect your data if the site containing that copy goes down.
 - If a node has unreplicated local data, back up that data too. If not every node subscribes to all replication sets, back up at least one node that subscribes to each replication set.
-- If you use extensions that register catalog tables outside any replication set, such as Postgres Analytics Accelerator, take a backup from every node. See [Backing up extension catalog tables](#backing-up-extension-catalog-tables).
 
 A physical backup includes every database in the instance, but PGD operates on a single database. Account for any other databases on the instance, because they're backed up and restored along with it.
 
@@ -25,7 +24,7 @@ Take a physical backup from every node if you use extensions that keep their cat
 
 Restore a cluster from a physical backup after you lose all its nodes, for example in a data center failure. You can also use the same procedure to create a copy of a PGD cluster, such as a QA or development instance. Restoring a PGD node takes extra steps compared with restoring a standard Postgres node, such as cleaning up PGD metadata, replication origins, and replication slots.
 
-Rebuild the cluster from a single restored node by restoring the node, starting Postgres without BDR workers, cleaning up its PGD metadata, and adding the other nodes.
+Rebuild the cluster from a single restored node by restoring the node, starting Postgres without BDR workers, cleaning up its PGD metadata, recreating the PGD node, and adding the other nodes.
 
 ### Restoring the node
 
@@ -109,6 +108,16 @@ Clean up the PGD metadata left over from the backup so the restored node no long
     !!! Warning
         Never use these commands to drop replication slots on a live PGD node
 
+### Recreating the PGD node
+
+Recreate the PGD metadata on the restored node by running [`pgd node setup`](/pgd/current/reference/cli/command_ref/node/setup/) against it, as you would for the first node of a new cluster. Dropping the node removed its previous metadata, so the restored node isn't part of any cluster yet. Leave out `--cluster-dsn`. For example:
+
+```shell
+pgd node <node_name> setup --dsn "<dsn>" --listen-addr "<listen_addresses>" --group-name <group_name> -D $PGDATA
+```
+
+See [Configuring the first node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-the-first-node) for a description of each option.
+
 ### Adding the remaining nodes
 
 Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored. Install Postgres and PGD on each host first, using the same PGD version as the restored node. See [Installing and configuring EDB Postgres Distributed](/pgd/current/deploying/) for installation options, [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example, and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
@@ -153,28 +162,3 @@ If you restore with Barman, see the [Barman documentation](https://docs.pgbarman
 
 !!! Note
     If you use PGAA, a recovery target time that falls during a `pgaa.enable_analytics_replication()` operation can leave the deployment partially recovered. See [Known limitation: PITR restore after enabling analytics replication](/pgaa/latest/backup_restore#known-limitation-pitr-restore-after-enabling-analytics-replication) for details and cleanup steps.
-
-### Using multi-origin PITR
-
-PGD can also recover changes from several replication origins to the same point in time. The WAL of one node records the changes from every node, each identified by its replication origin. With multi-origin PITR, you restore all or some of the origins up to the target time, so the recovered state is consistent across those nodes.
-
-!!! Note
-    Multi-origin PITR is available only with EDB Postgres Extended. Barman doesn't create a `multi_recovery.conf` file.
-
-To use multi-origin PITR, set the target time in `postgresql.conf` as for standard PITR, then list the origins to restore in a `multi_recovery.conf` file with the `recovery_target_origins` parameter. To restore all origins, use `'*'`:
-
-```text
-recovery_target_origins = '*'
-```
-
-To restore a subset of origins, list their replication origin IDs. You can find them in the `roident` column of the [`pg_replication_origin`](https://www.postgresql.org/docs/current/catalog-pg-replication-origin.html) catalog, next to the origin names:
-
-```text
-recovery_target_origins = '1,3'
-```
-
-Recovery always replays the node's own changes up to `recovery_target_time`. Recovery doesn't track origins you don't list, so their changes aren't guaranteed to stop at that time. Replay of those changes ends wherever it is when the listed origins reach the target time. Without a `multi_recovery.conf` file, recovery uses standard Postgres PITR.
-
-In the earlier example, restoring `N1` to `T1` also includes the changes from other nodes that committed by `T1`, even though `N1` applied them later. Once recovery reaches the target time, you can set a later time to continue.
-
-After recovery reaches the stopping point and before you promote the server, shut it down and use `pg_resetwal` to move the log sequence number (LSN) past every LSN used on any timeline on this server. Moving the LSN forward prevents logical decoding from producing duplicate LSNs.
