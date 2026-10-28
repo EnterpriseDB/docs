@@ -8,7 +8,7 @@ deepToC: true
 From HM 2026.11, the HM operator can recover a Hybrid Manager (HM) installation for you. Instead of installing an empty HM and restoring into it by hand, as in [Disaster recovery for a single Hybrid Manager installation](hadr_recovery), you install the new HM with one extra field, `spec.recoveryFrom`, in its `HybridControlPlane` resource. The operator installs it against the object storage the old HM left behind and restores the control plane from it.
 
 !!! Warning
-Check the [known limitations](#known-limitations) before you start. The operator recovers the control plane and the resources that represent your Postgres clusters, but the Postgres clusters themselves are restored from the HM console, as in [Restore the Postgres clusters](#restore-the-postgres-clusters). Where a limitation applies, such as recovering into an environment with its own bucket, follow the [manual procedure](hadr_recovery) instead.
+Check the [known limitations](#known-limitations) before you start. The operator recovers the control plane and the Postgres management resources, but the Postgres clusters themselves are restored from the HM console, as in [Restore the Postgres clusters](#restore-the-postgres-clusters). Where a limitation applies, such as recovering into an environment with its own bucket, follow the [manual procedure](hadr_recovery) instead.
 !!!
 
 ## What the operator recovers
@@ -19,7 +19,7 @@ Check the [known limitations](#known-limitations) before you start. The operator
 | HM internal databases | Yes, created already recovered from their backups |
 | Read-only access to the old Velero backups | Yes |
 | `Location` resources | Yes, with streaming disabled on the locations that are gone |
-| The resources HM keeps for your Postgres clusters: `RemotePG`, `ClusterWrapper` and its secrets, `BackupWrapper` | Yes, after the `Location` resources, from the same backup |
+| Postgres management resources: what HM records about your Postgres clusters and their backups | Yes, after the `Location` resources, from the same backup |
 | Your Postgres clusters | No. Restore each one from its backups, as in [Restore the Postgres clusters](#restore-the-postgres-clusters) |
 
 The internal databases are what make this different from the manual procedure: they bootstrap from the old backups and come up holding the old data, instead of being initialized empty and restored into afterwards.
@@ -32,7 +32,7 @@ A `Location` whose site is gone is restored with `spec.stream.remoteResources.di
 
 -   **The same HM version on both sides.** Install the new HM at the version the old one was running. The operator compares `spec.version` with the version recorded in the old backup folder and stops the installation if they differ: a recovery restores a version, it doesn't upgrade one.
 
--   **HM 2026.11 or later.** Earlier versions don't label the resources the operator restores for your Postgres clusters, so a backup taken by an earlier HM brings none of them back.
+-   **HM 2026.11 or later.** Earlier versions don't label the Postgres management resources the operator restores, so a backup taken by an earlier HM brings none of them back.
 
 -   **HM operator 2.3.0 or later.** Earlier operators skip the stages that run after the installation, so a recovery can reach `Completed` without restoring the `Location` resources or the resources of your Postgres clusters. See the [operator compatibility matrix](/hm-operator/latest/compatibility_matrix/).
 
@@ -55,7 +55,7 @@ export NEW_BACKUP_ID=<a new, unused folder of 12 lowercase letters and digits>
 
 -   `OLD_BUCKET` and `OLD_BACKUP_ID` are the object storage of the old HM and its `spec.globalParameters.internal_backup_folder`.
 
--   `OLD_LOCATION_ID` is the `spec.componentsParameters.upm-beacon.beacon_location_id` of the old HM. Take it from the old `HybridControlPlane` resource, for example from your GitOps repository: nothing in the bucket records it, and if the old cluster is gone you can't look it up.
+-   `OLD_LOCATION_ID` is the `spec.componentsParameters.upm-beacon.beacon_location_id` of the old HM. Take it from the old `HybridControlPlane` resource, for example from your GitOps repository: nothing in the bucket records it, and if the old cluster is gone you can't look it up. If you no longer have it, use `mode: full`, where `locationID` is optional. `full` disables streaming on every restored location, so re-enable it by hand on any location that survived. See [`mode`](#mode).
 
 -   `NEW_BACKUP_ID` is where the recovered HM writes its own backups. It must differ from `OLD_BACKUP_ID`. See [The two folders must differ](#the-two-folders-must-differ).
 
@@ -71,6 +71,8 @@ edb-internal-backups/<folder>/
 ```
 
 Both `databases/` and `velero/backups/` must be populated: Velero holds the Kubernetes state, and the internal database backups hold the control-plane data. At least one internal database needs a base backup in `databases/<db>/base/`. The recovery stops without one, and warns, naming them, about any database that has none: the installation brings those up empty.
+
+To check that the internal databases have base backups, list their backups. This example uses the AWS CLI; use the equivalent for your object storage:
 
 ```bash
 aws s3 ls --recursive s3://${OLD_BUCKET}/edb-internal-backups/${OLD_BACKUP_ID}/databases/
@@ -97,7 +99,7 @@ spec:
   globalParameters:
     internal_backup_folder: <NEW_BACKUP_ID>
   recoveryFrom:
-    mode: full
+    mode: full            # or primary-only: see mode
     target:
       objectStoreSecretRef:
         name: edb-object-storage
@@ -108,7 +110,7 @@ spec:
       objectStore: true
     preflight:
       enforce: true
-    claim: false
+    claim: false          # true only for a real DR: see claim
 ```
 
 ### The two folders must differ
@@ -204,7 +206,7 @@ The recovery runs in stages, before and after the installation:
 | `Prepared` | | The installation goes ahead, with the internal databases created already recovered |
 | `Restoring` | `AcquireSource` | Gives Velero read-only access to the old backups |
 | `Restoring` | `RestoreLocations` | Restores the `Location` resources, with streaming disabled on the ones that are gone |
-| `Restoring` | `RestorePGManagement` | Restores the resources HM keeps for your Postgres clusters: the `RemotePG` resources, then the `ClusterWrapper` resources and their secrets, then the `BackupWrapper` resources |
+| `Restoring` | `RestorePGManagement` | Restores the Postgres management resources, from the same backup |
 | `Restoring` | `FlipTopology` | Only with [`claim: true`](#claim): removes the old HM from the federation |
 | `Completed` | | The control plane is recovered |
 
@@ -222,7 +224,7 @@ kubectl delete restore recovery-0-restorelocations -n velero
 `RestoreLocations` creates `recovery-<epoch>-restorelocations`, and `RestorePGManagement` creates `recovery-<epoch>-pg-status`, `recovery-<epoch>-pg-management` and `recovery-<epoch>-pg-backups`, one after the other. The epoch is `0` unless the recovery sets `claim: true`. Velero records why each item failed in its own logs, so run `velero restore describe <name> --details` to see the reason.
 !!!
 
-If the installed HM can't support `RestoreLocations` or `RestorePGManagement`, the stage is skipped rather than run, and the recovery goes on without it. The skipped stages and the reason are listed in `status.recovery.skippedStages`, and the `Completed` message names them.
+If the installed HM can't support `RestoreLocations` or `RestorePGManagement`, the stage is skipped rather than run, and the recovery goes on without it. The skipped stages and the reason are listed in `status.recovery.skippedStages`, and the `Completed` message names them. Restore what a skipped stage left out by hand, as in [Restore resources](hadr_recovery#restore-resources): Velero can already read the old backups through the `recovery-source` backup storage location.
 
 ### The preflight checks
 
@@ -275,7 +277,7 @@ kubectl patch location <name> -n default --type merge \
 ```
 !!!
 
-The resources HM keeps for your Postgres clusters should be back too, in the same namespace as the `Location` resources:
+The Postgres management resources should be back too, in the same namespace as the `Location` resources:
 
 ```bash
 kubectl get clusterwrappers,remotepgs,backupwrappers -A
@@ -285,7 +287,7 @@ Once the recovery is `Completed`, the internal databases look like new ones in t
 
 ## Restore the Postgres clusters
 
-The operator brings back the resources that represent your Postgres clusters, but not the clusters themselves. In this order:
+The operator brings back the Postgres management resources, but not the Postgres clusters themselves. In this order:
 
 1.  Remove the Postgres clusters, replicas and groups that ran in the lost locations, as in [Remove Postgres clusters, replicas and groups from an affected location](hadr_recovery_multi_dc#remove-postgres-clusters-replicas-and-groups-from-an-affected-location). Delete a cluster that ran only there, and repair in place one that has replicas or groups in a surviving location.
 
