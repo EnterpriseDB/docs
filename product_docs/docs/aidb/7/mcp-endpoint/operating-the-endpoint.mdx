@@ -25,7 +25,7 @@ The endpoint process inherits the supervisor's stderr, so its output lands in th
 
 ## Restart budget
 
-If the endpoint exits, the supervisor starts it again, up to `edb.endpoints_mcp_restart_max` starts within a sliding window of `edb.endpoints_mcp_restart_window_secs` seconds. When the budget is used up, the supervisor logs a warning and idles:
+If the endpoint exits, the supervisor starts it again, up to `edb.endpoints_restart_max` starts within a sliding window of `edb.endpoints_restart_window_secs` seconds. When the budget is used up, the supervisor logs a warning and idles:
 
 ```
 WARNING:  aidb endpoints supervisor: restart budget exhausted (5 spawns in 60s); idling; SELECT pg_reload_conf() retries once the window has room
@@ -37,7 +37,7 @@ To recover, fix the cause and reload:
 SELECT pg_reload_conf();
 ```
 
-The reload wakes the supervisor. If the window has room again, the endpoint starts. A reload is a single attempt, not a retry loop: if the window hasn't cleared yet, the supervisor logs the same `restart budget exhausted` warning again and idles again, and a later reload is needed once the window has room. Changing `edb.endpoints_mcp_restart_max` or `edb.endpoints_mcp_restart_window_secs` and reloading resets the budget immediately instead of waiting for the window to clear. A start that fails because the binary is missing or not executable doesn't consume budget and idles the supervisor straight away, since retrying can't fix it.
+The reload wakes the supervisor. If the window has room again, the endpoint starts. A reload is a single attempt, not a retry loop: if the window hasn't cleared yet, the supervisor logs the same `restart budget exhausted` warning again and idles again, and a later reload is needed once the window has room. Changing `edb.endpoints_restart_max` or `edb.endpoints_restart_window_secs` and reloading resets the budget immediately instead of waiting for the window to clear. A start that fails because the binary is missing or not executable doesn't consume budget and idles the supervisor straight away, since retrying can't fix it.
 
 ## Configuration rejections
 
@@ -70,7 +70,7 @@ To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and reload Postgr
 | Symptom                                                                             | Cause and fix                                                                                                                                                                                                                              |
 |-------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Nothing listens on the endpoint's port                                             | Run `SHOW edb.endpoints_mcp_enabled;` to confirm the setting actually took effect. Then check that `aidb` is in `shared_preload_libraries` and that the Postgres log shows the supervisor starting. Then look for a `WARNING` from the supervisor naming a configuration rejection or a missing binary. |
-| `cannot execute .../edb-endpoints: No such file or directory`                       | The binary isn't in the Postgres `bindir`. Confirm the AIDB package installed it, or set `edb.endpoints_mcp_command_path` to its location, then reload.                                                                                    |
+| `cannot execute .../edb-endpoints: No such file or directory`                       | The binary isn't in the Postgres `bindir`. Confirm the AIDB package installed it, or set `edb.endpoints_command_path` to its location, then reload.                                                                                        |
 | `restart budget exhausted`                                                          | The endpoint keeps exiting. Read the endpoint's stderr in the Postgres log for the reason (a port already in use is common), fix it, and reload. See [Restart budget](#restart-budget).                                                                                           |
 | `edb.endpoints_mcp_tls_cert and edb.endpoints_mcp_tls_key must be set together`     | Set both TLS parameters or neither, then reload. See [Configuration rejections](#configuration-rejections).                                                                                                                                                                                           |
 | A non-loopback host is rejected                                                     | Configure TLS before listening outside loopback, then reload. See [Configuration rejections](#configuration-rejections).                                                                                                                                                                              |
