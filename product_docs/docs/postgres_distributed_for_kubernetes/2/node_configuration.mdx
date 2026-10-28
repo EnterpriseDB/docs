@@ -373,3 +373,33 @@ Besides the global routing, you can also configure the following parameters at t
         and PGD will sync the credentials to all the regions. If you are creating PGD clusters with multiple PGDGroups, it is
         recommended to set the application database credentials in all the PGDGroups, and make sure to update the credentials
         in all PGDGroups when you need to update the credentials.
+
+## Draining nodes
+
+You can drain Kubernetes nodes that run PGD pods with `kubectl drain`. Before a PGD
+node pod is evicted, the operator hands its write and Raft leaderships to other
+nodes, if possible, and then admits the eviction. While it does, it rejects the
+eviction with `429 Too Many Requests`, which the drain retries. The operator evicts
+one pod of a PGD group at a time, and rejects the eviction while another pod of the
+group is unavailable. A pod in phase `Pending`, `Succeeded` or `Failed` has no
+leadership to hand off: the operator admits its eviction at once.
+
+The hand-off is bounded by the Raft election timeouts of the node, 160 seconds with
+the defaults. With the retries of an unreachable node, the operator holds the
+eviction of one pod under 4 and a half minutes with the defaults, longer with larger
+election timeouts. A hand-off that can't finish is admitted with a warning. In a
+group with one data node and no witness, no other node can take the Raft
+leadership of the group: it stays on its only node, and the eviction is admitted at
+once with a "partly transferred" warning saying this is expected. With a witness,
+the witness takes it.
+
+The operator doesn't coordinate the groups of a PGD cluster with each other, so
+place the groups of one PGD cluster on distinct Kubernetes nodes or Kubernetes
+clusters, so that a drain never takes down pods of two groups. Where groups share
+Kubernetes nodes, a drain in one group while another group of the same PGD cluster
+rolls out or has a terminating pod can take two members of the global Raft down at
+once, for as long as `CLUSTERS_ROLLOUT_DELAY` when it's set.
+
+A few retries per PGD node are normal. For the drain output, the reasons of each
+rejection and a drain that keeps retrying, see
+[Eviction held, drain retrying](trouble_shooting.md#eviction-held-drain-retrying).

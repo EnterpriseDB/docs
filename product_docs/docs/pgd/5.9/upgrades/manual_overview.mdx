@@ -168,11 +168,93 @@ of an unexpected restart during the upgrade.
 The first step in the upgrade is to install the new version of the BDR packages. This installation
 installs both the new binary and the extension SQL script. This step is specific to the operating system.
 
+!!! Note Upgrading to PGD 6
+The PGD 6 packages include the PGD CLI and intentionally conflict with the standalone `edb-pgd5-cli` package. When you upgrade to PGD 6, remove all PGD 5 packages, including `edb-pgd5-cli`, before you install the PGD 6 packages. If you skip this step, the installation fails with a package conflict error. See [Upgrading PGD 5 to PGD 6](/pgd/latest/upgrades/upgrading-pgd/pgd5-to-pgd6/).
+!!!
+
 #### Start Postgres
 
 Once packages are upgraded, you can start the Postgres instance. The BDR
 extension is upgraded upon start when the new binaries
 detect the older version of the extension.
+
+#### Upgrading to a later PGD 5 release
+
+You can upgrade from any PGD 5.x release to a later 5.x release. See [Supported PGD upgrade paths](/pgd/5.9/upgrades/upgrade_paths/). For a rolling upgrade, run the following on each node, one at a time.
+
+!!! Note
+Before you upgrade PGD, upgrade Postgres to the latest minor version of your Postgres major version. Doing so reduces the risk of the upgrade, because you avoid known vulnerabilities and bugs that can interfere with it. See [Minor version Postgres upgrade](#minor-version-postgres-upgrade) and [PGD compatibility](/pgd/5.9/compatibility/).
+
+Newer PGD packages can require a newer Postgres minor version. If your Postgres version is older, the package manager upgrades Postgres as a dependency in the middle of the PGD upgrade.
+!!!
+
+1. Fence the node, so it doesn't become the write leader:
+
+    ```shell
+    pgd node <node_name> set-option route_fence true
+    ```
+
+    If your installed PGD CLI doesn't support this syntax, use the earlier syntax:
+
+    ```shell
+    pgd set-node-options --node-name <node_name> --option route_fence=true
+    ```
+
+1. Stop Postgres:
+
+    ```shell
+    sudo systemctl stop postgres
+    ```
+
+1. Upgrade the PGD packages:
+
+    <TabContainer syncKey="platform">
+
+    <Tab title="Debian/Ubuntu" active>
+
+    ```shell
+    sudo apt update
+    sudo apt install --only-upgrade edb-bdr5-<distribution><postgres_version> edb-pgd5-cli edb-pgd5-proxy
+    ```
+
+    </Tab>
+
+    <Tab title="CentOS/RHEL">
+
+    ```shell
+    sudo dnf upgrade -y edb-bdr5-<distribution><postgres_version> edb-pgd5-cli edb-pgd5-proxy
+    ```
+
+    </Tab>
+
+    <Tab title="SLES">
+
+    ```shell
+    sudo zypper refresh
+    sudo zypper -n update edb-bdr5-<distribution><postgres_version> edb-pgd5-cli edb-pgd5-proxy
+    ```
+
+    </Tab>
+    </TabContainer>
+
+1. Start Postgres:
+
+    ```shell
+    sudo systemctl start postgres
+    ```
+
+1. Restart PGD Proxy, so it runs the new version. Upgrading the package replaces the binary, but the running service keeps using the old version until you restart it:
+
+    ```shell
+    sudo systemctl restart pgd-proxy
+    ```
+
+1. Unfence the node. The package upgrade installed the new PGD CLI, so use the newer syntax even if you
+    fenced the node with the earlier one:
+
+    ```shell
+    pgd node <node_name> set-option route_fence false
+    ```
 
 ### Postgres upgrade
 
@@ -184,6 +266,37 @@ upgrading to a new minor version of Postgres or to a new major version of Postgr
 Upgrading to a new minor version of Postgres is similar to [upgrading
 the BDR extension](#bdr-extension-upgrade). Stopping Postgres, upgrading packages,
 and starting Postgres again is typically all that's needed.
+
+Upgrade every installed package of your Postgres distribution, not only the server package. Subpackages such as the JIT library stay on the old minor version otherwise, and PGD packages upgrade only the Postgres packages they depend on. For example, for EDB Postgres Advanced Server 14:
+
+<TabContainer syncKey="platform">
+
+<Tab title="Debian/Ubuntu" active>
+
+```shell
+sudo apt update
+sudo apt install --only-upgrade <postgres_package>
+```
+
+</Tab>
+
+<Tab title="CentOS/RHEL">
+
+```shell
+sudo dnf upgrade -y $(rpm -qa --qf '%{NAME}\n' 'edb-as14-server*')
+```
+
+</Tab>
+
+<Tab title="SLES">
+
+```shell
+sudo zypper refresh
+sudo zypper -n update 'edb-as14-server*'
+```
+
+</Tab>
+</TabContainer>
 
 However, sometimes more steps, like reindexing, might be recommended for
 specific minor version upgrades. Refer to the release notes of the 

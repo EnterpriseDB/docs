@@ -30,7 +30,7 @@ Ensure the following tools are available on your workstation environment or [Bas
 
 -   [Velero CLI](https://velero.io/docs/latest/velero-install/)
 
--   `edbctl` (EDB Hybrid Manager CLI - see the [documentation](../edbctl))
+-   `edbctl` version 1.7.0 or later (see [EDB Hybrid Manager CLI](../edbctl) documentation). The `edbctl disaster-recovery` commands used in this procedure aren't available in earlier versions.
 
 -   `jq` (Command-line JSON processor)
 
@@ -241,21 +241,28 @@ The first step ensures the backups of the unavailable HM instance (“old backup
 
 After the old backups are available in the new bucket, you can restore the HM-internal databases. These are back-end services used by HM and are required to fully restore the HM instance. Depending on the HM version you are using and on the installation scenario you have deployed, the list of databases may vary.
 
-1.  To simplify these process, run following script with your kubeconfig pointing to your new HM installation: 
+1.  With your kubeconfig pointing to your new HM installation, use the [`edbctl disaster-recovery`](/edbctl/latest/using/edbctl_disaster_recovery/) (`edbctl dr`) commands to prepare the HM-internal database clusters for recovery:
 
-    [patch-clusters.sh](ops/patch-clusters.sh)
+    1.  Create the restore ObjectStore resources for the HM-internal database clusters. Optionally, run the command with `--dry-run` first to preview the resources without applying them:
 
-    <details><summary>Script details</summary>
+        ```shell
+        # Optional: preview the resources
+        edbctl dr create-restore-objectstores --dry-run
 
-    This patch script takes care of:
+        # Create the resources
+        edbctl dr create-restore-objectstores
+        ```
 
-    -   Saving the HM-internal database cluster manifests to YAML files, while generating two directories: 
-        -   One directory `old-cluster-configs` with the current state of the database clusters in the new HM installation (default configuration after installation).
-        -   Another one called `new-cluster-configs` with the same files, where the script will perform the patches required so the HM-internal databases start using the data from the backups.
+    2.  Generate the cluster configurations for recovery, using the backup ID you stored in `OLD_BACKUP_ID`:
 
-    </details>
+        ```shell
+        edbctl dr prepare-cluster-configs --old-backup-id "${OLD_BACKUP_ID}"
+        ```
 
-    <br/>
+        This command saves the HM-internal database cluster manifests to YAML files and generates two directories:
+
+        -   `old-cluster-configs` — The current state of the database clusters in the new HM installation (default configuration after installation).
+        -   `new-cluster-configs` — The same files, patched so the HM-internal databases start using the data from the backups.
 
 2.  Suspend the reconciliation of all HM-internal database clusters, so that you can safely remove the old Custom Resource Definitions (CRDs) of the database clusters without having the operator recreating them by default: 
 

@@ -9,7 +9,7 @@ WEM and the host agent are each configured through a dedicated configuration fil
 
 ## WEM parameters
 
-Configure these parameters in `/etc/wem/wem.conf` on the WEM host.
+Configure these parameters in `/etc/edb/wem/wem.conf` on the WEM host. Restart WEM with `sudo systemctl restart wem` for changes to take effect. See [Configuring WEM](../configuring).
 
 ### Target cluster
 
@@ -31,16 +31,19 @@ WEM queries ClickHouse for all historical metrics and log data. See [Installing 
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `CLICKHOUSE_URL` | — | Yes | ClickHouse connection URL. For example, `clickhouse://username:password@localhost:9000`. |
+| `CLICKHOUSE_URL` | — | Yes | ClickHouse connection URL. For example, `clickhouse://username:password@<clickhouse-host>:9000`. Don't use `localhost`, because the standby coordinator and coordinator connect to this address. |
 | `CLICKHOUSE_DB` | `acp_observability` | No | ClickHouse database that stores the OTel-collected metrics and logs. |
 
 ### OTel Collector
 
+WEM generates `/etc/edb/otelcol/config.yaml` on every cluster node from these parameters, the [ClickHouse](#clickhouse) and [target cluster](#target-cluster) parameters, and [`WEM_CLUSTER_NAME`](#cluster-identity). See the [OTel Collector configuration reference](otel-collector-config) for where each one appears in the file.
+
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `OTEL_GATEWAY_ENDPOINT` | — | No | External gateway collector endpoint. When set, every node's OTel Collector exports to this gateway. When empty, WEM manages the gateway internally on the standby coordinator, with the coordinator as failover. See [Installing the gateway collector](../installing/collector). |
+| `OTEL_GATEWAY_ENDPOINT` | — | No | External gateway collector endpoint. When empty, WEM runs the gateway on the standby coordinator, with the coordinator as failover. See [Installing the gateway collector](../installing/collector). |
 | `OTEL_COLLECTION_INTERVAL` | `30s` | No | Frequency at which each node's OTel Collector gathers host metrics. |
-| `OTEL_PROMETHEUS_SCRAPE_ENDPOINT` | `127.0.0.1:8889` | No | Host and port where the OTel Collector exposes WHPG cluster and host metrics in Prometheus scrape format, for an external Prometheus instance. WEM's own pipeline for these metrics is ClickHouse-only, so set this  parameter only if you also need Prometheus access alongside it. See [Metrics reference](../reference/metrics#whpg-cluster-and-host-metrics). |
+| `OTEL_PROMETHEUS_SCRAPE_ENDPOINT` | `0.0.0.0:8889` | No | Host and port where the gateway collector exposes metrics in Prometheus scrape format. By default, WEM runs the gateway collector on the standby coordinator, so the endpoint is `<standby-host>:8889`. Restrict access with a firewall. See [Metrics reference](../reference/metrics#whpg-cluster-and-host-metrics). |
+
 
 ### Application state
 
@@ -148,8 +151,8 @@ Safeguard backup and disaster-recovery settings (repositories, schedules, DR tar
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `CONFIG_DRIFT_ENABLED` | `true` | No | Enables periodic sync of Safeguard configuration from host agents, to detect and reconcile drift. |
-| `CONFIG_DRIFT_INTERVAL` | `60s` | No | Frequency at which WEM syncs Safeguard configuration from host agents. |
+| `CONFIG_DRIFT_ENABLED` | `true` | No | Enables the periodic check of the Safeguard configuration files on the primary and DR clusters against the configuration WEM stores. When they differ, WEM updates its stored configuration with the values from the host. |
+| `CONFIG_DRIFT_INTERVAL` | `60s` | No | Frequency at which the configuration drift check runs, for example `30s` or `1m`. |
 
 ### Alert evaluator
 
@@ -160,12 +163,16 @@ WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertma
 | `ALERT_EVALUATOR_ENABLED` | `true` | No | Enables WEM's internal alert rule evaluation. |
 | `ALERT_EVALUATION_INTERVAL` | `15s` | No | Frequency at which WEM evaluates alert rules. |
 
-### Log scan
+### Query history
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
-| `LOG_SCAN_ENABLED` | `true` | No | Enables periodic agent-driven scanning of the coordinator's WHPG log into `wem.query_log_history`. |
-| `LOG_SCAN_INTERVAL` | `60s` | No | Frequency at which the log-scan job is enqueued. |
+| `QUERY_SCAN_INTERVAL` | `60s` | No | Frequency at which WEM scans the logs collected in ClickHouse to build query history. Set to `0` to disable scanning. |
+| `QUERY_LOG_RETENTION_DAYS` | `30` | No | Number of days WEM keeps query history rows (`query_log_history`) in ClickHouse. Older rows expire automatically. |
+
+!!! Note
+`QUERY_SCAN_INTERVAL` replaces `LOG_SCAN_INTERVAL` and `LOG_SCAN_ENABLED` from earlier versions. To disable the scan, set `QUERY_SCAN_INTERVAL=0`.
+!!!
 
 ### AI Assistant
 
@@ -176,7 +183,7 @@ WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertma
 
 ### PXF
 
-WEM never invokes `pxf` itself. The **PXF** tab in **Data Analysis** dispatches `pxf cluster` actions to the coordinator's host agent instead, so PXF no longer needs to share a host, or an OS user, with WEM. See [Analyzing data distribution](../performance/data-analysis#managing-pxf).
+WEM never invokes `pxf` itself. The **PXF** tab in **Database Objects** dispatches `pxf cluster` actions to the coordinator's host agent instead, so PXF no longer needs to share a host, or an OS user, with WEM. See [Analyzing data distribution](../performance/data-analysis#managing-pxf).
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
@@ -195,7 +202,7 @@ WEM dispatches jobs to the host agent through its internal job-execution engine,
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `WEM_AGENT_PORT` | `PORT` + 1 | No | Port the host agent connects to for WEM's internal job-execution engine. Leave unset to derive it automatically from `PORT`. |
-| `WEM_AGENT_JOIN_SECRET` | — (disabled) | No | Shared secret that lets a self-registering host agent skip manual admin approval. When set, an agent that presents a matching token — pre-provisioned in `/etc/edb/acp-host-agent/join-token` on the agent host — moves straight to `approved` status instead of waiting in the **Host Agents** tab. Leave unset to require an Admin to approve every new agent explicitly, comparing the token shown in the **Host Agents** tab against the agent host's `join-token` file. |
+| `WEM_AGENT_JOIN_SECRET` | — (disabled) | No | Shared secret that lets host agents skip manual approval. An agent whose `/etc/edb/acp-host-agent/join-token` matches this value is approved automatically. Use 1 to 255 letters, numbers, periods, underscores, or hyphens. Leave unset to approve each agent manually. See [Approving host agents automatically](../installing/host-agent#approving-host-agents-automatically). |
 
-The host agent's callback address for file transfers is derived automatically from `WEM_AGENT_PORT` and is no longer configurable through `wem.conf`.
+The host agent's callback address for file transfers is derived automatically from `WEM_AGENT_PORT`.
 
