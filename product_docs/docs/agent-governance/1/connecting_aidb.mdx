@@ -7,17 +7,35 @@ deepToC: true
 
 Connect EDB Agent Governance to a Postgres database that runs the `aidb` extension so the viewer can read its AI agent telemetry directly. With telemetry enabled, AIDB stores spans and log records in the `aidb_otel` schema. The viewer groups recorded activity into sessions, shows each step, and highlights governance decisions. No log pipeline, Hybrid Manager, or Loki is involved. See [Understanding what the dashboard shows](./architecture#understanding-what-the-dashboard-shows) for the data the viewer uses.
 
-This page is for the database administrator of the source database and the administrator of EDB Agent Governance. Complete [Installing](./installing) first; the viewer must be running before you register a database.
+This page is for the database administrator of the source database and the administrator of EDB Agent Governance.
 
 ## Prerequisites
 
-Make sure you have the following before you register a database:
+Before you register a database:
 
-- EDB Postgres AI (`aidb` extension) [7.7.0](/aidb/latest/release-notes/7/aidb_7.7.0_rel_notes/) or later, installed and configured on the source database as described in [Installing AIDB](/aidb/latest/install/) and [Configuring AIDB](/aidb/latest/install/configure/): `aidb` in `shared_preload_libraries` and `CREATE EXTENSION aidb CASCADE` run in the database the agents use. Earlier versions store telemetry in a different `aidb_otel` layout, which the viewer doesn't read; it reports them as Unsupported aidb_otel schema.
-- `aidb` 7.9.0 or later for two things the viewer can't offer on 7.7 and 7.8. First, the extra evidence `aidb` records for a governed statement: the database objects it referenced and, when PostgreSQL itself refused the statement for lack of privileges, the Denial Class, Denial Message, and SQLSTATE of that refusal. Second, the source of each telemetry record: from 7.9.0 `aidb` marks records it produced as internal and the viewer shows only those, excluding telemetry ingested from outside. Records that existed before the upgrade are marked internal without having been classified, so they stay visible but their origin isn't verified. On 7.7 and 7.8 the session page doesn't show the evidence fields, because there's nothing to show, and because the schema doesn't record the source, the viewer shows everything in the database and the audit report's `provenance_note` says the source of its records can't be verified.
-- Network connectivity from the viewer's backend to the Postgres server. Source databases usually live on private addresses; the `bff.aidbBlockPrivate` chart value is `false` by default so that works out of the box.
-- TLS on the Postgres server, with a certificate valid for the host name in the connection string. The viewer accepts only `sslmode=verify-ca` or `sslmode=verify-full`.
-- A superuser to run the one-time provisioning below. The viewer itself never needs those rights.
+- Install and run the EDB Agent Governance viewer. See [Installing](./installing).
+
+- Install and configure EDB Postgres AI (`aidb` extension) [7.7.0](/aidb/latest/release-notes/7/aidb_7.7.0_rel_notes/) or later on the source database. See [Installing AIDB](/aidb/latest/install/) and [Configuring AIDB](/aidb/latest/install/configure/).
+
+  - Add `aidb` to `shared_preload_libraries`.
+
+  - Run `CREATE EXTENSION aidb CASCADE` in the database the agents use.
+
+  - Don't use an earlier version. Earlier versions store telemetry in a different `aidb_otel` layout that the viewer doesn't read, and it reports them as Unsupported aidb_otel schema.
+
+- Upgrade to `aidb` 7.9.0 or later to get these features, which the viewer can't offer on 7.7 and 7.8:
+
+  - Governance evidence for each statement: the database objects it referenced and, when PostgreSQL refused the statement for lack of privileges, the Denial Class, Denial Message, and SQLSTATE of that refusal.
+
+  - Source filtering: `aidb` marks the records it produces as internal, and the viewer shows only those, excluding telemetry ingested from outside. Records that existed before the upgrade are marked internal without being classified, so they stay visible but their origin isn't verified.
+
+  On 7.7 and 7.8, the session page doesn't show the evidence fields. The viewer also shows everything in the database, and the audit report's `provenance_note` says the source of its records can't be verified.
+
+- Allow network connectivity from the viewer's backend to the Postgres server. Source databases usually use private addresses, so the `bff.aidbBlockPrivate` chart value is `false` by default.
+
+- Enable TLS on the Postgres server with a certificate valid for the host name in the connection string. Use `sslmode=verify-ca` or `sslmode=verify-full` in the connection string; the viewer accepts no other values.
+
+- Get superuser access to the source database to run the one-time steps in [Enabling telemetry on the source database](#enabling-telemetry-on-the-source-database) and [Creating the viewer role](#creating-the-viewer-role). The viewer itself never needs these rights.
 
 ## Enabling telemetry on the source database
 
@@ -81,13 +99,16 @@ A role that can read `traces` but not `logs` is accepted: sessions and steps app
 Register the database on the Configure page, accessible from the home page's Configure Instances button or from Settings > Configure instance in the header.
 
 1. Open the Configure Instances page.
+
 1. Select Add New.
+
 1. Complete the form:
    - Type — Postgres (aidb_otel).
    - Name — A descriptive label, for example `Production aidb`.
    - DSN — The connection string for the viewer role, for example `postgres://governance_viewer:<password>@db.example.com:5432/<db>?sslmode=verify-full`. `sslmode` must be `verify-ca` or `verify-full`; prefer `verify-full`, which also checks the host name. Only `sslmode` and `application_name` are accepted as query parameters. URL-encode special characters in the password.
    - CA certificate (PEM) — The CA chain that signed the Postgres server certificate. Paste the PEM contents or select Load from file. Leave it empty if the server certificate is signed by a publicly trusted CA; `verify-ca` always needs it. Use this field instead of `sslrootcert` or other file paths in the DSN.
    - Client certificate (PEM) and Client key (PEM) — Optional, for certificate authentication. Provide both or neither.
+
 1. Select Add Instance.
 
 The backend opens a read-only connection and checks the `aidb_otel` layout, columns, and privileges. The result appears above the instance list: Connection verified when everything is in place, otherwise a warning or error with the reason appears. To run the check again later, use the Verify the stored connection action on the instance row. Each database appears as one cluster on the home page; selecting it opens the cluster's [Dashboard](./dashboard). Agent activity appears within seconds of the first agent call.
