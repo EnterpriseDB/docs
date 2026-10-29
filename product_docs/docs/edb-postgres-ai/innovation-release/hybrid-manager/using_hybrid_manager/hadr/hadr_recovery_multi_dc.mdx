@@ -66,7 +66,7 @@ What you do with the failed location's `Location` resource depends on whether th
 -   **Same location ID**: the replacement registers as the same `Location` resource, which still has streaming disabled. Re-enable streaming before you create replicas or groups there:
 
     ```shell
-    kubectl patch location <location-name> -n default \
+    kubectl patch location <location-name> -n edb-system \
       --type merge \
       -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
     ```
@@ -74,7 +74,7 @@ What you do with the failed location's `Location` resource depends on whether th
 -   **Different location ID**: the replacement registers as a new `Location` resource. Delete the failed one:
 
     ```shell
-    kubectl delete location <location-name> -n default
+    kubectl delete location <location-name> -n edb-system
     ```
 
 ### 4. Verify recovery
@@ -103,6 +103,8 @@ Plan for this before you need it. The replacement cluster must be reachable at t
 
 **Know what the restore will and won't bring back before you run it.** Control-plane resources are backed up on a schedule, so recent management changes may not be in the backup you restore from. Read [Recovery point for management state](#recovery-point-for-management-state) before you begin, so you know what to check afterwards.
 
+**Restore from the namespace that holds the resources in your backup.** The Velero manifests in this topic restore the HM management resources from the `edb-system` namespace, where HM 2026.11 and later store them. If you restore a backup that you took on HM 2026.10 or earlier, those resources are in the `default` namespace. In that case, set `includedNamespaces` to `[ "default" ]` in each manifest.
+
 ### 1. Restore the `Location` resources
 
 Restore the `Location` resources from the Velero backup if a data-only location was lost along with the control plane, or if the recovered control plane uses a different location ID from the one it replaces. If neither applies, you can skip the restore below: surviving locations register themselves again once they reconnect, and the new installation creates the control plane's own `Location`.
@@ -119,7 +121,7 @@ metadata:
 spec:
   backupName: "${BACKUP_NAME}"
   existingResourcePolicy: none
-  includedNamespaces: [ "default" ]
+  includedNamespaces: [ "edb-system" ]
   includedResources:
     - locations.beacon.enterprisedb.com
 EOF
@@ -130,7 +132,7 @@ Each location reaches the control plane at its portal domain, so provided you re
 Confirm every location is registered and heartbeating again:
 
 ```shell
-kubectl get location -n default
+kubectl get location -n edb-system
 ```
 
 #### Trust between locations
@@ -171,7 +173,7 @@ metadata:
 spec:
   backupName: "${BACKUP_NAME}"
   existingResourcePolicy: none
-  includedNamespaces: [ "default" ]
+  includedNamespaces: [ "edb-system" ]
   includedResources:
     - clusterwrappers.beacon.enterprisedb.com
     - remotepgs.beacon.enterprisedb.com
@@ -194,7 +196,7 @@ metadata:
 spec:
   backupName: "${BACKUP_NAME}"
   existingResourcePolicy: none
-  includedNamespaces: [ "default" ]
+  includedNamespaces: [ "edb-system" ]
   includedResources:
     - backupwrappers.beacon.enterprisedb.com
   restoreStatus:
@@ -261,7 +263,7 @@ While a location is unreachable, the control plane keeps trying to stream resour
 Patch the `Location` custom resource on the control plane:
 
 ```shell
-kubectl patch location <location-name> -n default \
+kubectl patch location <location-name> -n edb-system \
   --type merge \
   -p '{"spec":{"stream":{"remoteResources":{"disabled":true}}}}'
 ```
@@ -269,7 +271,7 @@ kubectl patch location <location-name> -n default \
 Confirm it took effect:
 
 ```shell
-kubectl get location <location-name> -n default -o jsonpath='{.status.conditions}' | jq
+kubectl get location <location-name> -n edb-system -o jsonpath='{.status.conditions}' | jq
 ```
 
 You should see a `StreamingDisabled` condition:
