@@ -176,6 +176,28 @@ Create the secret before you upgrade, since HM doesn't restart Chat Agent when i
     kubectl get hybridcontrolplane edbpgai -w
     ```
 
+### What to expect during the upgrade
+
+The operator runs a pre-upgrade job before it deploys HM 2026.11 and a post-upgrade job after. Together they move the Beacon server resources from `default` to `edb-system`: your clusters, backups, backup schedules, locations, and the secrets and certificates that Beacon creates for them.
+
+!!!important Database management is unavailable while the pre-upgrade job copies your resources
+The pre-upgrade job stops the Beacon server while it copies your resources to `edb-system`. During that time, you can't manage databases from the HM console or the API. Your Postgres clusters keep running. The Beacon server starts again when the upgrade deploys HM 2026.11.
+!!!
+
+- **The time depends on how many resources you have.** Each backup is one resource, so an installation with thousands of backups takes much longer than one with a few hundred. If you have a long backup history, plan the upgrade for a maintenance window.
+- **The `HybridControlPlane` stays in `deploying` until the post-upgrade job finishes.** The post-upgrade job removes the old copies from `default`. The Beacon server is running again by then, so this phase doesn't affect database management.
+- **Don't delete or restart the upgrade jobs while they run.**
+
+To follow the progress of the jobs:
+
+```shell
+kubectl get jobs -n edb-hcp-operator-system -l edbpgai.edb.com/hm-upgrader=true
+kubectl logs -f job/hm-pre-upgrader-2026-10-to-2026-11 -n edb-hcp-operator-system
+kubectl logs -f job/hm-post-upgrader-2026-10-to-2026-11 -n edb-hcp-operator-system
+```
+
+The logs list every object that the job copies or deletes, and end with a summary that shows how many objects were copied or deleted and how many failed.
+
 ### Finish recreating OSS Library apps
 
 This section only applies if you have OSS Library apps installed.
