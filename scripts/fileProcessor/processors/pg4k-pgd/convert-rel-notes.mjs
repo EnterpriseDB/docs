@@ -110,6 +110,7 @@ function extractVersionSections(tree) {
           introProse: [],
           highlightBullets: [],
           highlightProse: [],
+          upgradeNotes: [],
           supportedItems: [],
           relnotes: [], // { type, title, details, addresses }
         };
@@ -173,6 +174,16 @@ function extractVersionSections(tree) {
       }
       continue;
     }
+    else if (section.kind === "upgrade") {
+      if (node.type === "paragraph") {
+        current.upgradeNotes.push(paragraphToMarkdown(node));
+      } else if (node.type === "list") {
+        for (const li of node.children) {
+          current.upgradeNotes.push(parseListItem(li).paragraphTexts[0]);
+        }
+      }
+      continue;
+    } 
 
     if (section.kind === "supported") {
       if (node.type === "list") {
@@ -195,6 +206,7 @@ function classifySection(rawName) {
   const name = rawName.toLowerCase().replace(/:$/, "").trim();
   if (name === "supported versions") return { kind: "supported" };
   if (name === "highlights") return { kind: "highlights" };
+  if (name === "upgrade notes") return { kind: "upgrade" };
   const type = SECTION_TYPE_MAP[name];
   if (type) return { kind: "relnotes", type };
   return { kind: "skip" };
@@ -265,6 +277,7 @@ function inlineToMarkdown(node) {
 
 function normalizeLink(url) {
   if (/^https?:\/\//i.test(url)) return url;
+  if (!url.startsWith("/")) url = "../" + url;
   return url.replace(/\.md(#)/, "/$1").replace(/\.md$/, "/");
 }
 
@@ -347,6 +360,12 @@ function buildIntro(version) {
       lines.push("");
     }
     for (const bullet of version.highlightBullets) lines.push(`- ${oneLine(bullet)}`);
+    lines.push("");
+  }
+
+  if (version.upgradeNotes.length) {
+    lines.push("## Upgrade notes", "");
+    for (const bullet of version.upgradeNotes) lines.push(`- ${oneLine(bullet)}`);
     lines.push("");
   }
 
