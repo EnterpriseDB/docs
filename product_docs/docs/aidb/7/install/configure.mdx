@@ -150,7 +150,7 @@ AIDB has limited air-gapped support. The built-in CPU model runtimes (Candle and
 
 ## Configuring AIDB parameters (GUCs)
 
-AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Parameters that enable background workers are an exception. See [Workers enabled by settings](default-footprint#workers-enabled-by-settings). Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually. The sections below cover threading limits, the model cache, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
+AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Parameters that enable background workers are an exception. See [Workers enabled by settings](default-footprint#workers-enabled-by-settings). Only `aidb.download_log_level` and `aidb.download_max_attempts` are `USERSET`, so any role can change them for its own session. All other parameters are `SUSET`, so only superusers, or roles granted `SET` on the parameter, can change them. The sections below cover threading limits, the model cache, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
 
 ### Threading limits
 
@@ -183,9 +183,9 @@ Set the maximum memory, in MB, that each process uses to cache loaded local mode
 
 The limit applies to each backend and background worker separately, so each process can fill its own cache up to the limit. Only local models (BERT, CLIP, T5, Llama, and llama.cpp) count toward the limit. Remote models hold no weights locally and count as about 0.
 
-When loading a model would push the cache past the limit, AIDB evicts the least recently used models first. If a single model is larger than the limit, AIDB rejects it with an error that names the model, its size, and the limit. In a pipeline, that record goes to the pipeline's error log as a permanent failure and isn't retried.
+When loading a model would push the cache past the limit, AIDB evicts the least recently used models first. If a single model is larger than the limit, AIDB rejects it with an error that names the model, its size, and the limit. AIDB checks the size after it loads and measures the model, so the process briefly holds the oversized model before dropping it. In a pipeline, AIDB logs a pipeline-level error, and the batch that hit it isn't retried.
 
-A session-level `SET` applies at the next model load in that backend, not to models that are already loaded. To apply a change to all sessions and workers, use `ALTER SYSTEM` and then run `SELECT pg_reload_conf()`.
+A superuser's session-level `SET` applies at the next model load in that backend, not to models that are already loaded. To apply a change to all sessions and workers, use `ALTER SYSTEM` and then run `SELECT pg_reload_conf()`.
 
 ```sql
 SET aidb.max_model_cache_size = '2GB';
@@ -240,7 +240,7 @@ SET aidb.download_max_attempts = 5;
 
 Off by default: llama.cpp's native logging is verbose — hundreds of lines per model load — so it's suppressed unless you need it. This is separate from `aidb.download_log_level` above, which controls AIDB's own download-progress messages; the two are independent.
 
-Unlike the other parameters on this page, `aidb.enable_llamacpp_logs` is `SUSET` (a superuser, or a role granted `SET` on the parameter, can change it) and is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) doesn't take effect until Postgres is restarted:
+`aidb.enable_llamacpp_logs` is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) doesn't take effect until Postgres is restarted:
 
 ```ini
 aidb.enable_llamacpp_logs = true
@@ -373,7 +373,7 @@ Forwards rows from `aidb_otel.{traces,logs,metrics}` to an external OTLP/HTTP co
 | `aidb.otel_exporter_max_retries`    | integer | `5`     | 1–100      | Maximum export attempts for a row before it's marked permanently failed. `SUSET`.                                                                     |
 | `aidb.otel_exporter_batch_size`     | integer | `100`   | 1–1000000  | Maximum rows read per table per export tick. `SUSET`.                                                                                                 |
 
-All five support a per-database override with `ALTER DATABASE <db> SET`. A per-database override that enables the worker applies within two minutes. Enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. See [Default footprint](default-footprint#workers-enabled-by-settings).
+All five support a per-database override with `ALTER DATABASE <db> SET`. For `aidb.otel_exporter_enabled`, an override that enables the worker applies within two minutes, and enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. For the other four parameters, a per-database override applies only when the worker next starts. `ALTER SYSTEM` followed by `pg_reload_conf()` reaches a running worker on its next cycle. See [Default footprint](default-footprint#workers-enabled-by-settings).
 
 #### Cleaner background worker
 
@@ -385,7 +385,7 @@ Deletes rows older than a retention window from `aidb_otel.{traces,logs,metrics}
 | `aidb.otel_cleaner_retention_days`  | integer | `365`   | 0–3650   | Rows older than this are deleted. `0` disables cleanup entirely. `SUSET`.                                        |
 | `aidb.otel_cleaner_batch_size`      | integer | `5000`  | 1–1000000| Maximum rows deleted per table in a single `DELETE`. `SUSET`.                                                    |
 
-All three support the same per-database `ALTER DATABASE <db> SET` override as the exporter parameters above. A per-database override that enables the worker applies within two minutes. Enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. See [Default footprint](default-footprint#workers-enabled-by-settings). You can also trigger a cleanup pass immediately, regardless of `aidb.otel_cleaner_enabled`, with `aidb.run_otel_retention_cleanup()` — see [Observability](../reference/observability#triggering-retention-cleanup).
+All three support the same per-database `ALTER DATABASE <db> SET` override as the exporter parameters above. For `aidb.otel_cleaner_enabled`, an override that enables the worker applies within two minutes, and enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. For the other two parameters, a per-database override applies only when the worker next starts. `ALTER SYSTEM` followed by `pg_reload_conf()` reaches a running worker on its next cycle. See [Default footprint](default-footprint#workers-enabled-by-settings). You can also trigger a cleanup pass immediately, regardless of `aidb.otel_cleaner_enabled`, with `aidb.run_otel_retention_cleanup()` — see [Observability](../reference/observability#triggering-retention-cleanup).
 
 ## Validating the installation
 
