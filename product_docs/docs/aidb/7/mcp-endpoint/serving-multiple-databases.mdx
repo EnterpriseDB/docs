@@ -10,17 +10,32 @@ One endpoint process can serve several databases, for both MCP and the [OTLP rec
 edb.endpoints_database = 'sales, support'
 ```
 
-The value is an identifier list, written like `search_path`. Each database you list must exist for calls to succeed, and each needs AIDB installed to offer more than `execute_sql`. Reload Postgres to apply a change.
+The value is an identifier list, written like `search_path`. Each database you list must exist for calls to succeed, and each needs AIDB installed to offer more than `execute_sql`. Run `SELECT pg_reload_conf();` to apply a change.
+
+## Writing database names
+
+The endpoint matches names exactly and case-sensitively, against the names as Postgres folds them, for MCP and OTLP alike. Quote a name the same way you would in SQL:
+
+| In the list | Served at                      |
+|-------------|--------------------------------|
+| `Sales`     | `/mcp/sales` and `/otlp/sales` |
+| `"Sales"`   | `/mcp/Sales` and `/otlp/Sales` |
+
+- Unquoted names fold to lowercase. The supervisor logs a warning when a name folds.
+- Double-quote a name to keep its case, or to include a space, a comma, or a non-ASCII letter. An unquoted non-ASCII name is refused, because the supervisor has no database encoding to fold it with.
+- A list that doesn't parse, is empty, or repeats a name idles the supervisor with a warning until the next `pg_reload_conf()`.
+
+If you launch `edb-endpoints` yourself, you pass database names with command-line flags instead. See [Launching `edb-endpoints` yourself](operating-the-endpoint#launching-edb-endpoints-yourself).
 
 ## How clients pick a database
 
 For MCP:
 
-| URL                         | Database                                                        |
-|-----------------------------|-----------------------------------------------------------------|
-| `/mcp` and `/mcp/`          | The first database in the list, the default                     |
-| `/mcp/<name>` and `/mcp/<name>/` | The named database. The endpoint percent-decodes `<name>`. |
-| Any other name              | `404` with the body `unknown database`, whatever the method     |
+| URL                              | Database                                                    |
+|----------------------------------|-------------------------------------------------------------|
+| `/mcp` and `/mcp/`               | The first database in the list, the default                 |
+| `/mcp/<name>` and `/mcp/<name>/` | The named database. The endpoint percent-decodes `<name>`.  |
+| Any other name                   | `404` with the body `unknown database`, whatever the method |
 
 For example, with the list above, `http://<mcp-host>:8765/mcp/support` serves `support`, and `http://<mcp-host>:8765/mcp` serves `sales`.
 
@@ -30,22 +45,7 @@ When a request reaches bare `/mcp`, the `initialize` response names the default 
 
 For the OTLP receiver, the database is always part of the URL, as `/otlp/<name>/v1/<signal>`. There is no default database, so telemetry is never written to a database the sender didn't name. A name that isn't in `edb.endpoints_database` gets `404` with the body `unknown database`. See [Sending telemetry](otlp-receiver#sending-telemetry).
 
-### Writing database names
-
-The endpoint matches names exactly and case-sensitively, against the names as Postgres folds them, for MCP and OTLP alike. Quote a name the same way you would in SQL:
-
-| In the list  | Served at       |
-|--------------|-----------------|
-| `Sales`      | `/mcp/sales` and `/otlp/sales` |
-| `"Sales"`    | `/mcp/Sales` and `/otlp/Sales` |
-
-- Unquoted names fold to lowercase. The supervisor logs a warning when a name folds.
-- Double-quote a name to keep its case, or to include a space, a comma, or a non-ASCII letter. An unquoted non-ASCII name is refused, because the supervisor has no database encoding to fold it with.
-- A list that doesn't parse, is empty, or repeats a name idles the supervisor with a warning until the next `pg_reload_conf()`.
-
-If you launch `edb-endpoints` yourself, repeat `--mcp-pg-dbname` once per MCP database, and `--otlp-pg-dbname` once per OTLP database. That flag doesn't fold names, so `--mcp-pg-dbname Sales` serves `/mcp/Sales`, and `--otlp-pg-dbname Sales` serves `/otlp/Sales`. Write a name that starts with `-` as `--mcp-pg-dbname=-archive`, or it parses as a flag.
-
-### Unavailable databases
+## Unavailable databases
 
 - A listed database without the AIDB extension still serves `execute_sql`. `tools/list` offers only that tool, and calling a catalog tool passes Postgres's missing-schema error through.
 - A listed database that doesn't exist, or that is dropped or renamed while the endpoint runs, is still served. `initialize` succeeds, and each call fails with `database "<name>" does not exist`. When the database exists again, the next call works without a reload.
@@ -61,30 +61,17 @@ REVOKE CONNECT ON DATABASE support FROM PUBLIC;
 GRANT CONNECT ON DATABASE support TO agent_alice;
 ```
 
-The endpoint connects over the server's Unix socket, so `local` lines in `pg_hba.conf` apply. When `unix_socket_directories` is empty, it falls back to TCP on `127.0.0.1`, and `host` lines for that address apply instead.
+The endpoint connects over the server's Unix socket, so `local` lines in `pg_hba.conf` apply. When `unix_socket_directories` is empty, it falls back to TCP on `127.0.0.1`, and `host` lines for that address apply instead. Whichever lines apply must check a password. See [Passwords are always checked](configuring-agent-roles#passwords-are-always-checked).
 
 Whether a database is listed is visible before authentication. An unlisted name returns the `404`, and a listed one gets an MCP response. The bare `/mcp` `initialize` response also names the default database without credentials.
 
 For the OTLP receiver, a role that sends telemetry also needs to be a member of `aidb_otel_writer`. Role membership is cluster-wide, so one `GRANT aidb_otel_writer` applies in every database where the extension is installed. To limit a sender to some databases, revoke `CONNECT` on the others.
 
-### Passwords are always checked
+## Upgrading from 7.8.0
 
-Every connection the endpoint opens comes from the Postgres host itself, whichever host the MCP client is on. A `pg_hba.conf` line written for local users therefore also admits remote MCP clients, unless the method checks a password:
+Earlier releases served one database through the `edb.endpoints_mcp_*` settings. Before you upgrade, check these changes:
 
-- `trust` admits any MCP client that names a role, whatever password it sends.
-- `peer` checks the operating-system user, and the endpoint runs as the same OS user as the Postgres server. A line such as `local all postgres peer`, common in packaged installs, admits any client that sends the user `postgres`, as a superuser.
-
-The endpoint enforces this. Right after it connects, and before it runs any of the caller's SQL, it checks which method admitted the connection. It closes the connection unless the method checked a password: `scram-sha-256`, `md5`, `password`, `ldap`, `radius`, `pam`, or `bsd`. The caller gets the error `PostgreSQL admitted it without checking a password`. The reply never names the method, but the endpoint's log does.
-
-For each listed database, make sure the `pg_hba.conf` lines that match the endpoint's connections require a password, such as `scram-sha-256`.
-
-A connection that carries an OAuth bearer token instead of a password must be admitted by an `oauth` line. See [Mapping identities to roles](oauth#mapping-identities-to-roles).
-
-The check needs PostgreSQL 16 or later, because it reads `SYSTEM_USER`, which is new in 16. On PostgreSQL 14 and 15, the supervisor logs a warning and doesn't start the endpoint.
-
-## Upgrading from a single-database release
-
-- **Passwords are now required.** The endpoint refuses a connection that `pg_hba.conf` admitted without checking a password, such as by `trust` or `peer`. Change the matching lines to `scram-sha-256` before you upgrade, or every tool call fails.
+- **Passwords are now required.** The endpoint refuses a connection that `pg_hba.conf` admitted without checking a password, such as by `trust` or `peer`. Change the matching lines to `scram-sha-256` before you upgrade, or every tool call fails. See [Passwords are always checked](configuring-agent-roles#passwords-are-always-checked).
 - **PostgreSQL 14 and 15 are no longer supported** for the endpoint.
 - **The database setting is now an identifier list.** Earlier releases passed `edb.endpoints_mcp_database` to the endpoint as written. Now:
   - An unquoted name with uppercase letters folds to lowercase, so `Sales` now means the database `sales`. Write `'"Sales"'` to keep the old meaning.
@@ -92,4 +79,9 @@ The check needs PostgreSQL 16 or later, because it reads `SYSTEM_USER`, which is
   - A name with a comma now splits into two names. Double-quote it.
   - Whitespace around a name is dropped.
 
-A lowercase ASCII name, such as the default `postgres`, means the same as before.
+  A lowercase ASCII name, such as the default `postgres`, means the same as before.
+- **The supervisor has a new name.** `aidb endpoints supervisor` replaces `aidb mcp endpoint supervisor` as its `backend_type` in `pg_stat_activity` and as its log prefix. Update monitoring queries and log filters that match the old name. See [Logging](operating-the-endpoint#logging).
+- **Three `edb.endpoints_mcp_*` settings are deprecated.** Replace `edb.endpoints_mcp_command_path`, `edb.endpoints_mcp_restart_max`, and `edb.endpoints_mcp_restart_window_secs` with `edb.endpoints_command_path`, `edb.endpoints_restart_max`, and `edb.endpoints_restart_window_secs`. A value that's still set takes precedence, and the supervisor logs a warning. See [Deprecated settings](configuring-the-endpoint#deprecated-settings).
+- **The MCP host and database settings now default to empty.** `edb.endpoints_mcp_host` and `edb.endpoints_mcp_database` fall back to `edb.endpoints_host` and `edb.endpoints_database` when empty. A value you already set keeps working, so nothing changes unless you set the general settings. See [MCP settings](configuring-the-endpoint#mcp-settings).
+- **`edb.endpoints_mcp_enabled` now takes effect on reload.** The supervisor still starts only if a server switch is on when Postgres starts, so turning the endpoint on from fully off needs a restart. The new master switch, `edb.endpoints_enabled`, is on by default. Setting it to `off` disables every server. See [Configuring the endpoint](configuring-the-endpoint).
+- **A launch command you run yourself needs a change.** The binary now serves the OTLP receiver by default. See [Launching `edb-endpoints` yourself](operating-the-endpoint#launching-edb-endpoints-yourself).

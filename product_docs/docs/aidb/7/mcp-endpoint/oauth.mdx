@@ -12,6 +12,36 @@ The MCP endpoint and the [OTLP receiver](otlp-receiver) can accept bearer tokens
 - A validator module in `oauth_validator_libraries` that checks the token signature, the issuer, and the scopes. AIDB doesn't ship one. [`pg_oidc_validator`](https://github.com/Percona-Lab/pg_oidc_validator) 1.1.0 is the one AIDB is tested against. It's third party, its maintainers label it experimental, and it doesn't check `aud`, so the endpoint checks it instead.
 - An `oauth` line in `pg_hba.conf` for the roles that authenticate with tokens. See [Mapping identities to roles](#mapping-identities-to-roles).
 
+## Enabling OAuth
+
+1. Install a validator module on the Postgres host, and list it in `oauth_validator_libraries` in `postgresql.conf`. If you use `pg_oidc_validator`, set `pg_oidc_validator.authn_field` to the claim that names the Postgres role, which is `preferred_username` by default:
+
+   ```ini
+   oauth_validator_libraries = 'pg_oidc_validator'
+   pg_oidc_validator.authn_field = 'preferred_username'
+   ```
+
+1. Create a login role for each identity, add an `oauth` line to `pg_hba.conf`, and map each IdP identity to its role in `pg_ident.conf`. See [Mapping identities to roles](#mapping-identities-to-roles) for a complete example.
+
+1. In `postgresql.conf`, set the endpoint's OAuth settings. For MCP, set the issuer, resource URL, scopes, and audience together. Use the same scope as the `scope=` option on the `pg_hba.conf` line:
+
+   ```ini
+   edb.endpoints_mcp_oauth_issuer = 'https://idp.example.com/realms/mcp'
+   edb.endpoints_mcp_oauth_resource_url = 'https://mcp.example.com/mcp'
+   edb.endpoints_mcp_oauth_scopes = 'mcp'
+   edb.endpoints_mcp_oauth_audience = '<audience>'
+   ```
+
+   For the OTLP receiver, set `edb.endpoints_oauth_issuer` and `edb.endpoints_oauth_audience` instead. See [Settings](#settings) for every parameter and [Choosing the audience](#choosing-the-audience) for the audience value.
+
+1. Reload Postgres. The reload applies the `pg_hba.conf` and `pg_ident.conf` changes and restarts the endpoint with the new settings:
+
+   ```sql
+   SELECT pg_reload_conf();
+   ```
+
+1. Connect an MCP client that supports OAuth to the endpoint's URL. The client opens your IdP's sign-in page, and then `tools/list` returns the tools that the signed-in role can call. If the client keeps returning to the sign-in page, see [MCP clients](#mcp-clients). The Postgres server log names the cause. For OTLP senders, see [Authenticating with OAuth](otlp-receiver#authenticating-with-oauth).
+
 ## Settings
 
 The general settings apply to every server the endpoint process runs:
@@ -66,21 +96,36 @@ The OTLP receiver uses the general settings and only checks tokens. OpenTelemetr
 
 ## Mapping identities to roles
 
-The endpoint logs in as the role the role claim names. Postgres then maps the identity the validator verified through `pg_ident.conf` to decide whether that login is allowed. For example:
+The endpoint logs in as the role the role claim names. Postgres then maps the identity the validator verified through `pg_ident.conf` to decide whether that login is allowed. Create the roles first. An OAuth login role needs no password:
+
+```sql
+-- The group role that the oauth line in pg_hba.conf matches
+CREATE ROLE mcp_oauth_users NOLOGIN;
+-- A login role for the IdP identity alice, which is a member of the group
+CREATE ROLE agent_alice LOGIN IN ROLE mcp_oauth_users;
+-- Lets the role list and call tools. See Configuring your agent role.
+GRANT aidb_users TO agent_alice;
+```
+
+Then add the `pg_hba.conf` and `pg_ident.conf` lines:
 
 ```ini
 # pg_hba.conf: the supervised endpoint connects over the Unix socket
-local   all   +mcp_oauth_users   oauth issuer="https://idp.example.com/realms/mcp" scope="mcp" map=mcp_oauth
-local   all   agent_bob          scram-sha-256
+# TYPE  DATABASE  USER                METHOD
+local   all       +mcp_oauth_users    oauth issuer="https://idp.example.com/realms/mcp" scope="mcp" map=mcp_oauth
+# agent_bob keeps password login through HTTP Basic
+local   all       agent_bob           scram-sha-256
 
 # pg_ident.conf: IdP identity to Postgres role
-mcp_oauth   alice       agent_alice
+# MAPNAME     SYSTEM-USERNAME   DATABASE-USERNAME
+mcp_oauth     alice             agent_alice
 ```
 
+- The `+` prefix on `+mcp_oauth_users` matches every member of that role. `alice` is the identity that the validator verifies, and `agent_alice` is the role the endpoint logs in as.
 - Postgres uses the first `pg_hba.conf` line that matches, so each role authenticates one way. A role on the `oauth` line can't also log in with a password through HTTP Basic.
-- Use `local` for the endpoint the supervisor starts, and `hostssl` for an `edb-endpoints` you launch yourself that reaches Postgres over TCP.
+- Use `local` for the endpoint the supervisor starts, and `hostssl` for an `edb-endpoints` you [launch yourself](operating-the-endpoint#launching-edb-endpoints-yourself) that reaches Postgres over TCP.
 - Without `map=`, the identity and the role must be equal. `map=` maps identities to roles when they differ.
-- A bearer token connection that a line other than `oauth` admits gets the error `PostgreSQL admitted it without checking the token`. See [Passwords are always checked](serving-multiple-databases#passwords-are-always-checked).
+- A bearer token connection that a line other than `oauth` admits gets the error `PostgreSQL admitted it without checking the token`. See [Passwords are always checked](configuring-agent-roles#passwords-are-always-checked).
 
 The role claim and the validator have to agree. `pg_oidc_validator` reads `sub` by default, so set `pg_oidc_validator.authn_field = 'preferred_username'` to pair it with the default role claim. Keycloak puts `preferred_username` in access tokens through the `profile` scope.
 

@@ -46,7 +46,7 @@ The supervisor refuses to start the endpoint, and idles until the next reload, w
 - The TLS certificate and key aren't set together.
 - Either TLS file doesn't exist.
 - The MCP host is outside loopback and its TLS pair isn't configured. The OTLP receiver is checked against the general `edb.endpoints_host` and TLS pair. See [OTLP/HTTP receiver](otlp-receiver).
-- The server runs PostgreSQL 14 or 15. See [Passwords are always checked](serving-multiple-databases#passwords-are-always-checked).
+- The server runs PostgreSQL 14 or 15. See [Passwords are always checked](configuring-agent-roles#passwords-are-always-checked).
 - An OAuth setting is set on a server older than PostgreSQL 18, or a required OAuth setting is missing. See [Authenticating with OAuth](oauth).
 - The database list doesn't parse, is empty, or repeats a name. See [Serving multiple databases](serving-multiple-databases).
 
@@ -68,6 +68,15 @@ When Postgres shuts down, the supervisor sends the endpoint `SIGTERM`, waits up 
 
 To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and reload Postgres.
 
+## Launching `edb-endpoints` yourself
+
+The supervisor starts `edb-endpoints` for you with the right flags. To launch the binary yourself instead, pass the databases and servers as flags:
+
+- Repeat `--mcp-pg-dbname` once per MCP database, and `--otlp-pg-dbname` once per OTLP database. These flags don't fold names, so `--mcp-pg-dbname Sales` serves `/mcp/Sales`, and `--otlp-pg-dbname Sales` serves `/otlp/Sales`. Write a name that starts with `-` as `--mcp-pg-dbname=-archive`, or it parses as a flag.
+- The OTLP receiver is on by default and needs at least one `--otlp-pg-dbname`. A command that worked before the receiver existed, such as `edb-endpoints --pg-host /tmp --pg-dbname aidb`, now fails because it names no OTLP database. Add `--no-otlp` to keep it MCP-only, or `--otlp-pg-dbname=<database>` to serve telemetry too.
+- Use `--no-mcp` to serve only the receiver. `--no-mcp` and `--no-otlp` together are rejected.
+- Replace the unprefixed `--listen-host`, `--listen-port`, `--tls-cert`, `--tls-key`, and `--pg-dbname` flags with their `--mcp-*` forms. They're deprecated. They still work and log a warning, but they conflict with the `--mcp-*` forms.
+
 ## Troubleshooting
 
 | Symptom                                                                             | Cause and fix                                                                                                                                                                                                                              |
@@ -77,7 +86,7 @@ To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and reload Postgr
 | `restart budget exhausted`                                                          | The endpoint keeps exiting. Read the endpoint's stderr in the Postgres log for the reason (a port already in use is common), fix it, and reload. See [Restart budget](#restart-budget).                                                                                           |
 | `edb.endpoints_mcp_tls_cert and edb.endpoints_mcp_tls_key must be set together`     | Set both TLS parameters or neither, then reload. See [Configuration rejections](#configuration-rejections).                                                                                                                                                                                           |
 | A non-loopback host is rejected                                                     | Configure TLS before listening outside loopback, then reload. See [Configuration rejections](#configuration-rejections).                                                                                                                                                                              |
-| Every call fails with `PostgreSQL admitted it without checking a password` | A `pg_hba.conf` line admitted the connection with `trust` or `peer`. Change it to a password method such as `scram-sha-256`. The endpoint's log names the method. See [Passwords are always checked](serving-multiple-databases#passwords-are-always-checked). |
+| Every call fails with `PostgreSQL admitted it without checking a password` | A `pg_hba.conf` line admitted the connection with `trust` or `peer`. Change it to a password method such as `scram-sha-256`. The endpoint's log names the method. See [Passwords are always checked](configuring-agent-roles#passwords-are-always-checked). |
 | A request gets `404` with `unknown database` | The database name in the URL isn't in `edb.endpoints_database` or `edb.endpoints_mcp_database`. Add it and reload, or fix the name. Names are case-sensitive. See [Serving multiple databases](serving-multiple-databases). |
 | The endpoint doesn't start on PostgreSQL 14 or 15 | The password check needs PostgreSQL 16 or later. The supervisor logs a warning and doesn't start the endpoint. |
 | Every call returns `password authentication failed`                                 | Postgres rejected the credentials. Check the role's password and the `local` lines in `pg_hba.conf`. The endpoint connects over the Unix socket, so `host` lines apply only when `unix_socket_directories` is empty.                        |

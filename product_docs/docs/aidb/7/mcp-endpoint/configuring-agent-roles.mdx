@@ -4,7 +4,7 @@ navTitle: Configuring agent roles
 description: What a Postgres role needs to act as an MCP agent, and how to revoke it.
 ---
 
-Configure a Postgres role to authenticate agents with the MCP endpoint and to define what each agent may list and call. The MCP endpoint authenticates every agent as a Postgres login role, so provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. A profile role is an ordinary `NOLOGIN` Postgres role that holds privileges — group them by function (read-only, read-write, and so on) and grant them to agent roles instead of granting privileges directly.
+Configure a Postgres role to authenticate agents with the MCP endpoint and to define what each agent may list and call. The MCP endpoint authenticates every agent as a Postgres login role, and it refuses any connection that `pg_hba.conf` admits without checking a password (see [Passwords are always checked](#passwords-are-always-checked)). Provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. A profile role is an ordinary `NOLOGIN` Postgres role that holds privileges — group them by function (read-only, read-write, and so on) and grant them to agent roles instead of granting privileges directly.
 
 ## Granting the role what it needs
 
@@ -14,7 +14,7 @@ Configure a Postgres role to authenticate agents with the MCP endpoint and to de
    CREATE ROLE <agent_role> LOGIN PASSWORD '<password>';
    ```
 
-1. Add a matching `local` line in `pg_hba.conf`. The endpoint connects over the server's Unix socket, so `local` lines apply (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Use a password method such as `scram-sha-256`. The endpoint refuses connections admitted by `trust` or `peer`. See [Passwords are always checked](serving-multiple-databases#passwords-are-always-checked).
+1. Add a matching `local` line in `pg_hba.conf`. The endpoint connects over the server's Unix socket, so `local` lines apply (see [How it works](../mcp-endpoint#how-it-works) for the TCP fallback). Use a password method such as `scram-sha-256`. The endpoint refuses connections admitted by `trust` or `peer`. See [Passwords are always checked](#passwords-are-always-checked).
 
    ```
    local   all   <agent_role>   scram-sha-256
@@ -36,6 +36,21 @@ Configure a Postgres role to authenticate agents with the MCP endpoint and to de
 Keep the agent role itself free of direct privileges and grant it profile roles instead. Revoking a profile role from an agent takes effect on the agent's next call, since every call opens a fresh connection.
 
 See [Provisioning example](provisioning-example) for a worked example that creates an agent role and profile roles together.
+
+## Passwords are always checked
+
+The endpoint requires PostgreSQL 16 or later, because the password check reads `SYSTEM_USER`, which is new in 16. On PostgreSQL 14 and 15, the supervisor logs a warning and doesn't start the endpoint.
+
+Every connection the endpoint opens comes from the Postgres host itself, whichever host the MCP client is on. A `pg_hba.conf` line written for local users therefore also admits remote MCP clients, unless the method checks a password:
+
+- `trust` admits any MCP client that names a role, whatever password it sends.
+- `peer` checks the operating-system user, and the endpoint runs as the same OS user as the Postgres server. A line such as `local all postgres peer`, common in packaged installs, admits any client that sends the user `postgres`, as a superuser.
+
+The endpoint enforces this. Right after it connects, and before it runs any of the caller's SQL, it checks which method admitted the connection. It closes the connection unless the method checked a password: `scram-sha-256`, `md5`, `password`, `ldap`, `radius`, `pam`, or `bsd`. The caller gets the error `PostgreSQL admitted it without checking a password`. The reply never names the method, but the endpoint's log does.
+
+For each database the endpoint serves, make sure the `pg_hba.conf` lines that match the endpoint's connections require a password, such as `scram-sha-256`.
+
+A connection that carries an OAuth bearer token instead of a password must be admitted by an `oauth` line. See [Mapping identities to roles](oauth#mapping-identities-to-roles).
 
 ## Revoking an agent
 
