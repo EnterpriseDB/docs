@@ -1,7 +1,7 @@
 ---
 title: Model Context Protocol (MCP) endpoint
 navTitle: MCP endpoint
-description: Serve AIDB's tool catalog to external MCP clients over streamable HTTP.
+description: Serve AIDB's tool catalog to external MCP clients over streamable HTTP, and receive OpenTelemetry data from external agents.
 navigation:
 - enabling-the-endpoint
 - configuring-agent-roles
@@ -14,7 +14,7 @@ navigation:
 - provisioning-example
 ---
 
-The Model Context Protocol (MCP) endpoint lets agents outside the database call AIDB's [tools](../tools) over the [Model Context Protocol](https://modelcontextprotocol.io). The same server can also receive OpenTelemetry data from external agents. See [OTLP receiver](otlp-receiver). The MCP endpoint consists of an HTTP server, `edb-endpoints`, shipped in the AIDB package, and a Postgres background worker, known as the supervisor, that starts and supervises it. Every tool call runs as the Postgres role the agent authenticated with, so Postgres grants decide what each agent can run. By default the endpoint only accepts connections from the database host itself. See [Serving remote clients](connecting-a-client#serving-remote-clients) to serve clients on other hosts.
+The Model Context Protocol (MCP) endpoint lets agents outside the database call AIDB's [tools](../tools) over the [Model Context Protocol](https://modelcontextprotocol.io). The MCP endpoint consists of an HTTP server, `edb-endpoints`, shipped in the AIDB package, and a Postgres background worker, known as the supervisor, that starts and supervises it. Every tool call runs as the Postgres role the agent authenticated with, so Postgres grants decide what each agent can run. By default the endpoint only accepts connections from the database host itself. See [Serving remote clients](connecting-a-client#serving-remote-clients) to serve clients on other hosts. The same server can also receive OpenTelemetry data from external agents. See [OTLP receiver](otlp-receiver).
 
 Provisioning an agent is ordinary Postgres administration: create a login role, allow it in `pg_hba.conf`, and grant it the profile roles and tools it needs. See [Configuring your agent role](configuring-agent-roles) for what each of those steps involves, and [Provisioning example](provisioning-example) for an end-to-end worked example that creates two agent roles with different grants and the tools they call.
 
@@ -26,7 +26,7 @@ The MCP agent works in the reverse direction from [MCP tools](../tools/mcp-tools
 
 The MCP endpoint has two components: `edb-endpoints`, an HTTP server that speaks MCP, and the supervisor, a Postgres background worker that starts it, restarts it if it exits, and shuts it down with Postgres.
 
-Each request authenticates with a Postgres username and password, or with a bearer token from your identity provider (see [Authenticating with OAuth](oauth)), over its own database connection. By default the endpoint reaches Postgres through the server's Unix socket, falling back to TCP on `127.0.0.1` when no Unix socket is configured. Postgres grants decide what that agent can list and run, the endpoint itself has no separate permission system. The endpoint refuses a connection that `pg_hba.conf` admitted without checking a password, such as `trust` or `peer`. See [Passwords are always checked](configuring-agent-roles#passwords-are-always-checked). Because every request connects fresh, `current_user` inside a tool is the agent's own role, and that role shows up in `pg_stat_activity` and the Postgres log like any other connection.
+Each request authenticates with a Postgres username and password, or with a bearer token from your identity provider (see [Authenticating with OAuth](oauth)), over its own database connection. By default the endpoint reaches Postgres through the server's Unix socket, falling back to TCP on `127.0.0.1` when no Unix socket is configured. Postgres grants decide what that agent can list and run, the endpoint itself has no separate permission system. Because every request connects fresh, `current_user` inside a tool is the agent's own role, and that role shows up in `pg_stat_activity` and the Postgres log like any other connection. The endpoint refuses a connection that `pg_hba.conf` admitted without checking a password, such as `trust` or `peer`. See [Passwords are always checked](configuring-agent-roles#passwords-are-always-checked).
 
 Postgres errors pass through to the client unchanged. A wrong password, a missing grant, or an unknown tool all surface as ordinary Postgres or MCP errors. See [Connecting a client](connecting-a-client) for the exact error text.
 
@@ -44,14 +44,14 @@ You can register a tool named `execute_sql`, but the endpoint ignores it: the bu
 
 ## Documentation map
 
-| Page                                                   | What it covers                                                                                                    |
-|--------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| [Enabling the endpoint](enabling-the-endpoint)         | Turning on `edb.endpoints_mcp_enabled`, picking the database it serves, confirming it's up                        |
-| [Configuring your agent role](configuring-agent-roles) | What a Postgres role needs to act as an agent, the password check, revoking access                                                    |
-| [Connecting a client](connecting-a-client)             | The MCP wire protocol over curl, what an agent's grants let it do, calling `execute_sql` and catalog tools, result encoding, serving remote clients |
-| [Authenticating with OAuth](oauth)                     | Signing in MCP clients through your identity provider, bearer tokens for OTLP senders, mapping token identities to roles |
-| [Configuring the endpoint](configuring-the-endpoint)   | Every `edb.endpoints_*` parameter, what the supervisor derives on its own, what a reload does                 |
-| [Operating the endpoint](operating-the-endpoint)       | Health checks, logging, the restart budget, configuration rejections, restarting or stopping it, launching it yourself, troubleshooting  |
-| [Serving multiple databases](serving-multiple-databases) | Listing several databases, routing clients by URL, controlling access to each, upgrading from 7.8.0 |
-| [OTLP receiver](otlp-receiver)                       | Accepting OpenTelemetry traces, logs, and metrics from external agents into `aidb_otel`, authentication    |
-| [Provisioning example](provisioning-example)           | An end-to-end worked example provisioning two agents with different grants on the same table                     |
+| Page                                                     | What it covers                                                                                                                                          |
+|----------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [Enabling the endpoint](enabling-the-endpoint)           | Turning on `edb.endpoints_mcp_enabled`, picking the database it serves, and confirming it's up                                                          |
+| [Configuring your agent role](configuring-agent-roles)   | What a Postgres role needs to act as an agent, the password check, and revoking access                                                                  |
+| [Connecting a client](connecting-a-client)               | The MCP wire protocol over curl, what an agent's grants let it do, calling `execute_sql` and catalog tools, result encoding, and serving remote clients |
+| [Authenticating with OAuth](oauth)                       | Signing in MCP clients through your identity provider, authenticating OTLP senders with bearer tokens, and mapping token identities to roles            |
+| [Configuring the endpoint](configuring-the-endpoint)     | Every `edb.endpoints_*` parameter, what the supervisor derives on its own, and what a reload does                                                       |
+| [Operating the endpoint](operating-the-endpoint)         | Health checks, logging, the restart budget, configuration rejections, restarting or stopping it, launching it yourself, and troubleshooting             |
+| [Serving multiple databases](serving-multiple-databases) | Listing several databases, routing clients by URL, controlling access to each, and upgrading from 7.8.0                                                 |
+| [OTLP receiver](otlp-receiver)                           | Accepting OpenTelemetry traces, logs, and metrics from external agents into `aidb_otel`, and authenticating senders                                     |
+| [Provisioning example](provisioning-example)             | An end-to-end worked example provisioning two agents with different grants on the same table                                                            |

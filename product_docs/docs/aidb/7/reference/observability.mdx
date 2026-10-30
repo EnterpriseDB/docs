@@ -215,6 +215,8 @@ AIDB records attributes automatically when telemetry is enabled. It follows [Ope
 
 Database telemetry from AIDB 7.8.0 uses schema version `1`; AIDB 7.9.0 introduces schema version `2`. The schema version identifies the telemetry structure and changes independently of the AIDB release number. Upgrading doesn't add new attributes to older records. These fields are available in the stored telemetry; the [dashboard displays a subset](/agent-governance/latest/architecture/#understanding-what-the-dashboard-shows).
 
+Some tables include a Carrier column, which shows the kind of OpenTelemetry record an attribute is set on, such as a span or a metric. An attribute with two carriers has the same meaning on both.
+
 ### Setting resource attributes
 
 Set once per process, shared by every signal (traces, logs, and metrics):
@@ -231,9 +233,9 @@ Set once per process, shared by every signal (traces, logs, and metrics):
 
 Set once per trace, only on its root span:
 
-| Attribute | Carrier | Type | Description |
-|---|---|---|---|
-| `db.postgresql.session_id` | span | string | Present only on the first span of a trace, not on every span within it. |
+| Attribute                  | Carrier | Type   | Description                                                                                                                                     |
+|----------------------------|---------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `db.postgresql.session_id` | span    | string | Correlates a trace with the Postgres server log lines from the same backend. Set only on the root span of a trace, not on every span within it. |
 
 `db.postgresql.session_id` uses the format `<start_time_hex>.<pid_hex>`, matching Postgres's own `%c` log_line_prefix escape. It's per-connection, so it's set only on each trace's root span, not on every span and not as a resource attribute, since sharing it with the metrics pipeline would inflate metric cardinality. It's promoted to the indexed `pg_session_id` column on `aidb_otel.traces`.
 
@@ -299,34 +301,34 @@ The denial class, function name, message, and SQLSTATE apply to PostgreSQL privi
 
 Set on any span that executes SQL:
 
-| Attribute | Carrier | Type | Description |
-|---|---|---|---|
-| `db.query.text` | span | string | The SQL text a span ran, captured when the span starts, or set explicitly on a decision span when the denied or allowed query text is available. Truncated past a fixed byte ceiling. |
-| `db.response.status_code` | span | string | SQLSTATE of the PostgreSQL error, 5 characters. On the decision span it is set only on a PostgreSQL-raised privilege denial (42501), under the same conditions as `aidb.agent.decision.denial_class`. |
+| Attribute                 | Carrier | Type   | Description                                                                                                                                                                                      |
+|---------------------------|---------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `db.query.text`           | span    | string | The SQL text a span ran, captured when the span starts, or set explicitly on a decision span when the denied or allowed query text is available. Truncated past a fixed byte ceiling.            |
+| `db.response.status_code` | span    | string | SQLSTATE of the Postgres error, 5 characters. On the decision span it's set only on a Postgres-raised privilege denial (42501), under the same conditions as `aidb.agent.decision.denial_class`. |
 
 Bound parameter values are included in `db.query.text` only when `aidb.otel_capture_query_parameters` is on (see [Configuring AIDB parameters](../install/configure#opentelemetry-tracing)).
 
 ### Recording agent memory attributes
 
-Set on spans for agent memory sessions. The last two attributes are metric attributes, carried on the `aidb.memory.session.operations` counter and the `aidb.memory.session.operation.duration` histogram.
+Set on spans for agent memory sessions. `aidb.memory.operation` and `aidb.memory.outcome` are metric attributes, carried on the `aidb.memory.session.operations` counter and the `aidb.memory.session.operation.duration` histogram. `aidb.memory.compacting` is carried on both spans and metrics.
 
-| Attribute | Carrier | Type | Description |
-|---|---|---|---|
-| `aidb.memory.name` | span | string | The named memory instance a call targets. |
-| `aidb.memory.provider` | span | string | The configured memory runtime's name, only set when a memory runtime is actually configured. |
-| `aidb.memory.namespace` | span | string | The memory namespace a session/message operation is scoped to. |
-| `aidb.memory.actor_id` | span | string | The actor (end user or agent identity) a memory session belongs to. |
-| `aidb.memory.session_id` | span | string | The memory session id an operation reads or writes. |
-| `aidb.memory.session_closed` | span | bool | Whether a session-end call found the session already closed (an idempotent close) rather than closing it now. |
-| `aidb.memory.turns` | span | int | Number of conversation turns in a memory session at init/read time. |
-| `aidb.memory.limit` | span | int | The configured item/char limit applied to a memory session read. |
-| `aidb.memory.items` | span | int | Number of items returned by a memory session read. |
-| `aidb.memory.overflow_chars` | span | int | How many characters were trimmed because a memory read exceeded its char budget. |
-| `aidb.memory.compacted_entries` | span | int | Number of entries folded into a compaction summary during a session read or end. |
-| `aidb.memory.warnings` | span | int | Number of non-fatal warnings raised during a memory session read, for example a compaction the underlying model could not produce. |
-| `aidb.memory.compacting` | span, metric | bool | Whether this session read triggered a compaction model call. Same key, same meaning on both carriers; absent (not false) on the metric carrier for operations where the distinction is meaningless, such as opening or closing a session. |
-| `aidb.memory.operation` | metric | enum: `session_get`, `session_start`, `session_end` | Always present on every memory-session-operation data point. |
-| `aidb.memory.outcome` | metric | enum: `ok`, `warning` | Always present alongside `aidb.memory.operation`. No `error` value; a failed operation is not counted at all. |
+| Attribute                       | Carrier      | Type                                                | Description                                                                                                                                                                                                                               |
+|---------------------------------|--------------|-----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.memory.name`              | span         | string                                              | The named memory instance a call targets.                                                                                                                                                                                                 |
+| `aidb.memory.provider`          | span         | string                                              | The configured memory runtime's name, only set when a memory runtime is actually configured.                                                                                                                                              |
+| `aidb.memory.namespace`         | span         | string                                              | The memory namespace a session/message operation is scoped to.                                                                                                                                                                            |
+| `aidb.memory.actor_id`          | span         | string                                              | The actor (end user or agent identity) a memory session belongs to.                                                                                                                                                                       |
+| `aidb.memory.session_id`        | span         | string                                              | The memory session id an operation reads or writes.                                                                                                                                                                                       |
+| `aidb.memory.session_closed`    | span         | boolean                                             | Whether a session-end call found the session already closed (an idempotent close) rather than closing it now.                                                                                                                             |
+| `aidb.memory.turns`             | span         | integer                                             | Number of conversation turns in a memory session at init/read time.                                                                                                                                                                       |
+| `aidb.memory.limit`             | span         | integer                                             | The configured item or character limit applied to a memory session read.                                                                                                                                                                  |
+| `aidb.memory.items`             | span         | integer                                             | Number of items returned by a memory session read.                                                                                                                                                                                        |
+| `aidb.memory.overflow_chars`    | span         | integer                                             | How many characters were trimmed because a memory read exceeded its character budget.                                                                                                                                                     |
+| `aidb.memory.compacted_entries` | span         | integer                                             | Number of entries folded into a compaction summary during a session read or end.                                                                                                                                                          |
+| `aidb.memory.warnings`          | span         | integer                                             | Number of non-fatal warnings raised during a memory session read, for example, a compaction the underlying model couldn't produce.                                                                                                        |
+| `aidb.memory.compacting`        | span, metric | boolean                                             | Whether this session read triggered a compaction model call. Same key, same meaning on both carriers; absent (not false) on the metric carrier for operations where the distinction is meaningless, such as opening or closing a session. |
+| `aidb.memory.operation`         | metric       | enum: `session_get`, `session_start`, `session_end` | Always present on every memory-session-operation data point.                                                                                                                                                                              |
+| `aidb.memory.outcome`           | metric       | enum: `ok`, `warning`                               | Always present alongside `aidb.memory.operation`. No `error` value; a failed operation isn't counted at all.                                                                                                                              |
 
 ### Tracing pipelines, semantic KBs, and models
 

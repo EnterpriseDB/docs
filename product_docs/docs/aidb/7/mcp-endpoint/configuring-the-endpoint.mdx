@@ -4,9 +4,9 @@ navTitle: Configuring the endpoint
 description: Every edb.endpoints_* parameter, what the supervisor derives on its own, and what a reload does.
 ---
 
-AIDB registers every endpoint setting as an ordinary Postgres parameter, set in `postgresql.conf` or with `ALTER SYSTEM`. `edb.endpoints_enabled` needs a Postgres restart to take effect. Every other parameter takes effect on `SELECT pg_reload_conf();`.
+Set endpoint parameters in `postgresql.conf` or with `ALTER SYSTEM`. AIDB registers every endpoint setting as an ordinary Postgres parameter. A change to `edb.endpoints_enabled` needs a Postgres restart. Every other parameter takes effect on `SELECT pg_reload_conf();`, unless no server switch was on when Postgres started. In that case, turning one on needs a restart too.
 
-Three on/off switches decide what runs. A server runs when its own switch is on and the master switch is not off, so out of the box nothing runs:
+Three on/off switches decide what runs. A server runs when its own switch is on and `edb.endpoints_enabled` is on, so out of the box nothing runs:
 
 - `edb.endpoints_mcp_enabled` and `edb.endpoints_otlp_enabled` turn the MCP endpoint and the [OTLP/HTTP receiver](otlp-receiver) on or off. Both default to `off`.
 - `edb.endpoints_enabled` is a master off switch, default `on`. Set it to `off` to disable every server, whatever the other two say.
@@ -52,17 +52,7 @@ The [OTLP/HTTP receiver](otlp-receiver) has only a switch and a port of its own.
 
 ## OAuth settings
 
-The `edb.endpoints_oauth_*` and `edb.endpoints_mcp_oauth_*` settings turn on bearer tokens for MCP clients and OTLP senders. See [Authenticating with OAuth](oauth#settings).
-
-## Deprecated settings
-
-These configure the whole process rather than MCP. A value that is set still takes precedence over its replacement, and the supervisor logs a warning.
-
-| Parameter                               | Replacement                         |
-|-----------------------------------------|-------------------------------------|
-| `edb.endpoints_mcp_command_path`        | `edb.endpoints_command_path`        |
-| `edb.endpoints_mcp_restart_max`         | `edb.endpoints_restart_max`         |
-| `edb.endpoints_mcp_restart_window_secs` | `edb.endpoints_restart_window_secs` |
+To accept bearer tokens from MCP clients and OTLP senders, configure the `edb.endpoints_oauth_*` and `edb.endpoints_mcp_oauth_*` settings. See [Authenticating with OAuth](oauth#settings).
 
 ## Values with no parameter
 
@@ -76,7 +66,17 @@ The supervisor derives a few settings from the Postgres server itself:
 
 After a reload, the supervisor compares the new values with the running endpoint:
 
-- A change to a server switch, command path, host, port, database, TLS path, or OAuth parameter, whether general, MCP, or OTLP, stops the running endpoint and starts a new one with the new values. In-flight calls on the old process get up to 10 seconds to finish.
-- Otherwise, the endpoint keeps running and reads its TLS certificates and keys again from the same paths, so a renewed certificate takes effect without a restart. See [Serving remote clients](connecting-a-client#serving-remote-clients).
+- A change to a server switch (`edb.endpoints_mcp_enabled` or `edb.endpoints_otlp_enabled`), command path, host, port, database, or TLS path, or to any OAuth parameter, whether general, MCP, or OTLP, stops the running endpoint and starts a new one with the new values. In-flight calls on the old process get up to 10 seconds to finish.
 - A change to `edb.endpoints_restart_max` or `edb.endpoints_restart_window_secs` resets the restart budget without touching the running endpoint.
+- Any other change leaves the endpoint running. It reads its TLS certificates and keys again from the same paths, so a renewed certificate takes effect without a restart. See [Serving remote clients](connecting-a-client#serving-remote-clients).
 - Any reload wakes an idle supervisor and lets it try again. See [Restart budget](operating-the-endpoint#restart-budget).
+
+## Deprecated settings
+
+These settings configure the whole process rather than MCP. If you set one, it still takes precedence over its replacement, and the supervisor logs a warning. Replace each with its new name:
+
+| Parameter                               | Replacement                         |
+|-----------------------------------------|-------------------------------------|
+| `edb.endpoints_mcp_command_path`        | `edb.endpoints_command_path`        |
+| `edb.endpoints_mcp_restart_max`         | `edb.endpoints_restart_max`         |
+| `edb.endpoints_mcp_restart_window_secs` | `edb.endpoints_restart_window_secs` |

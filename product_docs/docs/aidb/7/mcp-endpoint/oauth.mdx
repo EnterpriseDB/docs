@@ -1,16 +1,20 @@
 ---
 title: Authenticating with OAuth
 navTitle: OAuth
-description: Let MCP clients sign in through your identity provider and OTLP senders authenticate with a bearer token, and map token identities to Postgres roles.
+description: Sign in MCP clients through your identity provider, authenticate OTLP senders with bearer tokens, and map token identities to Postgres roles.
 ---
 
-The MCP endpoint and the [OTLP receiver](otlp-receiver) can accept bearer tokens next to HTTP Basic. MCP clients sign in through your identity provider (IdP) and send the token it issues. OTLP senders attach a token they already hold. The endpoint forwards each token to Postgres over SASL OAUTHBEARER, and Postgres decides who the caller is. The endpoint never verifies a token's signature and keeps no identity between calls.
+The MCP endpoint and the [OpenTelemetry Protocol (OTLP) receiver](otlp-receiver) can accept bearer tokens alongside HTTP Basic. MCP clients sign in through your identity provider (IdP) and send the token it issues. OTLP senders attach a token they already hold. The endpoint forwards each token to Postgres over the OAUTHBEARER mechanism of the Simple Authentication and Security Layer (SASL), and Postgres decides who the caller is. The endpoint never verifies a token's signature and keeps no identity between calls.
 
 ## Requirements
 
-- PostgreSQL 18. The supervisor refuses the OAuth settings on an older server, logs a warning, and doesn't start the endpoint.
-- A validator module in `oauth_validator_libraries` that checks the token signature, the issuer, and the scopes. AIDB doesn't ship one. [`pg_oidc_validator`](https://github.com/Percona-Lab/pg_oidc_validator) 1.1.0 is the one AIDB is tested against. It's third party, its maintainers label it experimental, and it doesn't check `aud`, so the endpoint checks it instead.
+- PostgreSQL 18 or later. The supervisor refuses the OAuth settings on an older server, logs a warning, and doesn't start the endpoint.
+- A validator module in `oauth_validator_libraries` that checks the token signature, the issuer, and the scopes. AIDB doesn't ship one. [`pg_oidc_validator`](https://github.com/Percona-Lab/pg_oidc_validator) 1.1.0 is the one AIDB is tested against.
 - An `oauth` line in `pg_hba.conf` for the roles that authenticate with tokens. See [Mapping identities to roles](#mapping-identities-to-roles).
+
+!!!note
+`pg_oidc_validator` is third party, and its maintainers label it experimental. It doesn't check `aud`, so the endpoint checks it instead.
+!!!
 
 ## Enabling OAuth
 
@@ -40,7 +44,7 @@ The MCP endpoint and the [OTLP receiver](otlp-receiver) can accept bearer tokens
    SELECT pg_reload_conf();
    ```
 
-1. Connect an MCP client that supports OAuth to the endpoint's URL. The client opens your IdP's sign-in page, and then `tools/list` returns the tools that the signed-in role can call. If the client keeps returning to the sign-in page, see [MCP clients](#mcp-clients). The Postgres server log names the cause. For OTLP senders, see [Authenticating with OAuth](otlp-receiver#authenticating-with-oauth).
+1. Connect an MCP client that supports OAuth to the endpoint's URL. The client opens your IdP's sign-in page, and then `tools/list` returns the tools that the signed-in role can call. If the client keeps returning to the sign-in page, see [MCP clients](#mcp-clients). The Postgres server log names the cause. For OTLP senders, see [OTLP receiver](otlp-receiver#authenticating-with-oauth).
 
 ## Settings
 
@@ -72,14 +76,20 @@ With both issuers empty, the endpoint behaves exactly as it does without OAuth. 
 For MCP, the issuer, resource URL, scopes, and audience are required together. The supervisor refuses a configuration that leaves one out and names the missing setting in its warning.
 
 - The resource URL's path must be exactly `/mcp`. A reverse proxy that serves the endpoint under a subpath, such as `/aidb/mcp`, isn't supported.
-- Tokens must be JWTs, because the endpoint reads the role claim to choose the login role. An opaque access token always gets `401` with `error="invalid_token"`.
+- Tokens must be JSON Web Tokens (JWTs), because the endpoint reads the role claim to choose the login role. An opaque access token always gets `401` with `error="invalid_token"`.
 - A request with no usable credentials gets a `401` whose `WWW-Authenticate` header points at the protected-resource metadata for the path it called. MCP clients that support OAuth use it to start the sign-in.
 - An expired, malformed, or wrong-audience token gets a `401` with `error="invalid_token"`.
-- HTTP Basic keeps working next to bearer tokens.
+- HTTP Basic keeps working alongside bearer tokens.
 
 Every bearer request is also tried against Postgres with a connect-only login. A token that Postgres refuses, because of a bad signature, a revoked token, or an unmapped identity, gets a `401` with `error="invalid_token"`, so the client signs in again. Each tool call still logs in on its own connection, so a bearer request costs one extra login. If Postgres is unreachable during that check, the request goes through and the tool calls report the error.
 
-The check can't tell a bad token from a server misconfiguration. A missing `oauth` line in `pg_hba.conf`, a role that doesn't exist, or a validator failure also refuses the login, so the client keeps returning to the IdP sign-in. The endpoint logs each refusal as a warning, and the Postgres server log names the cause.
+The check can't tell a bad token from a server misconfiguration, so these problems also send the client back to the IdP sign-in:
+
+- A missing `oauth` line in `pg_hba.conf`.
+- A role that doesn't exist.
+- A validator failure.
+
+The endpoint logs each refusal as a warning. Check the Postgres server log for the cause.
 
 When the endpoint [serves several databases](serving-multiple-databases), bare `/mcp` and each `/mcp/<database>` are separate protected resources:
 
@@ -92,7 +102,7 @@ Database names with characters outside `A-Z a-z 0-9 - . _ ~` are percent-encoded
 
 ## OTLP senders
 
-The OTLP receiver uses the general settings and only checks tokens. OpenTelemetry exporters send a token they already hold and never run a sign-in, so the receiver serves no metadata and needs no resource URL or scopes. The issuer and audience are required. For how the receiver answers and how to attach the token to an exporter, see [Authenticating with OAuth](otlp-receiver#authenticating-with-oauth) on the OTLP receiver page.
+The OTLP receiver uses the general settings and only checks tokens. OpenTelemetry exporters send a token they already hold and never run a sign-in, so the receiver serves no metadata and needs no resource URL or scopes. To authenticate OTLP senders, set the issuer and audience. For how the receiver answers and how to attach the token to an exporter, see [OTLP receiver](otlp-receiver#authenticating-with-oauth).
 
 ## Mapping identities to roles
 
@@ -131,11 +141,13 @@ The role claim and the validator have to agree. `pg_oidc_validator` reads `sub` 
 
 The endpoint never verifies the role claim. Point it only at a claim your IdP sets, never one that users can edit.
 
-!!! Warning
+!!!warning
 Don't use `delegate_ident_mapping=1` with `pg_oidc_validator`. It authorizes on scopes alone and ignores the requested role, so any valid token could log in as any role on that `pg_hba.conf` line.
 !!!
 
+!!!warning
 The endpoint passes the caller's token straight to Postgres, and its `aud` check guards only the HTTP path. Because `pg_oidc_validator` doesn't check `aud`, any token from the same issuer with the configured scope and a mapped identity can also log in to Postgres directly, including one issued for a different service. To keep tokens scoped to the endpoint, limit the `oauth` line to `local` or to the endpoint's address, give the endpoint a scope no other client gets, or use a validator that enforces `aud`.
+!!!
 
 ## Choosing the audience
 
