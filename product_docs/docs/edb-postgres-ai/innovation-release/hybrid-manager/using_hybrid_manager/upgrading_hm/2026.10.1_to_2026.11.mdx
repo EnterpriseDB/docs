@@ -5,7 +5,7 @@ description: Follow the step-by-step procedures for upgrading from HM 2026.10.1 
 deepToC: true
 ---
 
-Upgrade from 2026.10.1 to 2026.11.
+Upgrade from 2026.10.1 to 2026.11. This upgrade changes more than the HM version: it moves key resources to a new namespace, changes how Chat Agent gets its models, and briefly pauses database management while that move happens.
 
 > **Role:** Infrastructure engineer
 
@@ -17,9 +17,30 @@ Upgrade from 2026.10.1 to 2026.11.
     - `kubectl`
     - [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI, version 1.11 or later — see the [edbctl compatibility matrix](/edbctl/latest/compatibility_matrix/) for the supported version.
 
-## Upgrade 2026.10.1 → 2026.11
+## What to expect during the upgrade
 
-Starting in 2026.11, HM reads its install secrets and tracks OSS Library apps in the `edb-system` namespace instead of `default`, and Chat Agent stops relying on the inference services you configured in HM. HM moves the `edb-object-storage` secret for you during the upgrade, but you must create the other install secrets — such as `hm-portal-bootstrap`, `langflow-secret`, and the `db-*` secrets — in `edb-system` yourself before you upgrade; existing OSS Library apps aren't moved either. See [Choose when to recreate OSS Library apps](#choose-when-to-recreate-oss-library-apps) and [Chat Agent model credentials](#chat-agent-model-credentials) if either applies to you.
+Starting in 2026.11, HM moves to the `edb-system` namespace instead of `default`:
+
+- **Beacon server resources** — your clusters, backups, backup schedules, locations, AI pipelines, and automations, plus the secrets and certificates that Beacon creates for each cluster. A pre-upgrade job and a post-upgrade job copy these for you automatically.
+- **Install secrets** — HM moves `edb-object-storage` for you. Create the rest — `hm-portal-bootstrap`, `langflow-secret`, the `db-*` secrets, and so on — in `edb-system` yourself before you upgrade. See [Create secrets](#create-secrets).
+- **OSS Library app catalog** — the `PackageRepository` resource and the packages it lists. The upgrade moves this for you automatically.
+- **Installed OSS Library apps** — the upgrade doesn't move apps that you installed before it. See [Choose when to recreate OSS Library apps](#choose-when-to-recreate-oss-library-apps).
+
+If you have scripts, monitoring, or `kubectl` commands that read these resources in `default`, update them to use `edb-system`.
+
+Chat Agent also stops relying on the inference services you configured in HM, and that configuration doesn't carry over. If you use Chat Agent, see [Chat Agent model credentials](#chat-agent-model-credentials).
+
+### Database management downtime
+
+!!!important Database management is unavailable while the pre-upgrade job copies your resources
+The pre-upgrade job stops the Beacon server while it copies your resources to `edb-system`. During that time, you can't manage databases from the HM console or the API. Your Postgres clusters keep running. The Beacon server starts again when the upgrade deploys HM 2026.11.
+!!!
+
+- **The time depends on how many resources you have.** Each backup is one resource, so an installation with thousands of backups takes much longer than one with a few hundred. If you have a long backup history, plan the upgrade for a maintenance window.
+- **The `HybridControlPlane` stays in `deploying` until the post-upgrade job finishes.** The post-upgrade job removes the old copies from `default`. The Beacon server is running again by then, so this phase doesn't affect database management.
+- **Don't delete or restart the upgrade jobs while they run.**
+
+## Upgrade 2026.10.1 → 2026.11
 
 Complete the steps in the order given:
 
@@ -176,27 +197,15 @@ Create the secret before you upgrade, since HM doesn't restart Chat Agent when i
     kubectl get hybridcontrolplane edbpgai -w
     ```
 
-### What to expect during the upgrade
+    To follow the pre-upgrade and post-upgrade jobs that move your resources to `edb-system` (see [What to expect during the upgrade](#what-to-expect-during-the-upgrade)), also run:
 
-The operator runs a pre-upgrade job before it deploys HM 2026.11 and a post-upgrade job after. Together they move the Beacon server resources from `default` to `edb-system`: your clusters, backups, backup schedules, locations, and the secrets and certificates that Beacon creates for them.
+    ```shell
+    kubectl get jobs -n "$OPERATOR_NS" -l edbpgai.edb.com/hm-upgrader=true
+    kubectl logs -f job/hm-pre-upgrader-2026-10-to-2026-11 -n "$OPERATOR_NS"
+    kubectl logs -f job/hm-post-upgrader-2026-10-to-2026-11 -n "$OPERATOR_NS"
+    ```
 
-!!!important Database management is unavailable while the pre-upgrade job copies your resources
-The pre-upgrade job stops the Beacon server while it copies your resources to `edb-system`. During that time, you can't manage databases from the HM console or the API. Your Postgres clusters keep running. The Beacon server starts again when the upgrade deploys HM 2026.11.
-!!!
-
-- **The time depends on how many resources you have.** Each backup is one resource, so an installation with thousands of backups takes much longer than one with a few hundred. If you have a long backup history, plan the upgrade for a maintenance window.
-- **The `HybridControlPlane` stays in `deploying` until the post-upgrade job finishes.** The post-upgrade job removes the old copies from `default`. The Beacon server is running again by then, so this phase doesn't affect database management.
-- **Don't delete or restart the upgrade jobs while they run.**
-
-To follow the progress of the jobs:
-
-```shell
-kubectl get jobs -n edb-hcp-operator-system -l edbpgai.edb.com/hm-upgrader=true
-kubectl logs -f job/hm-pre-upgrader-2026-10-to-2026-11 -n edb-hcp-operator-system
-kubectl logs -f job/hm-post-upgrader-2026-10-to-2026-11 -n edb-hcp-operator-system
-```
-
-The logs list every object that the job copies or deletes, and end with a summary that shows how many objects were copied or deleted and how many failed.
+    The logs list every object that the job copies or deletes, and end with a summary that shows how many objects were copied or deleted and how many failed.
 
 ### Finish recreating OSS Library apps
 
