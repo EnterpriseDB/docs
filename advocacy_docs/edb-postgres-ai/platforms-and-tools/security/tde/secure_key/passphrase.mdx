@@ -4,15 +4,15 @@ description: Learn how to secure your encryption key with a passphrase.
 deepToC: true
 ---
 
-You can protect the data key with a passphrase using the OpenSSL command line utility. Passphrase mode is intended for development and testing only. It's not appropriate for production environments.
+Protect the data key with a passphrase using the OpenSSL command line utility. Passphrase mode is intended for development and testing only. It's not appropriate for production environments.
 
 A passphrase stored alongside the database provides encryption but not assurance: the key custodian and the data custodian are the same principal. Auditors don't accept this model for PCI, HIPAA, or FedRAMP workloads. The passphrase is the key. Losing it makes data unrecoverable, leaking it voids the encryption, and there's no recovery path or reset. Don't automate passphrase handling; doing so defeats the security model.
 
 For production deployments, use a [key store](key_store/) backed by an external KMS such as AWS KMS, Azure Key Vault, HashiCorp Vault, or another [supported provider](key_store/).
 
-You must provide this OpenSSL command as the wrap and unwrap commands to TDE, either as [initdb options](../reference/initdb_tde_options/) or as environment variables, to allow the initdb utility to access the data key when creating a database cluster.
-
 ## Wrap and unwrap commands
+
+A wrap command encrypts (wraps) the data key with your passphrase, and an unwrap command decrypts (unwraps) it. You must provide both to TDE, either as command-line arguments or as environment variables, so the `initdb` utility can access the data key when creating a database cluster. See [initdb TDE options](../reference/initdb_tde_options/) for the full set of related command options.
 
 ### Via command argument
 
@@ -37,11 +37,11 @@ initdb.exe -D c:\cdatadir
 
 This example wraps the randomly generated data key by encrypting it with the AES-128-CBC (AESKW) algorithm, using a key derived from the passphrase with the PBKDF2 key derivation function and a random salt. The terminal prompts for the passphrase. (See the `openssl-enc` manual page for details about these options, which vary across versions.) The unwrap command performs the reverse operation. The `initdb` utility doesn't need it directly, but stores it in the cluster's `postgresql.conf` file for use at server startup.
 
-Utility programs that operate directly on the data directory or its copies, such as [pg_rewind](../reference/backup_file_options/#pg_rewind) and [pg_upgrade](../reference/pg_upgrade_arguments), also need the unwrap command. Each provides its own command line option for this.
+Utility programs that operate directly on the data directory or its copies, such as [pg_rewind](../reference/backup_file_options/#pg_rewind) and [pg_upgrade](../reference/pg_upgrade_arguments), also need the unwrap command. Each has its own command-line option for providing it; see that utility's reference page for the exact option.
 
 ### Via environment variable
 
-Alternatively, set the wrap and unwrap commands as environment variables before creating the database server. `initdb` falls back on these variables if no command-line arguments are given.
+Alternatively, set the wrap and unwrap commands as environment variables before creating the database server. `initdb` falls back on these variables if no command-line arguments are given. If both are set, the command-line arguments take precedence.
 
 #### Linux
 
@@ -58,6 +58,8 @@ set PGDATAKEYUNWRAPCMD=openssl enc -d -aes-128-cbc -pbkdf2  -in %p
 ```
 
 ## Additional OpenSSL options
+
+Use these options if the server starts without a terminal available to enter the passphrase, or if you want to read the passphrase from a file instead of typing it.
 
 ### Prompting for the passphrase at startup (Linux)
 
@@ -80,10 +82,8 @@ postgres ALL = NOPASSWD: /usr/bin/systemd-ask-password
 
 Another way to simplify operations is to store the passphrase in a plaintext file and reference that file when securing the data encryption key.
 
-!!!important
-
-   Use this method only for testing or demonstration purposes. Don't store your passphrase in a plaintext file in a production environment.
-!!!
+!!! Important
+    Use this method only for testing or demonstration purposes. Don't store your passphrase in a plaintext file in a production environment.
 
 1.  Store the passphrase in a file accessible by initdb named `pass.bin`:
 

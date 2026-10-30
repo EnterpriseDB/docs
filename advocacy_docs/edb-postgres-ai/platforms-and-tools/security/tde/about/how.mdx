@@ -11,19 +11,19 @@ Enterprise Postgres (Oracle Compatible), formerly EDB Postgres Advanced Server, 
 
 ## Protecting the data encryption key
 
-When TDE initializes a database cluster, it generates a data encryption key and stores it in a file on disk. Because that file is in plaintext by default, TDE wraps (encrypts) the key using a mechanism you choose, so the key itself is unreadable without an unwrap (decrypt) step. You choose this mechanism when you create the cluster, so it's worth deciding before you begin enabling TDE. Your options are:
+When you initialize a database cluster with data encryption enabled, TDE generates a data encryption key and stores it in a file on disk. Because that file is in plaintext by default, TDE wraps (encrypts) the key using a mechanism you choose, so the key itself is unreadable without an unwrap (decrypt) step. You choose this mechanism when you create the cluster, so decide on a mechanism before you enable TDE. Your options are:
 
 - **Passphrase.** A wrapping key derived from a passphrase, using the OpenSSL command-line utility. It's the simplest to set up, but the key custodian and the data custodian are the same person or process, which most compliance frameworks (PCI, HIPAA, FedRAMP) don't accept. There's also no recovery path: losing the passphrase makes the data unrecoverable, and leaking it voids the encryption. Use a passphrase for development and testing only.
 
-- **Key store.** A wrapping key managed by an external key management system (KMS) or hardware security module, such as AWS KMS, Azure Key Vault, HashiCorp Vault, Entrust KeyControl, Fortanix Data Security Manager, Google Cloud KMS, or Thales CipherTrust Manager. This separates key custody from data custody, supports audit trails and key rotation, and is the recommended option for production environments.
+- **Key store.** A wrapping key managed by an external key management system (KMS) or hardware security module, such as AWS KMS, Azure Key Vault, HashiCorp Vault, Entrust KeyControl, Fortanix Data Security Manager, Google Cloud KMS, or Thales CipherTrust Manager. This mechanism separates key custody from data custody, supports audit trails and key rotation, and is the recommended option for production environments.
 
-- **No protection (disabled).** You can skip key wrapping entirely, leaving the generated key in plaintext on disk. This removes any protection for the key itself and should only be used for testing or demonstration purposes.
+- **No protection (disabled).** You can skip key wrapping entirely, leaving the generated key in plaintext on disk. This mechanism removes any protection for the key itself and should only be used for testing or demonstration purposes.
 
 See [Choosing a key protection mechanism](../secure_key) to implement whichever mechanism you choose.
 
 ## Encryption algorithms and key lengths
 
-EDB TDE uses [OpenSSL](https://openssl-library.org/) to encrypt data files with the AES encryption algorithm. See [TDE compatibility](support/#openssl-requirements) for which OpenSSL version TDE uses on each platform.
+TDE uses [OpenSSL](https://openssl-library.org/) to encrypt data files with the AES encryption algorithm. See [TDE compatibility](support/#openssl-requirements) for which OpenSSL version TDE uses on each platform.
 
 When you initialize the Postgres cluster, you choose a key length: AES-128 or AES-256. The choice hinges on balancing performance and security requirements:
 
@@ -32,7 +32,7 @@ When you initialize the Postgres cluster, you choose a key length: AES-128 or AE
 
 See [initdb TDE options](../reference/initdb_tde_options/) for supported values and defaults.
 
-Beyond the key length you choose, TDE also applies a mode of operation that depends on what it's encrypting:
+Beyond the key length you choose, TDE automatically applies a mode of operation that depends on what it's encrypting.
 
 - Data files use AES-128-XTS or AES-256-XTS, matching your chosen key length. XTS uses a second value, known as the tweak value, to enhance the encryption. The XTS tweak value with TDE uses the database OID, the relfilenode, and the block number.
 - Write-ahead log (WAL) files use AES-128-CTR or AES-256-CTR, incorporating the WAL's log sequence number (LSN) as the counter component.
@@ -47,23 +47,29 @@ The performance impact of TDE is low. For benchmark details from Enterprise Post
 In this example, the data in the `tbfoo` table is encrypted. The `pg_relation_filepath` function locates the data file corresponding to the `tbfoo` table.
 
 ```sql
-insert into tbfoo values ('abc','123');
+INSERT INTO tbfoo VALUES ('abc','123');
 INSERT 0 1
+```
 
-select pg_relation_filepath('tbfoo');
-
+```sql
+SELECT pg_relation_filepath('tbfoo');
+__OUTPUT__
  pg_relation_filepath
 ----------------------
  base/5/16416
 ```
 
-Grepping the data looking for characters doesn't return anything. Viewing the last five lines returns the encrypted data:
+Grepping the data looking for characters doesn't return anything:
 
 ```shell
-$ hexdump -C 16416 | grep abc
-$
+hexdump -C 16416 | grep abc
+```
 
-$ hexdump -C 16416 | tail -5
+Viewing the last five lines returns the encrypted data:
+
+```shell
+hexdump -C 16416 | tail -5
+__OUTPUT__
 00001fc0  c8 0f 1d c8 9a 63 3d dc  7d 4e 68 98 b8 f2 5e 0a  |.....c=.}Nh...^.|
 00001fd0  9a eb 20 1d 59 ad be 94  6e fd d5 6e ed 0a 72 8c  |.. .Y...n..n..r.|
 00001fe0  7b 14 7f de 5b 63 e3 84  ba 6c e7 b0 a3 86 aa b9  |{...[c...l......|
