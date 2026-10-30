@@ -2,6 +2,8 @@
 title: OTLP/HTTP receiver
 navTitle: OTLP receiver
 description: Accept OpenTelemetry traces, logs, and metrics from agents outside AIDB and store them in the aidb_otel tables.
+redirects:
+  - /aidb/7/mcp-endpoint/otlp-receiver
 ---
 
 The `edb-endpoints` server can also act as an OpenTelemetry Protocol over HTTP (OTLP/HTTP) receiver. Agents outside AIDB send their telemetry to it, and AIDB stores it in the same [`aidb_otel` tables](../reference/observability) as its own telemetry, so one audit trail covers both. The receiver is off by default.
@@ -28,7 +30,7 @@ The `edb-endpoints` server can also act as an OpenTelemetry Protocol over HTTP (
 
 1. Check that the receiver is up by sending a test trace with the example under [Sending telemetry](#sending-telemetry). A `200` means the receiver stored it. A `401` or `403` means it's listening but rejected the credentials or the role. See [Responses](#responses).
 
-The receiver listens on `edb.endpoints_otlp_port` (default `8766`). It takes its host, TLS pair, and databases from the general `edb.endpoints_*` settings, never from the `edb.endpoints_mcp_*` ones. See [Configuring the endpoint](configuring-the-endpoint). The supervisor starts the receiver for you. To launch `edb-endpoints` yourself, see [Launching `edb-endpoints` yourself](operating-the-endpoint#launching-edb-endpoints-yourself).
+The receiver listens on `edb.endpoints_otlp_port` (default `8766`). It takes its host, TLS pair, and databases from the general `edb.endpoints_*` settings, never from the `edb.endpoints_mcp_*` ones. See [Configuring the endpoint](../edb-endpoints/configuring-the-endpoint). The supervisor starts the receiver for you. To launch `edb-endpoints` yourself, see [Launching `edb-endpoints` yourself](../edb-endpoints/operating-the-endpoint#launching-edb-endpoints-yourself).
 
 ## Sending telemetry
 
@@ -78,6 +80,29 @@ The receiver then handles the request as follows:
 
 Error bodies are a `google.rpc.Status` in the request's format, as OTLP/HTTP specifies.
 
+## How AIDB stores received telemetry
+
+The receiver passes each request to an [`aidb_otel.ingest_*` function](../reference/observability#receiving-telemetry-from-external-agents). You can also call these functions directly. Only members of the `aidb_otel_writer` role can run them, and the role has no read access to the tables. Grant it to each role that's allowed to send telemetry:
+
+```sql
+GRANT aidb_otel_writer TO agent_alice;
+```
+
+Each array element is one complete OTLP request. The functions behave as follows:
+
+- A request is split into one row per span or log record. A metrics request stays one row.
+- Rows keep the format they arrived in: the JSON functions fill only `payload_json`, and the binary ones only `payload_binary`. `aidb.otel_client_storage_format` doesn't apply.
+- Rows are labeled `source = 'external'`, and `principal` is the role that called the function.
+- A span without a trace ID or span ID is skipped with a warning. A malformed, empty, or `NULL` element fails the whole call, and the error names it, such as `payloads[2] ...`.
+- A span repeated by the same writer is stored once, and isn't counted again.
+- Each function returns the number of rows it stored.
+
+Decision columns such as `decision_status` are stored as the sender reported them. To count only decisions AIDB enforced, filter on `source = 'internal'`.
+
+!!!note
+Rows stored before the 7.9.0 upgrade are labeled `internal` and have no `principal`, but AIDB can't prove that label. Earlier releases let any member of `aidb_users` write rows directly and recorded nothing that tells them apart.
+!!!
+
 ## Serving remote senders
 
 To receive telemetry from other hosts, set `edb.endpoints_host` to a routable address, and give the endpoint a certificate and key with `edb.endpoints_tls_cert` and `edb.endpoints_tls_key`. Then reload with `SELECT pg_reload_conf();`. The receiver refuses plaintext HTTP off loopback (`127.0.0.1`, `::1`, or `localhost`).
@@ -88,7 +113,7 @@ The receiver ignores the `edb.endpoints_mcp_*` host and TLS settings. A non-loop
 
 ## Authenticating with OAuth
 
-Besides HTTP Basic, the receiver accepts a bearer token that your identity provider issued. The receiver uses the general `edb.endpoints_oauth_*` settings and needs the issuer and the audience. For the requirements, the settings, and the `pg_hba.conf` lines, see [Authenticating with OAuth](oauth).
+Besides HTTP Basic, the receiver accepts a bearer token that your identity provider issued. The receiver uses the general `edb.endpoints_oauth_*` settings and needs the issuer and the audience. For the requirements, the settings, and the `pg_hba.conf` lines, see [Authenticating with OAuth](../edb-endpoints/oauth).
 
 How the receiver handles a token:
 

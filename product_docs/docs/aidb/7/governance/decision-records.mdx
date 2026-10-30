@@ -87,6 +87,21 @@ A denied caller's error carries the decision id inline for cross-referencing aga
 Tool error: current user is not a member of role 'sales_tickets_rw'; refusing to switch [decision_id=3fa85f64-5717-4562-b3fc-2c963f66afa6]
 ```
 
+## Seeing what happened during a denied call
+
+AIDB reports what happens during an operation as log records, not span events, so the `events` array of a span is empty. To see the log records for denied decisions, join `aidb_otel.logs` to `aidb_otel.traces` on `trace_id` and `span_id`:
+
+```sql
+SELECT l.recorded_at, l.payload_json
+FROM aidb_otel.logs l
+JOIN aidb_otel.traces t USING (trace_id, span_id)
+WHERE t.decision_status = 'denied'
+  AND t.source = 'internal'
+ORDER BY l.recorded_at;
+```
+
+For why AIDB uses logs instead of span events, see [Schemas](../reference/observability#schemas).
+
 ## Seeing the attempted SQL
 
 A `purpose_decision` record carries the attempted SQL directly, in its own `db.query.text` attribute — including on a denial rejected before execution, such as an `escalation_blocked` or `pre_execution_rejected` case. That text is truncated from the end at 5 KB.

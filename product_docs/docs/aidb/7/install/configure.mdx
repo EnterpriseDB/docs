@@ -111,6 +111,16 @@ To let a user or service account read AIDB's observability data, grant it the `a
 GRANT aidb_governance TO your_auditor_role;
 ```
 
+Reading doesn't remove or change the data, so you can query the same rows as often as you need. AIDB deletes rows only through [retention cleanup](../reference/observability#triggering-retention-cleanup). With the `database` client, AIDB pushes nothing to external tools unless you enable the [exporter worker](#exporter-background-worker). To use the data with external tools, a member of `aidb_governance` retrieves the rows, either the JSON or the binary protobuf payload, and forwards them. For example, to read the oldest 100 spans as JSON:
+
+```sql
+SELECT payload_json
+FROM aidb_otel.traces
+WHERE source = 'internal'
+ORDER BY recorded_at
+LIMIT 100;
+```
+
 ## Managing telemetry senders with the aidb_otel_writer role
 
 To let a role send OpenTelemetry data into AIDB from outside, grant it the `aidb_otel_writer` role:
@@ -119,7 +129,7 @@ To let a role send OpenTelemetry data into AIDB from outside, grant it the `aidb
 GRANT aidb_otel_writer TO your_agent_role;
 ```
 
-When you create the AIDB extension, Postgres also creates `aidb_otel_writer` as a `NOLOGIN` role. Membership lets a role write into the `aidb_otel` tables through the `aidb_otel.ingest_*` functions or the [OTLP/HTTP receiver](../mcp-endpoint/otlp-receiver). The role can't read the tables. By default, only `aidb_governance` can. See [Receiving telemetry from external agents](../reference/observability#receiving-telemetry-from-external-agents).
+When you create the AIDB extension, Postgres also creates `aidb_otel_writer` as a `NOLOGIN` role. Membership lets a role write into the `aidb_otel` tables through the `aidb_otel.ingest_*` functions or the [OTLP/HTTP receiver](../otlp-server). The role can't read the tables. By default, only `aidb_governance` can. See [Receiving telemetry from external agents](../reference/observability#receiving-telemetry-from-external-agents).
 
 ## Managing credential access with the aidb_admins role
 
@@ -361,6 +371,10 @@ Values for `aidb.otel_client`:
 | `grpc`     | Pushes OTLP/gRPC directly to an external collector. Not enabled in all builds — see your distribution's feature notes.        |
 
 A change to `aidb.otel_client` takes effect for new backends; a backend that already made its first instrumented call keeps using whichever client it started with.
+
+## Read-only transactions
+
+The `database` client stores telemetry with an `INSERT`, which a read-only transaction rejects. In a read-only transaction, including one on a hot standby or under `default_transaction_read_only`, AIDB doesn't store the span and doesn't fail your call. Instead it writes one `LOG` line to the server log that names the signal, the number of records, the span names, and the trace and span IDs. The payloads are never logged. A session that is read-only for its whole life therefore has no rows in `aidb_otel`.
 
 #### SQL query tracing
 
