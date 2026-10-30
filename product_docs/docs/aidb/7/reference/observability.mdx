@@ -93,6 +93,80 @@ When exporting a row that has both payloads populated (`storage_format = both`),
 
 Starting in 7.9.0, telemetry ingested from external senders retains the format received: JSON or protobuf. `aidb.otel_client_storage_format` controls AIDB's own telemetry, not these incoming records.
 
+A span is stored once per writer: `aidb_otel.traces` is unique on `(trace_id, span_id, source, principal)`, so a span sent twice by the same writer is not duplicated.
+
+## Reading telemetry
+
+Telemetry can contain query text, principals, and other sensitive details, so only members of the `aidb_governance` role can read the `aidb_otel` tables. The role has `USAGE` on the schema and `SELECT` on `aidb_otel.traces`, `aidb_otel.logs`, and `aidb_otel.metrics`. No other role has direct table access. See [Managing audit access](../install/configure#managing-audit-access-with-the-aidb_governance-role).
+
+```sql
+GRANT aidb_governance TO telemetry_reader;
+```
+
+With the `database` client, AIDB doesn't push telemetry anywhere unless you turn on the [exporter](#exporting-traces-logs-and-metrics). The data stays in the tables, and reading it doesn't remove or change it, so you can query the same rows as often as you need. Rows are deleted only by [retention cleanup](#cleaning-up-expired-rows). To use the data with external tools, a member of `aidb_governance` retrieves the rows, either the JSON or the binary protobuf payload, and forwards them. For example, to read the oldest 100 spans as JSON:
+
+```sql
+SELECT payload_json
+FROM aidb_otel.traces
+WHERE source = 'internal'
+ORDER BY recorded_at
+LIMIT 100;
+```
+
+The only automatic export is the optional [exporter worker](#exporting-traces-logs-and-metrics), which is off until you enable it and set an endpoint.
+
+## Receiving telemetry from external agents
+
+Agents outside AIDB can write their own OTLP telemetry into the same tables, so one audit trail covers both. Six functions accept it, one per signal and format:
+
+| Signal  | JSON                                    | Binary protobuf                         |
+|---------|-----------------------------------------|-----------------------------------------|
+| Traces  | `aidb_otel.ingest_traces_json(jsonb[])` | `aidb_otel.ingest_traces_binary(bytea[])` |
+| Logs    | `aidb_otel.ingest_logs_json(jsonb[])`   | `aidb_otel.ingest_logs_binary(bytea[])`   |
+| Metrics | `aidb_otel.ingest_metrics_json(jsonb[])` | `aidb_otel.ingest_metrics_binary(bytea[])` |
+
+Most senders reach them through the [OTLP/HTTP receiver](../mcp-endpoint/otlp-receiver), but you can also call them directly. Only members of the `aidb_otel_writer` role can run them, and the role has no read access to the tables. Grant it to each role that is allowed to send telemetry:
+
+```sql
+GRANT aidb_otel_writer TO agent_alice;
+```
+
+Each array element is one complete OTLP request. The functions behave as follows:
+
+- A request is split into one row per span or log record. A metrics request stays one row.
+- Rows keep the format they arrived in: the JSON functions fill only `payload_json`, and the binary ones only `payload_binary`. `aidb.otel_client_storage_format` doesn't apply.
+- Rows are labeled `source = 'external'`, and `principal` is the role that called the function.
+- A span without a trace ID or span ID is skipped with a warning. A malformed, empty, or `NULL` element fails the whole call, and the error names it, such as `payloads[2] ...`.
+- A span repeated by the same writer is stored once, and isn't counted again.
+- Each function returns the number of rows it stored.
+
+Decision columns such as `decision_status` are stored as the sender reported them. To count only decisions AIDB enforced, filter on `source = 'internal'`.
+
+!!!note
+Rows stored before the 7.9.0 upgrade are labeled `internal` and have no `principal`, but AIDB can't prove that label. Earlier releases let any member of `aidb_users` write rows directly and recorded nothing that tells them apart.
+!!!
+
+## Logs instead of span events
+
+AIDB doesn't use OTel span events. The OpenTelemetry project [deprecated the span event API](https://opentelemetry.io/blog/2026/deprecating-span-events/) in favor of logs that carry the trace context, so AIDB reports through logs from the start. When AIDB has something to report during an operation, such as a failure, it emits a log record. The record carries the `trace_id` and `span_id` of the span it was emitted under.
+
+The `events` array of every span in `payload_json` is therefore empty. To see everything that happened during a span, query `aidb_otel.logs` by the same `trace_id` and `span_id`:
+
+```sql
+SELECT l.recorded_at, l.payload_json
+FROM aidb_otel.logs l
+JOIN aidb_otel.traces t USING (trace_id, span_id)
+WHERE t.decision_status = 'denied'
+  AND t.source = 'internal'
+ORDER BY l.recorded_at;
+```
+
+A log record emitted outside of any span has no `trace_id` or `span_id`.
+
+## Read-only transactions
+
+AIDB stores telemetry with an `INSERT`, which a read-only transaction rejects. In a read-only transaction, including one on a hot standby or under `default_transaction_read_only`, AIDB doesn't store the span and doesn't fail your call. Instead it writes one `LOG` line to the server log that names the signal, the number of records, the span names, and the trace and span IDs. The payloads are never logged. A session that is read-only for its whole life therefore has no rows in `aidb_otel`.
+
 ## Triggering retention cleanup
 
 The cleaner background worker deletes old rows automatically (see [Running background workers](#running-background-workers)), but this function lets you trigger a cleanup pass immediately instead of waiting for its next tick.
