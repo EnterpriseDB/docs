@@ -39,43 +39,49 @@ The procedure depends on which member of the deployment was lost:
 | The **control plane (primary) location**, and possibly one or more **data-only (secondary) locations** | Postgres clusters in the surviving locations keep running | [The control plane is down](#the-control-plane-is-down) |
 | The **control plane (primary) location** and **all** data-only (secondary) locations | Nothing | [Everything lost in DR](#everything-lost-in-dr) |
 
+In this topic, an *affected location* is one that was lost, whether or not it has been replaced since.
+
 ## A data-only location is down
 
 The control plane is healthy, so it still holds the HM console, the HM-internal databases and the management resources for every location. **Most of the single-installation procedure doesn't apply**, because you're not restoring a control plane. What you need to do is tell the control plane to stop managing the failed location(s), recover the Postgres clusters, replicas and groups that were running there, and then bring up the replacement location(s).
 
 ### 1. Stop remote-resource streaming to the failed location(s)
 
-Follow the steps in [Disable resource streaming on an affected location](#disable-resource-streaming-on-an-affected-location) for each one of the affected locations, and only the affected locations.
+Disable streaming on every location that was lost, and only on those, following the steps in [Disable resource streaming on an affected location](#disable-resource-streaming-on-an-affected-location). Go by what happened to each location, not by how it looks now:
 
-Don't disable resource streaming on a healthy location.
+-   **A location that was lost**: disable streaming, even if it's already back, running under the same location ID and healthy. Streaming stays disabled until the clusters that ran there have been removed, so HM doesn't create them again from scratch. You re-enable it in [Bring up a replacement location](#3-bring-up-a-replacement-location).
+-   **A location that was never lost**: keep streaming enabled. The control plane needs it to manage the Postgres clusters still running there, and to repair the clusters that have replicas or groups in it.
 
-Once all the affected locations have been patched and are verified to have resource streaming disabled, proceed to the next section.
+Once all the affected locations have been patched, [check streaming across all locations](#check-streaming-across-all-locations), then proceed to the next section.
 
 ### 2. Remove the Postgres clusters, replicas and groups that ran in the failed location
 
 Follow the steps in [Remove Postgres clusters, replicas and groups from an affected location](#remove-postgres-clusters-replicas-and-groups-from-an-affected-location).
 
-Once all Postgres clusters, replicas and groups that ran in the failed location have been removed, proceed to the next section.
+Once all Postgres clusters, replicas and groups that ran in the failed location have been removed, proceed to the next section. Until then, keep streaming disabled on the failed location.
 
 ### 3. Bring up a replacement location
 
-Deploy the replacement location with the same installation procedure you used originally. Once it connects to the control plane, you can rebuild the topology you lost.
+Deploy the replacement location with the same installation procedure you used originally, then confirm it has connected to the control plane and is heartbeating:
+
+```shell
+edbctl location list
+```
 
 What you do with the failed location's `Location` resource depends on whether the replacement reuses its location ID:
 
--   **Same location ID**: the replacement registers as the same `Location` resource, which still has streaming disabled. Re-enable streaming before you create replicas or groups there:
+-   **Same location ID**: the replacement registers as the same `Location` resource, which still has streaming disabled. Follow [Re-enable resource streaming on a location](#re-enable-resource-streaming-on-a-location), only once the Postgres clusters, replicas and groups that ran there have been removed, and before you create clusters, replicas or groups there.
 
-    ```shell
-    kubectl patch location <location-name> -n edb-system \
-      --type merge \
-      -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
-    ```
-
--   **Different location ID**: the replacement registers as a new `Location` resource. Delete the failed one:
+-   **Different location ID**: the replacement registers as a new `Location` resource, with streaming enabled. Don't re-enable streaming on the failed one, because that location never comes back. Once the Postgres clusters, replicas and groups that ran there have been removed, delete it:
 
     ```shell
     kubectl delete location <location-name> -n edb-system
     ```
+
+Then rebuild the topology you lost:
+
+-   Restore each cluster you deleted from its most recent backup in the HM console, into the replacement location or another healthy one.
+-   Create the replicas and groups you removed in the replacement location.
 
 ### 4. Verify recovery
 
@@ -107,7 +113,7 @@ Plan for this before you need it. The replacement cluster must be reachable at t
 
 ### 1. Restore the `Location` resources
 
-Restore the `Location` resources from the Velero backup if a data-only location was lost along with the control plane, or if the recovered control plane uses a different location ID from the one it replaces. If neither applies, you can skip the restore below: surviving locations register themselves again once they reconnect, and the new installation creates the control plane's own `Location`.
+Restore the `Location` resources from the Velero backup if a data-only location was lost along with the control plane, or if the recovered control plane uses a different location ID from the one it replaces. If neither applies, you can skip the restore below: surviving locations register themselves again once they reconnect, and the new installation creates the control plane's own `Location`, with streaming enabled. You disable it in the next step.
 
 A lost location's agent never reconnects, so this restore is the only way its `Location` resource comes back. It has to exist before you can disable streaming to it in the next step.
 
@@ -132,7 +138,7 @@ Each location reaches the control plane at its portal domain, so provided you re
 Confirm every location is registered and heartbeating again:
 
 ```shell
-kubectl get location -n edb-system
+edbctl location list
 ```
 
 #### Trust between locations
@@ -149,11 +155,14 @@ kubectl get clusterfederatedtrustdomain
 
 ### 2. Stop remote-resource streaming to the failed locations
 
-Follow the steps in [Disable resource streaming on an affected location](#disable-resource-streaming-on-an-affected-location) for each one of the affected locations, and only the affected locations.
+The `Location` resources restored in step 1 come back as they were when the backup was taken, normally with streaming enabled, including on the locations that are lost. If you skipped that restore, the new installation created the control plane's own `Location`, also with streaming enabled. The control plane location was lost, so it counts as a lost location here, even though the recovered control plane is now running in it.
 
-Don't disable resource streaming on a healthy location.
+Before step 3 restores the cluster resources, disable streaming on every location that was lost, and only on those, following the steps in [Disable resource streaming on an affected location](#disable-resource-streaming-on-an-affected-location). Go by what happened to each location, not by how it looks now:
 
-Once all the affected locations have been patched and are verified to have resource streaming disabled, proceed to the next section.
+-   **A location that was lost**: disable streaming, even if it's already back, running under the same location ID and healthy. Streaming stays disabled until the clusters that ran there have been removed, so HM doesn't create them again from scratch. You re-enable it in [Bring up a replacement location](#3-bring-up-a-replacement-location).
+-   **A location that was never lost**: keep streaming enabled. The control plane needs it to manage the Postgres clusters still running there, and to repair the clusters that have replicas or groups in it.
+
+Once all the affected locations have been patched, [check streaming across all locations](#check-streaming-across-all-locations), then proceed to the next section.
 
 ### 3. Restore the control-plane resources
 
@@ -161,7 +170,28 @@ Once all the affected locations have been patched and are verified to have resou
 Before restoring, confirm that the `velero` ConfigMap doesn't exist in the `velero` namespace, or that `drMode` is set to `false` in it. Otherwise the restore can bring down a running database in a surviving location.
 !!!
 
-First, the cluster and Postgres management resources:
+First, the cluster status:
+
+```yaml
+kubectl apply -f - <<EOF
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: restore-pg-status
+  namespace: velero
+spec:
+  backupName: "${BACKUP_NAME}"
+  existingResourcePolicy: none
+  includedNamespaces: [ "edb-system" ]
+  includedResources:
+    - remotepgs.beacon.enterprisedb.com
+  restoreStatus:
+    includedResources:
+      - remotepgs.beacon.enterprisedb.com
+EOF
+```
+
+Then, the cluster and Postgres management resources:
 
 ```yaml
 kubectl apply -f - <<EOF
@@ -176,7 +206,6 @@ spec:
   includedNamespaces: [ "edb-system" ]
   includedResources:
     - clusterwrappers.beacon.enterprisedb.com
-    - remotepgs.beacon.enterprisedb.com
     - secrets
   restoreStatus:
     includedResources:
@@ -184,7 +213,7 @@ spec:
 EOF
 ```
 
-Then, separately, the database backups resources:
+Finally, separately, the database backups resources:
 
 ```yaml
 kubectl apply -f - <<EOF
@@ -226,7 +255,7 @@ edbctl cluster list
 
 Follow the steps in [Remove Postgres clusters, replicas and groups from an affected location](#remove-postgres-clusters-replicas-and-groups-from-an-affected-location).
 
-Once all Postgres clusters, replicas and groups that ran in the failed location have been removed, proceed to the next section.
+Once all Postgres clusters, replicas and groups that ran in the failed location have been removed, proceed to the next section. Until then, keep streaming disabled on the failed location.
 
 ### 5. Locations lost in DR
 
@@ -284,6 +313,18 @@ You should see a `StreamingDisabled` condition:
   type: StreamingDisabled
 ```
 
+Or if HM is version 2026.11 (or later) and edbctl is version (?) (or later), you can disable streaming by running
+
+```shell
+edbctl dr set-location-streaming --id <location-id> --disable
+```
+
+Confirm it took effect:
+
+```shell
+edbctl location list
+```
+
 !!! Important
 Only disable streaming once you've confirmed the location is genuinely down, rather than experiencing a transient network problem. This procedure assumes the location won't recover on its own.
 !!!
@@ -292,7 +333,56 @@ Only disable streaming once you've confirmed the location is genuinely down, rat
 The **Locations** page in the HM console shows `StreamingDisabled` for the location. Treat it as an operator-declared "this location is down or under recovery" marker.
 !!!
 
+### Check streaming across all locations
+
+List every location with its streaming setting:
+
+```shell
+kubectl get location -n edb-system \
+  -o custom-columns='NAME:.metadata.name,STREAMING_DISABLED:.spec.stream.remoteResources.disabled'
+```
+
+Or if HM is version 2026.11 (or later) and edbctl is version (?) (or later):
+
+```shell
+edbctl location list
+```
+
+Streaming must be disabled on every location that was lost, including any already back under the same location ID, and on no other location. In the `kubectl` output, a location showing `false` or `<none>` has streaming enabled.
+
+## Re-enable resource streaming on a location
+
+Re-enable streaming on a location that was lost only when both of these are true:
+
+-   Every Postgres cluster, replica and group that ran in it has been removed, as in [Remove Postgres clusters, replicas and groups from an affected location](#remove-postgres-clusters-replicas-and-groups-from-an-affected-location). If you re-enable streaming before that, HM creates them again from scratch, rather than from their backups.
+
+-   The location is back: its replacement has connected to the control plane and is heartbeating. If you re-enable streaming on a location that is still lost, HM lets you create clusters there, but nothing answers, so they stay pending.
+
+A location that was never lost but has streaming disabled by mistake is the exception: re-enable it straight away.
+
+Patch the `Location` custom resource on the control plane:
+
+```shell
+kubectl patch location <location-name> -n edb-system \
+  --type merge \
+  -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
+```
+
+Or if HM is version 2026.11 (or later) and edbctl is version (?) (or later), you can re-enable streaming by running
+
+```shell
+edbctl dr set-location-streaming --id <location-id> --enable
+```
+
+Then [check streaming across all locations](#check-streaming-across-all-locations) to confirm it took effect.
+
 ## Remove Postgres clusters, replicas and groups from an affected location
+
+!!! Important
+Before you remove anything, [check streaming across all locations](#check-streaming-across-all-locations) and confirm that every location with streaming disabled is one that was lost. If a location that was never lost has streaming disabled, [re-enable it](#re-enable-resource-streaming-on-a-location) first: repairing a cluster in place, such as with a forced failover or by dropping a lost group, needs that location to be streaming.
+
+Keep streaming disabled on the affected locations until you finish. See [Re-enable resource streaming on a location](#re-enable-resource-streaming-on-a-location).
+!!!
 
 Check every running Postgres cluster. What you can recover depends on each cluster's topology, specifically whether it had replicas or data groups in a surviving location.
 
