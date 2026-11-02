@@ -11,10 +11,10 @@ export const updates = [
       "/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_1.4_rel_notes/",
   },
   {
-    title: "EDB Postgres® AI for ClickHouse 26.3",
-    icon: IconNames.CLICKHOUSE,
+    title: "EDB Postgres® AI for ClickHouse® 26.3",
+    icon: IconNames.IMPROVE,
     description:
-      "EDB Postgres® AI for ClickHouse is the open-source ClickHouse binary, identical to the upstream release, repackaged as RPMs, container images, and a Kubernetes operator for enterprise Linux distributions, and supported by EDB.",
+      "EDB Postgres® AI for ClickHouse® is the open-source ClickHouse software binary, identical to the upstream release, repackaged as RPMs, container images, and a Kubernetes operator for enterprise Linux distributions, and supported by EDB.",
     url: "/clickhouse/latest/",
     moreUrl: "/clickhouse/latest/release_notes/rel_notes26_3_13_31/",
   },

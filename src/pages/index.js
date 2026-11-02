@@ -194,7 +194,7 @@ const Page = () => {
               </BannerCardLink>
 
               <BannerCardLink to="/clickhouse/latest/">
-                ClickHouse
+                ClickHouse®
               </BannerCardLink>
             </BannerSubCard>
 
