@@ -111,6 +111,26 @@ To let a user or service account read AIDB's observability data, grant it the `a
 GRANT aidb_governance TO your_auditor_role;
 ```
 
+Reading doesn't remove or change the data, so you can query the same rows as often as you need. AIDB deletes rows only through [retention cleanup](../reference/observability#triggering-retention-cleanup). With the `database` client, AIDB pushes nothing to external tools unless you enable the [exporter worker](#exporter-background-worker). To use the data with external tools, a member of `aidb_governance` retrieves the rows, either the JSON or the binary protobuf payload, and forwards them. For example, to read the oldest 100 spans as JSON:
+
+```sql
+SELECT payload_json
+FROM aidb_otel.traces
+WHERE source = 'internal'
+ORDER BY recorded_at
+LIMIT 100;
+```
+
+## Managing telemetry senders with the aidb_otel_writer role
+
+To let a role send OpenTelemetry data into AIDB from outside, grant it the `aidb_otel_writer` role:
+
+```sql
+GRANT aidb_otel_writer TO your_agent_role;
+```
+
+When you create the AIDB extension, Postgres also creates `aidb_otel_writer` as a `NOLOGIN` role. Membership lets a role write into the `aidb_otel` tables through the `aidb_otel.ingest_*` functions or the [OTLP/HTTP server](../otlp-server). The role can't read the tables. By default, only `aidb_governance` can. See [Receiving telemetry from external agents](../reference/observability#receiving-telemetry-from-external-agents).
+
 ## Managing credential access with the aidb_admins role
 
 When you create the AIDB extension, Postgres also creates a role named `aidb_admins`. It's a member of `aidb_users`.
@@ -150,7 +170,7 @@ AIDB has limited air-gapped support. The built-in CPU model runtimes (Candle and
 
 ## Configuring AIDB parameters (GUCs)
 
-AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Most parameters below are `USERSET` — any role can change them for its own session; parameters with a different context are called out individually. The sections below cover threading limits, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
+AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Parameters that enable background workers are an exception. See [Workers enabled by settings](default-footprint#workers-enabled-by-settings). Only `aidb.download_log_level` and `aidb.download_max_attempts` are `USERSET`, so any role can change them for its own session. All other parameters are `SUSET`, so only superusers, or roles granted `SET` on the parameter, can change them. The sections below cover threading limits, the model cache, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
 
 ### Threading limits
 
@@ -174,6 +194,24 @@ SET aidb.max_io_threads = 4;
 ```
 
 See [Threading limits](threading-limits) for what these two parameters control, how they interact, and when to lower them.
+
+### Model cache
+
+#### `aidb.max_model_cache_size`
+
+Set the maximum memory, in MB, that each process uses to cache loaded local models. The value accepts unit suffixes, such as `'2GB'`. `0` means no limit. The default is a quarter of the host's RAM, computed when the extension loads. In a container, AIDB reads the host's RAM, not the container's memory limit. Only a superuser can set this parameter.
+
+The limit applies to each backend and background worker separately, so each process can fill its own cache up to the limit. Only local models (BERT, CLIP, T5, Llama, and llama.cpp) count toward the limit. Remote models hold no weights locally and count as about 0.
+
+When loading a model would push the cache past the limit, AIDB evicts the least recently used models first. If a single model is larger than the limit, AIDB rejects it with an error that names the model, its size, and the limit. AIDB checks the size after it loads and measures the model, so the process briefly holds the oversized model before dropping it. In a pipeline, AIDB logs a pipeline-level error, and the batch that hit it isn't retried.
+
+A superuser's session-level `SET` applies at the next model load in that backend, not to models that are already loaded. To apply a change to all sessions and workers, use `ALTER SYSTEM` and then run `SELECT pg_reload_conf()`.
+
+```sql
+SET aidb.max_model_cache_size = '2GB';
+```
+
+If the limit is too small, AIDB reloads models on every call, which is slow. If it's too large, the host can run out of memory.
 
 ### Model download
 
@@ -222,7 +260,7 @@ SET aidb.download_max_attempts = 5;
 
 Off by default: llama.cpp's native logging is verbose — hundreds of lines per model load — so it's suppressed unless you need it. This is separate from `aidb.download_log_level` above, which controls AIDB's own download-progress messages; the two are independent.
 
-Unlike the other parameters on this page, `aidb.enable_llamacpp_logs` is `SUSET` (a superuser, or a role granted `SET` on the parameter, can change it) and is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) doesn't take effect until Postgres is restarted:
+`aidb.enable_llamacpp_logs` is read once when the extension initializes. Setting it with `SET`, `ALTER SYSTEM`, or editing `postgresql.conf` and reloading (`pg_reload_conf()`) doesn't take effect until Postgres is restarted:
 
 ```ini
 aidb.enable_llamacpp_logs = true
@@ -334,6 +372,10 @@ Values for `aidb.otel_client`:
 
 A change to `aidb.otel_client` takes effect for new backends; a backend that already made its first instrumented call keeps using whichever client it started with.
 
+## Read-only transactions
+
+The `database` client stores telemetry with an `INSERT`, which a read-only transaction rejects. In a read-only transaction, including one on a hot standby or under `default_transaction_read_only`, AIDB doesn't store the span and doesn't fail your call. Instead it writes one `LOG` line to the server log that names the signal, the number of records, the span names, and the trace and span IDs. The payloads are never logged. A session that is read-only for its whole life therefore has no rows in `aidb_otel`.
+
 #### SQL query tracing
 
 | Parameter                                  | Type    | Default | Description                                                                                                                                                                    |
@@ -355,7 +397,7 @@ Forwards rows from `aidb_otel.{traces,logs,metrics}` to an external OTLP/HTTP co
 | `aidb.otel_exporter_max_retries`    | integer | `5`     | 1–100      | Maximum export attempts for a row before it's marked permanently failed. `SUSET`.                                                                     |
 | `aidb.otel_exporter_batch_size`     | integer | `100`   | 1–1000000  | Maximum rows read per table per export tick. `SUSET`.                                                                                                 |
 
-All five support a per-database override with `ALTER DATABASE <db> SET`, applied the next time the dispatcher polls.
+All five support a per-database override with `ALTER DATABASE <db> SET`. For `aidb.otel_exporter_enabled`, an override that enables the worker applies within two minutes, and enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. For the other four parameters, a per-database override applies only when the worker next starts. `ALTER SYSTEM` followed by `pg_reload_conf()` reaches a running worker on its next cycle, but not for a parameter that also has an `ALTER DATABASE` override for that database. See [Default footprint](default-footprint#workers-enabled-by-settings).
 
 #### Cleaner background worker
 
@@ -367,7 +409,7 @@ Deletes rows older than a retention window from `aidb_otel.{traces,logs,metrics}
 | `aidb.otel_cleaner_retention_days`  | integer | `365`   | 0–3650   | Rows older than this are deleted. `0` disables cleanup entirely. `SUSET`.                                        |
 | `aidb.otel_cleaner_batch_size`      | integer | `5000`  | 1–1000000| Maximum rows deleted per table in a single `DELETE`. `SUSET`.                                                    |
 
-All three support the same per-database `ALTER DATABASE <db> SET` override as the exporter parameters above. You can also trigger a cleanup pass immediately, regardless of `aidb.otel_cleaner_enabled`, with `aidb.run_otel_retention_cleanup()` — see [Observability](../reference/observability#triggering-retention-cleanup).
+All three support the same per-database `ALTER DATABASE <db> SET` override as the exporter parameters above. For `aidb.otel_cleaner_enabled`, an override that enables the worker applies within two minutes, and enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. For the other two parameters, a per-database override applies only when the worker next starts. `ALTER SYSTEM` followed by `pg_reload_conf()` reaches a running worker on its next cycle, but not for a parameter that also has an `ALTER DATABASE` override for that database. See [Default footprint](default-footprint#workers-enabled-by-settings). You can also trigger a cleanup pass immediately, regardless of `aidb.otel_cleaner_enabled`, with `aidb.run_otel_retention_cleanup()` — see [Observability](../reference/observability#triggering-retention-cleanup).
 
 ## Validating the installation
 
