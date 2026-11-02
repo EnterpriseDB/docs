@@ -160,11 +160,11 @@ Import your database's query history by running `aidb.import_query_history()`. T
 
 Run the import as a role that can read every role's statements: a superuser or a member of `pg_read_all_stats`. Otherwise, `pg_stat_statements` hides other roles' statements and the import skips most of the workload as `redacted`. See [Controlling access and auditing](#controlling-access-and-auditing).
 
-All arguments are optional. Pass `kb_name` when the database has more than one KB:
+All arguments are optional:
 
 | Argument            | Default             | Description                                                                                                |
 | ------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `kb_name`           | the only KB         | Which KB to import into.                                                                                    |
+| `kb_name`           | `NULL`              | The KB to import into. Omit it when the database has one KB, and pass it when the database has more than one. |
 | `min_calls`         | `5`                 | Minimum number of runs before a statement is learned from.                                                  |
 | `max_statements`    | `1000`              | Maximum statements read per import, most-run first. Excluded roles' statements don't count against it.      |
 | `derive_candidates` | `true`              | Pass `false` to store statements without proposing joins.                                                   |
@@ -182,9 +182,9 @@ To import history in your own environment:
 
 ### Example
 
-To reproduce the example, import its workload in three steps:
+To reproduce the example on a test database, import its workload in three steps:
 
-1. Optional: reset `pg_stat_statements` so your counts match the example. Skip this step in your own environment, because a reset discards the statistics collected so far.
+1. Reset `pg_stat_statements` so the counts match the example. Run this step only on the example database, because a reset discards all the statistics collected so far.
 
    ```sql
    SELECT pg_stat_statements_reset() IS NOT NULL AS reset;
@@ -637,7 +637,14 @@ __OUTPUT__
 
 ### Searching history
 
-Run `aidb.semantic_kb_search()` to search the stored statements, which return as results of type `Query`. Pass `sources => ARRAY['history']` to search history alone. Each stored statement is its own result, even when several statements read the same tables:
+Run `aidb.semantic_kb_search()` to find past queries that answer a question in English. The function searches the stored statements by meaning and returns each one as a result of type `Query`, so you or an agent can start from SQL that already ran. Each stored statement is its own result, even when several statements read the same tables. Pass the question and the KB name, and use these parameters to narrow the search:
+
+| Parameter                     | Use                                                    |
+| ----------------------------- | ------------------------------------------------------ |
+| `sources => ARRAY['history']` | Search history alone. Omit it to search every source.  |
+| `top_k`                       | Set the number of ranked results to return.            |
+
+Example: find past queries about the regions customers order from:
 
 ```sql
 SELECT rank, entity_type, object_ref, left(definition, 72) AS statement
@@ -653,7 +660,7 @@ __OUTPUT__
 (5 rows)
 ```
 
-A stored statement is a worked example of how the database is queried. Search returns it so that a person or an agent can start from SQL that already ran. For the other sources and how results are fused, see [Searching a semantic KB](searching).
+For the other sources and how results are fused, see [Searching a semantic KB](searching).
 
 ## Working with join candidates
 
