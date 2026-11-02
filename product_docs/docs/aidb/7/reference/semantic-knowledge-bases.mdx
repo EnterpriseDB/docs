@@ -181,7 +181,7 @@ The composite entry point: runs the per-source ranked searches (schema metadata,
 | `schema_name`   | The schema the entity belongs to.                          |
 | `relation_name` | The table or view name.                                    |
 | `column_name`   | The column name (empty for table- and view-level matches). |
-| `object_ref`    | A qualified reference to the matched object. Populated for `relationship` rows only. Schema rows identify themselves through `schema_name`, `relation_name`, and `column_name`. |
+| `object_ref`    | A qualified reference to the matched object. Populated for `relationship` rows, and for `history` rows, where it lists the tables the stored statement reads. Schema rows identify themselves through `schema_name`, `relation_name`, and `column_name`. |
 | `definition`    | The structural definition that was embedded.               |
 | `comment`       | The `COMMENT ON` text for the entity, if any.               |
 | `score`         | The fused RRF score: `1 / (rrf_k + rank_within_source)`. Rows from different sources can tie — see [Tuning results](../semantic-knowledge-bases/searching#tuning-results). |
@@ -649,17 +649,64 @@ FROM aidb.relationship_drift('bank_kb');
 
 ---
 
+### `aidb.update_semantic_kb_history_filter`
+
+Sets the roles whose statements [query history](../semantic-knowledge-bases/query-history#excluding-an-applications-sql) doesn't learn from, and deletes the statements those roles already contributed. Use it to keep a text-to-SQL application's generated SQL out of the KB. Members of a listed role are excluded too. A superuser is excluded only if listed.
+
+The list replaces any earlier list, and each change is written to the audit log. This function isn't available as a [native tool](../tools/native-tools), so an agent can't change the list that governs what it learns from.
+
+#### Parameters
+
+| Parameter       | Type   | Default | Description                                                                                                                                  |
+| --------------- | ------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`       | TEXT   | `NULL`  | The KB to set the list on.                                                                                                                     |
+| `exclude_roles` | TEXT[] | `NULL`  | The roles to exclude. Pass an empty array to clear the list. `NULL` is an error, so the list can't be cleared by accident. A role that doesn't exist is an error. Listing `aidb_users` warns, because it excludes every AIDB user. |
+
+#### Returns
+
+A JSONB object:
+
+| Key                  | Description                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| `previous`           | The list before this call.                                                                           |
+| `current`             | The list after this call.                                                                            |
+| `purged`              | Stored statements deleted because a listed role, or a member of one, ran them.                        |
+| `candidates_retired`  | Proposed candidates removed or retired because only the purged statements supported them.             |
+
+#### Example
+
+```sql
+SELECT jsonb_pretty(aidb.update_semantic_kb_history_filter('shop_kb', ARRAY['text2sql_app']));
+__OUTPUT__
+        jsonb_pretty
+-----------------------------
+ {                          +
+     "purged": 2,           +
+     "current": [           +
+         "text2sql_app"     +
+     ],                     +
+     "previous": [          +
+     ],                     +
+     "candidates_retired": 0+
+ }
+(1 row)
+```
+
+---
+
 ### `aidb.import_query_history`
 
-Reads `pg_stat_statements` to find joins the application runs but the schema never declared. Requires `pg_stat_statements` to be loaded (`shared_preload_libraries`) and installed (`CREATE EXTENSION pg_stat_statements;`). Errors if the extension isn't installed, rather than returning zero rows. See [Learning from the query workload](../semantic-knowledge-bases/relationships#learning-from-the-query-workload).
+Reads `pg_stat_statements` to find joins the application runs but the schema never declared. Requires `pg_stat_statements` to be loaded (`shared_preload_libraries`) and installed (`CREATE EXTENSION pg_stat_statements;`). Errors if the extension isn't installed, rather than returning zero rows.
+
+A statement is kept only if a client sent it, it's a single `SELECT` that ran at least `min_calls` times, it reads at least two tables, every table it reads is in the KB's schemas, and its role isn't [excluded](#aidbupdate_semantic_kb_history_filter). Re-importing doesn't embed statements that are already stored. See [Query history](../semantic-knowledge-bases/query-history).
 
 #### Parameters
 
 | Parameter            | Type | Default | Description                                                              |
 | --------------------- | ---- | ------- | --------------------------------------------------------------------------- |
 | `kb_name`            | TEXT | `NULL`   | The KB to import into.                                                      |
-| `min_calls`          | INT  | `5`     | Minimum execution count for a statement to be considered. Lower to see more of the workload. |
-| `max_statements`     | INT  | `1000`  | Caps how many statements from `pg_stat_statements` are considered in one call. |
+| `min_calls`          | BIGINT | `5`   | Minimum execution count for a statement to be considered. Lower to see more of the workload. |
+| `max_statements`     | INT  | `1000`  | Caps how many statements from `pg_stat_statements` are considered in one call, most-run first. Statements from excluded roles don't count against it. |
 | `derive_candidates`  | BOOLEAN | `true` | Whether to also derive relationship candidates from the import; see `candidates_derived`. |
 
 #### Returns
@@ -668,15 +715,18 @@ Reads `pg_stat_statements` to find joins the application runs but the schema nev
 | ---------------------- | --------------------------------------------------------- |
 | `import_id`            | This import run's ID.                                    |
 | `statements_read`      | Statements read from `pg_stat_statements`.               |
-| `statements_ingested`  | Statements that passed `min_calls` and were recorded.    |
-| `skipped`              | Statements skipped, and why.                             |
-| `candidates_derived`   | Number of relationship candidates derived from the import. |
-| `outcome`              | `ok`, or an error/warning summary.                       |
+| `statements_ingested`  | Statements kept, whether new or already stored.          |
+| `skipped`              | A JSONB object counting skipped statements by reason: `not_qualifying`, `out_of_scope`, `excluded_role`, `unresolvable_relation`, `unparseable`, `redacted`, `text_unavailable`, or `self_generated`. |
+| `candidates_derived`   | Number of new relationship candidates derived from the import. |
+| `outcome`              | `ok` if at least one statement was kept, `nothing_to_read` if nothing met the bar, or `mostly_unreadable` if more than half of what the import tried to read was `redacted` or `text_unavailable`. |
+| `statements_embedded`  | Statements that needed a new embedding. `0` on a re-import of an unchanged workload. |
+| `rows_pruned`          | Stored statements removed because a table or join column they use no longer exists, or left the KB's schemas. |
 
 #### Example
 
 ```sql
-SELECT import_id, statements_read, statements_ingested, skipped, candidates_derived, outcome
+SELECT import_id, statements_read, statements_ingested, statements_embedded, rows_pruned,
+       skipped, candidates_derived, outcome
 FROM aidb.import_query_history('bank_kb');
 ```
 
@@ -692,7 +742,7 @@ Lists relationship candidates derived from query history that aren't yet known r
 | ----------------- | ------ | --------- | -------------------------- |
 | `kb_name`        | TEXT   | `NULL`    | The KB to list candidates for. |
 | `source`         | TEXT   | `history` | Restrict to candidates from one [source](../semantic-knowledge-bases/relationships#source). Matched, not validated. |
-| `relation`       | TEXT   | `NULL`    | Restrict to candidates touching this table or view. Matched, not validated — a typo returns zero rows, not an error. |
+| `relation`       | TEXT   | `NULL`    | Restrict to candidates touching this table or view, written `schema.table` without quotes. Matched, not validated — a typo returns zero rows, not an error. |
 | `min_exec_count` | BIGINT | `NULL`    | Minimum execution count for a candidate to be included; see `executions`. |
 | `limit_rows`     | INT    | `100`     | Caps how many candidates are returned.                    |
 
@@ -722,7 +772,7 @@ FROM aidb.relationship_candidates('bank_kb');
 
 ### `aidb.accept_relationship_candidates`
 
-Accepts one or more relationship candidates, making them routable. `source` becomes `manual`. Provenance keeps the evidence.
+Accepts one or more relationship candidates, making them routable. `source` becomes `manual`. Provenance keeps the evidence and records who approved it. Acceptance is by explicit ID only: the function takes no filter, so nothing is approved in bulk without review.
 
 #### Parameters
 
@@ -730,6 +780,8 @@ Accepts one or more relationship candidates, making them routable. `source` beco
 | -------------- | --------- | ------- | -------------------------------------------------------------------------------- |
 | `candidate_ids`| BIGINT[]  | —        | The candidates to accept.                                                        |
 | `kb_name`      | TEXT      | `NULL`   | The KB the candidates belong to. Takes this position second, unlike every other function in this section, which takes `kb_name` first. |
+| `cardinality`  | TEXT      | `NULL`   | Overrides the proposed cardinality: `many-to-one`, `one-to-many`, `one-to-one`, or `many-to-many`. `one-to-many` states that the left side is the "one" side, so the relationship is turned round and stored as `many-to-one`. Any other value is an error. |
+| `is_nullable`  | BOOLEAN   | `NULL`   | Overrides whether the "many" side's columns allow `NULL`. Omit to keep the value taken from the database's `NOT NULL` constraints. |
 
 #### Returns
 
@@ -747,6 +799,15 @@ SELECT * FROM aidb.accept_relationship_candidates(
   'bank_kb');
 ```
 
+To override the proposed shape:
+
+```sql
+SELECT * FROM aidb.accept_relationship_candidates(
+  ARRAY[(SELECT relationship_id FROM aidb.relationship_candidates('bank_kb') LIMIT 1)]::bigint[],
+  'bank_kb',
+  is_nullable => false);
+```
+
 ---
 
 ### `aidb.classify_query_history_statement`
@@ -758,6 +819,7 @@ Explains why a single statement would or wouldn't be used by `import_query_histo
 | Parameter   | Type | Default | Description                    |
 | ----------- | ---- | ------- | --------------------------------- |
 | `statement` | TEXT | —        | The normalized SQL statement to classify. |
+| `kb_name`   | TEXT | `NULL`   | The KB whose scope to apply. When given, the statement is classified by the same rules as `import_query_history()` for that KB, including whether every table is in the KB's schemas. Omit to classify without a KB scope. |
 
 #### Returns
 
@@ -768,7 +830,7 @@ A JSONB object:
 | `qualifies`       | Whether `import_query_history()` would ingest this statement.                 |
 | `relations`       | The tables the statement touches.                                             |
 | `predicates`      | The join predicates found, each with `left_relation`, `left_column`, `right_relation`, `right_column`. |
-| `skip_reason`     | Why the statement doesn't qualify, for example `unparseable`. `null` when it qualifies. |
+| `skip_reason`     | Why the statement doesn't qualify, for example `unparseable`, `not_qualifying`, or `out_of_scope`. `null` when it qualifies. |
 | `had_unresolved`  | Whether the statement had a join AIDB couldn't resolve into a `predicates` entry. |
 
 #### Example
@@ -812,14 +874,14 @@ SELECT aidb.classify_query_history_statement('UPDATE bank.accounts SET opened_on
 
 ### `aidb.list_query_history`
 
-Lists the normalized statements, relations touched, and join predicates recorded by `import_query_history()`.
+Lists the normalized statements, relations touched, and join predicates recorded by `import_query_history()`, most-run first. Row-level security applies: a caller sees only the statements run by a role they're a member of, unless they hold `pg_read_all_stats`.
 
 #### Parameters
 
 | Parameter     | Type        | Default | Description                                                                  |
 | -------------- | ----------- | ------- | --------------------------------------------------------------------------------- |
 | `kb_name`     | TEXT        | `NULL`  | The KB to list history for.                                                     |
-| `relation`    | TEXT        | `NULL`  | Restrict to statements touching this table or view. Matched, not validated — a typo returns zero rows, not an error. |
+| `relation`    | TEXT        | `NULL`  | Restrict to statements touching this table or view. Accepts the stored form (`shop."Vouchers"`), the unquoted form (`shop.Vouchers`), or a name as SQL reads it (`SHOP.ORDERS`). Matched, not validated — a typo returns zero rows, not an error. |
 | `min_calls`   | BIGINT      | `NULL`  | Minimum execution count for a statement to be included; see `exec_count`.        |
 | `seen_since`  | TIMESTAMPTZ | `NULL`  | Restrict to statements last seen at or after this time; see `last_seen`.         |
 | `executed_by` | TEXT        | `NULL`  | Restrict to statements run by this Postgres role; see `executed_by`.             |
