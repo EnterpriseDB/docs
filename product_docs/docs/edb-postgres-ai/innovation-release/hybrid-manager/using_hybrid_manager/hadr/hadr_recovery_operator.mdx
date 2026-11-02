@@ -5,13 +5,15 @@ description: Recover a Hybrid Manager installation by installing a new one with 
 deepToC: true
 ---
 
-From HM 2026.11, the HM operator can recover a Hybrid Manager (HM) installation for you. Instead of installing an empty HM and restoring into it by hand, as in [Disaster recovery for a single Hybrid Manager installation](hadr_recovery) or [Disaster recovery for a multi-DC Hybrid Manager deployment](hadr_recovery_multi_dc), you install the new HM with one extra field, `spec.recoveryFrom`, in its `HybridControlPlane` resource. The operator installs it against the object storage the old HM left behind and restores the control plane from it.
+From HM 2026.11, the HM operator can recover a Hybrid Manager (HM) installation for you. Instead of installing an empty HM and then restoring the control plane into it yourself with Velero, as in [Disaster recovery for a single Hybrid Manager installation](hadr_recovery) or [Disaster recovery for a multi-DC Hybrid Manager deployment](hadr_recovery_multi_dc), you install the new HM with one extra field, `spec.recoveryFrom`, in its `HybridControlPlane` resource. The operator installs it against the object storage the old HM left behind and restores the control plane from it.
 
 !!! Warning
-Check the [known limitations](#known-limitations) before you start. The operator recovers the control plane and the Postgres management resources, but the Postgres clusters themselves are restored from the HM console, as in [Restore the Postgres clusters](#restore-the-postgres-clusters). Where a limitation applies, such as recovering into an environment with its own bucket, follow the [manual procedure](hadr_recovery) instead.
+Check the [known limitations](#known-limitations) before you start. The operator recovers the control plane and the Postgres management resources, but the Postgres clusters themselves are restored from the HM console, as in [Restoring the Postgres clusters](#restoring-the-postgres-clusters). Where a limitation applies, such as recovering into an environment with its own bucket, follow the [manual procedure](hadr_recovery) instead.
 !!!
 
 ## What the operator recovers
+
+The operator restores the HM control plane and the Postgres management resources from the old installation's backups. It doesn't restore your Postgres clusters. The following table shows what the operator recovers and what you still restore yourself.
 
 | What | Recovered by the operator |
 | --- | --- |
@@ -20,12 +22,12 @@ Check the [known limitations](#known-limitations) before you start. The operator
 | Read-only access to the old Velero backups | Yes |
 | `Location` resources | Yes, with streaming disabled on the locations that are gone |
 | Postgres management resources: what HM records about your Postgres clusters and their backups | Yes, after the `Location` resources, from the same backup |
-| Your Postgres clusters | No. Restore each one from its backups, as in [Restore the Postgres clusters](#restore-the-postgres-clusters) |
+| Your Postgres clusters | No. Restore each one from its backups, as in [Restoring the Postgres clusters](#restoring-the-postgres-clusters) |
 
-The internal databases are what make this different from the manual procedure: they bootstrap from the old backups and come up holding the old data, instead of being initialized empty and restored into afterwards.
+The internal databases are what make operator-driven recovery different from the manual procedure: they bootstrap from the old backups and come up holding the old data, instead of being initialized empty and restored into afterwards.
 
 !!! Note
-A `Location` whose site is gone is restored with `spec.stream.remoteResources.disabled: true`, so the recovered control plane doesn't stream cluster resources, backups or apps to a location that will never answer. [`mode`](#mode) decides which locations that applies to. Re-enable streaming deliberately, as part of [Restore the Postgres clusters](#restore-the-postgres-clusters).
+A `Location` whose site is gone is restored with `spec.stream.remoteResources.disabled: true`, so the recovered control plane doesn't stream cluster resources, backups or apps to a location that will never answer. [`mode`](#mode) decides which locations that applies to. Re-enable streaming deliberately, as part of [Restoring the Postgres clusters](#restoring-the-postgres-clusters).
 !!!
 
 ## Prerequisites
@@ -36,32 +38,36 @@ A `Location` whose site is gone is restored with `spec.stream.remoteResources.di
 
 -   **HM operator 2.3.0 or later.** Earlier operators skip the stages that run after the installation, so a recovery can reach `Completed` without restoring the `Location` resources or the resources of your Postgres clusters. See the [operator compatibility matrix](/hm-operator/latest/compatibility_matrix/).
 
--   **Both kinds of backup in the old object storage.** See [Check the old object storage](#check-the-old-object-storage).
+-   **Both kinds of backup in the old object storage.** See [Checking the old object storage](#checking-the-old-object-storage).
 
 -   **Read access to the old bucket from the new environment.** If object storage is reached through workload identity, the identity of the new environment needs access to the old bucket as well as its own.
 
 -   **The image pull secret on the new cluster**, created as for any installation. See [Preparing your environment](../../install/install_guide/environment_prep). It's environment setup, not restored state, so the recovery never restores it.
 
-## Gather the values of the old installation
+## Gathering the values of the old installation
 
-Four values describe the installation you're recovering. The commands and the resource on this page use them:
+Collect four values that describe the installation you're recovering:
 
 ```bash
-export OLD_BUCKET=<the bucket the old HM wrote to>
-export OLD_BACKUP_ID=<the internal_backup_folder of the old HM>
-export OLD_LOCATION_ID=<the location the old control plane ran in>
-export NEW_BACKUP_ID=<a new, unused folder of 12 lowercase letters and digits>
+export OLD_BUCKET=<old_bucket>
+export OLD_BACKUP_ID=<old_backup_folder>
+export OLD_LOCATION_ID=<old_location_id>
+export NEW_BACKUP_ID=<new_backup_folder>
 ```
 
--   `OLD_BUCKET` and `OLD_BACKUP_ID` are the object storage of the old HM and its `spec.globalParameters.internal_backup_folder`.
+Where:
 
--   `OLD_LOCATION_ID` is the `spec.componentsParameters.upm-beacon.beacon_location_id` of the old HM. Take it from the old `HybridControlPlane` resource, for example from your GitOps repository: nothing in the bucket records it, and if the old cluster is gone you can't look it up. If you no longer have it, use `mode: full`, where `locationID` is optional. `full` disables streaming on every restored location, so re-enable it by hand on any location that survived, as in [Restore the Postgres clusters](#restore-the-postgres-clusters). See [`mode`](#mode).
+-   `OLD_BUCKET` is the object storage bucket the old HM wrote its backups to.
 
--   `NEW_BACKUP_ID` is where the recovered HM writes its own backups. It must differ from `OLD_BACKUP_ID`. See [The two folders must differ](#the-two-folders-must-differ).
+-   `OLD_BACKUP_ID` is the `spec.globalParameters.internal_backup_folder` of the old HM.
 
-## Check the old object storage
+-   `OLD_LOCATION_ID` is the `spec.componentsParameters.upm-beacon.beacon_location_id` of the old HM. Take it from the old `HybridControlPlane` resource, for example from your GitOps repository: nothing in the bucket records it, and if the old cluster is gone you can't look it up. If you no longer have it, use `mode: full`, where `locationID` is optional. `full` disables streaming on every restored location, so re-enable it by hand on any location that survived, as in [Restoring the Postgres clusters](#restoring-the-postgres-clusters). See [`mode`](#mode).
 
-A recovery reads one folder of one bucket, `edb-internal-backups/${OLD_BACKUP_ID}/`:
+-   `NEW_BACKUP_ID` is where the recovered HM writes its own backups. Use a new, unused folder name of 12 lowercase letters and digits. It must differ from `OLD_BACKUP_ID`. See [Backup folders](#backup-folders).
+
+## Checking the old object storage
+
+Confirm that the old object storage holds what the recovery needs. A recovery reads one folder of one bucket, `edb-internal-backups/${OLD_BACKUP_ID}/`:
 
 ```text
 edb-internal-backups/<folder>/
@@ -85,9 +91,9 @@ kubectl get scheduledbackup -A \
   -o jsonpath='{range .items[*]}{.metadata.namespace}/{.spec.cluster.name}{"\n"}{end}'
 ```
 
-## Write the recovery resource
+## Writing the recovery resource
 
-Take the `HybridControlPlane` resource of the HM you're recovering, give it a new `internal_backup_folder`, and add `spec.recoveryFrom`. Edit the existing resource and substitute the values from [Gather the values of the old installation](#gather-the-values-of-the-old-installation):
+Take the `HybridControlPlane` resource of the HM you're recovering, give it a new `internal_backup_folder`, and add `spec.recoveryFrom`. Edit the existing resource and substitute the values from [Gathering the values of the old installation](#gathering-the-values-of-the-old-installation):
 
 ```yaml
 apiVersion: edbpgai.edb.com/v1alpha1
@@ -113,11 +119,11 @@ spec:
     claim: false          # true only for a real DR: see claim
 ```
 
-### The two folders must differ
+### Backup folders
 
-The recovered HM reads the old folder and writes its own backups to its own folder. A `target.internalBackupFolder` equal to `globalParameters.internal_backup_folder` is rejected.
+The backup folder of the recovered HM must differ from the old one. The recovered HM reads the old folder and writes its own backups to its own folder, so a `target.internalBackupFolder` equal to `globalParameters.internal_backup_folder` is rejected.
 
-This is the most common mistake when you build the resource from the old one, because the old resource already carries the old folder in `globalParameters`. Change it.
+Reusing the old folder is the most common mistake when you build the resource from the old one, because the old resource already carries the old folder in `globalParameters`. Replace that value with the new folder before you apply the resource.
 
 ### `mode`
 
@@ -125,14 +131,16 @@ Set `primary-only` when only the location that hosted the control plane is gone 
 
 The mode decides which restored `Location` resources come back with streaming disabled:
 
-| `mode` | Streaming disabled on |
+| Mode value | Streaming disabled on |
 | --- | --- |
 | `full` | Every restored location |
 | `primary-only` | Only `target.locationID` |
 
-`primary-only` leaves the surviving locations streaming, which is what lets the recovered control plane take back the Postgres clusters still running there. With `full`, re-enable streaming by hand on the locations that survived, as in [Restore the Postgres clusters](#restore-the-postgres-clusters). A wrong mode is recoverable but not silent: `primary-only` where other locations were lost too leaves the recovered control plane streaming to locations that are gone, until you disable it on them as in [Disable resource streaming on an affected location](hadr_recovery_multi_dc#disable-resource-streaming-on-an-affected-location).
+`primary-only` leaves the surviving locations streaming, which is what lets the recovered control plane take back the Postgres clusters still running there. With `full`, re-enable streaming by hand on the locations that survived, as in [Restoring the Postgres clusters](#restoring-the-postgres-clusters). A wrong mode is recoverable but not silent: `primary-only` where other locations were lost too leaves the recovered control plane streaming to locations that are gone, until you disable it on them as in [Disable resource streaming on an affected location](hadr_recovery_multi_dc#disable-resource-streaming-on-an-affected-location).
 
 ### `target`
+
+Identify the old installation in `target`: where its backups are stored, which folder holds them, and which location the old control plane ran in. It has three fields:
 
 -   `objectStoreSecretRef`: the secret that describes the old object storage, its provider, bucket and credentials, in the same format as the `edb-object-storage` secret of a running HM. The bucket is read in place and read-only, so read access is enough. The name and the namespace are both required.
 
@@ -151,15 +159,15 @@ Set it to `true`. It decides whether the object storage credentials come back fr
 
 Only the first case is supported. See [Known limitations](#known-limitations).
 
-With `true`, the operator restores the object storage credentials from the backup: `edb-object-storage`, the per-project `edb-object-storage-prj-*` secrets, and the `slo-kv-store` config map that records which object storage each project is bound to. They come back together on purpose: if the old bucket is used while the projects are bound again from scratch, the projects end up bound to the default object storage, permanently.
+With `true`, the operator restores the object storage credentials from the backup. These are the `edb-object-storage` secret, the per-project `edb-object-storage-prj-*` secrets, and the `slo-kv-store` config map that records which object storage each project is bound to. They come back together on purpose. If the recovery used the old bucket but bound the projects again from scratch, the projects would end up bound to the default object storage, permanently.
 
-Whatever you set, a renamed copy of every object storage credential is kept in the `hm-recovery` namespace, because restoring your Postgres clusters reads their backups from the old bucket later.
+Regardless of this setting, the operator keeps a renamed copy of every object storage credential in the `hm-recovery` namespace, because restoring your Postgres clusters later reads their backups from the old bucket.
 
 The image pull secrets are never restored. They must exist before the installation can start, so they're always the new environment's own.
 
 ### `preflight.enforce`
 
-Defaults to `true`: a failed preflight check stops the installation rather than letting it build a control plane on data that can't be restored. Set it to `false` only to turn the failures into warnings, for example when the old HM ran an operator earlier than 2.2.0, whose backup folder has no `hm-metadata.json` to check the version against. Confirm the versions match yourself first. The failures it lets through are recorded in `status.recovery.ignoredPreflightFailures`.
+Defaults to `true`, which makes a failed preflight check stop the installation rather than letting it build a control plane on data that can't be restored. Set it to `false` only to turn the failures into warnings, for example when the old HM ran an operator earlier than 2.2.0, whose backup folder has no `hm-metadata.json` to check the version against. Confirm the versions match yourself first. The failures it lets through are recorded in `status.recovery.ignoredPreflightFailures`.
 
 ### `claim`
 
@@ -175,19 +183,21 @@ Leave `claim` off for a drill. A drill recovers from the folder of an HM that's 
 
 If another HM has already claimed the same folder, the recovery fails and stays failed, and you must rebuild the environment.
 
-### The field can't be changed later
+!!! Warning
+You can't change `spec.recoveryFrom` after the installation starts, because it drives what the installation does. Check every value before you apply the resource. If a value is wrong, rebuild the environment.
+!!!
 
-For a recovery created with the resource, `spec.recoveryFrom` can't be changed afterwards: it drives what the installation does, and the installation has already happened. Write it right the first time. If it's wrong, rebuild the environment.
+## Installing the new Hybrid Manager
 
-## Install
-
-Apply the resource and let the operator install, as in [Install Hybrid Manager on Kubernetes](../../install/install_guide/install_hm), with one difference.
+Apply the resource and let the operator install the new HM. Follow [Install Hybrid Manager on Kubernetes](../../install/install_guide/install_hm), except for the step that creates the install secrets.
 
 !!! Warning
 Don't run `edbctl hybrid-manager create-install-secrets`. The recovery restores those secrets from the backup, and any that already exist are kept instead, which leaves the platform with new credentials that don't match the restored databases.
 !!!
 
-## Watch the recovery
+## Monitoring the recovery progress
+
+Read the current phase, stage and message from the status of the `HybridControlPlane` resource:
 
 ```bash
 kubectl get hcp <name> -o jsonpath='{.status.recovery.phase}/{.status.recovery.stage}{"\n"}'
@@ -210,27 +220,29 @@ The recovery runs in stages, before and after the installation:
 | `Restoring` | `FlipTopology` | Only with [`claim: true`](#claim): removes the old HM from the federation |
 | `Completed` | | The control plane is recovered |
 
-!!! Note
 `Failed` isn't final. A failed stage is run again a minute later, and the installation waits meanwhile. The cause is usually outside the resource, such as object storage that isn't reachable yet, so a recovery can show `Failed` and still complete once the cause clears. Read `status.recovery.message` before treating it as the outcome.
-!!!
 
 !!! Warning
-The Velero stages don't retry on their own. A Velero `Restore` keeps the result it was given, so once `RestoreLocations` or `RestorePGManagement` fails, it reports the same failure every minute, even after you fix the cause. Delete the failed `Restore` that `status.recovery.message` names, and the next pass creates a new one under the same name:
+The Velero stages don't retry on their own. A Velero `Restore` keeps the result it was given, so once `RestoreLocations` or `RestorePGManagement` fails, it reports the same failure every minute, even after you fix the cause. To retry a failed stage:
+
+1.  Find out why it failed. Velero records the reason for each item that failed, so run `velero restore describe <name> --details`.
+
+2.  Fix the cause that Velero reports.
+
+3.  Delete the failed `Restore` that `status.recovery.message` names. The next pass creates a new one under the same name.
 
 ```bash
 kubectl delete restore recovery-0-restorelocations -n velero
 ```
 
 `RestoreLocations` creates `recovery-<epoch>-restorelocations`, and `RestorePGManagement` creates `recovery-<epoch>-pg-status`, `recovery-<epoch>-pg-management` and `recovery-<epoch>-pg-backups`, one after the other. The epoch is `0` unless the recovery sets `claim: true`.
+
+If the stage still can't complete after you delete its `Restore`, restore what it covers by hand, as in [Restore resources](hadr_recovery#restore-resources).
 !!!
 
-!!! Warning
-If a Velero stage fails again after you delete its `Restore`, find out why before you retry. Velero records the reason for each item that failed: run `velero restore describe <name> --details`, fix the cause it reports, then delete the `Restore` again. If the stage still can't complete, restore what it covers by hand, as in [Restore resources](hadr_recovery#restore-resources).
-!!!
+If the installed HM can't support `RestoreLocations` or `RestorePGManagement`, the stage is skipped rather than run, and the recovery goes on without it. The skipped stages and the reason are listed in `status.recovery.skippedStages`, and the `Completed` message names them. Restore what a skipped stage left out by hand, as in [Restore resources](hadr_recovery#restore-resources). Velero can already read the old backups through the `recovery-source` backup storage location.
 
-If the installed HM can't support `RestoreLocations` or `RestorePGManagement`, the stage is skipped rather than run, and the recovery goes on without it. The skipped stages and the reason are listed in `status.recovery.skippedStages`, and the `Completed` message names them. Restore what a skipped stage left out by hand, as in [Restore resources](hadr_recovery#restore-resources): Velero can already read the old backups through the `recovery-source` backup storage location.
-
-### The preflight checks
+### Troubleshooting preflight check failures
 
 If a check fails, `status.recovery.message` names it. If the old bucket can't be read, the checks after that one are skipped.
 
@@ -244,9 +256,9 @@ If a check fails, `status.recovery.message` names it. If the old bucket can't be
 | `RecoveryVersionChecker` | `hm-metadata.json` records a different HM version than the one being installed, or the version can't be established |
 | `RecoveryEpochChecker` | The takeover record in the old folder, `hm-ownership.json`, can't be read |
 
-## Validate the recovery
+## Validating the recovery
 
-Check the outcome rather than the phase alone:
+Confirm that the recovery succeeded by checking what it restored, as well as its phase. Start with the phase of the `HybridControlPlane` resource and of the recovery:
 
 ```bash
 kubectl get hcp <name> -o jsonpath='phase={.status.phase} recovery={.status.recovery.phase}{"\n"}'
@@ -262,7 +274,7 @@ kubectl get backupstoragelocation -n velero \
 # recovery-source  Available  ReadOnly   edb-internal-backups/<old>/velero
 ```
 
-If the recovery reports that it kept the existing `edb-object-storage` secret, that's the expected outcome: that secret already describes the object storage the new HM can reach.
+If the recovery reports that it kept the existing `edb-object-storage` secret, that's the expected outcome, because that secret already describes the object storage the new HM can reach.
 
 The `Location` resources of the old HM should be back, with streaming disabled on the ones that are gone:
 
@@ -273,7 +285,7 @@ kubectl get location <name> -n edb-system -o jsonpath='{.spec.stream.remoteResou
 ```
 
 !!! Note
-If the new HM reuses the location ID of the old one, both are the same `Location`, so streaming is disabled on the location the recovered HM itself runs in, and it doesn't manage clusters until you turn it back on. Do that as part of [Restore the Postgres clusters](#restore-the-postgres-clusters), not before.
+If the new HM reuses the location ID of the old one, both are the same `Location`, so streaming is disabled on the location the recovered HM itself runs in, and it doesn't manage clusters until you turn it back on. Do that as part of [Restoring the Postgres clusters](#restoring-the-postgres-clusters), not before.
 !!!
 
 The Postgres management resources should be back too, in the same namespace as the `Location` resources:
@@ -282,39 +294,45 @@ The Postgres management resources should be back too, in the same namespace as t
 kubectl get clusterwrappers,remotepgs,backupwrappers -A
 ```
 
-Once the recovery is `Completed`, the internal databases look like new ones in their specification, with `bootstrap` set to `initdb`. That's expected: their recovered bootstrap is only read when they're created, and the operator then puts back their normal specification. The data is the recovered one.
+Once the recovery is `Completed`, the internal databases look like new ones in their specification, with `bootstrap` set to `initdb`. That's expected, because their recovered bootstrap is only read when they're created, and the operator then puts back their normal specification. The data is the recovered one.
 
-## Restore the Postgres clusters
+## Restoring the Postgres clusters
 
-The operator brings back the Postgres management resources, but not the Postgres clusters themselves. Whether a location streams decides what HM does with the clusters recorded there, so go through the locations in this order:
+Restore the Postgres clusters yourself, because the operator brings back the Postgres management resources but not the clusters themselves. Whether a location streams decides what HM does with the clusters recorded there.
+
+!!! Note
+With `primary-only`, a cluster that ran only in the surviving locations needs none of this. It keeps running, and the recovered control plane takes it back.
+!!!
+
+Go through the locations in this order:
 
 1.  Re-enable streaming on every location that survived, if the recovery disabled it, as `full` does. The clusters, replicas and groups still running there need it, to be taken back and repaired in the next steps.
+
+    To re-enable streaming on a location, run:
+
+    ```bash
+    kubectl patch location <name> -n edb-system --type merge \
+      -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
+    ```
 
 2.  Check that every location still disabled is either lost, or the one the recovered HM runs in, when it reuses the old location ID.
 
 3.  Remove the Postgres clusters, replicas and groups that ran in the lost locations, as in [Remove Postgres clusters, replicas and groups from an affected location](hadr_recovery_multi_dc#remove-postgres-clusters-replicas-and-groups-from-an-affected-location). Delete each cluster that ran only in lost locations, and repair in place each one that still has replicas or groups in a surviving location.
 
-4.  Only then re-enable streaming on the location the recovered HM runs in, if it reuses the old location ID. If you re-enable it before the removal, HM creates the clusters that ran there again from scratch, rather than from their backups.
+4.  Only then re-enable streaming on the location the recovered HM runs in, with the command in step 1, if it reuses the old location ID. If you re-enable it before the removal, HM creates the clusters that ran there again from scratch, rather than from their backups.
 
 5.  Restore each deleted cluster from the HM console, from its most recent backup, as in [Restore Postgres clusters](hadr_recovery#3-restore-postgres-clusters).
 
-To re-enable streaming on a location:
-
-```bash
-kubectl patch location <name> -n edb-system --type merge \
-  -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
-```
-
-Don't re-enable streaming on a location that is still lost. HM then lets you create clusters there, but nothing answers, so they stay pending. Re-enable it only once the location is back.
-
-With `primary-only`, a cluster that ran only in the surviving locations needs none of this: it keeps running, and the recovered control plane takes it back.
+!!! Warning
+Don't re-enable streaming on a location that is still lost. HM then lets you create clusters there, but the location is unreachable and can't act on the requests, so the clusters stay pending. Re-enable streaming only once the location is back.
+!!!
 
 ## Known limitations
 
--   **Your Postgres clusters are restored by hand**, one at a time, from the HM console. See [Restore the Postgres clusters](#restore-the-postgres-clusters).
+-   Your Postgres clusters are restored by hand, one at a time, from the HM console. See [Restoring the Postgres clusters](#restoring-the-postgres-clusters).
 
--   **Custom managed storage locations aren't restored.** If the old HM had any, restore them as in the first step of [Restore resources](hadr_recovery#restore-resources) before you restore the Postgres clusters that back up to them.
+-   Custom managed storage locations aren't restored. If the old HM had any, restore them as in the first step of [Restore resources](hadr_recovery#restore-resources) before you restore the Postgres clusters that back up to them.
 
--   **The recovered HM keeps using the bucket of the old one.** Recovering into an environment with its own bucket isn't supported: the restored resources still point at the old bucket, and the backups of your Postgres clusters stay there. Use the [manual procedure](hadr_recovery) instead.
+-   The recovered HM keeps using the bucket of the old one. Recovering into an environment with its own bucket isn't supported: the restored resources still point at the old bucket, and the backups of your Postgres clusters stay there. Use the [manual procedure](hadr_recovery) instead.
 
--   **Identity provider (IdP) settings aren't restored.** Configure your IdP on the recovered HM again.
+-   Identity provider (IdP) settings aren't restored. Configure your IdP on the recovered HM again.
