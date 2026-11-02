@@ -1,36 +1,36 @@
 ---
 title: Query history
 navTitle: Query history
-description: Learn from the SQL your database already runs. Import query history, keep an application's SQL out, search past queries, and turn undeclared joins into relationships.
+description: Learn from the SQL your database runs. Import query history, exclude an application's SQL, search past queries, and accept undeclared joins as relationships.
 deepToC: true
 ---
 
 A semantic knowledge base (KB) describes a database's tables and columns, and the relationships its foreign keys declare between them. Most real databases also join tables without a connecting foreign key. The SQL running against the database records those joins on every execution.
 
-Query history reads the recorded SQL from `pg_stat_statements`, keeps the statements joining tables in the KB's schemas, and supports the following tasks:
+Query history reads the recorded SQL from `pg_stat_statements` and keeps the statements joining tables in the KB's schemas. Use the following functions for each task:
 
-| You want to                                                      | Use                                                                           |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Set up the requirements for query history                        | [`pg_stat_statements` and `aidb.create_semantic_kb()`](#setting-up-query-history) |
-| Learn from the SQL the database runs                             | [`aidb.import_query_history()`](#importing-history)                           |
-| Check why a statement would or wouldn't be kept                  | [`aidb.classify_query_history_statement()`](#checking-why-statements-are-skipped) |
-| Keep an application's generated SQL out                          | [`aidb.update_semantic_kb_history_filter()`](#excluding-an-applications-sql)  |
-| See what was learned, and from whom                              | [`aidb.list_query_history()`](#browsing-history)                              |
-| Find past queries that answer a question in English              | [`aidb.semantic_kb_search()`](#searching-history) with the `history` source   |
-| Find joins without a declared foreign key                        | [`aidb.relationship_candidates()`](#reviewing-candidates)                     |
-| Make such a join usable by the join-route functions              | [`aidb.accept_relationship_candidates()`](#accepting-candidates)              |
+| Task                                                | Use                                                                               |
+| --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Setting up query history                            | [`pg_stat_statements` and `aidb.create_semantic_kb()`](#setting-up-query-history) |
+| Importing history                                   | [`aidb.import_query_history()`](#importing-history)                               |
+| Checking why statements are skipped                 | [`aidb.classify_query_history_statement()`](#checking-why-statements-are-skipped) |
+| Excluding an application's SQL                      | [`aidb.update_semantic_kb_history_filter()`](#excluding-an-applications-sql)      |
+| Browsing the stored statements                      | [`aidb.list_query_history()`](#browsing-history)                                  |
+| Searching past queries in English                   | [`aidb.semantic_kb_search()`](#searching-history) with the `history` source       |
+| Reviewing joins that have no declared foreign key   | [`aidb.relationship_candidates()`](#reviewing-candidates)                         |
+| Accepting a join so the join-route functions use it | [`aidb.accept_relationship_candidates()`](#accepting-candidates)                  |
 
-Nothing is learned automatically. You or a scheduled job run `aidb.import_query_history()`, and you decide which proposed joins to accept. Query history never changes how data is stored or queried.
+Run `aidb.import_query_history()` yourself or from a scheduled job, because nothing is learned automatically. You decide which proposed joins to accept. Query history never changes how data is stored or queried.
 
-A typical workflow follows the same order as the sections on this page:
+Work through the following sections in order for a typical workflow:
 
-1. [Set up](#setting-up-query-history) `pg_stat_statements` and a KB.
-1. [Import](#importing-history) the history, and [check why](#checking-why-statements-are-skipped) any statements were skipped.
-1. [Exclude](#excluding-an-applications-sql) the roles of text-to-SQL applications.
-1. [Browse and search](#browsing-and-searching-history) what was learned.
-1. [Review and accept](#working-with-join-candidates) the proposed joins.
+1. [Setting up query history](#setting-up-query-history): Enable `pg_stat_statements`, prepare your data, and create a model and a KB.
+1. [Importing history](#importing-history): Read the recorded SQL into the history store, and see [Checking why statements are skipped](#checking-why-statements-are-skipped) if any statements are missing.
+1. [Excluding an application's SQL](#excluding-an-applications-sql): Keep the SQL of text-to-SQL applications out of the store.
+1. [Browsing and searching history](#browsing-and-searching-history): List what was learned, and search past queries in English.
+1. [Working with join candidates](#working-with-join-candidates): Review the proposed joins, and accept the ones you trust.
 
-The examples use the `shop` schema and the roles described in [Preparing your data](#preparing-your-data). For every function's full parameters and return columns, see the [reference](../reference/semantic-knowledge-bases#aidbimport_query_history).
+Create the `shop` schema and roles in [Preparing your data](#preparing-your-data) to follow the examples. For every function's parameters and return columns, see the [reference](../reference/semantic-knowledge-bases#aidbimport_query_history).
 
 ## Concepts
 
@@ -158,7 +158,7 @@ __OUTPUT__
 
 Import your database's query history by running `aidb.import_query_history()`. The function reads `pg_stat_statements` for the current database, stores the statements that qualify, and proposes join candidates. Nothing runs automatically, so run it after the workload changes, or from a scheduled job.
 
-Run the import as a role that can read every role's statements: a superuser or a member of `pg_read_all_stats`. Otherwise, `pg_stat_statements` hides other roles' statements and the import skips most of the workload as `redacted`. See [Permissions and auditing](#permissions-and-auditing).
+Run the import as a role that can read every role's statements: a superuser or a member of `pg_read_all_stats`. Otherwise, `pg_stat_statements` hides other roles' statements and the import skips most of the workload as `redacted`. See [Controlling access and auditing](#controlling-access-and-auditing).
 
 All arguments are optional. Pass `kb_name` when the database has more than one KB:
 
@@ -249,7 +249,7 @@ The import read 22 statements, kept 9, and skipped the other 13. The result colu
 | `skipped` | A JSON object counting skipped statements by skip reason. See [Checking why statements are skipped](#checking-why-statements-are-skipped). |
 | `outcome` | How the import went: `ok`, `nothing_to_read`, or `mostly_unreadable`. See the table that follows. |
 
-The function also returns `import_id`, an ID for the run. The audit log records it. See [Permissions and auditing](#permissions-and-auditing).
+The function also returns `import_id`, an ID for the run. The audit log records it. See [Controlling access and auditing](#controlling-access-and-auditing).
 
 The `outcome` column, last in the output, is one of the following:
 
@@ -276,11 +276,11 @@ Examine the `skipped` column returned by `aidb.import_query_history()` to find o
 
 The following sections explain the rules behind the skip reasons above: which SQL the import never reads, what makes a statement `out_of_scope`, and which column equalities count as joins. For `excluded_role`, see [Excluding an application's SQL](#excluding-an-applications-sql).
 
-#### SQL that AIDB runs itself
+#### Leaving out SQL that AIDB runs itself
 
 Don't expect AIDB's own SQL in the store. Statements run inside a function are never imported, including everything AIDB runs on a user's behalf: semantic aliases, Tools Hub tools, Agent Hub steps, and the Model Context Protocol (MCP) server. `pg_stat_statements` marks each statement as sent by a client or run inside a function, and the import reads only client-sent statements. No configuration is needed.
 
-#### Only the KB's own schemas
+#### Keeping statements inside the KB's schemas
 
 Keep the statements you want learned inside the KB's schemas. The import keeps a statement only if every table it reads is in one of them, and skips everything else as `out_of_scope`: psql's `\d` queries over `pg_catalog`, other KBs' traffic, and joins reaching another schema.
 
@@ -333,7 +333,7 @@ __OUTPUT__
 (1 row)
 ```
 
-#### Only equalities that join
+#### Writing joins as column equalities
 
 Write joins as column equalities among the `AND`ed conditions of an `ON` or `WHERE` clause. The import records a column equality as a join only in that form. The following aren't joins:
 
@@ -545,7 +545,7 @@ __OUTPUT__
 (1 row)
 ```
 
-### Deployment requirements
+### Assigning a role to each application
 
 Give each text-to-SQL application its own login role, not one shared with human users, and list the role on every KB it queries. Exclusion can't split a login used by both an application and human users.
 
@@ -557,7 +557,7 @@ __OUTPUT__
 WARNING:  aidb_users holds every aidb user's grants, so excluding it excludes every aidb user's statements from query history
 ```
 
-`update_semantic_kb_history_filter` isn't available as a [Tools Hub tool](../tools/native-tools), so an agent can't change the list that governs what it learns from. Each change is written to the [audit log](#permissions-and-auditing).
+`update_semantic_kb_history_filter` isn't available as a [Tools Hub tool](../tools/native-tools), so an agent can't change the list that governs what it learns from. Each change is written to the [audit log](#controlling-access-and-auditing).
 
 ## Browsing and searching history
 
@@ -575,7 +575,7 @@ Run `aidb.list_query_history()` to list the statements the import stored for a K
 | `executed_by` | Were run by this role              |
 | `limit_rows`  | (default `100`) caps the number of rows |
 
-Callers see only their own statements unless they hold `pg_read_all_stats`. See [Permissions and auditing](#permissions-and-auditing).
+Callers see only their own statements unless they hold `pg_read_all_stats`. See [Controlling access and auditing](#controlling-access-and-auditing).
 
 `normalized_sql` is the text as `pg_stat_statements` normalized it: constants become `$1`, `$2`, and runs of whitespace become one space.
 
@@ -810,11 +810,11 @@ Nothing history proposes is used until a person accepts it by ID. For how accept
 
 ## Keeping the store clean
 
-Two mechanisms remove stale statements: schema-change handling, and the pruning each import does. A stored statement over a table no longer in the database is an example of a now-failing query. Rows are removed when their tables go, not when they get old, so there's no time-based retention. See [Limitations](#limitations).
+Remove stale statements with two mechanisms: schema-change handling, and the pruning each import does. A stored statement over a table no longer in the database is an example of a now-failing query. Rows are removed when their tables go, not when they get old, so there's no time-based retention. See [Limitations](#limitations).
 
 ### Removing statements when the schema changes
 
-For a KB whose `auto_processing` is `Live` or `Background`, a schema change removes statements as follows:
+Expect a schema change to remove statements when the KB's `auto_processing` is `Live` or `Background`:
 
 - `DROP TABLE` removes every stored statement that reads the table.
 - Renaming a table or schema removes the statements that name the old one.
@@ -851,13 +851,13 @@ __OUTPUT__
 
 ### Pruning at every import
 
-Each import removes stored statements whose tables no longer exist in the KB's schemas, or whose join columns were dropped or renamed, and reports the count as `rows_pruned`. This covers KBs without schema-change handling (`Disabled` or `Manual`), changes made while no handler ran, and changes no handler covers, such as `ALTER TABLE ... SET SCHEMA`.
+Run an import to prune stale statements. Each import removes stored statements whose tables no longer exist in the KB's schemas, or whose join columns were dropped or renamed, and reports the count as `rows_pruned`. This covers KBs without schema-change handling (`Disabled` or `Manual`), changes made while no handler ran, and changes no handler covers, such as `ALTER TABLE ... SET SCHEMA`.
 
 Candidates follow their statements. A proposed candidate whose supporting statements are all removed is removed too, as with [excluded roles](#checking-what-happens-to-candidates).
 
 ### Keeping history search fast
 
-A KB created with a vector index has one on its history store too, so history search stays fast as the store grows:
+Create the KB with a vector index so history search stays fast as the store grows. The history store gets an index too:
 
 ```sql
 SELECT indexrelid::regclass AS index, pg_get_indexdef(indexrelid) LIKE '%USING hnsw%' AS hnsw
@@ -871,11 +871,11 @@ __OUTPUT__
 (3 rows)
 ```
 
-## Permissions and auditing
+## Controlling access and auditing
 
 Control who can run the query history functions and see the stored statements, and review what they did.
 
-### Function permissions
+### Checking function permissions
 
 Check the grants on the query history functions. Every query history function is granted `EXECUTE` to `aidb_users`:
 
@@ -899,9 +899,9 @@ __OUTPUT__
 
 As with the rest of the semantic KB, the stores behind these functions carry no table-level grant, so in practice the KB's owner or a superuser is the caller. See [Permissions](relationships#permissions).
 
-### Per-caller visibility
+### Restricting what each caller sees
 
-The history store has row-level security, forced even for its owner. A caller reads, updates, and deletes only the statements that a role they're a member of ran, unless they hold `pg_read_all_stats`:
+Check the row-level security on the history store, forced even for its owner. A caller reads, updates, and deletes only the statements that a role they're a member of ran, unless they hold `pg_read_all_stats`:
 
 ```sql
 SELECT policyname, cmd, qual FROM pg_policies
@@ -927,13 +927,13 @@ qual       |
 
 `pg_stat_statements` applies the same rule to its own text. Without `pg_read_all_stats`, other roles' statements come back hidden and are skipped as `redacted`. The role that runs scheduled imports should hold `pg_read_all_stats`, or be a superuser. Otherwise most of the workload is redacted.
 
-### Tools Hub
+### Running query history from Tools Hub
 
-`import_query_history`, `list_query_history`, `relationship_candidates`, and `accept_relationship_candidates` are registered as [Tools Hub tools](../tools/native-tools#semantic-knowledge-bases), so an agent can run them for the person it acts for. `update_semantic_kb_history_filter` and `classify_query_history_statement` aren't.
+Use the registered [Tools Hub tools](../tools/native-tools#semantic-knowledge-bases) to let an agent run query history for the person it acts for: `import_query_history`, `list_query_history`, `relationship_candidates`, and `accept_relationship_candidates`. `update_semantic_kb_history_filter` and `classify_query_history_statement` aren't registered.
 
-### Audit log
+### Reviewing the audit log
 
-Imports, acceptances, changes to the exclusion list, and updates to the evidence counts on existing relationships are each recorded in `aidb_internal.semkb_audit_log`:
+Query the audit log to review imports, acceptances, changes to the exclusion list, and updates to the evidence counts on existing relationships. Each is recorded in `aidb_internal.semkb_audit_log`:
 
 ```sql
 SELECT fn, count(*) FROM aidb_internal.semkb_audit_log
@@ -969,7 +969,7 @@ Look up an error message to find its cause and fix.
 | `ERROR:  Semantic knowledge base 'no_such_kb' not found`                                                                                                                                                                                                | The `kb_name` is wrong.                                                                                                                                  |
 | `ERROR:  Invalid parameters: no such role: no_such_role`                                                                                                                                                                                                | A role passed to `update_semantic_kb_history_filter` doesn't exist.                                                                                      |
 | `ERROR:  Missing value: exclude_roles is required: pass the roles to exclude, or an empty array to clear the list`                                                                                                                                      | `NULL` was passed. Pass `ARRAY[]::text[]` to clear the list.                                                                                             |
-| `WARNING:  aidb_users holds every aidb user's grants, so excluding it excludes every aidb user's statements from query history`                                                                                                                         | `aidb_users` was listed. See [Deployment requirements](#deployment-requirements).                                                                         |
+| `WARNING:  aidb_users holds every aidb user's grants, so excluding it excludes every aidb user's statements from query history`                                                                                                                         | `aidb_users` was listed. See [Deployment requirements](#assigning-a-role-to-each-application).                                                                         |
 | `ERROR:  Invalid parameters: cardinality must be one of many-to-one, one-to-many, one-to-one, many-to-many, not 'sideways'`                                                                                                                             | An override passed to `accept_relationship_candidates` isn't a cardinality.                                                                              |
 | `ERROR:  Missing value: candidate_ids is required: pass the ids relationship_candidates reported. This function deliberately accepts no filter -- approving in bulk what nobody reviewed in detail is the thing it exists to prevent`                          | No IDs were passed. Acceptance is by explicit ID only.                                                                                                   |
 | `WARNING:  semantic_kb 'shop_kb': pg_stat_statements' highest call count fell from 8 to 5 since the last import, so the view was reset or has evicted statements. Stored exec_count is a lower bound and is never reduced; traffic between the reset and this import was not recorded.` | `pg_stat_statements` was reset, or dropped statements to make room, between imports. Stored counts are kept, but runs in between are lost. Import more often, or raise `pg_stat_statements.max`. |
