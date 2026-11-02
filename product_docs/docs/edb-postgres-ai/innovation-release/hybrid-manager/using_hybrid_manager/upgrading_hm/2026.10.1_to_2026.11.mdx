@@ -40,6 +40,48 @@ The pre-upgrade job stops the Beacon server while it copies your resources to `e
 - **The `HybridControlPlane` stays in `deploying` until the post-upgrade job finishes.** The post-upgrade job removes the old copies from `default`. The Beacon server is running again by then, so this phase doesn't affect database management.
 - **Don't delete or restart the upgrade jobs while they run.**
 
+### Estimate the time and tune the upgrade job
+
+Before you upgrade, count the Beacon resources in `default` that the pre-upgrade job copies:
+
+```shell
+total=0
+for r in locations.beacon clusterwrappers.beacon clusterresources.beacon \
+         beaconpackagemetadatas.beacon beaconappwrappers.beacon tasks.tasks.beacon \
+         remotepgs.beacon backupwrappers.beacon scheduledbackupwrappers.beacon \
+         aidbpipelineconfigs.beacon aidbpipelinerecords.beacon beaconpackages.beacon \
+         taskapprovals.tasks.beacon maintenancewindows.tasks.beacon \
+         automations.automations.beacon remotequeries.beacon; do
+  n=$(kubectl get "$r.enterprisedb.com" -n default -o name | wc -l)
+  printf '%-34s %s\n' "$r" "$n"
+  total=$((total + n))
+done
+echo "total: $total"
+```
+
+The `total` line is the number of resources that the job copies. Backups are usually most of them, so a long backup history is what makes the job slow.
+
+The following table shows the approximate time that the pre-upgrade job needs to copy that many resources, which is the time database management is unavailable. The figures come from one measurement of an installation with about 2,800 resources, nearly all of them backups, scaled to other sizes, so treat them as estimates:
+
+| Resources | Copy at 100m CPU | Copy at 1 CPU (default) |
+|-----------|------------------|-------------------------|
+| 500 | ~5 min | ~2 min |
+| 1,000 | ~10 min | ~4 min |
+| 2,800 | ~28 min | ~10 min |
+| 5,000 | ~50 min | ~18 min |
+
+The post-upgrade job deletes the old copies in less time than the copy takes (about a third at 100m CPU), and it runs while the Beacon server is up, so it doesn't affect database management.
+
+The upgrade job gets 1 CPU and 1Gi of memory by default, which is enough for installations with a few thousand resources. If a job is killed for lack of memory (its pod shows `OOMKilled`), raise the limit in `spec.globalParameters` of your `HybridControlPlane`:
+
+```yaml
+spec:
+  globalParameters:
+    upgrade_job_memory_limit: "3Gi"
+```
+
+You can also set `upgrade_job_cpu_limit`, `upgrade_job_cpu_request` and `upgrade_job_memory_request`. The values apply to jobs that the operator creates afterwards. To retry a failed job with new values, set them and delete the failed job. The operator creates it again.
+
 ## Upgrade 2026.10.1 → 2026.11
 
 Complete the steps in the order given:
