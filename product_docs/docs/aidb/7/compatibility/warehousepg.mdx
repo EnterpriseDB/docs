@@ -6,8 +6,9 @@ description: Install AIDB on WarehousePG 7, and learn which AIDB features work d
 
 AIDB runs on WarehousePG 7. This page covers how to install it and how AIDB on WarehousePG differs from AIDB on PostgreSQL. Everything not listed here works the same as on PostgreSQL.
 
-**There are some limitations when running AIDB on WarehousePG. See [Unsupported Features](#unsupported-features) section below. Most notably, pipeline auto-processing is not yet supported. Pipelines can be used, but must be executed manually.**
-
+!!!note
+On WarehousePG, a pipeline over a table can't use `Live` or `Background` processing. Run it with `aidb.run_pipeline()` instead. Pipelines over a volume support `Background`, and semantic knowledge bases support `Live` and `Background`. See [Unsupported features](#unsupported-features).
+!!!
 
 ## Requirements
 
@@ -28,19 +29,22 @@ AIDB runs on WarehousePG 7. This page covers how to install it and how AIDB on W
 
    To use volumes, also install `edb-whpg7-pgfs`.
 
-1. Add `aidb` to `shared_preload_libraries` on every instance. Include the libraries that are already listed:
+1. Add `aidb` to `shared_preload_libraries` on every instance. Check the libraries that are already listed, then set the full list with `aidb` added:
 
    ```bash
-   gpconfig -c shared_preload_libraries -v 'aidb'
+   gpconfig -s shared_preload_libraries
+   gpconfig -c shared_preload_libraries -v '<other_libraries>,aidb'
    ```
 
-   To use semantic knowledge base query history, add `pg_stat_statements` too, for example `-v 'aidb,pg_stat_statements'`.
+   To use semantic knowledge base query history, add `pg_stat_statements` to the list too, for example `-v '<other_libraries>,aidb,pg_stat_statements'`.
 
 1. To read local file system paths with volumes, set `pgfs.allowed_local_fs_paths` on every instance:
 
    ```bash
-   gpconfig -c pgfs.allowed_local_fs_paths -v "'/data/files'"
+   gpconfig -c pgfs.allowed_local_fs_paths -v "'/data/files'" --skipvalidation
    ```
+
+   The `--skipvalidation` option is needed because `gpconfig` can't validate this parameter until `pgfs` is loaded after the restart.
 
 1. Restart the cluster:
 
@@ -94,7 +98,7 @@ The SQL objects of unsupported features stay installed.
 ## Configuring settings
 
 - Set AIDB settings persistently with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or `gpconfig`. `postgresql.conf` and `ALTER SYSTEM` change only the coordinator, not the segments.
-- A session-level `SET` reaches the segments for the settings that functions on the segments read: egress allowlists, insecure egress and TLS, secret policies, thread limits, the model cache size, and the download and llama.cpp log settings. For settings that only superusers can change, this works only in a superuser session.
+- A session-level `SET` reaches the segments for the settings that functions on the segments read: egress allowlists, insecure egress and TLS, secret policies, thread limits, the model cache size, `aidb.download_log_level`, `aidb.download_max_attempts`, and `aidb.enable_llamacpp_logs`. For settings that only superusers can change, this works only in a superuser session.
 
 !!!important Egress allowlists and secret policies
 Set the [egress allowlists](../install/configure#network-egress) and secret policies on every instance with `gpconfig`, or with `ALTER ROLE` or `ALTER DATABASE ... SET`. If you set them only in the coordinator's `postgresql.conf`, the segments enforce them for superusers but not for other roles. A check as a superuser doesn't show what other roles get.
@@ -154,4 +158,6 @@ Before you delete an agent, stop the clients and applications that converse with
 ## Other differences
 
 - The catalog health tools, such as `analyze_db_health`, report the coordinator's statistics only. They don't include work done on the segments.
-- The MCP endpoint refuses connections that `pg_hba.conf` admits without a password, such as `trust` or `peer`.
+- As on PostgreSQL, the MCP endpoint refuses connections that `pg_hba.conf` admits without checking a password, such as `trust` or `peer`. On WarehousePG, this requires `aidb` in `shared_preload_libraries`.
+- OAuth for the MCP endpoint and the OTLP receiver isn't available, because the supervisor refuses the OAuth settings on servers older than PostgreSQL 18.
+- The OTLP receiver starts but can't store telemetry, because the `aidb_otel.ingest_*` functions raise an error on WarehousePG.
