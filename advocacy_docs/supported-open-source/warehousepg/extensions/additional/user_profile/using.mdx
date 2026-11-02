@@ -1,83 +1,10 @@
 ---
-title: user_profile
-displayBanner: ''
-redirects:
-  - /warehousepg/6/ref_guide/modules/extensions/user_profile
-  - /warehousepg/7.3/ref_guide/modules/extensions/user_profile
-  - /warehousepg/7.4/ref_guide/modules/extensions/user_profile
-  - /warehousepg/7.5/ref_guide/modules/extensions/user_profile
-  - /warehousepg/7.6/ref_guide/modules/extensions/user_profile
-  - /warehousepg/latest/ref_guide/modules/extensions/user_profile
-  - /warehousepg/6/ref_guide/modules/edb_modules/user_profile
-  - /warehousepg/7.3/ref_guide/modules/edb_modules/user_profile
-  - /warehousepg/7.4/ref_guide/modules/edb_modules/user_profile
-  - /warehousepg/7.5/ref_guide/modules/edb_modules/user_profile
-  - /warehousepg/7.6/ref_guide/modules/edb_modules/user_profile
-  - /warehousepg/latest/ref_guide/modules/edb_modules/user_profile
-description: Learn about the user_profile extension for WarehousePG.
+title: Using user_profile
+navTitle: Using
+description: Create, alter, and assign profiles, and lock and unlock roles, to manage password policies and account security in WarehousePG.
 ---
 
-WarehousePG (WHPG) allows database superusers to manage password policies and account security via the `user_profile` extension. 
-
-## Downloading, installing, and loading the extension
-
-Refer to [Downloading and installing an extension](/supported-open-source/warehousepg/extensions/additional/#downloading-and-installing-an-extension) for installation and setup instructions.
-
-Once installed, you must load the user_profile extension as a shared library before you can use it within your databases.
-
-1.  Load the extension as a shared library before you can use it within your databases. Check for existing shared libraries:
-
-    ```bash
-    gpconfig -s shared_preload_libraries
-    ```
-
-2.  Use the output of the previous command to enable the new extension, along any other shared libraries, and restart WHPG:
-
-    ```bash
-    gpconfig -c shared_preload_libraries -v '<other_libraries>, user_profile'
-    gpstop -ar
-    ```
-
-3.  Create the extension in your database:
-
-    ```sql
-    CREATE EXTENSION user_profile;
-    ```
-
-!!!important
-
-For `user_profile` versions earlier than 1.0.2, manually create the extension's SQLite database before you restart the database, avoiding connection failures for non-local, password-authenticated users:
-
-1.  Check for existing shared libraries:
-
-    ```bash
-    gpconfig -s shared_preload_libraries
-    ```
-
-2.  Use the output of the previous command to enable the new extension, along with any other shared libraries. Don't restart WHPG yet:
-
-    ```bash
-    gpconfig -c shared_preload_libraries -v '<other_libraries>, user_profile'
-    ```
-
-3.  Create the extension in your database:
-
-    ```sql
-    CREATE EXTENSION user_profile;
-    ```
-
-4.  Create the SQLite database for the extension:
-
-    ```sql
-    SELECT up_init();
-    ```
-
-5.  Restart WHPG:
-
-    ```bash
-    gpstop -ar
-    ```
-!!!
+Use user_profile to enforce password and login rules on database roles. Before you start, [install and register user_profile](installing.mdx) in your database.
 
 ## Understanding the user_profile parameters
 
@@ -108,7 +35,7 @@ Each profile consists of several parameters that govern how passwords and logins
 | `PASSWORD_LIFE_TIME`      | The password's validity period in days. If used with `PASSWORD_GRACE_TIME`, the user can still connect during the grace period but must change their password before executing commands.                                    | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (no expiration).             |
 | `PASSWORD_GRACE_TIME`     | The  grace period in days starting after password expiration. During this time, users can connect but are restricted from executing commands until the password is updated.                                                 | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (infinite grace period).     |
 | `PASSWORD_REUSE_TIME`     | The minimum number of days that must pass before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_MAX`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse. | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (no time restriction).       |
-| `PASSWORD_REUSE_MAX`      | The number of password changes required before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_TIME`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse.  | `INTEGER` >= 0, or `UNLIMITED` (no count restriction)..                                          |
+| `PASSWORD_REUSE_MAX`      | The number of password changes required before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_TIME`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse.  | `INTEGER` >= 0, or `UNLIMITED` (no count restriction).                                          |
 | `PASSWORD_MINIMUM_LENGTH` | The minimum character count required for a password.                                                                                                                                                                        | `INTEGER` >= 1, or `UNLIMITED` (no length check).                                                |
 | `PASSWORD_REQUIRE_UPPER`  | Enforces the inclusion of at least one uppercase character in the password string.                                                                                                                                          | `TRUE` (required) or `FALSE` (optional).                                                         |
 | `PASSWORD_REQUIRE_LOWER`  | Enforces the inclusion of at least one lowercase character in the password string.                                                                                                                                          | `TRUE` (required) or `FALSE` (optional).                                                         |
@@ -185,7 +112,7 @@ A database superuser can use the `up_alter_profile()` UDF to modify the values s
 
 ### Examples
 
-The following command modifies a profile named `acctg_profile` to specify that if a user doesn't successfully authenticate whitin three attempts, the account is locked for one day.
+The following command modifies a profile named `acctg_profile` to specify that if a user doesn't successfully authenticate within three attempts, the account is locked for one day.
 
 ```sql
 SELECT up_alter_profile('acctg_profile',
@@ -296,3 +223,9 @@ The following command unlocks a role named `john`:
 ```
 SELECT up_unlock('john');
 ```
+
+## Limitations
+
+-   user_profile doesn't have a maximum password length setting, only `PASSWORD_MINIMUM_LENGTH`.
+-   `up_show_profile()` shows times in whole days and rounds down, so a one-hour lock shows as 0. The setting is still applied correctly.
+-   user_profile isn't a drop-in replacement for `advanced_password_check`. Roles stay as they are, but you must create profiles and assign them to roles again.
