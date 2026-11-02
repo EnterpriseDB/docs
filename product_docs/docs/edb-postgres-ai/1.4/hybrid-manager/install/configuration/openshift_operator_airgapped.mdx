@@ -30,6 +30,7 @@ Both approaches install the operator via OLM, so it appears in the OpenShift con
 - The HM **platform images** (the data-plane container images the operator deploys) synced into `<your-registry>`. These aren't part of any operator catalog; sync them as described in [Syncing images to a local private registry](./sync_images).
 - **cert-manager (required)** — Install the Red Hat cert-manager Operator from the catalog with the **All namespaces** install mode (an empty `spec` on its `OperatorGroup`) before installing the HM operator. The HM operator bundle declares a dependency on `cert-manager.io/v1` `Certificate`, and OLM reuses a cluster-wide cert-manager only if it's already `AllNamespaces` — see [Verifying the cert-manager dependency](#verifying-the-cert-manager-dependency). A namespace-scoped (`OwnNamespace`) cert-manager isn't a supported starting state.
 - **Registry allow-list (if your cluster restricts pulls)** — if `registrySources.allowedRegistries` is set, add `docker.enterprisedb.com` to it, plus `registry.connect.redhat.com` if you use approach A. Keep `<your-registry>` and OpenShift's own registries (`registry.redhat.io`, `quay.io`, and `image-registry.openshift-image-registry.svc:5000`) on the list too. An `ImageDigestMirrorSet` redirects where an image is fetched from, not the reference in the pod spec, which still reads `docker.enterprisedb.com/pgai-platform/...`. The allowlist is enforced against that name.
+- **Istio Service Mesh (shared clusters only)** — HM deploys Istio Service Mesh as one of its own included components, not as an external operator. A cluster that already runs its own Istio Service Mesh is a shared cluster, not a dedicated one — see [Checking for a pre-existing Istio Service Mesh](#checking-for-a-pre-existing-istio-service-mesh).
 
 * * *
 
@@ -301,6 +302,32 @@ oc get hybridcontrolplane edbpgai -o jsonpath='{.spec.disabledComponents}'
 `upm-cert-manager` is the cert-manager that HM deploys itself on other platforms (EKS, AKS, GKE, RKE2). It isn't the Red Hat cert-manager Operator described above.
 
 HM looks for cert-manager in the namespace set by `spec.componentsParameters.upm-trust-manager.cert_manager_namespace` on the `HybridControlPlane` CR, which defaults to `cert-manager`. Red Hat's cert-manager Operator always runs cert-manager itself in that namespace, whatever namespace the operator is installed in, so on OpenShift you don't need to set it.
+!!!
+
+* * *
+
+## Checking for a pre-existing Istio Service Mesh
+
+A **dedicated cluster** is the only officially supported installation model for HM. If a cluster already has its own Istio Service Mesh installed — commonly the case on a shared cluster running other workloads — that's a conflict: HM deploys its own included Istio Service Mesh, and the two can't coexist as installed.
+
+The primary way to catch this before installing is the pre-install customer survey completed during [Phase 4: Preparing the environment](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/). As a manual fallback, check the cluster directly:
+
+```bash
+kubectl get ns | grep istio
+kubectl get pods -A | grep istio
+```
+
+If either command returns results, disable HM's own Istio Service Mesh component before installing by adding this to the `HybridControlPlane` custom resource:
+
+```yaml
+disabledComponents:
+ - upm-istio
+```
+
+HM still requires the `istio-system` namespace for its gateway, even with its own Istio Service Mesh component disabled.
+
+!!! Note
+Installing HM alongside a pre-existing Istio Service Mesh is doable, but it's a best-effort path, not a supported one — a dedicated cluster is the only supported model. Shared clusters can carry arbitrary workloads and configurations, and Istio Service Mesh itself can be configured in different ways (for example, excluded namespaces), so this can't be guaranteed to work in every case. Depending on the existing Istio Service Mesh configuration, additional network policies may also be required.
 !!!
 
 * * *
