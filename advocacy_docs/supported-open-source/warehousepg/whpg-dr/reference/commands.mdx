@@ -27,8 +27,18 @@ After resuming, take a fresh base backup before creating new restore points. WAL
 !!!
 
 ```bash
-whpg-dr archiving resume <cluster_name>
+whpg-dr archiving resume <cluster_name> [options]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--restart-mode <mode>` | How the restart stops the cluster when resuming turns `archive_mode` back on. Accepts `smart` (default), `fast`, or `immediate`, described below. A resume that only reloads the configuration ignores this option. |
+
+The `--restart-mode` modes are:
+
+- `smart` (default) waits for client sessions to end. If a session stays connected, `gpstop` waits for its stop timeout (120 seconds by default) and then force-stops the coordinator with SIGQUIT.
+- `fast` ends client sessions, rolls back their transactions, and stops cleanly. Use it when clients might still be connected.
+- `immediate` stops all instances without a clean shutdown, so the cluster runs crash recovery at the next start. The command prints a warning first.
 
 ---
 
@@ -71,6 +81,8 @@ whpg-dr backup <cluster_name> [options]
 | `--dry-run` | List targets and commands without executing. |
 | `--name <name>` | Name for the backup. Defaults to a timestamp-based name, for example `20260624T195641_base_backup`. |
 
+If a backup fails or is interrupted (for example with Ctrl-C or SIGTERM) after the backup starts, the command reports what the run left in the backup catalog. The report says whether [`whpg-dr create-restore-point`](#whpg-dr-create-restore-point) can make the backup restorable while it's the newest complete backup, or which [`whpg-dr delete`](#whpg-dr-delete) command removes it. It also says whether retention will expire the backup. A failed or interrupted backup isn't restorable and doesn't count toward retention. The command doesn't delete anything automatically.
+
 **Example:**
 
 ```bash
@@ -102,7 +114,9 @@ whpg-dr check my_cluster --check-timeout 60
 
 ## whpg-dr check-backup
 
-Troubleshooting command only. Diagnoses the status of a specific base backup. 
+Troubleshooting command only. Diagnoses the status of a specific base backup. The command refuses incomplete and in-progress backups.
+
+Run from a recovery site, the command is read-only. It reads each server's `backup.info` and lists the archived WAL instead of running `barman check-backup`, so it can't change the backup's status in the shared catalog. For a backup marked `FAILED`, the output says whether the mark is stale, meaning every WAL segment is archived, or real. See [Stale FAILED mark on S3 storage](../troubleshooting#stale-failed-mark-on-s3-storage).
 
 ```bash
 whpg-dr check-backup <cluster_name> [options]
@@ -145,7 +159,14 @@ whpg-dr configure backup <backup_config_file> [options]
 | Option | Description |
 |--------|-------------|
 | `--dry-run` | Print planned actions without executing. |
-| `--reconfigure` | Redistribute regenerated Barman configuration files without changing cluster settings or restarting the cluster. Use after an OS migration or SSH key rotation. |
+| `--reconfigure` | Redistribute regenerated Barman configuration files without changing cluster settings or restarting the cluster. Use after an OS migration or SSH key rotation, and after upgrading from a release earlier than 1.1.1. |
+| `--restart-mode <mode>` | How the cluster restart that applies the archive settings stops the cluster ([`gpstop -ar -M <mode>`](/warehousepg/latest/ref_guide/utility_guide/reference/gpstop)). Accepts `smart` (default), `fast`, or `immediate`, described below. `--reconfigure` ignores this option because it doesn't restart the cluster. |
+
+The `--restart-mode` modes are:
+
+- `smart` (default) waits for client sessions to end. If a session stays connected, `gpstop` waits for its stop timeout (120 seconds by default) and then force-stops the coordinator with SIGQUIT.
+- `fast` ends client sessions, rolls back their transactions, and stops cleanly. Use it when clients might still be connected.
+- `immediate` stops all instances without a clean shutdown, so the cluster runs crash recovery at the next start. The command prints a warning first.
 
 **Example:**
 
@@ -166,6 +187,13 @@ whpg-dr configure reset <cluster_name> [options]
 | Option | Description |
 |--------|-------------|
 | `--dry-run` | Print planned actions without executing. |
+| `--restart-mode <mode>` | How the restart stops the cluster. Accepts `smart` (default), `fast`, or `immediate`, described below. |
+
+The `--restart-mode` modes are:
+
+- `smart` (default) waits for client sessions to end. If a session stays connected, `gpstop` waits for its stop timeout (120 seconds by default) and then force-stops the coordinator with SIGQUIT.
+- `fast` ends client sessions, rolls back their transactions, and stops cleanly. Use it when clients might still be connected.
+- `immediate` stops all instances without a clean shutdown, so the cluster runs crash recovery at the next start. The command prints a warning first.
 
 !!! Note
 `configure reset` cleans up the backup-side configuration only. It doesn't remove restore-side configuration on the DR cluster.
@@ -175,7 +203,7 @@ whpg-dr configure reset <cluster_name> [options]
 
 ## whpg-dr configure restore
 
-Configures the DR cluster for restore. Reads the restore YAML, maps source segments to DR hosts, generates Barman restore configuration files, and distributes them to all DR segment hosts. See [Setting up the DR cluster](../configuring-dr) for setup instructions.
+Configures the DR cluster for restore. Reads the restore YAML, checks the WarehousePG version on the coordinator and every segment host, maps source segments to DR hosts, generates Barman restore configuration files, and distributes them to all DR segment hosts. A WarehousePG major version that differs from the backup's returns an error, and an older minor or patch release returns a warning. See [Setting up the DR cluster](../configuring-dr) for setup instructions.
 
 ```bash
 whpg-dr configure restore <restore_config_file> [options]
@@ -208,7 +236,13 @@ whpg-dr cron <cluster_name> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--dry-run` | Print the command without executing or acquiring the lock. |
+| `--dry-run` | Print the `barman cron` command and the retention plan without executing or acquiring the lock. |
+
+`whpg-dr` applies retention to whole cluster backups, not to each segment separately. Only restorable backups count toward the policy, meaning backups that are `DONE` on every segment and have a restore point. The command keeps the newest restorable backups that the policy asks for, never fewer than `minimum_redundancy` or one. It deletes every older backup, including failed and partial ones, in the same way as [`whpg-dr delete`](#whpg-dr-delete). Nothing newer is deleted. A backup in `WAITING_FOR_WALS` neither counts toward the policy nor gets deleted until Barman marks it `DONE` or `FAILED`.
+
+After retention, the command reconciles the restore-point metadata with the backup catalog. If it can't read the catalog, or if every restore point is slated for removal, it deletes nothing and exits with a non-zero status. If the backups were removed outside `whpg-dr`, remove the restore-point directories that the command lists and run it again.
+
+`whpg-dr` doesn't write `retention_policy` into the Barman configuration. Configuration generated by an earlier release still contains it, so the command refuses to run until you regenerate it with `whpg-dr configure backup --reconfigure <config_file>`. Until then, Barman's WAL maintenance also pauses, and on POSIX storage archived WAL waits in each server's `incoming/` directory.
 
 ---
 
@@ -224,6 +258,8 @@ whpg-dr create-restore-point <cluster_name> [options]
 |--------|-------------|
 | `--dry-run` | Show what would be done without executing. |
 | `--suffix <text>` | Appended to the auto-generated timestamp prefix in the restore point name, for example `20260615-143022R_<suffix>`. Must not be `latest`. |
+
+If the latest completed backup has no `segment_configuration.csv`, which happens when a backup fails after Barman finished on every segment, the command regenerates the file from `gp_segment_configuration`. It does so only when the live primaries still match the configured topology. Otherwise it skips the backup and explains why, and you delete that backup and take a new one. `--dry-run` shows the decision first.
 
 **Example:**
 
@@ -270,8 +306,10 @@ whpg-dr list-backup <cluster_name> [options]
 | Option | Description |
 |--------|-------------|
 | `--detail` | Show additional metadata for each backup. |
-| `--from <date>` | Filter backups starting from this date (`YYYY-MM-DD`). |
-| `--to <date>` | Filter backups up to this date (`YYYY-MM-DD`). |
+| `--from <time>` | Filter backups starting from this date or time. Accepts `YYYY-MM-DD`, optionally followed by `T` or a space and `HH:MM[:SS[.fraction]]`. A value without a zone is read as local time on the host running the command, like the times in the output. To specify another zone, add `Z`, a numeric offset (`+08:00`, `+0800`, or `+08`), or `UTC`/`GMT` after the time. Other forms are refused, including `Oct 14 2026`, `20261014`, Unix seconds, and zone names other than `UTC` or `GMT`. |
+| `--to <time>` | Filter backups up to this date or time, in the same format as `--from`. |
+
+`whpg-dr list-backup` also shows backups in the `WAITING_FOR_WALS` state. A backup is in this state after its base copy finishes and until all the WAL it needs is archived. [`whpg-dr cron`](#whpg-dr-cron) moves it to `DONE` automatically, and the backup isn't restorable until then. The command also shows the correct WAL size.
 
 **Example:**
 
@@ -344,8 +382,10 @@ whpg-dr list-restore-point <cluster_name> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--from <date>` | Filter restore points starting from this date (`YYYY-MM-DD`). |
-| `--to <date>` | Filter restore points up to this date (`YYYY-MM-DD`). |
+| `--from <time>` | Filter restore points starting from this date or time, in the same format as [`whpg-dr list-backup`](#whpg-dr-list-backup). |
+| `--to <time>` | Filter restore points up to this date or time, in the same format as `--from`. |
+
+Restore points whose base backup can't be restored are marked `[NOT RESTORABLE: <reason>]`. A backup can't be restored when it isn't `DONE` on every segment or is no longer in the backup catalog. `whpg-dr check-backup` and `whpg-dr restore` refuse such a backup.
 
 **Example:**
 
@@ -388,7 +428,11 @@ whpg-dr promote <cluster_name> [options]
 
 Restores the DR cluster from a base backup and WAL to a named restore point. Run on the DR cluster's coordinator host. See [Cold DR](../performing-disaster-recovery/cold-dr), [Warm DR](../performing-disaster-recovery/warm-dr), and [Point-in-time recovery](../performing-disaster-recovery/pitr) for usage in context.
 
-A full restore requires empty target data directories on the DR cluster. Only `--delta` and `--resume-failed` reuse existing data directories.
+A full restore requires empty target data directories on the DR cluster. With S3 storage, the per-segment tablespace directories (`<location>/<dbid>` for each tablespace in the backup) must also be empty, because files left by an earlier restore can survive and return incorrect query results. Only `--delta` and `--resume-failed` reuse existing data directories.
+
+Before restoring, the command checks the WarehousePG version on the coordinator and every segment host, and it repeats the check for `--delta` and `--resume-failed`. A different major version returns an error, and an older minor or patch release returns a warning. It also refuses incomplete, in-progress, and `FAILED` backups. For a `FAILED` backup, it reports whether the mark is stale or real. See [Stale FAILED mark on S3 storage](../troubleshooting#stale-failed-mark-on-s3-storage).
+
+During a full restore, the command prints a progress line every 30 seconds for the base backup copy (bytes copied per segment, percentage, and speed) and for WAL replay (segments done, distance to the restore point's LSN, and whether replay is using a WAL file or fetching it from the archive). `--delta` and `--resume-failed` also report WAL replay progress.
 
 ```bash
 whpg-dr restore <cluster_name> [options]
