@@ -168,7 +168,7 @@ Mixed-architecture clusters (ARM64 + AMD64) are not supported for HM.
 Use Node Pools (e.g., AWS NodeGroups, RHOS Machine Sets) to manage resources and apply required labels/taints.
 
 !!! Note
-The HM system databases — the core platform database and the databases backing the Beacon Server, Migration Portal, and Transporter (the DMS service) — run on control-plane nodes, not the data plane. The data-plane pool hosts only the user-provisioned Postgres clusters.
+The HM system databases — the core platform database and the database backing the Beacon Server — run on control-plane nodes, not the data plane. The data-plane pool hosts only the user-provisioned Postgres clusters.
 !!!
 
 In most cases, HM runs on Kubernetes worker nodes in cloud environments (since you do not have access to managed control nodes&mdash;see EKS control plane access), and can run on control nodes ([see Kubernetes control plane documentation](https://kubernetes.io/docs/concepts/architecture/control-plane-node-communication/)) or worker nodes for on-premises clusters.
@@ -348,7 +348,6 @@ The following ports must be open on your load balancer or firewall for Hybrid Ma
 | **9443** | TCP | `grpc-tls` | Beacon gRPC API |
 | **8444** | TCP | `spire-tls` | Spire TLS |
 | **9445** | TCP | `beacon-spire` | Beacon Spire TLS |
-| **9198** | TCP | `kafka` | Kafka (required for the migrations scenario) |
 | **24224** | TCP | `fluent-bit` | Inter-cluster log forwarding (multi-DC only) |
 | **10901** | TCP | `thanos-query` | Inter-cluster metrics (multi-DC only) |
 
@@ -434,14 +433,9 @@ These are inputs into your HM configuration in the next phase:
 | :--- | :--- | :--- |
 | **Portal domain** | `spec.globalParameters.portal_domain_name` | The host name for the HM Portal UI. |
 | **Agent domain** | `spec.componentsParameters.upm-beacon.server_host` | The host name through which the Beacon Server API is reachable. |
-| **Migration domain** | `spec.globalParameters.dms_domain_name` | The internal domain for the Transporter migration service. Required unless the `migration` installation scenario isn't enabled. If you're using the NodePort ingress strategy, this value must also include a port. |
 | **NodePort base** | `spec.globalParameters.node_port_domain` | **(Scenario B Only)** The base domain for Postgres access if using NodePort. |
 
 In case of NodePort approach, the above DNS entries should be round robin on the compute IP where the control-plane label is applied on the Kubernetes Nodes.
-
-!!! Note NodePort and the migration domain
-`dms_domain_name` isn't only a host name. If you're using the [NodePort alternative](#512-nodeport-alternative) ingress strategy, include the NodePort assigned to `ingress_https_node_port` (`30288` by default) in this value, for example, `mig.example.com:30288`. Without a load balancer, HM can't resolve this domain over the default HTTPS port (443).
-!!!
 
 #### DNS configuration strategy
 
@@ -772,7 +766,7 @@ The `HybridControlPlane` CR key is specified for each requirement.
 | **Phase 1** | **Provider** | `spec.beaconAgent.provisioning.provider` | **Required** (e.g., `AWS`, `GCP`) |
 | **Phase 1** | **OpenShift** | `spec.beaconAgent.provisioning.openshift` | **Required** if using RHOS (`true`) |
 | **Phase 1** | **Location** | `spec.componentsParameters.upm-beacon.beacon_location_id` | **Required** (String ID) |
-| **Phase 1** | **Installation scenarios** | `spec.scenarios[]` | **Optional**. Omitting this applies the operator's default set, which depends on your operator version — operator 2.1 installs the full set, operator 2.2 or later installs only `core`. List scenarios explicitly instead. Use `core` plus any of `migration`, `ai`, `dbaas`, `pgd`, `analytics`, or `marketplace`. |
+| **Phase 1** | **Installation scenarios** | `spec.scenarios[]` | **Optional**. Omitting this applies the operator's default set, which depends on your operator version — operator 2.1 installs the full set, operator 2.2 or later installs only `core`. List scenarios explicitly instead. Use `core` plus any of `ai`, `dbaas`, `pgd`, `analytics`, or `marketplace`. |
 
 ### Networking & ingress
 
@@ -780,8 +774,6 @@ The `HybridControlPlane` CR key is specified for each requirement.
 | :--- | :--- | :--- | :--- |
 | **Phase 2** | **Portal Domain** | `spec.globalParameters.portal_domain_name` | **Required** |
 | **Phase 2** | **Agent Domain** | `spec.componentsParameters.upm-beacon.server_host` | **Required** |
-| **Phase 2** | **Migration Domain** | `spec.componentsParameters.transporter-rw-service.domain_name` | **Required** |
-| **Phase 2** | **Migration URL** | `spec.componentsParameters.transporter-dp-agent.rw_service_url` | **Required** |
 | **Phase 2** | **Load Balancer Mode** | `spec.globalParameters.load_balancer_mode` | **Required** (`"public"`, `"private"`, or `"disabled"`) |
 | **Phase 2** | **LB Annotations** | `spec.resourceAnnotations[]` | **Required** if using CSP LB (e.g., AWS) |
 | **Phase 2** | **NodePort Domain** | `spec.globalParameters.node_port_domain` | Required if load balancer mode is `"disabled"` |
@@ -857,10 +849,6 @@ spec:
     upm-beacon:
       beacon_location_id: <Location>
       server_host: <Agent Domain>
-    transporter-rw-service:
-      domain_name: <Migration Domain>
-    transporter-dp-agent:
-      rw_service_url: https://<Migration Domain>/transporter
 
   beaconAgent:
     transparentDataEncryptionMethods:
@@ -868,7 +856,6 @@ spec:
 
   scenarios:
     - core
-    - <if required, migration>
     - <if required, ai>
     - <if required, analytics>
     - <if required, dbaas>
