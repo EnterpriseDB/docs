@@ -427,6 +427,93 @@ Prefer the following options, in order:
     restarted node doesn't come back, the group loses Raft consensus and stops
     accepting writes. Remove the annotation as soon as the group is healthy.
 
+### Eviction held, drain retrying
+
+Before a PGD node pod is evicted, for example by `kubectl drain`, the operator hands
+the write and Raft leaderships of the node off to other nodes. It rejects the
+eviction with `429 Too Many Requests`, which the drain retries, while:
+
+-   The eviction of another pod of the PGD group is in progress: its hand-off runs, or
+    its eviction is admitted and the pod is still terminating. The message reads
+    `eviction of pod <pod> of PGD group <group> in progress, retry shortly`.
+-   Another pod of the PGD group is unavailable. The `PodDisruptionBudget` of the
+    group lets one of its pods be unavailable at a time. The message reads
+    `another pod of PGD group <group> is unavailable, retry shortly`.
+-   The hand-off is running. The message reads
+    `transferring PGD leaderships off this node, retry shortly`. Every eviction takes at
+    least one retry: the first request starts the hand-off, a retry gets its result.
+-   Another node of the PGD group is restarting or about to restart.
+    `CLUSTERS_ROLLOUT_DELAY` stretches this to minutes. The message reads
+    `PGD node <node> of group <group> has a restart pending, retry shortly`.
+
+Other 429 messages, such as a failed read of the `PodDisruptionBudget` or the
+Clusters, are transient.
+
+Each retry prints the reason, for example:
+
+```text
+error when evicting pods/"region-a-1-1" -n "pgd" (will retry after 5s): admission webhook "vpodeviction.kb.io" denied the request: another pod of PGD group region-a is unavailable, retry shortly
+```
+
+A few retries per PGD node are normal. A drain that keeps retrying has a pod of the
+group that stays unavailable: look at that pod, not at the one being evicted.
+
+The operator admits the eviction with a warning in the drain output when:
+
+-   The operator can't reach the node for 60 seconds: the pod is down, crash-looping,
+    starting up or shutting down. The warning starts with
+    `PGD leaderships not transferred: node unreachable for <time>`. The eviction of such a pod
+    takes up to about a minute and a half.
+-   The node is not joined to the PGD cluster, so it has no leadership to hand off.
+    The eviction is admitted with no warning, or with a warning that starts with
+    `PGD leaderships not transferred, expected: node not joined`.
+-   The hand-off didn't finish, for example because it ran out of time: it's bounded
+    by the Raft election timeouts of the node, 160 seconds with the defaults. With the
+    retries of an unreachable node, the operator holds the eviction of one pod
+    under 4 and a half minutes with the defaults, longer with larger election timeouts;
+    see [Draining nodes](node_configuration.md#draining-nodes). The warning starts
+    with `PGD leaderships partly transferred` and names each leadership left on the
+    node and why, for example
+    `write lead of <group> not transferred: switchover timed out`. When the
+    leaderships moved but the new write leads didn't confirm the node's last writes
+    in time, the warning starts with `PGD leaderships transferred, LSN catch-up`.
+    Another failure starts with `PGD leaderships not transferred`. In a group with
+    one data node and no witness, no other node can take the Raft leadership of
+    the group: the eviction is admitted at once with
+    `Raft lead of <group> not transferred, expected: the node is its only member`.
+    With a witness, the witness takes it.
+
+The `<group>-eviction` Lease in the namespace of the group records the eviction in
+progress. Its `holderIdentity` is the evicted pod; its annotations are described in
+[Labels and annotations](labels_annotations.md). The Lease holds the other pods of
+the group until the evicted pod is gone; the `PodDisruptionBudget` then holds them
+until the replacement pod is Ready.
+
+```shell
+kubectl get lease -n <namespace> <group>-eviction -o yaml
+```
+
+A Lease that expired, or whose pod is gone, no longer holds the group: the next
+eviction in the group takes it over. If an operator replica stops during a hand-off,
+the Lease expires within 175 seconds with the defaults. Once the hand-off ends,
+the Lease waits 20 seconds for a retry of the eviction, for example when the drain
+was canceled. The retry that admits the eviction keeps the Lease for the termination
+grace period it gives the pod plus 20 seconds: the `--grace-period` of
+`kubectl drain`, else the one of the pod, 200 seconds with the default
+`maxStopDelay`. To release it at once, delete it; the next eviction creates it
+again:
+
+```shell
+kubectl delete lease -n <namespace> <group>-eviction
+```
+
+The operator replicas compare the expiry of the Lease with their own clocks, so the
+clocks of the Kubernetes nodes must be in sync, for example with NTP.
+
+Pods removed without the Eviction API, for example with `kubectl delete pod`, aren't
+checked: the node stops without handing its leadership off, and PGD elects new
+leaders once it's gone.
+
 ### Physical join
 
 Physical join needs the global Raft consensus. The PGD4K operator waits for the global Raft consensus and then

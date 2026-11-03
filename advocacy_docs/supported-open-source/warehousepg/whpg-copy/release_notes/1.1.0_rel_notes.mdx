@@ -1,0 +1,49 @@
+---
+title: WarehousePG Copy 1.1.0 release notes
+navTitle: Version 1.1.0
+description: Release notes for version 1.1.0 of WarehousePG Copy.
+---
+
+**Release Date:** 28 Sep 2026
+
+WarehousePG Copy 1.1.0 includes new features, changes to default behavior, and bug fixes.
+
+## New features
+
+- **Copy schema without data:** The option `--metadata-only true` creates schemas and tables on the destination without transferring data.
+- **Preserve ownership and privileges:** The options `--with-owner` and `--with-privilege` include object ownership and privilege information in the destination DDL.
+- **Recreate the destination table before copying:** The option `--target-mode drop` drops the existing destination table and recreates it from the source DDL before copying. Use it when the source and destination schemas have diverged, or when the destination table's distribution policy no longer matches the source's. The drop cascades to dependent objects, such as views or foreign keys from other tables, and it can't be combined with a mapping rule that renames the table.
+- **Materialized views are refreshed automatically** on the destination after a successful copy, as long as every relation they depend on also copied or refreshed successfully.
+- **Encrypted data transfer:** The `gen-certs` subcommand generates a CA plus server and client certificates, and `--tls-mode` and `--tls-dir` protect the data-transfer connection with TLS (Transport Layer Security).
+- **Set the log file verbosity:** The option `--log-level` controls the verbosity of the on-disk log file, independently from the console output.
+- **Choose the destination network:** `--dst-address-cidr` selects which network the destination is reached on when a host name resolves to more than one address, now including IPv6 as well as IPv4 CIDR ranges.
+- **IPv6 support on the sender data path.** Destination clusters reachable only over IPv6 are now supported, and IPv6 addresses work in connection URLs and for `--dst-address-cidr`. IPv4 still takes precedence when a host name resolves to both an IPv4 and an IPv6 address and no CIDR is set.
+- **Rebuild indexes around the bulk load:** The new `--rebuild-indexes true` option drops droppable secondary indexes before the load and recreates them afterward, so a failed copy leaves the existing indexes untouched. See [Known limitations](/supported-open-source/warehousepg/whpg-copy/overview/known_issues) for exceptions.
+- **Check destination reachability before copying:** The new `--preflight` option checks that every destination host is reachable before copying anything, and fails within 30 seconds if it isn't.
+- **Control how often progress is polled:** The new `--progress-poll-interval` option sets how often, in seconds, live transfer statistics are pulled for the progress display.
+- **ppc64le packages** are now available for RHEL 8 and RHEL 9, alongside the existing x86_64 packages. See [Supported platforms](/supported-open-source/warehousepg/whpg-copy/overview/supported_platforms).
+
+
+## Changes
+
+- `--timeout` now defaults to 120 seconds instead of `0` (wait forever).
+- Unknown distribution policies now fail at plan time instead of being guessed at. Copying a coordinator-only source table to an existing segment-distributed or replicated destination table (or the reverse) is rejected. Use `--target-mode drop` to recreate the destination table from the source's DDL.
+
+
+## Bug fixes
+
+- Coordinator-only tables (WarehousePG 7.4 and later) previously arrived empty on the destination while the copy and its checksum validation both reported success. They now copy correctly, and both `count` and `checksum` validation are accurate for them.
+- Fixed several causes of a copy operation hanging indefinitely. An unreachable destination daemon left a copy running for hours with nothing logged. Every wait involved in setting up a transfer is now bounded.
+- Fixed `diagnose` testing connectivity from the destination cluster to itself instead of from the source cluster to the destination, which let it report a healthy connection on the path a copy actually uses even when that path was broken.
+- Fixed the progress poller firing back-to-back with no delay after a single slow or stalled poll, instead of resuming its normal interval.
+- Fixed the progress poller creating and dropping its temporary external table on every poll round, which caused catalog churn on long copies. The table is now created once per session.
+- Fixed a crash when copying to a WarehousePG 7.x destination where an external table with the same name already exists on the target.
+- Fixed a self-referencing foreign key being reported as a dependency cycle, which aborted the entire copy.
+- Fixed transfer statistics under-reporting a table's size when a statistics-collection round was lost or timed out. Statistics are now tracked cumulatively per task instead of being discarded once handed off.
+- Fixed the interactive progress display becoming unresponsive to keyboard input, including Ctrl+C, when a statistics poll ran slowly.
+- Fixed a memory leak on the destination coordinator during long copies, caused by progress-status queries being dispatched as distributed transactions instead of simple, read-only queries.
+- Fixed temporary external tables created for remote execution accumulating on the destination for the life of a session instead of being dropped after use.
+- Fixed a partitioned root table with a `SERIAL` column being misclassified, which dropped its partitions from the copy plan.
+- Fixed random transfer mode not being used when the destination's distribution key differs from the source's.
+- Fixed the console log output silently dropping every warning-level message. The log layer parsed `warning` as a target name rather than a severity level.
+- Fixed a daemon process that exited but hadn't yet been reaped by its parent being reported as still running.

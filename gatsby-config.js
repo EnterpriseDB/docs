@@ -41,6 +41,9 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 
 /******** Sourcing *********/
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
+// .registry.yaml files define products for the Docusaurus build. Sourced, each
+// would become a File node, and onCreateNode publishes every .yaml file.
+const sourceIgnore = ["**/.registry.yaml"];
 const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
   clickhouse: { name: "clickhouse", path: "product_docs/docs/clickhouse" },
@@ -62,6 +65,10 @@ const sourceToPluginConfig = {
   "agent-governance": {
     name: "agent-governance",
     path: "product_docs/docs/agent-governance",
+  },
+  "vector-plus": {
+    name: "vector-plus",
+    path: "product_docs/docs/vector-plus",
   },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
@@ -135,7 +142,6 @@ const sourceToPluginConfig = {
     path: "product_docs/docs/hm-operator",
   },
   slony: { name: "slony", path: "product_docs/docs/slony" },
-  tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
   tds_data_adapter: {
     name: "tds_data_adapter",
@@ -182,6 +188,7 @@ const externalSourcePlugins = () => {
         options: {
           name: config.name,
           path: config.path,
+          ignore: sourceIgnore,
         },
       });
     }
@@ -389,6 +396,7 @@ module.exports = {
       options: {
         name: "advocacy_docs",
         path: "advocacy_docs",
+        ignore: sourceIgnore,
       },
     },
     {

@@ -1,0 +1,69 @@
+---
+title: Filtering and hybrid search
+navTitle: Filtering and hybrid search
+deepToC: true
+description: How ivfplus behaves with WHERE-clause filters, and how to combine it with full-text search for hybrid search.
+---
+
+Filter `ivfplus` results with a `WHERE` clause, or combine them with full-text search for hybrid search: both use the same SQL patterns as any other pgvector-compatible index.
+
+## Filtering
+
+Use a `WHERE` clause when you want to narrow nearest-neighbor results to rows matching an exact condition, for example restricting a similarity search to one category, tenant, or date range. A `WHERE` clause on an `ivfplus`-indexed table works like any other index scan:
+
+```sql
+SELECT * FROM items WHERE category_id = 123 ORDER BY embedding <-> '[...]' LIMIT 5;
+```
+
+Filtering is applied after the index scan, as with pgvector's `ivfflat`, so a selective filter can return fewer than `LIMIT` rows.
+
+To improve performance on filtered queries:
+
+- Build a partial index over the filtered subset:
+
+  ```sql
+  CREATE INDEX ON items USING ivfplus (embedding vector_l2_ops) WHERE (category_id = 123);
+  ```
+
+- Widen `probes` (see [Tuning and sizing](tuning#choosing-probes)).
+
+## Hybrid search
+
+Hybrid search combines `ivfplus`'s semantic similarity ranking with PostgreSQL full-text search, so results account for both meaning and exact keyword matches, which is useful when a pure vector search misses queries that depend on specific terms. Compose hybrid search at the SQL level exactly as with pgvector: this doesn't depend on the access method, so pgvector's own hybrid search examples apply unchanged.
+
+Add a `tsvector` column and a full-text index alongside the existing `embedding` column:
+
+```sql
+ALTER TABLE items ADD COLUMN textsearch tsvector
+  GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+CREATE INDEX ON items USING gin (textsearch);
+```
+
+Reciprocal Rank Fusion (RRF) is a common way to combine two ranked lists: each row's scores are `1 / (k + rank)` from each list, summed, so a row that ranks well in either search counts toward the final result. Run the semantic search and the full-text search independently, then merge them with RRF:
+
+```sql
+WITH semantic AS (
+  SELECT id, row_number() OVER (ORDER BY embedding <-> '[...]') AS rank
+  FROM items
+  ORDER BY embedding <-> '[...]'
+  LIMIT 20
+),
+keyword AS (
+  SELECT id, row_number() OVER (ORDER BY ts_rank_cd(textsearch, query) DESC) AS rank
+  FROM items, plainto_tsquery('hello search') query
+  WHERE textsearch @@ query
+  ORDER BY ts_rank_cd(textsearch, query) DESC
+  LIMIT 20
+)
+SELECT items.id, items.content
+FROM items
+LEFT JOIN semantic ON semantic.id = items.id
+LEFT JOIN keyword ON keyword.id = items.id
+WHERE semantic.id IS NOT NULL OR keyword.id IS NOT NULL
+ORDER BY (1.0 / (60 + coalesce(semantic.rank, 1000))) + (1.0 / (60 + coalesce(keyword.rank, 1000))) DESC
+LIMIT 5;
+```
+
+A cross-encoder is a more accurate but more expensive alternative to RRF: instead of blending ranks, it re-scores each candidate row directly against the query text using a dedicated ranking model, then sorts by that score. Use it when RRF's rank-blending isn't precise enough and you can afford the extra inference cost per query.
+
+You can combine hybrid search with a `WHERE` filter too: add the same condition to both the `semantic` and `keyword` CTEs above to narrow both result sets before they're merged.

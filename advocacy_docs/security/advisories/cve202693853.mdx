@@ -1,0 +1,80 @@
+---
+title: CVE-2026-93853 - Barman snapshot backup deletion trusts unverified backup catalog metadata
+navTitle: CVE-2026-93853
+affectedProducts: Barman versions 3.4.0 through 3.20.0 using cloud snapshot backups
+---
+
+First Published: 2026/09/29
+
+Last Updated: 2026/09/29
+
+## Summary
+
+Barman does not verify that a cloud snapshot belongs to the backup being deleted before deleting it. When a snapshot backup is removed, either explicitly with `barman delete` or `barman-cloud-backup-delete`, or by retention policy enforcement, Barman reads the snapshot identifiers from the backup's `backup.info` catalog file and passes them to the cloud provider's delete API using Barman's own cloud credentials.
+
+An attacker who can overwrite `backup.info` in the backup catalog, but who does not have permission to delete snapshots, can replace those identifiers with the identifiers of unrelated snapshots. The next time that backup is deleted, Barman deletes the substituted snapshots. This can include disaster recovery snapshots outside Barman's control, limited only by the delete permissions granted to Barman's cloud identity on AWS (EBS), Microsoft Azure, or Google Cloud. On Google Cloud, the project is also read from the catalog, so snapshots in other projects can be targeted.
+
+The issue is a privilege escalation only in deployments where the principal that can write the backup catalog is more restricted than Barman's own cloud identity, for example a separate upload or CI principal without snapshot delete permissions. Deployments that use a single identity for both do not grant an attacker a new capability, but upgrading is still recommended.
+
+Barman deployments that do not use cloud snapshot backups (`backup_method = snapshot` or `barman-cloud-backup --snapshot-instance`) are not affected.
+
+## Vulnerability details
+
+CVE-ID: [CVE-2026-93853](https://nvd.nist.gov/vuln/detail/CVE-2026-93853)
+
+CVSS Base Score: 7.2 High
+
+CVSS Temporal Score: Undefined
+
+CVSS Environmental Score: Undefined
+
+CVSS Vector: CVSS:4.0/AV:N/AC:L/AT:P/PR:L/UI:N/VC:N/VI:H/VA:H/SC:N/SI:H/SA:H
+
+## Affected products and versions
+
+* Affected Product: Barman, including the barman-cloud client scripts
+* Affected Versions: Barman 3.4.0 through 3.20.0 with Google Cloud snapshot backups, 3.6.0 through 3.20.0 with Azure snapshot backups, and 3.7.0 through 3.20.0 with AWS EBS snapshot backups
+* Not Affected: Barman deployments that do not use cloud snapshot backups
+
+## Remediation/fixes
+
+Impacted users must upgrade to a fixed version of Barman. Starting with Barman 3.20.1, before deleting a snapshot Barman reads the snapshot's name (or, on AWS, its `Name` tag) directly from the cloud provider rather than from the backup catalog, and refuses the deletion with an error unless the name matches the backup being deleted.
+
+| Product | VRMF | Remediation/First Fix |
+|---------|------|-----------------------|
+| Barman | 3.4.0 through 3.20.0 | Update to Barman 3.20.1 or later |
+
+Google Cloud users must grant the `compute.snapshots.get` permission to the service account Barman uses, which 3.20.1 requires to verify snapshots before deletion.
+
+## Mitigation
+
+Until you can upgrade, reduce exposure by:
+
+* Restricting write access to the backup catalog in object storage to the identity Barman uses.
+* Enabling object versioning or object lock on the backup bucket, so that a modified `backup.info` can be detected and restored.
+* On AWS, protecting snapshots with EBS Snapshot Lock (`aws_snapshot_lock_mode`), which prevents their deletion.
+* Scoping the delete permissions of Barman's cloud identity to the snapshots Barman creates.
+
+## References
+
+* [CVSS Calculator v4.0](https://www.first.org/cvss/calculator/4.0)
+* [CWE-283 Unverified Ownership](https://cwe.mitre.org/data/definitions/283.html)
+
+## Related information
+
+* [EnterpriseDB](https://www.enterprisedb.com/)
+* [Barman](https://github.com/EnterpriseDB/barman)
+* [Barman documentation](https://docs.pgbarman.org/)
+* [EDB Blogs link](https://enterprisedb.com/blog/)
+
+## Acknowledgement
+
+Source: Reported to EDB by Mufeed VH of Winfunc through the EDB Vulnerability Disclosure Program.
+
+## Change history
+
+* 2026/09/29: Original Copy Published
+
+## Disclaimer
+
+This document is provided on an "as is" basis and does not imply any kind of guarantee or warranty, including the warranties of merchantability or fitness for a particular use. Your use of the information on the document is at your own risk. EDB reserves the right to change or update this document at any time. Customers are therefore recommended to always view the latest version of this document.
