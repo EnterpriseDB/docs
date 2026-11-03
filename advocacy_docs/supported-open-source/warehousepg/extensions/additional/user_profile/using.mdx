@@ -32,10 +32,10 @@ Each profile consists of several parameters that govern how passwords and logins
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `FAILED_LOGIN_ATTEMPTS`   | The maximum number of failed login attempts permitted before the server locks the account for the duration defined by `PASSWORD_LOCK_TIME`.                                                                                 | `INTEGER` > 0, or `UNLIMITED` (no lockout threshold).                                            |
 | `PASSWORD_LOCK_TIME`      | The number of days an account remains locked after exceeding `FAILED_LOGIN_ATTEMPTS`.                                                                                                                                       | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (requires superuser unlock). |
-| `PASSWORD_LIFE_TIME`      | The password's validity period in days. If used with `PASSWORD_GRACE_TIME`, the user can still connect during the grace period but must change their password before executing commands.                                    | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (no expiration).             |
-| `PASSWORD_GRACE_TIME`     | The  grace period in days starting after password expiration. During this time, users can connect but are restricted from executing commands until the password is updated.                                                 | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (infinite grace period).     |
+| `PASSWORD_LIFE_TIME`      | The password's validity period in days. If used with `PASSWORD_GRACE_TIME`, the user can keep working with a warning during the grace period.                                    | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (no expiration).             |
+| `PASSWORD_GRACE_TIME`     | The grace period in days starting after password expiration. During this time, users can connect and run commands but get a warning. After it ends, they must change their password before running any other command.                                                 | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (infinite grace period).     |
 | `PASSWORD_REUSE_TIME`     | The minimum number of days that must pass before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_MAX`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse. | `NUMERIC` >= 0 (supports decimals for partial days), or `UNLIMITED` (no time restriction).       |
-| `PASSWORD_REUSE_MAX`      | The number of password changes required before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_TIME`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse.  | `INTEGER` >= 0, or `UNLIMITED` (no count restriction).                                          |
+| `PASSWORD_REUSE_MAX`      | The number of password changes required before a previous password can be reused. Works in conjunction with `PASSWORD_REUSE_TIME`. If both parameters are set to `UNLIMITED`, there are no restrictions on password reuse.  | `INTEGER` >= 1, or `UNLIMITED` (no count restriction).                                          |
 | `PASSWORD_MINIMUM_LENGTH` | The minimum character count required for a password.                                                                                                                                                                        | `INTEGER` >= 1, or `UNLIMITED` (no length check).                                                |
 | `PASSWORD_REQUIRE_UPPER`  | Enforces the inclusion of at least one uppercase character in the password string.                                                                                                                                          | `TRUE` (required) or `FALSE` (optional).                                                         |
 | `PASSWORD_REQUIRE_LOWER`  | Enforces the inclusion of at least one lowercase character in the password string.                                                                                                                                          | `TRUE` (required) or `FALSE` (optional).                                                         |
@@ -85,7 +85,7 @@ SELECT up_create_profile('accts',
         'PASSWORD_REUSE_MAX', '5');
 ```
 
-The following command creates a profile named `resources`. When a user associated with this profile wants to change the password, the password must contain at least one number character and one special character:
+The following command creates a profile named `resource`. When a user associated with this profile wants to change the password, the password must contain at least one number character and one special character:
 
 ```sql
 SELECT up_create_profile('resource',
@@ -206,9 +206,9 @@ Where:
 
 -   `role_name` or `role_id` specifies the role to be locked or unlocked.
 
-Use `up_lock()` to immediately lock a user role. Once locked, a role’s `LOGIN` functionality is disabled. The role remains in this locked state until a superuser restores access using the `ACCOUNT UNLOCK` clause of the `ALTER ROLE` statement (or uses the `up_unlock()` UDF).
+Use `up_lock()` to immediately lock a user role. Once locked, a role’s `LOGIN` functionality is disabled. The role remains in this locked state until a superuser unlocks it with `up_unlock()`.
 
-Use the `up_unlock()` clause to unlock a role that was locked by `up_lock()`, or a role that was locked through the profile `FAILED_LOGIN_ATTEMPTS` setting.
+Use `up_unlock()` to unlock a role that was locked by `up_lock()`, or a role that was locked through the profile `FAILED_LOGIN_ATTEMPTS` setting.
 
 ### Examples
 
@@ -226,6 +226,7 @@ SELECT up_unlock('john');
 
 ## Limitations
 
+-   Failed-login locking and password expiration apply only to password authentication methods (`md5`, `scram-sha-256`, and `password`) in `pg_hba.conf`. Logins that use other methods, such as `trust`, `ident`, or `ldap`, skip these checks, including for roles locked with `up_lock()`.
 -   user_profile doesn't have a maximum password length setting, only `PASSWORD_MINIMUM_LENGTH`.
 -   `up_show_profile()` shows times in whole days and rounds down, so a one-hour lock shows as 0. The setting is still applied correctly.
 -   user_profile isn't a drop-in replacement for `advanced_password_check`. Roles stay as they are, but you must create profiles and assign them to roles again.
