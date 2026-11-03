@@ -1,0 +1,51 @@
+---
+title: Troubleshooting
+navTitle: Troubleshooting
+deepToC: true
+description: Diagnose common ivfplus problems, including dimension limits, index scans, recall, performance, and write behavior.
+---
+
+#### What's the max vector dimension?
+
+2000 for `vector`, 4000 for `halfvec` — see [Limits and fixed constants](reference#limits-and-fixed-constants) for the other types and for the packing window, which is reached earlier. To go beyond the cap, index an expression:
+
+```sql
+USING ivfplus ((subvector(embedding, 1, 2000)::vector(2000)) vector_cosine_ops)
+```
+
+and then rerank by the full vector, or reduce dimensionality upstream.
+
+#### Why isn't my query using the index?
+
+The query needs `ORDER BY` on a bare distance operator, ascending, plus a `LIMIT` — `ORDER BY 1 - (embedding <=> '[...]') DESC` won't use it. There are no index-only, bitmap, or parallel index scans, so a `WHERE` clause is always applied after the scan (see [Filtering](using/filtering)). For testing, force the planner's hand with `SET LOCAL enable_seqscan = off`, though on a small table a sequential scan may genuinely be faster.
+
+#### Why am I getting fewer results than `LIMIT`?
+
+Four usual causes:
+
+- `LIMIT` above 200 — a vector scan returns at most 200 rows per query.
+- Too little data for `lists` — watch for the `created with little data` NOTICE at build time.
+- Under-probing — widen `probes` (see [Tuning and sizing](using/tuning#choosing-probes)).
+- A filter excluding matches post-scan (see [Filtering](using/filtering)).
+
+Also, `NULL` vectors are never indexed, nor are zero vectors under cosine distance, same as pgvector.
+
+#### Why did index creation warn "created with little data" or give poor recall at scale?
+
+`lists` isn't derived from table size and has no safe default at scale. A 50-million-row table indexed without an explicit `WITH (lists = ...)` clause gets 500,000 rows per list and unusable latency, with no warning. Set `lists` explicitly based on row count — see [Tuning and sizing](using/tuning#choosing-lists).
+
+#### Why is my index slower than expected even though `check_ivfplus_index_health()` reports it's healthy?
+
+A vector index only gets the fast-scan packed layout when `dim % 4 == 0` and the packed block fits one page (`dim <= 1780` at the default `BLCKSZ`). Outside that window, the index silently runs a slower unpacked path, and `check_ivfplus_index_health()` still reports 1.0 forever, so nothing surfaces the regression. Check your vector dimensionality against [Limits and fixed constants](reference#limits-and-fixed-constants).
+
+#### Why did enabling `ivfplus.iterative_scan = relaxed_order` turn into a full-index scan?
+
+`ivfplus.iterative_scan = relaxed_order` doesn't refill incrementally — it widens the initial probe set to `max_probes` (32768 by default), which can silently scan every list if `max_probes` isn't lowered at the same time. See [Session parameters](reference#session-parameters).
+
+#### Why does a write-heavy table get slower over time?
+
+Centroids are fixed at build time. A table that changes after the initial build drifts away from its centroids, and new rows land in a slower append-region scan until the index is rebuilt with `REINDEX`. See [Writes, `VACUUM`, and `REINDEX`](reference#writes-vacuum-and-reindex).
+
+#### Why can't I index a `bit` column with `ivfplus`?
+
+`bit` vectors aren't indexed by `ivfplus` — there's no residual to quantize on a bit vector, so the opclass was removed rather than kept as a no-op synonym. Use pgvector's `ivfflat` with `bit_hamming_ops` instead. See [Access method and operator classes](reference#access-method-and-operator-classes).

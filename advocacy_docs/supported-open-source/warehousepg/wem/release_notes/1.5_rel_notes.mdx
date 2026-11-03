@@ -1,0 +1,66 @@
+---
+title: WarehousePG Enterprise Manager 1.5 release notes
+navTitle: Version 1.5
+description: Release notes for WarehousePG Enterprise Manager version 1.5.0.
+---
+
+The WarehousePG Enterprise Manager (WEM) 1.5.x documentation describes the latest patch release. Release notes for all 1.5.x versions are included below.
+
+| Version | Release date |
+|---------|--------------|
+| [1.5.0](#wem-150) | 22 Oct 2026 |
+
+## WEM 1.5.0
+
+Released: 21 Oct 2026
+
+WEM 1.5.0 includes new features, enhancements, and bug fixes.
+
+!!! Note
+    WEM 1.5 works with `acp-host-agent` 1.1.0. You don't need to upgrade the host agent.
+
+### Highlights
+
+- **Wider platform support:** WEM packages are now available for RHEL 10, Debian 13, and ppc64le. See [Supported platforms](../overview/supported_platforms).
+- **Faster, ClickHouse-native query scan:** A ClickHouse-native job now scans query activity, replacing the agent-driven log scan. Query history is now stored in ClickHouse. See [Configuration reference](../reference/configuration).
+- **Configuration drift detection:** WEM periodically syncs the Safeguard configuration from your host agents to detect drift. See [Detecting configuration drift](../protecting-data/safeguard#detecting-configuration-drift).
+- **EDB installation layout:** WEM now installs to the EDB standard layout. See [Installing WEM](../installing/wem) and [Upgrading WarehousePG Enterprise Manager](../installing/upgrading).
+
+### New features
+
+- **Wider platform support:** WEM packages are now available for RHEL 10, Debian 13, and ppc64le. See [Supported platforms](../overview/supported_platforms).
+- **ClickHouse-native query scan:** A ClickHouse-native job replaces the agent-driven log scan that populated query history. WEM now stores query history in ClickHouse instead of in WarehousePG tables, so it stays available when the WarehousePG cluster is down. `QUERY_SCAN_INTERVAL` sets how often the job runs. `QUERY_LOG_RETENTION_DAYS` sets how long `query_log_history` rows stay in ClickHouse. See [Configuration parameters](../reference/configuration#query-history).
+- **Configuration drift detection:** WEM periodically checks the Safeguard configuration files on the primary and DR clusters against its stored configuration, and updates its stored configuration with the values from the host. `CONFIG_DRIFT_ENABLED` turns the check on or off, and `CONFIG_DRIFT_INTERVAL` sets how often it runs. See [Detecting configuration drift](../protecting-data/safeguard#detecting-configuration-drift).
+- **CSV export on query monitor pages:** Export the longest queries and historical queries to CSV. See [Monitoring and evaluating queries](../performance/query-monitor).
+- **Improved query plan view:** The graphical plan layout no longer overlaps nodes, node details show every field from the `EXPLAIN` output, and plan warnings appear in a sortable table. See [Monitoring and evaluating queries](../performance/query-monitor).
+- **Tooltips on the cluster overview:** Info icons on the **Connections**, **Databases**, **Active Queries**, and **Database Connections** panels explain what each one counts. See [Verifying and managing cluster health](../monitoring/cluster-overview).
+- **More detail in the Recent Logs panel:** The panel, previously named **Recent WHPG Log Alerts**, now shows the timestamp, severity level, and source host of each entry. See [Getting started with WarehousePG Enterprise Manager](../get-started#monitoring-cluster-health-with-the-dashboard).
+
+### Changes
+
+- **Data Analysis renamed to Database Objects:** The **Data Analysis** menu item and page are now **Database Objects**. See [Analyzing data distribution](../performance/data-analysis).
+- **Parameters removed from `wem.conf`:** `LOG_SCAN_INTERVAL`, `LOG_SCAN_ENABLED`, and `WEM_AGENT_CALLBACK_BASE_URL` no longer exist. Existing overrides stop working, so remove them from `wem.conf` when you [upgrade](../installing/upgrading). See [Configuration parameters](../reference/configuration#query-history) for the replacement settings.
+- **EDB installation layout:** WEM installs to the EDB layout. The working directory moves from `/usr/local/greenplum-db/wem` to `/usr/edb/wem`, the logs move from `/var/log/wem` to `/var/log/edb/wem`, and the configuration file moves from `/etc/wem/wem.conf` to `/etc/edb/wem/wem.conf`. The TLS example paths in `wem.conf` for `PGSSLCERT`, `PGSSLKEY`, `PGSSLROOTCERT`, `WEM_SSLCERT`, `WEM_SSLKEY`, and `WEM_SSLROOTCERT` moved from `/etc/wem/tls/` to `/etc/edb/wem/tls/`. See [Installing WEM](../installing/wem) and [Upgrading WarehousePG Enterprise Manager](../installing/upgrading).
+- **Canary checks are read-only:** Canary checks now run in a read-only transaction, and WEM accepts only a single `SELECT` statement or a `WITH` query that doesn't modify data. Existing checks that modify data keep running but show as critical until you edit or delete them. See [Configuring canary checks](../monitoring/monitoring#configuring-canary-checks) and [`wem canary import`](../reference/commands#wem-canary-import).
+
+### Bug fixes
+
+- Fixed the session filter on the **Logs** tab returning no rows.
+- Fixed the **HBA Editor** showing `fetching…` indefinitely when the host agent or the job-execution engine is unreachable. WEM now shows the error within a few seconds.
+- Fixed WEM detecting the resource manager type only once, at startup. WEM now detects it live, so changes on the cluster are picked up without restarting WEM.
+- Fixed tabs on the **Database Objects** page showing data for the previously selected database after you switched databases.
+- Fixed the **Longest Queries** empty state hiding the backend message that explains why no queries appear.
+- Fixed the **Bloat** tab not detecting append-optimized (AO) and append-optimized column-oriented (AOCO) tables, and showing a bloat percentage outside 0 to 100. The tab now has a **Storage** column.
+- Fixed the **PXF** tab showing the status Unknown on single-host installations.
+- Fixed WEM failing after you replace the WarehousePG cluster with a new one, because the objects it needs in the cluster weren't created. WEM now detects the new cluster and creates them.
+
+### Deprecations
+
+The following compatibility measures are available in 1.5.0 only and will be removed in 1.6.0.
+
+- **Working directory link:** On upgrade, standalone WEM hosts get a link from `/usr/local/greenplum-db/wem` to `/usr/edb/wem`. On hosts where WEM runs alongside WarehousePG, `/usr/local/greenplum-db` belongs to WarehousePG, so WEM creates no link and prints a warning instead.
+- **Binary link:** A link from `/usr/edb/wem/wem` to `/usr/edb/wem/bin/wem`.
+- **Log directory link:** On upgrade, WEM moves the old logs to `/var/log/edb/wem` and creates a link from `/var/log/wem` to it. If `/var/log/wem` still contains other files, WEM leaves it in place, creates no link, and prints a warning.
+- **Old configuration path:** WEM reads the configuration from `/etc/wem/wem.conf`, with a warning, only if `/etc/edb/wem/wem.conf` is missing.
+
+Update any scripts, monitoring, or tooling that use the old paths before you upgrade to 1.6.0.

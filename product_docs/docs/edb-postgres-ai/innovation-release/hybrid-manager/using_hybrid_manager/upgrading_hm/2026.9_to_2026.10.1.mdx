@@ -1,0 +1,259 @@
+---
+title: Upgrading from 2026.9 to 2026.10.1 (Innovation Release)
+navTitle: 2026.9 to 2026.10.1
+description: Follow the step-by-step procedures for upgrading from HM 2026.9 to HM 2026.10.1.
+deepToC: true
+---
+
+Upgrade from 2026.9 to 2026.10.1.
+
+> **Role:** Infrastructure engineer
+
+!!!warning Every Postgres cluster restarts during this upgrade
+This release bumps the Barman Cloud Plugin, which restarts every Postgres cluster in your estate as part of applying the HM upgrade — not on your own database maintenance schedule. If you manage a large estate and rely on scheduling platform and Postgres upgrades independently, plan for this before you upgrade.
+!!!
+
+## Prerequisites
+
+- Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+- Required tools:
+    - `helm` (latest version recommended)
+    - `kubectl`
+    - [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI — see the [edbctl compatibility matrix](/edbctl/latest/compatibility_matrix/) for the supported version.
+
+## Upgrade 2026.9 → 2026.10.1
+
+This release changes the telemetry stack that powers Query Diagnostics: ClickHouse partially replaces Prometheus/Thanos, and the `pg_stat_ch` extension replaces `edb_stat_monitor` as the source of query-level monitoring data. This upgrade has two parts:
+
+1. **The Hybrid Manager (HM) platform upgrade** — a one-time action that upgrades HM itself. This also restarts every Postgres cluster in your estate once, as a side effect of the Barman Cloud Plugin bump.
+1. **A per-cluster operand-set migration** — a separate, per-Postgres-cluster action that moves each cluster onto the new operand-set so it can collect telemetry again.
+
+Complete the steps in the order given:
+
+1. Create new secrets.
+1. Upgrade the operator to `2.2` or later, if it isn't already.
+1. Update `spec.version` and trigger the HM platform upgrade.
+1. As soon as possible afterward, for each Postgres cluster: whitelist both operand-sets, perform the cluster's major/minor upgrade to move it onto the new operand, then manually create the `pg_stat_ch` extension.
+
+Complete step 4 for every Postgres cluster as soon as possible after the HM platform upgrade. Once HM is on 2026.10.1, the old telemetry pipeline that read `edb_stat_monitor` is no longer deployed platform-wide. A cluster that hasn't yet been migrated to the new operand-set and had `pg_stat_ch` created loses Query Diagnostics data entirely in the meantime — it isn't a fallback to the old data, it's a gap.
+
+!!!note
+When you upgrade to HM 2026.10.1, existing recommendations and their statuses are lost. HM regenerates the recommendations after 30 minutes. Recommendations that you previously ignored can reappear. For more information, see [Recommendations](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/view_clusters/cluster-recommendations-tab/).
+!!!
+
+### Create new secrets
+
+Before upgrading, create the new secrets required for this release:
+
+```shell
+edbctl hm create-install-secrets --version v2026.10.1
+```
+
+For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
+
+### Upgrade the operator
+
+!!!note
+HM 2026.10.1 requires operator version `2.2` or later — the same version 2026.9 required. If your operator is already on `2.2` or later, skip this section.
+!!!
+
+!!!Note Red Hat OpenShift
+On RHOS, upgrade the operator through OperatorHub (OLM) by switching the subscription channel to `stable`. See [Upgrade the operator on Red Hat OpenShift](upgrade_operator_rhos). Do not use `edbctl hm upgrade-operator` on RHOS.
+!!!
+
+The commands below use `edb-hcp-operator-system` — use the namespace where your operator is actually installed. If you migrated from the bootstrap method, the conversion transfers Helm ownership onto `edbpgai-bootstrap`, so use that namespace instead.
+
+Upgrade the `edb-hcp-operator` Helm chart using `edbctl`:
+
+```shell
+edbctl hm upgrade-operator \
+  --release-name edb-hcp-operator \
+  --namespace edb-hcp-operator-system \
+  --registry-uri docker.enterprisedb.com/pgai-platform \
+  --registry-username pgai-platform \
+  --registry-password <password>
+```
+
+Or upgrade directly with Helm:
+
+1. Create the values file:
+
+    ```shell
+    cat <<EOF > edb-hcp-operator.values.yaml
+    controllerManager:
+      manager:
+        image:
+          repository: docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager
+          tag: <OPERATOR_VERSION>
+    imagePullSecrets:
+      - name: edb-cred
+    EOF
+    ```
+
+1. Run the upgrade:
+
+    ```shell
+    helm upgrade --install \
+      --version <OPERATOR_VERSION> \
+      --values edb-hcp-operator.values.yaml \
+      -n edb-hcp-operator-system \
+      edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator
+    ```
+
+### Upgrade Hybrid Manager
+
+1. In your `HybridControlPlane` manifest (`hybridmanager.yaml`), update the `spec.version` field to `v2026.10.1`:
+
+    ```yaml
+    apiVersion: edbpgai.edb.com/v1alpha1
+    kind: HybridControlPlane
+    metadata:
+      name: edbpgai
+    spec:
+      version: v2026.10.1 # was v2026.9.0
+    ```
+
+1. Apply the updated manifest:
+
+    ```shell
+    kubectl apply -f hybridmanager.yaml
+    ```
+
+1. Trigger the upgrade:
+
+    ```shell
+    kubectl annotate hybridcontrolplane edbpgai --overwrite edbpgai.com/ready-for-upgrade=true
+    ```
+
+1. Monitor progress:
+
+    ```shell
+    kubectl get hybridcontrolplane edbpgai -w
+    ```
+
+This step restarts every Postgres cluster in your estate once, to apply the updated Barman Cloud Plugin (version `0.15.0`, bringing significantly faster restore times for compressed backups). This restart is automatic and applies platform-wide — it's separate from the per-cluster operand-set migration described next.
+
+### Migrate each Postgres cluster to the new operand-set
+
+Once HM itself is on 2026.10.1, migrate each Postgres cluster to the new operand-set as soon as possible, to restore its Query Diagnostics telemetry. A cluster you haven't migrated yet keeps running and stays healthy, but has no Query Diagnostics data until you complete this migration.
+
+#### Enable the major/minor upgrade path
+
+Starting in HM 1.3.2, operand images carry an operand-set version, and the beacon agent only treats images matching an allowed pattern as discoverable. Innovation Releases for HM 2026.7–2026.9 shipped operand-set `1.2.x`. HM 2026.10.1 requires operand-set `1.3.0` or later and only works with operand images from that operand-set onward.
+
+A cluster still running a `1.2.x` operand image becomes undiscoverable to HM once you narrow `operandSetVersions` to `1.3.x` only. While you still have clusters on `1.2.x` images, whitelist both patterns so the major/minor upgrade action in the HM console can resolve each cluster's current image.
+
+!!!important
+If `spec.beaconAgent.provisioning.operandSetVersions` whitelists only the new `1.3.x` pattern (or is otherwise missing the `1.2.x` pattern) while a cluster is still on a `1.2.x` image, HM can no longer discover that cluster's image. The major/minor upgrade action in the HM console then fails to resolve it, and a `PGImageMissing` alert may fire on reconcile.
+!!!
+
+Whitelist both operand-sets on the `HybridControlPlane` (HCP) CR — the source of truth for this setting. Don't edit the `beacon-agent-k8s-config` configmap directly; it's reconciled from the HCP CR and a direct edit will drift or revert.
+
+```yaml
+spec:
+  beaconAgent:
+    provisioning:
+      operandSetVersions:
+        - 1\.2\.[0-9]+    # previous operand-set (current cluster images) — keeps them discoverable
+        - 1\.3\.[0-9]+    # new operand-set shipped with IR 2026.10.1
+```
+
+Apply it via `values.yaml` when you upgrade HM, or afterward with `kubectl`:
+
+```shell
+# Inspect the current value
+kubectl get hcp <name> -o jsonpath='{.spec.beaconAgent.provisioning.operandSetVersions}{"\n"}'
+
+# Patch to whitelist both operand-sets
+kubectl patch hcp <name> --type=merge -p '{
+  "spec": {"beaconAgent": {"provisioning": {"operandSetVersions": ["1\\.2\\.[0-9]+", "1\\.3\\.[0-9]+"]}}}
+}'
+```
+
+With both whitelisted, HM can discover each cluster's current `1.2.x` image, the major/minor upgrade action in the HM console resolves it, and the upgrade path — including extensions — becomes available so you can move the cluster onto a `1.3.x` operand.
+
+Follow this phased approach as you migrate:
+
+| Phase | `operandSetVersions` | Action |
+| --- | --- | --- |
+| 1 — Transitional | `1\.2\.[0-9]+`, `1\.3\.[0-9]+` | After upgrading HM to 2026.10.1, whitelist both so existing `1.2.x` Postgres clusters stay discoverable and the major/minor upgrade path works. |
+| 2 — Migration | `1\.2\.[0-9]+`, `1\.3\.[0-9]+` | Upgrade each Postgres cluster from its `1.2.x` operand to a `1.3.x` operand, as described in [Perform the major upgrade for each Postgres cluster](#perform-the-major-upgrade-for-each-postgres-cluster) below, then manually create the `pg_stat_ch` extension as described in [Enable pg_stat_ch on each migrated cluster](#enable-pg_stat_ch-on-each-migrated-cluster). |
+| 3 — Cleanup | `1\.3\.[0-9]+` | Once no Postgres cluster references a `1.2.x` operand, remove the `1.2.x` pattern to enforce the new operand-set. |
+
+!!!warning
+Don't remove the `1.2.x` pattern until every Postgres cluster has completed migration. Removing it while a cluster still runs a `1.2.x` image makes that image undiscoverable again, and the major/minor upgrade for that cluster fails with the same error.
+!!!
+
+#### Perform the major upgrade for each Postgres cluster
+
+Once both operand-sets are whitelisted (phase 1 above), move each Postgres cluster onto a `1.3.x` operand as soon as possible, since the cluster has no Query Diagnostics data until this step and the next are both complete. For an HM-managed cluster:
+
+1. From the cluster's main page in the HM console, select **Quick Actions > Upgrade Cluster**, then select **Major Upgrade**.
+1. Select a `1.3.x` operand image as the new major version image.
+1. Review the upgrade path. Select **Continue**.
+1. Review the specific package changes expected with the upgrade. If everything looks correct, select **Upgrade Cluster**.
+1. Use the **Monitoring** and **Logs** tabs to monitor the process and troubleshoot any unexpected behavior.
+
+This is the same procedure used for any Postgres major version upgrade in HM. For the full procedure and rollback considerations, see [Postgres major version upgrades](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading/pg_major/upgrade_major/).
+
+#### Enable `pg_stat_ch` on each migrated cluster
+
+After a cluster's image is on a `1.3.x` operand, HM-managed clusters already have `pg_stat_ch` in `shared_preload_libraries` and configured for OpenTelemetry — moving the image forward doesn't, by itself, create the extension in the database. You must do that manually, once per cluster:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_stat_ch WITH SCHEMA edb_internals;
+```
+
+!!!important
+Run this on every database the cluster monitors, not just `edb_admin`. `pg_stat_ch` must be created per-database — it isn't enough to create it once on the default database.
+!!!
+
+HM retains `edb_stat_monitor` — it's still used internally — and only removes it in IR 2026.11, so there's no need to drop it yourself. Enabling the `pg_stat_ch` extension itself doesn't require a cluster restart — this is separate from the platform-wide restart that already happened when you upgraded HM.
+
+#### Self-managed clusters (external CNPG and bare-metal)
+
+Self-managed clusters — external CNPG (pg4k) clusters and bare-metal installations — need a separate, more involved process than HM-managed clusters, because `pg_stat_ch` isn't bundled with their images automatically.
+
+For external CNPG clusters running the enterprise build (pg4k), find a suitable operand image in the **Asset Library**: select the **Asset Library** tab in the HM console, open **Container Images**, then search for the `postgresql` image repository. Open an image tag's **Image Tag Details** page and check its extensions table for `pg_stat_ch` to confirm the tag includes it. See [Container images](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/image-management/container-images/) for details on searching and filtering. Once you've identified a suitable image, perform the cluster's major version upgrade as described in [Perform the major upgrade for each Postgres cluster](#perform-the-major-upgrade-for-each-postgres-cluster), then create the extension as described in [Enable pg_stat_ch on each migrated cluster](#enable-pg_stat_ch-on-each-migrated-cluster). OSS CNPG doesn't support mounting the extension from the official CloudNativePG extension catalogue, so you need a custom image that installs the EDB build of `pg_stat_ch`.
+
+For bare-metal installations, install `pg_stat_ch` and configure it to point at your ClickHouse server before creating the extension. For the full procedure — package installation, `shared_preload_libraries`, and the OpenTelemetry settings — see [Monitoring Postgres with pg_stat_ch](/clickhouse/latest/monitoring_postgres/) in the EDB Postgres AI for ClickHouse documentation.
+
+### Scenario behavior change: `core` now includes `observability`
+
+From this release onward, selecting the `core` installation scenario automatically includes `observability`, because `core` now requires ClickHouse. This applies on fresh installs, upgrades, and existing installations alike — if your `HybridControlPlane` manifest lists only `core`, upgrading to 2026.10.1 deploys the `observability` components alongside it. You don't need to add `observability` to `spec.scenarios` yourself. However, having the `observability` components deployed doesn't by itself restore Query Diagnostics data for your Postgres clusters — you still need to migrate each cluster to the new operand-set and enable `pg_stat_ch`, as described earlier in this guide, to actually make use of it.
+
+## Upgrading multi-DC deployments
+
+In a [multi-DC deployment](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/), all locations must run the same HM version. Upgrade the primary location first, then upgrade each data-only secondary location to the same version immediately after. For the full procedure, see [Upgrading a multi-DC deployment](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/multi-dc/#upgrading-a-multi-dc-deployment).
+
+## Troubleshooting upgrade job failures
+
+The upgrade operator creates and manages upgrade jobs automatically. If an upgrade job fails and doesn't reach a `Complete` or `Succeeded` state, the operator pauses and retries. It doesn't proceed to apply updated manifests until the job succeeds.
+
+!!!note
+The operator owns and manages the upgrade job exclusively. Don't create upgrade jobs manually, as doing so can conflict with the operator's reconciliation loop.
+!!!
+
+To investigate a failed upgrade job:
+
+1. Check the status of upgrade jobs:
+
+    ```shell
+    kubectl get jobs -n edbpgai-bootstrap -l edbpgai.edb.com/hm-upgrader=true
+    ```
+
+1. Check the logs for the failed job:
+
+    ```shell
+    kubectl logs job/<job-name> -n edbpgai-bootstrap
+    ```
+
+    Replace `<job-name>` with the name of the failed job from the previous command.
+
+1. Check the `HybridControlPlane` status for upgrade-related events:
+
+    ```shell
+    kubectl describe hybridcontrolplane edbpgai
+    ```
+
+If the issue persists after the operator retries, contact EDB support with the job logs.

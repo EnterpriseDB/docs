@@ -1,0 +1,55 @@
+---
+title: Scoping agent memory with namespaces
+navTitle: Scoping memory
+description: Scope memory configuration and storage with namespaces, and list the configured namespaces.
+---
+
+Use namespaces to keep the configuration and storage of one application or workload separate from another's. A namespace holds the models, the Agent Memory Server, and the storage schema that every call naming it uses. An operator creates a namespace once with `aidb_memory.init`. See [Configuring agent memory](configuring#initializing-a-namespace).
+
+## Understanding what a namespace holds
+
+A namespace stores three groups of settings, which you supply to `aidb_memory.init`:
+
+| Setting            | What it holds                                                         |
+|--------------------|-----------------------------------------------------------------------|
+| `model_spec`       | The registered embedding model and LLM that agent memory uses.        |
+| `agentmemory_spec` | The memory runtime and how to reach the Agent Memory Server.          |
+| `storage_spec`     | The storage schema and the names of the memories and entities tables. |
+
+!!!note
+You can't currently update or delete a namespace. Calling `aidb_memory.init` again with the name of an existing namespace returns that namespace without changing it.
+!!!
+
+## Choosing a namespace
+
+Choose a namespace for every `aidb_memory` call. Create one namespace per agent domain, environment, or tenant boundary, and keep the names environment-specific. Use the same namespace for related agent workflows.
+
+```sql
+SELECT *
+FROM aidb_memory.search(
+  query     => 'discount missing after renewal',
+  namespace => 'helpdesk_namespace',
+  actor_id  => 'alice'
+);
+```
+
+A namespace doesn't isolate one actor's memories from another's. Isolation comes from the filters you pass, so always pass `actor_id`. Row-level security is planned for a future release. See [Choosing identifiers](memory-operations#choosing-identifiers).
+
+## Listing namespaces
+
+List namespaces by querying the `aidb_memory.namespaces` view directly:
+
+```sql
+SELECT name, state FROM aidb_memory.namespaces;
+```
+
+The view returns each namespace's `id`, `name`, `agentmemory_spec`, `model_spec`, `storage_spec`, `state`, `created_at`, and `updated_at`. See the [SQL reference](../reference/agent-memory#aidb_memorynamespaces).
+
+The `state` column is `ACTIVE` or `INACTIVE`. `ACTIVE` means the namespace is in use. `INACTIVE` prevents memory operations from using the namespace.
+
+AIDB creates a `pg_agents` namespace at install, which AIDB agents use for their memory. This namespace has no LLM configured, so operations that need one, such as summarizing a long conversation when you read a session with a character budget, need you to name a model with `fallback_model`. See [Keeping long conversations within budget](session-memory#keeping-long-conversations-within-budget).
+
+## Next steps
+
+- [Configuring agent memory](configuring): initialize a namespace.
+- [Managing memories](memory-operations): add and search within a namespace.

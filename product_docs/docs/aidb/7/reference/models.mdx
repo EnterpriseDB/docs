@@ -2,6 +2,7 @@
 title: Models reference
 navTitle: Models
 description: API reference for AIDB model management, inference functions, and model configuration helpers.
+deepToC: true
 ---
 
 Reference for all model-related functions and views in AIDB. For guide-style documentation, see [Integrating models](../integrating-models).
@@ -29,13 +30,14 @@ This asymmetry follows from what each capability needs: text generation has runt
 
 ### `aidb.model_providers`
 
-Lists all available model providers registered in the system.
+Lists the model providers you can pass to `aidb.create_model()`.
 
-| Column               | Type   | Description                     |
-|----------------------|--------|---------------------------------|
-| `server_name`        | name   | Name of the model provider      |
-| `server_description` | text   | Description of the provider     |
-| `server_options`     | text[] | Available configuration options |
+| Column         | Type   | Description                                                        |
+|----------------|--------|--------------------------------------------------------------------|
+| `name`         | text   | Provider name.                                                     |
+| `description`  | text   | Description of the provider.                                       |
+| `functions`    | text[] | Capabilities the provider supports.                                |
+| `default_host` | text   | Host a model of this provider calls when its config sets no `url`. NULL for local providers. |
 
 ### `aidb.models`
 
@@ -47,6 +49,7 @@ Lists all models in the registry, including default and user-created models.
 | `provider`  | text   | Model provider name                      |
 | `options`   | text[] | Configured options for the model         |
 | `functions` | text[] | Internal capability identifiers the model's provider supports (for example, `aidb-openai-text-embeddings`, `aidb-openai-text-completion`) |
+| `credential` | text  | Name of the [credential](#aidbcredentials) the model uses. `none` if the model sends no secret. |
 
 #### Example
 
@@ -54,12 +57,43 @@ Lists all models in the registry, including default and user-created models.
 SELECT * FROM aidb.models;
 
 __OUTPUT__
-  name  |  provider  |    options    |                      functions
---------+------------+---------------+-------------------------------------------------------
- bert   | bert_local | {"config={}"} | {aidb-openai-text-embeddings}
- clip   | clip_local | {"config={}"} | {aidb-openai-text-image-embeddings}
- t5     | t5_local   | {"config={}"} | {aidb-openai-text-embeddings,aidb-openai-text-completion}
+  name  |  provider  |    options    |                         functions                         | credential
+--------+------------+---------------+-----------------------------------------------------------+------------
+ bert   | bert_local | {"config={}"} | {aidb-openai-text-embeddings}                             | none
+ clip   | clip_local | {"config={}"} | {aidb-openai-text-image-embeddings}                       | none
+ t5     | t5_local   | {"config={}"} | {aidb-openai-text-embeddings,aidb-openai-text-completion} | none
 (3 rows)
+```
+
+#### Model names
+
+A schema-qualified name, such as `alice.summarizer`, always names that model. A bare name, such as `summarizer`, resolves to a built-in model of that name first, and otherwise to the only model of that name in any schema. If two models of that name exist in different schemas, a bare name raises an error. Use the schema-qualified name instead. `aidb.delete_model()` resolves a bare name through `search_path`.
+
+### `aidb.credentials`
+
+Lists the model credentials. See [Model credentials](../integrating-models/credentials).
+
+| Column       | Type    | Description                                                        |
+|--------------|---------|--------------------------------------------------------------------|
+| `name`       | text    | Credential name.                                                   |
+| `owner`      | text    | Role that owns the credential.                                     |
+| `endpoint`   | text    | Hosts the secret may be sent to, as an [endpoint pattern](../integrating-models/credentials#endpoint-patterns). |
+| `shared`     | boolean | `true` if every member of `aidb_users` can use the credential.     |
+| `has_secret` | boolean | `true` if the credential holds a secret.                           |
+| `can_use`    | boolean | `true` if the current role can use the credential.                 |
+
+The view never shows the secret.
+
+#### Example
+
+```sql
+SELECT name, owner, endpoint, shared, has_secret, can_use FROM aidb.credentials WHERE name = 'openai_prod';
+
+__OUTPUT__
+    name     | owner | endpoint       | shared | has_secret | can_use
+-------------+-------+----------------+--------+------------+---------
+ openai_prod | alice | api.openai.com | t      | t          | t
+(1 row)
 ```
 
 ---
@@ -77,18 +111,26 @@ Registers a new model in the AIDB model registry.
 | `name`                | TEXT    | Required | Unique name for the model.                                                            |
 | `provider`            | TEXT    | Required | Provider name (see `aidb.model_providers`).                                           |
 | `config`              | JSONB   | `'{}'`   | Provider-specific configuration. Build with a [config helper](#model-config-helpers). |
-| `credentials`         | JSONB   | `'{}'`   | Provider credentials (for example, `{"api_key": "..."}`).                             |
-| `replace_credentials` | BOOLEAN | `false`  | If `true`, updates stored credentials without re-creating the model.                  |
+| `credential`          | TEXT    | NULL     | Name of the [credential](#aidbcreate_credential) the model uses. If NULL and no secret is passed, the model uses `none` and sends no secret. |
+| `credentials`         | JSONB   | `'{}'`   | Secret for the model, `{"api_key": "..."}` or `{"basic_auth": "..."}`. Creates a credential named `<schema>.<model>`. See [Secrets on `aidb.create_model()`](#secrets-on-aidbcreate_model). |
+| `share`               | BOOLEAN | `false`  | If `true`, shares the credential that `credentials`, `credentials_env`, or `credentials_k8s_secret` creates with every member of `aidb_users`. |
+| `replace_credentials` | BOOLEAN | `false`  | If `true` and the `<schema>.<model>` credential exists, replaces its secret instead of failing. |
 | `validate`            | BOOLEAN | `true`   | If `true`, probe the model at creation time to confirm it's functional. See [Validation](#validation). |
-| `credentials_env`     | TEXT    | NULL     | Name of an environment variable to read credentials from instead of storing them. See [Credentials from environment variables](#credentials-from-environment-variables). Mutually exclusive with `credentials`. |
+| `credentials_env`     | TEXT    | NULL     | Name of an environment variable to read the secret from. Superusers and members of `aidb_admins` only. See [Credentials from environment variables](#credentials-from-environment-variables). |
+| `credentials_k8s_secret` | TEXT | NULL     | Path to a file, or a directory of files, to read the secret from. Superusers and members of `aidb_admins` only. See [Credentials from a Kubernetes Secret](#credentials-from-a-kubernetes-secret). |
+
+Pass at most one of `credential`, `credentials`, `credentials_env`, and `credentials_k8s_secret`. A model can't use a different credential later. Delete and recreate it instead.
+
+#### Secrets on `aidb.create_model()`
+
+Passing `credentials`, `credentials_env`, or `credentials_k8s_secret` creates a credential named `<schema>.<model>`, for example `public.summarizer`. It's owned by the caller, private unless `share => true`, and its endpoint is the host the model calls. If the model's host can't be determined, the endpoint is `*`.
+
+- The call fails if the model or the credential already exists. Pass `replace_credentials => true` to replace the credential's secret instead.
+- The call fails if `<schema>.<model>` is longer than 63 bytes. Create a credential with [`aidb.create_credential()`](#aidbcreate_credential) and pass `credential` instead.
 
 #### Credentials from environment variables
 
-!!!note
-Don't want a provider's API key or password sitting in a database table at all, even one with restricted grants? Pass `credentials_env` instead of `credentials`, naming a Postgres environment variable to read the credential from. Only the variable's *name* is stored — the value itself is read fresh from the Postgres backend process's environment every time the model is used, and is never persisted in the database.
-!!!
-
-Pass a variable name instead of a `credentials` object:
+Pass `credentials_env` to read the secret from an environment variable of the Postgres server each time the model is used. Only the variable's name is stored. Only superusers and members of `aidb_admins` can pass it.
 
 ```sql
 SELECT aidb.create_model(
@@ -99,9 +141,32 @@ SELECT aidb.create_model(
 );
 ```
 
-The referenced variable can hold either a bare secret (used as `api_key`) or a JSON object (for example, `{"basic_auth": "..."}`) — the same shapes `credentials` itself accepts. `credentials` and `credentials_env` are mutually exclusive; passing both raises an error.
+The variable holds either a bare secret, used as `api_key`, or a JSON object such as `{"basic_auth": "..."}`.
 
-For security, the environment variable's name must start with the prefix configured by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default) — this stops a model or MCP server configuration from naming an arbitrary, unrelated environment variable on the Postgres host and exfiltrating its value. The same mechanism and the same GUC apply to MCP server authentication; see [`headers_env`](../tools/mcp-tools#authentication).
+The variable's name must start with the prefix set by [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) (`AIDB_` by default). To limit the hosts the secret is sent to, set a variable with the same name plus `_HOST`, for example `AIDB_OPENAI_API_KEY_HOST`, to an [endpoint pattern](../integrating-models/credentials#endpoint-patterns). A change to the variable takes effect after a server restart.
+
+#### Credentials from a Kubernetes Secret
+
+Pass `credentials_k8s_secret` to read the secret from a file each time the model is used, for example from a Kubernetes Secret mounted into the Postgres pod. Only the path is stored. Only superusers and members of `aidb_admins` can pass it.
+
+```sql
+SELECT aidb.create_model(
+    name                   => 'my_openai',
+    provider               => 'openai_embeddings',
+    config                 => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials_k8s_secret => '/var/run/secrets/aidb/openai/api-key'
+);
+```
+
+The path can point to:
+
+- A file. Its content is either a bare secret, used as `api_key`, or a JSON object such as `{"basic_auth": "..."}`.
+- A directory with exactly two files named `username` and `password`. They're combined into `basic_auth`.
+- A directory with exactly one file, which is read like a single file.
+
+The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths) (`/var/run/secrets/aidb` by default).
+
+To limit the hosts the secret is sent to, add an [endpoint pattern](../integrating-models/credentials#endpoint-patterns) in a file named `<file>_HOST` next to a secret file, or in a file named `host` in a secret directory. Files that end in `_HOST` are never read as secrets. A change to the files takes effect on the next call.
 
 #### TLS configuration
 
@@ -113,6 +178,8 @@ To connect to HTTPS model endpoints, include a `tls_config` field inside `config
   "ca_path": "/etc/aidb/myCA.pem"
 }
 ```
+
+A model whose credential holds a secret can't use `insecure_skip_verify: true`. Use `ca_path` for a private CA instead.
 
 #### Validation
 
@@ -129,21 +196,20 @@ If the probe fails, `aidb.create_model()` raises an error and registers nothing.
 -- Minimal registration
 SELECT aidb.create_model('my_t5', 't5_local');
 
--- With config and credentials
+-- With a credential
 SELECT aidb.create_model(
-    name        => 'my_t5',
-    provider    => 't5_local',
-    config      => '{"param1": "value1"}'::JSONB,
-    credentials => '{"token": "abcd"}'::JSONB
+    name       => 'my_openai',
+    provider   => 'openai_embeddings',
+    config     => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credential => 'openai_prod'
 );
 
--- Rotate credentials without re-creating
+-- With a secret, which creates the credential public.my_openai_2
 SELECT aidb.create_model(
-    name                => 'my_openai',
-    provider            => 'openai_embeddings',
-    config              => aidb.embeddings_config(model => 'text-embedding-3-small'),
-    credentials         => '{"api_key": "<new-key>"}'::JSONB,
-    replace_credentials => true
+    name        => 'my_openai_2',
+    provider    => 'openai_embeddings',
+    config      => aidb.embeddings_config(model => 'text-embedding-3-small'),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -166,6 +232,7 @@ Returns the configuration for a registered model.
 | `name`     | text   | Model name         |
 | `provider` | text   | Provider name      |
 | `options`  | text[] | Configured options |
+| `credential` | text | Name of the credential the model uses |
 
 #### Example
 
@@ -173,9 +240,9 @@ Returns the configuration for a registered model.
 SELECT * FROM aidb.get_model('t5');
 
 __OUTPUT__
- name | provider |    options
-------+----------+---------------
- t5   | t5_local | {"config={}"}
+ name | provider |    options    | credential
+------+----------+---------------+------------
+ t5   | t5_local | {"config={}"} | none
 (1 row)
 ```
 
@@ -183,13 +250,13 @@ __OUTPUT__
 
 ### `aidb.delete_model`
 
-Removes a model from the registry. Doesn't affect pipelines or knowledge bases that reference it until they are next executed.
+Removes a model from the registry. Doesn't affect pipelines or knowledge bases that reference it until they are next executed. The model's credential isn't deleted. To delete it, use [`aidb.delete_credential()`](#aidbdelete_credential).
 
 #### Parameters
 
 | Parameter    | Type | Description                  |
 |--------------|------|------------------------------|
-| `model_name` | TEXT | Name of the model to delete. |
+| `model_name` | TEXT | Name of the model to delete, either schema-qualified or a bare name found through `search_path`. |
 
 #### Returns
 
@@ -232,6 +299,133 @@ __OUTPUT__
  validate_model
 ----------------
  text embedding
+(1 row)
+```
+
+---
+
+## Credential management functions
+
+See [Model credentials](../integrating-models/credentials) for how to use these functions.
+
+### `aidb.create_credential`
+
+Creates a credential. The calling role owns it.
+
+#### Parameters
+
+| Parameter                | Type    | Default  | Description                                                                     |
+|--------------------------|---------|----------|---------------------------------------------------------------------------------|
+| `name`                   | TEXT    | Required | Credential name. Must not exist yet. Can't be changed later.                    |
+| `credentials`            | JSONB   | NULL     | Secret, `{"api_key": "..."}` or `{"basic_auth": "..."}`. The value must be a non-empty string. |
+| `credentials_env`        | TEXT    | NULL     | Name of an environment variable to read the secret from. Superusers and members of `aidb_admins` only. See [Credentials from environment variables](#credentials-from-environment-variables). |
+| `credentials_k8s_secret` | TEXT    | NULL     | Path to a file, or a directory of files, to read the secret from. Superusers and members of `aidb_admins` only. See [Credentials from a Kubernetes Secret](#credentials-from-a-kubernetes-secret). |
+| `endpoint`               | TEXT    | Required | Hosts the secret may be sent to, as an [endpoint pattern](../integrating-models/credentials#endpoint-patterns). |
+| `share`                  | BOOLEAN | `false`  | If `true`, every member of `aidb_users` can use the credential.                 |
+
+Pass at most one of `credentials`, `credentials_env`, and `credentials_k8s_secret`. If you pass none, the credential has no secret until you set one with `aidb.update_credential()`.
+
+#### Example
+
+```sql
+SELECT aidb.create_credential(
+    name        => 'openai_prod',
+    credentials => '{"api_key": "sk-..."}'::JSONB,
+    endpoint    => 'api.openai.com',
+    share       => true
+);
+```
+
+---
+
+### `aidb.update_credential`
+
+Changes a credential's secret, endpoint, or sharing. Only the owner, or a role that has the owner role's privileges, can call it. Changes take effect on the next call in every session.
+
+#### Parameters
+
+| Parameter                | Type    | Default  | Description                                                     |
+|--------------------------|---------|----------|-----------------------------------------------------------------|
+| `name`                   | TEXT    | Required | Credential name.                                                |
+| `credentials`            | JSONB   | NULL     | New secret. `'{}'` removes the secret.                          |
+| `credentials_env`        | TEXT    | NULL     | New environment variable to read the secret from. Superusers and members of `aidb_admins` only. |
+| `credentials_k8s_secret` | TEXT    | NULL     | New path to read the secret from. Superusers and members of `aidb_admins` only. |
+| `endpoint`               | TEXT    | NULL     | New endpoint pattern.                                           |
+| `share`                  | BOOLEAN | NULL     | `true` shares the credential with every member of `aidb_users`. `false` makes it private. |
+
+Arguments that are NULL stay unchanged. Pass at most one of `credentials`, `credentials_env`, and `credentials_k8s_secret`.
+
+#### Example
+
+```sql
+SELECT aidb.update_credential(
+    'openai_prod',
+    credentials => '{"api_key": "sk-new"}'::JSONB,
+    endpoint    => 'api.openai.com'
+);
+```
+
+---
+
+### `aidb.delete_credential`
+
+Deletes a credential and its secret. Only the owner, or a role that has the owner role's privileges, can call it.
+
+#### Parameters
+
+| Parameter | Type    | Default  | Description                                                                 |
+|-----------|---------|----------|-----------------------------------------------------------------------------|
+| `name`    | TEXT    | Required | Credential name.                                                            |
+| `cascade` | BOOLEAN | `false`  | If `true`, also deletes every model that uses the credential, including models other roles created. Required if any model uses the credential. |
+
+The built-in `none` credential can't be deleted.
+
+#### Example
+
+```sql
+SELECT aidb.delete_credential('openai_prod', cascade => true);
+```
+
+---
+
+### `aidb.validate_endpoint_pattern`
+
+Checks an endpoint pattern and returns it in normalized form. Raises an error if the pattern is invalid.
+
+#### Parameters
+
+| Parameter | Type | Description                 |
+|-----------|------|-----------------------------|
+| `pattern` | TEXT | Endpoint pattern to check.  |
+
+#### Example
+
+```sql
+SELECT aidb.validate_endpoint_pattern('api.openai.com, .openai.azure.com');
+```
+
+---
+
+### `aidb.endpoint_host`
+
+Returns the host a model of the given provider calls for the given URL. If `url` is NULL, returns the provider's default host.
+
+#### Parameters
+
+| Parameter  | Type | Description                     |
+|------------|------|---------------------------------|
+| `provider` | TEXT | Provider name.                  |
+| `url`      | TEXT | URL from the model's config.    |
+
+#### Example
+
+```sql
+SELECT aidb.endpoint_host('openai_completions', 'https://myorg.openai.azure.com/v1/chat/completions');
+
+__OUTPUT__
+      endpoint_host
+--------------------------
+ myorg.openai.azure.com
 (1 row)
 ```
 
@@ -317,7 +511,7 @@ Encodes a single text string into a vector using the specified model.
 #### Example
 
 ```sql
-SELECT aidb.encode_text('bert_local', 'The quick brown fox');
+SELECT aidb.encode_text('bert', 'The quick brown fox');
 ```
 
 ---
@@ -340,7 +534,7 @@ Encodes an array of text strings into vectors in a single call.
 #### Example
 
 ```sql
-SELECT * FROM aidb.encode_text_batch('bert_local', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
+SELECT * FROM aidb.encode_text_batch('bert', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
 ```
 
 ---
@@ -363,7 +557,7 @@ Encodes a binary image into a vector using a multimodal model (for example, CLIP
 #### Example
 
 ```sql
-SELECT aidb.encode_image('clip_local', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
+SELECT aidb.encode_image('clip', pg_read_binary_file('/tmp/photo.jpg')::BYTEA);
 ```
 
 ---
@@ -388,7 +582,7 @@ Generates a text response from a prompt using the specified model.
 
 ```sql
 -- Basic usage
-SELECT aidb.generate_text('t5_local', 'translate to French: Hello, world.');
+SELECT aidb.generate_text('t5', 'translate to French: Hello, world.');
 
 -- With inference configuration
 SELECT aidb.generate_text(
@@ -423,7 +617,7 @@ Generates text responses for an array of prompts in a single call.
 #### Example
 
 ```sql
-SELECT aidb.generate_text_batch('t5_local', ARRAY[
+SELECT aidb.generate_text_batch('t5', ARRAY[
     'translate to German: hello',
     'translate to German: goodbye'
 ]);
@@ -486,7 +680,7 @@ All parameters are optional — omit any you don't need.
 | `seed`           | BIGINT           | NULL    | Random seed for reproducible outputs.                                                    |
 | `repeat_penalty` | REAL             | NULL    | Penalty for repeating tokens. `1.0` = no penalty. Not supported by NIM or OpenAI.        |
 | `repeat_last_n`  | INTEGER          | NULL    | Number of recent tokens considered for `repeat_penalty`. Not supported by NIM or OpenAI. |
-| `thinking`       | BOOLEAN          | NULL    | Controls `<think>` tag handling. `true`/`NULL` retains tags; `false` strips them.        |
+| `thinking`       | BOOLEAN          | NULL    | `false` turns model reasoning off and removes `<think>` blocks from the output. `true` turns reasoning on. `NULL` leaves the model's default. Supported by `llamacpp_generate`, `anthropic_messages`, `openai_responses`, and OpenAI-compatible chat completion providers. |
 | `extra_args`     | JSONB            | NULL    | Additional provider-specific arguments passed directly to the API.                       |
 
 #### Returns
@@ -536,7 +730,7 @@ Three more inference settings exist but aren't exposed as named parameters of `a
 | `response_format` | JSONB | Structured output. `{"type": "json_schema", "json_schema": {"schema": {...}}}` constrains the response to a JSON schema. Mutually exclusive with `tools`/`tool_choice` on `openai_responses` and `anthropic_messages` (and their variants). |
 
 !!!note
-`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/external-model-connections#openai-responses-api) and [Anthropic Messages API](../integrating-models/external-model-connections#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.generate_text()`. Any of those providers (except `t5_local`) can still back an [AI agent](../agents); the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
+`openai_responses` and `anthropic_messages` (and their Azure/Bedrock variants) map these to each API's native `tools`/`tool_choice` request fields and parse real tool-call responses back — see [OpenAI Responses API](../integrating-models/remote-models#openai-responses-api) and [Anthropic Messages API](../integrating-models/remote-models#anthropic-messages-api). Every other remote provider (`openai_completions`, `gemini`, `nim_completions`, and so on) rejects `tools`/`tool_choice`/`response_format` outright — this rejection only applies to direct calls like `aidb.generate_text()`. Any of those providers (except `t5_local`) can still back an [AI agent](../agents); the agent framework falls back to simulating tool calls by describing them in the prompt and parsing the model's reply, rather than using these three fields.
 !!!
 
 ```sql
@@ -588,6 +782,10 @@ SELECT aidb.generate_text(
 
 These functions return a `JSONB` configuration object for the `config` parameter of `aidb.create_model()`. Each helper corresponds to a specific model provider.
 
+Several helpers accept `api_key` and `basic_auth` parameters. Don't use them: `aidb.create_model()` rejects a `config` that contains either key. Pass the secret through `create_model()`'s `credentials` argument instead.
+
+For the local providers `bert_local`, `clip_local`, `t5_local`, and `llama_instruct_local`, the config key that names the Hugging Face repository is `hf_model`. The helpers below write it under the old name `model`, which these providers still accept with a deprecation warning. To avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead of the helper.
+
 ### `aidb.embeddings_config`
 
 For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
@@ -611,11 +809,11 @@ For `openai_embeddings` and any OpenAI-compatible embeddings endpoint.
 SELECT aidb.create_model(
     'my_embedder',
     'openai_embeddings',
-    config => aidb.embeddings_config(
-        model   => 'text-embedding-3-small',
-        api_key => 'sk-...',
-        url     => 'https://api.openai.com/v1'
-    )
+    config      => aidb.embeddings_config(
+        model => 'text-embedding-3-small',
+        url   => 'https://api.openai.com/v1'
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -635,7 +833,7 @@ For `openai_completions` and any OpenAI-compatible completions endpoint.
 | `temperature`             | DOUBLE PRECISION | NULL     | Sampling temperature.                               |
 | `top_p`                   | DOUBLE PRECISION | NULL     | Nucleus sampling threshold.                         |
 | `seed`                    | BIGINT           | NULL     | Random seed.                                        |
-| `thinking`                | BOOLEAN          | NULL     | `<think>` tag handling.                             |
+| `thinking`                | BOOLEAN          | NULL     | `false` turns model reasoning off; `true` turns it on; `NULL` leaves the model's default. |
 | `max_tokens`              | JSONB            | NULL     | Max tokens config (use [`aidb.max_tokens_config()`](#aidbmax_tokens_config)). |
 | `max_concurrent_requests` | INTEGER          | NULL     | Max concurrent requests.                            |
 | `extra_args`              | JSONB            | NULL     | Additional provider-specific arguments.             |
@@ -647,11 +845,11 @@ For `openai_completions` and any OpenAI-compatible completions endpoint.
 SELECT aidb.create_model(
     'my_llm',
     'openai_completions',
-    config => aidb.completions_config(
+    config      => aidb.completions_config(
         model       => 'gpt-4o',
-        api_key     => 'sk-...',
         temperature => 0.2
-    )
+    ),
+    credentials => '{"api_key": "sk-..."}'::JSONB
 );
 ```
 
@@ -785,7 +983,7 @@ For the `gemini` provider.
 
 | Parameter                 | Type    | Default  | Description                                                |
 |---------------------------|---------|----------|------------------------------------------------------------|
-| `api_key`                 | TEXT    | Required | Google API key.                                            |
+| `api_key`                 | TEXT    | Required | Pass `NULL`. Supply the key through `create_model()`'s `credentials` argument. |
 | `model`                   | TEXT    | NULL     | Gemini model identifier (for example, `gemini-2.0-flash`). |
 | `url`                     | TEXT    | NULL     | API endpoint override.                                     |
 | `max_concurrent_requests` | INTEGER | NULL     | Max concurrent requests.                                   |
@@ -795,11 +993,12 @@ For the `gemini` provider.
 
 ```sql
 SELECT aidb.create_model('my_gemini', 'gemini',
-    config => aidb.gemini_config('AIza...', model => 'gemini-2.0-flash'));
+    config      => aidb.gemini_config(api_key => NULL, model => 'gemini-2.0-flash'),
+    credentials => '{"api_key": "AIza..."}'::JSONB);
 ```
 
 !!!note
-Unlike other remote providers, Gemini's `api_key` is a plain field of `config` rather than being passed through `aidb.create_model()`'s separate `credentials` parameter. It's stored as part of the model's config rather than the more restricted credentials store — keep that in mind if `aidb.models.options` is visible to more roles than you want to see the key.
+`aidb.gemini_config()`'s first parameter is `api_key` and has no default. Pass `NULL` for it and supply the real key through `create_model()`'s `credentials` argument. `aidb.create_model()` rejects a `config` that contains `api_key`.
 !!!
 
 ---
@@ -820,14 +1019,15 @@ For the `nim_clip` provider (NVIDIA NIM multimodal embeddings).
 
 ```sql
 SELECT aidb.create_model('my_nim_clip', 'nim_clip',
-    config => aidb.nim_clip_config(api_key => 'nvapi-...', model => 'nvidia/nvclip'));
+    config      => aidb.nim_clip_config(model => 'nvidia/nvclip'),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB);
 ```
 
 ---
 
 ### `aidb.nim_ocr_config`
 
-For the `nim_ocr` provider (NVIDIA NIM OCR).
+For the `nim_paddle_ocr` provider (NVIDIA NIM OCR).
 
 | Parameter      | Type    | Default | Description                  |
 |----------------|---------|---------|------------------------------|
@@ -840,8 +1040,9 @@ For the `nim_ocr` provider (NVIDIA NIM OCR).
 #### Example
 
 ```sql
-SELECT aidb.create_model('my_nim_ocr', 'nim_ocr',
-    config => aidb.nim_ocr_config(api_key => 'nvapi-...'));
+SELECT aidb.create_model('my_nim_ocr', 'nim_paddle_ocr',
+    config      => aidb.nim_ocr_config(),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB);
 ```
 
 ---
@@ -862,10 +1063,8 @@ For the `nim_reranking` provider.
 
 ```sql
 SELECT aidb.create_model('my_reranker', 'nim_reranking',
-    config => aidb.nim_reranking_config(
-        api_key => 'nvapi-...',
-        model   => 'nvidia/nv-rerankqa-mistral-4b-v3'
-    )
+    config      => aidb.nim_reranking_config(model => 'nvidia/nv-rerankqa-mistral-4b-v3'),
+    credentials => '{"api_key": "nvapi-..."}'::JSONB
 );
 ```
 
@@ -887,10 +1086,8 @@ For the `openrouter_chat` provider.
 
 ```sql
 SELECT aidb.create_model('my_or_chat', 'openrouter_chat',
-    config => aidb.openrouter_chat_config(
-        'anthropic/claude-3-5-haiku',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_chat_config('anthropic/claude-3-5-haiku'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 
@@ -912,10 +1109,8 @@ For the `openrouter_embeddings` provider.
 
 ```sql
 SELECT aidb.create_model('my_or_embedder', 'openrouter_embeddings',
-    config => aidb.openrouter_embeddings_config(
-        'mistral/mistral-embed',
-        api_key => 'sk-or-...'
-    )
+    config      => aidb.openrouter_embeddings_config('mistral/mistral-embed'),
+    credentials => '{"api_key": "sk-or-..."}'::JSONB
 );
 ```
 
