@@ -1,24 +1,15 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
 product: Hybrid Manager operator
 version: 2.3.0
-# REVIEW: This is the date of the v2.3.0 tag, not the publication date. The
-# published date is the date the operator is promoted to production in Lantern
-# (https://lantern.edb.dev/release/foundation/container-releases), which had not
-# happened when this draft was written. A reviewer must set the Lantern promotion
-# date here and delete this comment.
-# REVIEW: The tag date itself is unconfirmed. git was not available in the
-# environment this draft was written in, so `git log -1 --format=%cs v2.3.0`
-# could not be run. 3 November 2026 is read from the refs in the checkout: the
-# daily snapshot tag v0.0.0-snapshot202611031602 points at the same commit as
-# v2.3.0 and v2.3.0-rc.1, so the commit was made on or before 3 November 2026.
-# Confirm it while setting the publication date.
+# TODO: set to the date the operator is promoted to production in Lantern
+# (https://lantern.edb.dev/release/foundation/container-releases), then delete this comment.
 date: 3 November 2026
 intro: |
   Version 2.3.0 stops holding the valid `spec.scenarios` values in the operator, so a scenario a Hybrid Manager (HM) version adds installs without an operator upgrade; refuses to uninstall an installed scenario unless you confirm it; redeploys a settled installation periodically so that resources deleted outside the operator are recreated; and stops copying image pull secrets into every namespace in the cluster.
 highlights: |
   - **The values `spec.scenarios` accepts now come from the HM version you install, not from the operator.** The operator reads them from the `scenarios.json` of the version in `spec.version` instead of a list fixed in its CRD and admission webhook, so a scenario a later HM version adds needs no operator upgrade. A well-formed name the target version doesn't define is admitted and then dropped from the spec with an event, where earlier versions rejected it outright.
 
-  - **Image pull secrets are no longer copied to every namespace in the cluster.** The operator stops adding `replicator.v1.mittwald.de/replicate-to: "*"` to the secrets named in `spec.registry.imagePullSecrets`. If you created a pull secret by hand and relied on the operator to distribute it, annotate it yourself before you upgrade or workloads outside its namespace can no longer pull their images.
+  - **Image pull secrets are no longer copied to every namespace in the cluster.** The operator stops adding `replicator.v1.mittwald.de/replicate-to: "*"` to the secrets named in `spec.registry.imagePullSecrets`, so a secret reaches only the namespaces its own replicator annotations name. `edbctl` 1.11 or later annotates the pull secret it creates. If you create the secret by hand, annotate it yourself, or workloads outside its namespace can't pull their images. An existing installation is unaffected: upgrading the operator doesn't remove an annotation an earlier version added.
 
   - **Removing an installed scenario from `spec.scenarios` is refused unless you confirm it with an annotation.** Re-applying a manifest that lists fewer scenarios than are installed now fails at admission instead of uninstalling those components and losing the data they hold. Pipelines that re-apply a trimmed manifest need the confirmation annotation.
 
@@ -45,7 +36,7 @@ relnotes:
 - relnote: |
     Image pull secrets are no longer replicated to every namespace
   details: |
-    **Action required.** The operator no longer stamps `replicator.v1.mittwald.de/replicate-to: "*"` on the secrets named in `spec.registry.imagePullSecrets` (or the deprecated `spec.imagePullSecrets`), which copied the registry credentials into every namespace in the cluster, project namespaces included. Distributing the secret is now left to whatever created it: if you created it by hand, annotate it with `replicator.v1.mittwald.de/replicate-to` or `replicator.v1.mittwald.de/replicate-to-matching` for the namespaces that pull with it, before you upgrade. The operator logs a message naming the secret when it finds no replicator annotation on it, and still fails the reconcile when a configured pull secret doesn't exist at all.
+    **Action required for a pull secret you create by hand.** The operator no longer stamps `replicator.v1.mittwald.de/replicate-to: "*"` on the secrets named in `spec.registry.imagePullSecrets` (or the deprecated `spec.imagePullSecrets`), which copied the registry credentials into every namespace in the cluster, project namespaces included. Distributing the secret is now left to whatever created it: `edbctl` 1.11 or later annotates the pull secret it creates with the namespaces that pull with it. If you create the secret by hand, annotate it with `replicator.v1.mittwald.de/replicate-to` or `replicator.v1.mittwald.de/replicate-to-matching` for those namespaces yourself. Upgrading the operator doesn't remove an annotation an earlier version added, so the pull secret of an existing installation keeps being copied as before. The operator logs a message naming the secret when it finds no replicator annotation on it, and still fails the reconcile when a configured pull secret doesn't exist at all.
   jira: UPM-139591
   addresses:
   type: Change
@@ -67,15 +58,6 @@ relnotes:
   jira: UPM-136810
   addresses:
   type: Change
-  impact: High
-
-- relnote: |
-    Installing a 2027.1 to 2027.3 Hybrid Manager version resolved the wrong bootstrap images
-  details: |
-    Fixed a bug where the operator checked the release-line floor of the unified bootstrap image segment by segment, so the innovation versions 2027.1, 2027.2, and 2027.3 fell back to the per-flavor bootstrap images that are no longer published, and the installation or upgrade couldn't resolve the manifests it installs from. Every innovation version from 2026.4 on, and every long-term support version from 1.4 on, now resolves to the unified image.
-  jira: UPM-96717
-  addresses:
-  type: Bug Fix
   impact: High
 
 - relnote: |
@@ -158,86 +140,3 @@ relnotes:
   addresses:
   type: Change
   impact: Low
-
-# REVIEW: The compatibility matrix needs a row for 2.3.0 that a reviewer must add
-# and then delete this comment from here. Do not take the HM versions from this
-# draft: which long-term support and innovation HM versions pin operator 2.3.0 is
-# recorded by the HM releases that ship it, in upm-version-sets, which is not
-# available here, and those releases come after this one.
-#
-# Two things for that row to record:
-#
-#   - 2.3.0 is the last release in which the operator constrains which scenarios
-#     an HM version may use. Up to 2.2.0 the valid spec.scenarios values were an
-#     enum in the CRD, so an HM version whose collections introduced a scenario
-#     needed an operator that knew the name — that is how 2.2.0 became the floor
-#     for `pgd`. From 2.3.0 the names come from the target version's
-#     scenarios.json, so a new scenario no longer implies a new operator. 2.3.0
-#     may still be worth recording as a floor on that basis: a scenario added
-#     after it cannot be used on 2.2.0 or earlier, whatever HM version defines it.
-#
-#   - The bootstrap-image fix (listed above as "Installing a 2027.1 to 2027.3
-#     Hybrid Manager version resolved the wrong bootstrap images") looks like a
-#     second reason 2.3.0 is a floor rather than a recommendation: on an earlier
-#     operator those innovation versions resolve bootstrap images that are no
-#     longer published. Confirm whether that fix was also back-ported to a 2.2.x
-#     patch before stating it as a floor — that could not be checked here.
-#
-# REVIEW: Left out as not publicly documented, each to be reinstated here or in a
-# later release note once the feature it belongs to is documented:
-#
-#   - The no-touch recovery and takeover work (restoring Locations and PG
-#     management resources, recovery preflight checks, promoting a deployed
-#     secondary, replacing an installed takeover's internal databases, epoch
-#     fencing and conflict surfacing, re-homing survivors, clearing a demoted
-#     primary's beacon resources). This is the largest body of user-visible change
-#     in the release, and it is all reached through `spec.recoveryFrom`, which has
-#     no match anywhere in product_docs: the published multi-DC recovery procedure
-#     is the manual Velero one, and the published disaster-recovery `edbctl`
-#     commands cover only object store and cluster config preparation. The new
-#     `HybridControlPlane` status (fencing, conflicts, departed primaries) and the
-#     new conditions (`Fenced`, `FederationTopologyConflict`,
-#     `PrimaryOverrideIgnored`, `OrphanedPairings`) belong with it.
-#
-#   - The federation mesh and roster work (pairing groundwork and roster-based
-#     topology derivation, roster and bundle-push endpoints, full-mesh discovery,
-#     persisted roster members). The published pairing-token page states that
-#     secondaries are not federated with one another, which is what this changes,
-#     so it cannot be announced before that page is updated.
-#
-# REVIEW: Left out because the only public equivalent is a `kubectl hcp`
-# subcommand, which is not publicly available: the requirement that
-# `component update` and `component download` need an operator that writes
-# `status.scenarios`. Grepping the published `edbctl` command reference found no
-# equivalent of either, so there is nothing to point a reader at. The
-# `status.scenarios` entry above covers the field itself.
-#
-# REVIEW: Left out because what changed for a user could not be established from
-# the commit subject and the tree alone, git being unavailable to read the diffs:
-#
-#   - fix "quote these values so it doesn't break everything". The operator
-#     Helm chart now quotes the `HMRegistry` resource requests, limits, and PVC
-#     size it renders, which would mean numeric values in
-#     `hmRegistry.resources` or `hmRegistry.storage.pvc.size` no longer break
-#     the render — but which values the commit actually touched could not be
-#     confirmed, so no entry was written.
-#
-#   - chore "remove unused tsdb_host and tsdb_port defaults". Nothing in the
-#     tree reads either parameter, so this looks like the removal of defaults
-#     that had no effect; worth an entry only if an installation could still
-#     have them in `spec.globalParameters` and be affected by their going.
-#
-# REVIEW: Also judged internal and left out, for the record: the resolved
-# scenario set and the normalized registry values passed to component Helm
-# values and envsubst (`hcpScenarios`, `HCP_SCENARIOS_INSTALLED`, `registry`),
-# which are a contract with component chart authors rather than with an
-# administrator; the UAT and CI changes; the scenario-registration
-# consolidation; the retired observability scenario, which leaves no trace in
-# operator code; the `operandSetVersions` bump, which touches only
-# `config/uat/**` and the annotated sample; and the gate-resources-on-an-
-# operator-parameter feature, which was reverted in the same release.
-#
-# REVIEW: The `--component-drift-interval` flag's help text says "Zero or less
-# disables it", but the code treats zero as "use the default" and only a
-# negative duration as disabled. The entry above documents the behavior, not the
-# help text. Worth raising with engineering so the two agree.
