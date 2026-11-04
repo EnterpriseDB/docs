@@ -53,14 +53,7 @@ A migration establishes a sync between your Postgres source and a self-managed d
     </Tab>
     </TabContainer>
 
-1.  Select the snapshot type:
-    - [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) — copies data once and completes. Use this for a one-time, offline migration.
-    - [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration) — copies an initial snapshot, then continuously streams changes from the source. Use this to minimize downtime.
-    - [**Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#streaming-migration) — skips the initial copy and streams only changes that occur after the migration starts, from the source database's current position. Use this when the destination already has the historical data loaded. This option is available only with the **Data only** scope.
-
-    !!!note
-    **Streaming** works without any pre-loading if your tables are insert-only (for example, an append-only log or event table) — new rows are inserted normally. If your tables receive updates or deletes on rows that existed before the migration started, load that historical data on the destination first: `DELETE` operations on rows that were never loaded are safely ignored, but `UPDATE` operations on rows that were never loaded aren't guaranteed to create the row. Custom starting-point (LSN) support isn't available.
-    !!!
+1.  Select the snapshot type: [**Snapshot**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot-migration) or [**Snapshot + Streaming**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration).
 
 1.  Under **Destination Type**, select a self-managed instance as the destination for the migration. The ID for the writer DMS agent is listed in the **Destination** menu. Then, select **Next**.
 
@@ -70,7 +63,7 @@ A migration establishes a sync between your Postgres source and a self-managed d
 
 1.  Select **Create Migration**.
 
-The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming** or **Streaming**, the DMS agents stream data changes continuously while the migration shows a **Running** state.
+The HM console displays the [new migration](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#viewing-existing-migrations). If you chose **Snapshot + Streaming**, the DMS agents stream data changes continuously while the migration shows a **Running** state.
 
 !!!note
 The DMS agent streams data changes only — not DDL changes (schema modifications).
@@ -90,7 +83,7 @@ The **Migrations** page shows a summary of all migrations in the project. The **
 
 Select a migration from the list to open the details page, which has four tabs:
 
-- **Overview** — Shows the current migration state and general information about the source and destination databases. A status of **Streaming** means the DMS agents are actively monitoring the source database for changes and applying them to the destination. For **Snapshot + Streaming** migrations, reaching this status also confirms the snapshot phase has completed. For **Snapshot** migrations, it's finished when the status is **Completed**.
+- **Overview** — Shows the current migration state and general information about the source and destination databases. For **Snapshot + Streaming** migrations, the migration is caught up when the status is **Streaming**. For **Snapshot** migrations, it's finished when the status is **Completed**.
 
 - **Tables** — Shows all tables selected for migration. For each table, you can see source and destination table and schema names, snapshot status, mapped columns, migrated rows, and migration rate. Select the **+** icon to expand a table and view column-level mappings.
 
@@ -104,7 +97,7 @@ Select a migration from the list to open the details page, which has four tabs:
 The **Metrics** tab is available in HM v1.4. It isn't included in the 2026.5 Innovation Release.
 !!!
 
-During any running migration (**Snapshot**, **Snapshot + Streaming**, or **Streaming**), the DMS agents continuously report performance metrics to HM. If you deployed the reader or writer agent yourself — any setup with a self-managed source or destination — set `METRICS_TASK_ENABLED=true` in the agent's `run-cdcagent.sh`. See [Configuring and running the EDB DMS agent](configuring_dms_agent) for agent configuration steps.
+During any running migration (**Snapshot** or **Snapshot + Streaming**), the DMS agents continuously report performance metrics to HM. If you deployed the reader or writer agent yourself — any setup with a self-managed source or destination — set `METRICS_TASK_ENABLED=true` in the agent's `run-cdcagent.sh`. See [Configuring and running the EDB DMS agent](configuring_dms_agent) for agent configuration steps.
 
 For details about the Grafana dashboard shown in the **Metrics** tab, see [Metrics tab](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#metrics-tab).
 
@@ -115,7 +108,7 @@ The HM console doesn't surface all DMS agent errors. If a migration is stuck or 
 ## Finalizing a streaming migration
 
 !!!note
-This section applies to migrations that stream continuously — **Snapshot + Streaming** and **Streaming**. For **Snapshot** migrations, DMS marks the migration as completed automatically. **Streaming** migrations skip the snapshot sub-stage and are available only with the **Data only** scope, so no automatic schema finalization runs for them. Apply deferred constraints manually, as described in [Applying deferred constraints and verifying data](#applying-deferred-constraints-and-verifying-data).
+This section applies only to **Snapshot + Streaming** migrations. For **Snapshot** migrations, DMS marks the migration as completed automatically.
 !!!
 
 ### Monitoring catch-up before cutover
@@ -218,7 +211,7 @@ For tables where the unique key is the only row identifier (no primary key), the
 Apply this procedure per-table as soon as each table's snapshot finishes — check the **Tables** tab on the migration details page and look for **Snapshot completed**.
 
 !!!warning
-For **Snapshot + Streaming** migrations, the unique constraint must be in place before streaming begins for that table. For **Streaming** migrations, since there's no snapshot phase, the constraint must already exist before you create the migration. In both cases, once the DMS writer starts processing CDC events for a UK-identity table, it issues keyed upserts (`INSERT ... ON CONFLICT (uk_cols) DO UPDATE`). If the unique constraint is missing at that point, the writer task fails with a fatal error and the migration stops.
+For **Snapshot + Streaming** migrations, the unique constraint must be in place before streaming begins for that table. Once the DMS writer starts processing CDC events for a UK-identity table, it issues keyed upserts (`INSERT ... ON CONFLICT (uk_cols) DO UPDATE`). If the unique constraint is missing at that point, the writer task fails with a fatal error and the migration stops.
 !!!
 
 For each UK-identity table, run both steps against the destination database:
