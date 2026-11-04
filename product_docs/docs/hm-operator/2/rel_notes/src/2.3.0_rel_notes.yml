@@ -1,0 +1,243 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: Hybrid Manager operator
+version: 2.3.0
+# REVIEW: This is the date of the v2.3.0 tag, not the publication date. The
+# published date is the date the operator is promoted to production in Lantern
+# (https://lantern.edb.dev/release/foundation/container-releases), which had not
+# happened when this draft was written. A reviewer must set the Lantern promotion
+# date here and delete this comment.
+# REVIEW: The tag date itself is unconfirmed. git was not available in the
+# environment this draft was written in, so `git log -1 --format=%cs v2.3.0`
+# could not be run. 3 November 2026 is read from the refs in the checkout: the
+# daily snapshot tag v0.0.0-snapshot202611031602 points at the same commit as
+# v2.3.0 and v2.3.0-rc.1, so the commit was made on or before 3 November 2026.
+# Confirm it while setting the publication date.
+date: 3 November 2026
+intro: |
+  Version 2.3.0 stops holding the valid `spec.scenarios` values in the operator, so a scenario a Hybrid Manager (HM) version adds installs without an operator upgrade; refuses to uninstall an installed scenario unless you confirm it; redeploys a settled installation periodically so that resources deleted outside the operator are recreated; and stops copying image pull secrets into every namespace in the cluster.
+highlights: |
+  - **The values `spec.scenarios` accepts now come from the HM version you install, not from the operator.** The operator reads them from the `scenarios.json` of the version in `spec.version` instead of a list fixed in its CRD and admission webhook, so a scenario a later HM version adds needs no operator upgrade. A well-formed name the target version doesn't define is admitted and then dropped from the spec with an event, where earlier versions rejected it outright.
+
+  - **Image pull secrets are no longer copied to every namespace in the cluster.** The operator stops adding `replicator.v1.mittwald.de/replicate-to: "*"` to the secrets named in `spec.registry.imagePullSecrets`. If you created a pull secret by hand and relied on the operator to distribute it, annotate it yourself before you upgrade or workloads outside its namespace can no longer pull their images.
+
+  - **Removing an installed scenario from `spec.scenarios` is refused unless you confirm it with an annotation.** Re-applying a manifest that lists fewer scenarios than are installed now fails at admission instead of uninstalling those components and losing the data they hold. Pipelines that re-apply a trimmed manifest need the confirmation annotation.
+
+  - **A settled installation is redeployed every hour so that resources deleted outside the operator come back.** Only missing resources are recreated; a resource that was edited rather than deleted is left alone. Set `--component-drift-interval` on the manager to change the interval, or to a negative duration to turn the pass off.
+relnotes:
+- relnote: |
+    The scenario names `spec.scenarios` accepts come from the target Hybrid Manager version
+  details: |
+    The names you can list in `spec.scenarios` are the ones defined by the `scenarios.json` of the Hybrid Manager version in `spec.version`, rather than a fixed list in the operator's CRD and admission webhook. A name made of lowercase letters, digits, and `-`, up to 63 characters, is admitted even when the target version doesn't define it; the operator then removes it from `spec.scenarios` and records a `ScenariosDropped` event, so a version that retires a scenario stops installing and reporting it while earlier versions keep it. A name that isn't well formed, such as the legacy `monitoringLogging`, is still stripped by the defaulting webhook, so a manifest carrying one keeps applying as before. Upgrading the operator leaves an existing `spec.scenarios` as it is, and `core` is still always installed.
+  jira: UPM-140391
+  addresses:
+  type: Change
+  impact: Highest
+
+- relnote: |
+    Removing an installed scenario has to be confirmed
+  details: |
+    An update that drops a scenario the installation is running from `spec.scenarios` is rejected, because applying it uninstalls that scenario's components along with the data they hold. The error names the command that confirms the removal — `kubectl annotate hybridcontrolplanes.edbpgai.edb.com edbpgai edbpgai.edb.com/confirm-scenario-removal=<names> --overwrite` — after which you repeat your change; the operator clears the annotation once the new set has settled, so a confirmation doesn't carry over to a later edit. A scenario that another listed scenario depends on isn't treated as removed, because the operator adds it back. If the admission webhook is bypassed, the reconciler stops instead of uninstalling anything, setting the `ScenarioRemovalBlocked` condition and recording a warning event with the same instruction.
+  jira: UPM-140679
+  addresses:
+  type: Change
+  impact: High
+
+- relnote: |
+    Image pull secrets are no longer replicated to every namespace
+  details: |
+    **Action required.** The operator no longer stamps `replicator.v1.mittwald.de/replicate-to: "*"` on the secrets named in `spec.registry.imagePullSecrets` (or the deprecated `spec.imagePullSecrets`), which copied the registry credentials into every namespace in the cluster, project namespaces included. Distributing the secret is now left to whatever created it: if you created it by hand, annotate it with `replicator.v1.mittwald.de/replicate-to` or `replicator.v1.mittwald.de/replicate-to-matching` for the namespaces that pull with it, before you upgrade. The operator logs a message naming the secret when it finds no replicator annotation on it, and still fails the reconcile when a configured pull secret doesn't exist at all.
+  jira: UPM-139591
+  addresses:
+  type: Change
+  impact: High
+
+- relnote: |
+    Resources deleted outside the operator are recreated automatically
+  details: |
+    A settled installation is now redeployed once an hour so that `kapp` recreates any resource of a component that was deleted outside the operator. Until now the operator decided whether to deploy a component by comparing the hash of its rendered manifests with the hash in `status.components[]`, and that comparison matched whether or not the resources it describes still existed, so a component deleted by hand stayed missing indefinitely. Only creates are applied — a resource that was edited rather than deleted is left alone — and the operator records a `Drifted` warning event naming the component whose resources it put back, or a `DriftCheckFailed` warning when the redeploy itself couldn't run. Pass `--component-drift-interval` to the manager through `controllerManager.manager.args` in the operator Helm chart to change the interval; a negative duration turns the pass off.
+  jira: UPM-139323
+  addresses:
+  type: Feature
+  impact: High
+
+- relnote: |
+    One `HybridControlPlane` per cluster, named `edbpgai`
+  details: |
+    Creating a `HybridControlPlane` under any name other than `edbpgai`, or creating a second one in a cluster that already holds one, is rejected at admission. The beacon, `edbctl`, and the bootstrap and upgrade tooling all address the installation by that name, and a second resource stops reconciliation on both. The rule is enforced on create only, so an existing installation under another name keeps reconciling: it draws an admission warning on every update and a `NonStandardName` warning event from the reconciler, and reinstalling as `edbpgai` is what clears it.
+  jira: UPM-136810
+  addresses:
+  type: Change
+  impact: High
+
+- relnote: |
+    Installing a 2027.1 to 2027.3 Hybrid Manager version resolved the wrong bootstrap images
+  details: |
+    Fixed a bug where the operator checked the release-line floor of the unified bootstrap image segment by segment, so the innovation versions 2027.1, 2027.2, and 2027.3 fell back to the per-flavor bootstrap images that are no longer published, and the installation or upgrade couldn't resolve the manifests it installs from. Every innovation version from 2026.4 on, and every long-term support version from 1.4 on, now resolves to the unified image.
+  jira: UPM-96717
+  addresses:
+  type: Bug Fix
+  impact: High
+
+- relnote: |
+    The scenarios the operator settled on are reported in `status.scenarios`
+  details: |
+    `status.scenarios` records what the operator resolved for the version it last settled: the `version` it resolved against, the scenario names that version `defined`, the `dependencies` between them, and the `installed` set it deployed. Read it with `kubectl get hybridcontrolplane edbpgai -o yaml` to see which scenarios are installed and which names the target version knows, instead of inferring both from `spec.scenarios`.
+  jira: UPM-140291
+  addresses:
+  type: Feature
+  impact: Medium
+
+- relnote: |
+    Tunable CPU and memory for the automated upgrade jobs
+  details: |
+    You can now size the container of the jobs the operator runs during an HM upgrade with the `upgrade_job_cpu_request`, `upgrade_job_cpu_limit`, `upgrade_job_memory_request`, and `upgrade_job_memory_limit` global parameters. They default to `50m` and `1` for CPU and to `128Mi` and `1Gi` for memory, and when you set one half of a pair past the other's default, that default follows it — a request above the default limit raises the limit, a limit below the default request lowers the request. A value that isn't a Kubernetes quantity greater than zero, or a request above the limit you set for it, is rejected at admission.
+  jira: UPM-140682
+  addresses:
+  type: Enhancement
+  impact: Medium
+
+- relnote: |
+    An initial installation fails preflight when its object storage folder isn't empty
+  details: |
+    A first installation whose `spec.globalParameters.internal_backup_folder` already holds objects — anything an earlier Hybrid Manager left in the bucket, not just its database backups — is now refused by preflight instead of installing on top of them. `kubectl get preflight -o yaml` reports it under `status.initializationChecks`, naming the folder and how many objects are in it. Empty the folder, or set `internal_backup_folder` to an unused 12-character value, as a new installation requires.
+  jira: UPM-140331
+  addresses:
+  type: Change
+  impact: Medium
+
+- relnote: |
+    The `edb-object-storage` secret can live in `edb-system`
+  details: |
+    The operator reads the default object storage credentials from the `edb-object-storage` secret in either the `default` or the `edb-system` namespace, instead of `default` alone, so an installation that keeps platform secrets out of `default` can hold it with the rest of them. Keep exactly one copy: preflight reports the default object storage as `Invalid` when the secret exists in both namespaces.
+  jira: UPM-139589
+  addresses:
+  type: Enhancement
+  impact: Medium
+
+- relnote: |
+    The operator could crash while streaming a component's deploy output
+  details: |
+    Fixed a bug where the buffer that turns `kapp`'s output into per-component log lines was appended to from several goroutines during a single deploy, which corrupted it and could crash the manager mid-install. The writer is now locked, so the output of a component that reports on many resource types at once stays intact and attributable to it.
+  jira: UPM-139352
+  addresses:
+  type: Bug Fix
+  impact: Medium
+
+- relnote: |
+    A component whose version changed but whose manifests didn't kept reporting its old version
+  details: |
+    Fixed a bug where `status.components[].version` was rewritten only when a component's manifest hash or state changed, so a component that a new Hybrid Manager version ships unchanged went on reporting the version it was first installed at. The status now records the version a component was last deployed at, which is what `edbctl hybrid-manager status` and `kubectl describe hybridcontrolplane` show.
+  jira: UPM-139919
+  addresses:
+  type: Bug Fix
+  impact: Medium
+
+- relnote: |
+    Informers logged errors for custom resource definitions that had been removed
+  details: |
+    Fixed a bug where removing a custom resource definition the operator watches — uninstalling Hybrid Manager removes SPIRE's, for example — left its informer retrying, with every retry logged at error level with a stack trace until the operator restarted. A watched type that is no longer served is now reported once at info level and after that at verbosity 4, and logged again when it is served once more.
+  jira: UPM-139353
+  addresses:
+  type: Bug Fix
+  impact: Low
+
+- relnote: |
+    A suspended component is no longer rendered
+  details: |
+    A component suspended with `edbctl hybrid-manager suspend-component` is now skipped before its charts are rendered, rather than being rendered and then held, and its existing entry in `status.components[]` is carried forward unchanged. Resuming it with `edbctl hybrid-manager resume-component` deploys it as before.
+  jira: UPM-140207
+  addresses:
+  type: Bug Fix
+  impact: Low
+
+- relnote: |
+    `beacon_server_replicas` is validated
+  details: |
+    The `beacon_server_replicas` parameter of the `upm-beacon` component must be `0` or `1` where it is set, because the beacon server isn't built to run more than one replica. An update that changes it to anything else is rejected, while an installation that already carries another value and leaves it alone gets an admission warning instead, so it keeps reconciling.
+  jira: UPM-140576
+  addresses:
+  type: Change
+  impact: Low
+
+# REVIEW: The compatibility matrix needs a row for 2.3.0 that a reviewer must add
+# and then delete this comment from here. Do not take the HM versions from this
+# draft: which long-term support and innovation HM versions pin operator 2.3.0 is
+# recorded by the HM releases that ship it, in upm-version-sets, which is not
+# available here, and those releases come after this one.
+#
+# Two things for that row to record:
+#
+#   - 2.3.0 is the last release in which the operator constrains which scenarios
+#     an HM version may use. Up to 2.2.0 the valid spec.scenarios values were an
+#     enum in the CRD, so an HM version whose collections introduced a scenario
+#     needed an operator that knew the name — that is how 2.2.0 became the floor
+#     for `pgd`. From 2.3.0 the names come from the target version's
+#     scenarios.json, so a new scenario no longer implies a new operator. 2.3.0
+#     may still be worth recording as a floor on that basis: a scenario added
+#     after it cannot be used on 2.2.0 or earlier, whatever HM version defines it.
+#
+#   - The bootstrap-image fix (listed above as "Installing a 2027.1 to 2027.3
+#     Hybrid Manager version resolved the wrong bootstrap images") looks like a
+#     second reason 2.3.0 is a floor rather than a recommendation: on an earlier
+#     operator those innovation versions resolve bootstrap images that are no
+#     longer published. Confirm whether that fix was also back-ported to a 2.2.x
+#     patch before stating it as a floor — that could not be checked here.
+#
+# REVIEW: Left out as not publicly documented, each to be reinstated here or in a
+# later release note once the feature it belongs to is documented:
+#
+#   - The no-touch recovery and takeover work (restoring Locations and PG
+#     management resources, recovery preflight checks, promoting a deployed
+#     secondary, replacing an installed takeover's internal databases, epoch
+#     fencing and conflict surfacing, re-homing survivors, clearing a demoted
+#     primary's beacon resources). This is the largest body of user-visible change
+#     in the release, and it is all reached through `spec.recoveryFrom`, which has
+#     no match anywhere in product_docs: the published multi-DC recovery procedure
+#     is the manual Velero one, and the published disaster-recovery `edbctl`
+#     commands cover only object store and cluster config preparation. The new
+#     `HybridControlPlane` status (fencing, conflicts, departed primaries) and the
+#     new conditions (`Fenced`, `FederationTopologyConflict`,
+#     `PrimaryOverrideIgnored`, `OrphanedPairings`) belong with it.
+#
+#   - The federation mesh and roster work (pairing groundwork and roster-based
+#     topology derivation, roster and bundle-push endpoints, full-mesh discovery,
+#     persisted roster members). The published pairing-token page states that
+#     secondaries are not federated with one another, which is what this changes,
+#     so it cannot be announced before that page is updated.
+#
+# REVIEW: Left out because the only public equivalent is a `kubectl hcp`
+# subcommand, which is not publicly available: the requirement that
+# `component update` and `component download` need an operator that writes
+# `status.scenarios`. Grepping the published `edbctl` command reference found no
+# equivalent of either, so there is nothing to point a reader at. The
+# `status.scenarios` entry above covers the field itself.
+#
+# REVIEW: Left out because what changed for a user could not be established from
+# the commit subject and the tree alone, git being unavailable to read the diffs:
+#
+#   - fix "quote these values so it doesn't break everything". The operator
+#     Helm chart now quotes the `HMRegistry` resource requests, limits, and PVC
+#     size it renders, which would mean numeric values in
+#     `hmRegistry.resources` or `hmRegistry.storage.pvc.size` no longer break
+#     the render — but which values the commit actually touched could not be
+#     confirmed, so no entry was written.
+#
+#   - chore "remove unused tsdb_host and tsdb_port defaults". Nothing in the
+#     tree reads either parameter, so this looks like the removal of defaults
+#     that had no effect; worth an entry only if an installation could still
+#     have them in `spec.globalParameters` and be affected by their going.
+#
+# REVIEW: Also judged internal and left out, for the record: the resolved
+# scenario set and the normalized registry values passed to component Helm
+# values and envsubst (`hcpScenarios`, `HCP_SCENARIOS_INSTALLED`, `registry`),
+# which are a contract with component chart authors rather than with an
+# administrator; the UAT and CI changes; the scenario-registration
+# consolidation; the retired observability scenario, which leaves no trace in
+# operator code; the `operandSetVersions` bump, which touches only
+# `config/uat/**` and the annotated sample; and the gate-resources-on-an-
+# operator-parameter feature, which was reverted in the same release.
+#
+# REVIEW: The `--component-drift-interval` flag's help text says "Zero or less
+# disables it", but the code treats zero as "use the default" and only a
+# negative duration as disabled. The entry above documents the behavior, not the
+# help text. Worth raising with engineering so the two agree.
