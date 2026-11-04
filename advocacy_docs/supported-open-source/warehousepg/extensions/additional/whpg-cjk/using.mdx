@@ -93,11 +93,11 @@ Any conjugation in the query matches. A query for `피겠다`, `피었습니다`
 
 ### Indexing large tables
 
-Speed up queries on large tables, such as millions of rows with a high query rate, by storing the `tsvector` in a column instead of recomputing it on every query. The index in [Indexing and searching text](#indexing-and-searching-text) is an expression index, so WarehousePG computes the `tsvector` for each row when it builds the index, and each query repeats the same expression. WarehousePG 7 doesn't support generated `tsvector` columns, so maintain the column with a trigger or during data loading:
+Speed up queries on large tables, such as millions of rows with a high query rate, by storing the `tsvector` in a column instead of recomputing it on every query. The index in [Indexing and searching text](#indexing-and-searching-text) is an expression index, so WarehousePG computes the `tsvector` for each row when it builds the index, and each query repeats the same expression. Declare the column as a stored generated column, so that WarehousePG fills it for existing rows and keeps it current on every `INSERT` and `UPDATE`:
 
 ```sql
-ALTER TABLE <table_name> ADD COLUMN <tsvector_column> tsvector;
-UPDATE <table_name> SET <tsvector_column> = to_tsvector('<config>', <column_name>);
+ALTER TABLE <table_name> ADD COLUMN <tsvector_column> tsvector
+    GENERATED ALWAYS AS (to_tsvector('<config>', <column_name>)) STORED;
 CREATE INDEX <index_name> ON <table_name> USING gin (<tsvector_column>);
 ```
 
@@ -115,10 +115,10 @@ Where `<column1>` and `<column2>` are the columns to return, and `<search_term>`
 For example, to give title matches in the `books` table a higher weight than body matches, combine several `tsvector` values with `setweight`. A weight, from `A` (highest) to `D` (lowest), labels the part of the document that a term came from, and `ts_rank` scores a match on a higher weight above a match on a lower weight:
 
 ```sql
-ALTER TABLE books ADD COLUMN fts tsvector;
-UPDATE books SET fts =
-    setweight(to_tsvector('korean', title), 'A') ||
-    setweight(to_tsvector('korean', coalesce(body, '')), 'D');
+ALTER TABLE books ADD COLUMN fts tsvector
+    GENERATED ALWAYS AS (
+        setweight(to_tsvector('korean', title), 'A') ||
+        setweight(to_tsvector('korean', coalesce(body, '')), 'D')) STORED;
 CREATE INDEX books_fts_col ON books USING gin (fts);
 ```
 
@@ -318,9 +318,9 @@ SELECT to_tsvector('korean',   '東京大学') AS ko,
        to_tsvector('japanese', '東京大学') AS ja,
        to_tsvector('chinese',  '東京大学') AS zh;
 __OUTPUT__
-    ko    |      ja      |           zh
-----------+--------------+------------------------
- '동경':1 | '東京大学':1 | '京':2 '大学':3 '東':1
+       ko        |      ja      |           zh
+-----------------+--------------+------------------------
+ '学':2 '동경':1 | '東京大学':1 | '京':2 '大学':3 '東':1
 ```
 
 For tables with more than one language, keep one `tsvector` column for each language, or add a language column and use partial indexes.
