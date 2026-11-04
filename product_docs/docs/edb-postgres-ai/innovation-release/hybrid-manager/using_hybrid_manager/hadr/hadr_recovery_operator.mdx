@@ -20,7 +20,7 @@ The operator restores the HM control plane and the Postgres management resources
 | Control-plane secrets, such as database credentials and service secrets | Yes, before the installation starts |
 | HM internal databases | Yes, created already recovered from their backups |
 | Read-only access to the old Velero backups | Yes |
-| `Location` resources | Yes, with streaming disabled on the locations that are gone |
+| `Location` resources | Yes, with streaming disabled on the locations that [`mode`](#mode) selects |
 | Postgres management resources: what HM records about your Postgres clusters and their backups | Yes, after the `Location` resources, from the same backup |
 | Your Postgres clusters | No. Restore each one from its backups, as in [Restoring the Postgres clusters](#restoring-the-postgres-clusters) |
 
@@ -43,6 +43,8 @@ A `Location` whose site is gone is restored with `spec.stream.remoteResources.di
 -   **Read access to the old bucket from the new environment.** If object storage is reached through workload identity, the identity of the new environment needs access to the old bucket as well as its own.
 
 -   **The image pull secret on the new cluster**, created as for any installation. See [Preparing your environment](../../install/install_guide/environment_prep). It's environment setup, not restored state, so the recovery never restores it.
+
+-   **`edbctl` version 1.11.0 or later.** See [EDB Hybrid Manager CLI](../edbctl).
 
 ## Gathering the values of the old installation
 
@@ -215,7 +217,7 @@ The recovery runs in stages, before and after the installation:
 | `Preparing` | `RestoreSecrets` | Reads the control-plane secrets from the backup |
 | `Prepared` | | The installation goes ahead, with the internal databases created already recovered |
 | `Restoring` | `AcquireSource` | Gives Velero read-only access to the old backups |
-| `Restoring` | `RestoreLocations` | Restores the `Location` resources, with streaming disabled on the ones that are gone |
+| `Restoring` | `RestoreLocations` | Restores the `Location` resources, with streaming disabled on the locations that `mode` selects |
 | `Restoring` | `RestorePGManagement` | Restores the Postgres management resources, from the same backup |
 | `Restoring` | `FlipTopology` | Only with [`claim: true`](#claim): removes the old HM from the federation |
 | `Completed` | | The control plane is recovered |
@@ -276,13 +278,13 @@ kubectl get backupstoragelocation -n velero \
 
 If the recovery reports that it kept the existing `edb-object-storage` secret, that's the expected outcome, because that secret already describes the object storage the new HM can reach.
 
-The `Location` resources of the old HM should be back, with streaming disabled on the ones that are gone:
+The `Location` resources of the old HM should be back. List every location and check the Streaming column:
 
 ```bash
-kubectl get locations.beacon.enterprisedb.com -A
-kubectl get location <name> -n edb-system -o jsonpath='{.spec.stream.remoteResources.disabled}{"\n"}'
-# true
+edbctl location list
 ```
+
+Streaming is disabled on the locations that [`mode`](#mode) selects: every restored location with `full`, or only `target.locationID` with `primary-only`. That follows the mode you chose, not which locations were actually lost, so it may not match them yet. Before you remove any Postgres resources, make sure streaming is disabled on every affected location and on no other, as in [Restoring the Postgres clusters](#restoring-the-postgres-clusters).
 
 !!! Note
 If the new HM reuses the location ID of the old one, both are the same `Location`, so streaming is disabled on the location the recovered HM itself runs in, and it doesn't manage clusters until you turn it back on. Do that as part of [Restoring the Postgres clusters](#restoring-the-postgres-clusters), not before.
@@ -311,11 +313,12 @@ Go through the locations in this order:
     To re-enable streaming on a location, run:
 
     ```bash
-    kubectl patch location <name> -n edb-system --type merge \
-      -p '{"spec":{"stream":{"remoteResources":{"disabled":false}}}}'
+    edbctl dr set-location-streaming --id <location-id> --enable
     ```
 
-2.  Check that every location still disabled is either lost, or the one the recovered HM runs in, when it reuses the old location ID.
+    Where `<location-id>` is the ID of the location, as shown in the Location ID column of `edbctl location list`. Then check the Streaming column of the same output to confirm it took effect.
+
+2.  Before you remove anything, confirm that streaming is disabled on every affected location and on no other. An affected location is one that was lost, or the one the recovered HM runs in, when it reuses the old location ID. If a lost location still streams, for example because `primary-only` was used when other locations were lost too, disable it as in [Disable resource streaming on an affected location](hadr_recovery_multi_dc#disable-resource-streaming-on-an-affected-location). If a surviving location is left disabled, the clusters with replicas or groups there can't be repaired in the next step, because a forced failover or dropping a lost group needs streaming.
 
 3.  Remove the Postgres clusters, replicas and groups that ran in the lost locations, as in [Remove Postgres clusters, replicas and groups from an affected location](hadr_recovery_multi_dc#remove-postgres-clusters-replicas-and-groups-from-an-affected-location). Delete each cluster that ran only in lost locations, and repair in place each one that still has replicas or groups in a surviving location.
 
