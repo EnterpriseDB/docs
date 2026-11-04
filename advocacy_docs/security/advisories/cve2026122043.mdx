@@ -1,0 +1,79 @@
+---
+title: CVE-2026-122043 - repmgr OS command injection through event notification placeholders
+navTitle: CVE-2026-122043
+affectedProducts: repmgr versions 4.0.0 through 5.5.0 using event notification or failover validation placeholders
+---
+
+First Published: 2026/MM/DD
+
+Last Updated: 2026/MM/DD
+
+## Summary
+
+repmgr does not escape node metadata before running event notification commands through the shell. When `event_notification_command` is configured, repmgr substitutes the `%a` (node name), `%c` (connection string) and `%d` (details) placeholders into the command and runs it with the shell. `%a` and `%c` are inserted without escaping, and `%d` escapes only double quotes, so shell command substitution still works inside the double quotes the documentation recommends. The `%a` placeholder of `failover_validation_command` has the same flaw.
+
+The node name and connection string come from node records in the `repmgr.nodes` table. An attacker with the credentials of a non-superuser repmgr database user can write a crafted node record and run OS commands, as the operating system user that runs repmgr or repmgrd (usually `postgres`), on other cluster nodes that process an event using these placeholders.
+
+The issue is a privilege escalation only in deployments where the repmgr database user is not a superuser. When it is a superuser, as in the repmgr quick start and in clusters deployed with Trusted Postgres Architect, the attacker gains no new capability, because a superuser can already run OS commands. Upgrading is still recommended.
+
+Deployments that do not set `event_notification_command`, or whose commands do not use `%a`, `%c` or `%d`, and that do not use `%a` in `failover_validation_command`, are not affected.
+
+## Vulnerability details
+
+CVE-ID: [CVE-2026-122043](https://nvd.nist.gov/vuln/detail/CVE-2026-122043)
+
+CVSS Base Score: 6.0 Medium
+
+CVSS Temporal Score: Undefined
+
+CVSS Environmental Score: Undefined
+
+CVSS Vector: CVSS:4.0/AV:N/AC:L/AT:P/PR:H/UI:N/VC:L/VI:H/VA:H/SC:N/SI:N/SA:N
+
+## Affected products and versions
+
+* Affected Product: repmgr, including repmgrd
+* Affected Versions: repmgr 4.0.0 through 5.5.0 with an `event_notification_command` that uses `%a`, `%c` or `%d`, or a `failover_validation_command` that uses `%a`
+* Not Affected: repmgr deployments that do not use these placeholders
+
+## Remediation/fixes
+
+Impacted users must upgrade to a fixed version of repmgr. Starting with repmgr 5.5.1, repmgr single-quotes every substituted node name, connection string and details value before running the command, so the value reaches the script as a single literal argument.
+
+| Product | VRMF | Remediation/First Fix |
+|---------|------|-----------------------|
+| repmgr | 4.0.0 through 5.5.0 | Update to repmgr 5.5.1 or later |
+
+After upgrading, remove any quotes you placed around `%a`, `%c` or `%d` in `event_notification_command` and `failover_validation_command`. repmgr 5.5.1 quotes these values itself, so your own quotes would be passed to the script as literal characters.
+
+## Mitigation
+
+Until you can upgrade, reduce exposure by:
+
+* Removing `%a`, `%c` and `%d` from `event_notification_command`, and `%a` from `failover_validation_command`. Pass `%n` (the numeric node ID) instead and look up other details inside the script.
+* Restricting the repmgr database user's credentials to the cluster hosts, and restricting `pg_hba.conf` so that user can connect only from them.
+
+## References
+
+* [CVSS Calculator v4.0](https://www.first.org/cvss/calculator/4.0)
+* [CWE-78 Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')](https://cwe.mitre.org/data/definitions/78.html)
+* [repmgr pull request #924](https://github.com/EnterpriseDB/repmgr/pull/924)
+
+## Related information
+
+* [EnterpriseDB](https://www.enterprisedb.com/)
+* [repmgr](https://github.com/EnterpriseDB/repmgr)
+* [repmgr documentation](https://www.repmgr.org/docs/current/)
+* [EDB Blogs link](https://enterprisedb.com/blog/)
+
+## Acknowledgement
+
+Source: Reported to EDB by Arittro Sarkar through the EDB Vulnerability Disclosure Program.
+
+## Change history
+
+* 2026/MM/DD: Original Copy Published
+
+## Disclaimer
+
+This document is provided on an "as is" basis and does not imply any kind of guarantee or warranty, including the warranties of merchantability or fitness for a particular use. Your use of the information on the document is at your own risk. EDB reserves the right to change or update this document at any time. Customers are therefore recommended to always view the latest version of this document.
