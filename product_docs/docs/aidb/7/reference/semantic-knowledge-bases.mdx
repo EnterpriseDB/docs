@@ -1041,7 +1041,7 @@ SELECT aidb.update_semantic_kb_curation('bank_kb', true);
 
 ### `aidb.semantic_kb_audit`
 
-Lists recorded semantic KB operations. Only a superuser or the extension owner can call it. For concepts, see [Auditing semantic KB operations](../semantic-knowledge-bases/auditing).
+Lists recorded semantic KB operations. A superuser, the extension owner, or a role that has been granted `EXECUTE` on the function can call it. For concepts, see [Auditing semantic KB operations](../semantic-knowledge-bases/auditing).
 
 #### Parameters
 
@@ -1049,7 +1049,7 @@ Lists recorded semantic KB operations. Only a superuser or the extension owner c
 | ------------ | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. `NULL` returns records for all knowledge bases.                                  |
 | `op`         | TEXT        | `NULL`  | Only return this operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`. |
-| `func`       | TEXT        | `NULL`  | Only return records written by this exact function.                                                                                |
+| `func`       | TEXT        | `NULL`  | Only return records with this exact `func` value. It isn't always the name of the SQL function you called. See [Operation categories and functions](../semantic-knowledge-bases/auditing#operation-categories-and-functions).                                                                                |
 | `since`      | TIMESTAMPTZ | `NULL`  | Only return records from this time on.                                                                                        |
 | `limit_rows` | INTEGER     | `100`   | Maximum number of records to return.                                                                                          |
 
@@ -1057,13 +1057,13 @@ Lists recorded semantic KB operations. Only a superuser or the extension owner c
 
 `TABLE(ts TIMESTAMPTZ, kb_name TEXT, op TEXT, func TEXT, caller_kind TEXT, actor_name TEXT, login_name TEXT, object_ref TEXT, detail JSONB)`
 
-`caller_kind` is `agent_hub`, `mcp`, or `direct`. `actor_name` is the role the operation ran as; `login_name` is the session's login role. `object_ref` names the affected object. `detail` holds operation-specific data, for example `mode`, `forced`, and `discarded` for a description write. `detail` is limited to 32 KiB. If it's larger, AIDB replaces it with a marker that records the original size. Read operations in a read-only transaction or on a hot standby don't write a record.
+`caller_kind` is how the operation arrived. In AIDB 7.9.0 it's always `direct`. `actor_name` is the role the operation ran as; `login_name` is the session's login role. `object_ref` names the affected object. `detail` holds operation-specific data, for example `mode`, `forced`, and `discarded` for a description write. `detail` is limited to 32 KiB. If it's larger, AIDB replaces it with a marker that records the original size. Read operations in a read-only transaction or on a hot standby don't write a record.
 
 #### Example
 
 ```sql
 SELECT ts, op, func, actor_name, object_ref, detail
-FROM aidb.semantic_kb_audit(kb_name => 'bank_kb', op => 'write')
+FROM aidb.semantic_kb_audit(kb_name => 'bank_kb', op => 'annotate')
 ORDER BY ts DESC LIMIT 3;
 ```
 
@@ -1071,7 +1071,7 @@ ORDER BY ts DESC LIMIT 3;
 
 ### `aidb.semkb_audit_prune`
 
-Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller must be a member of the knowledge base's owner role. The function deletes records in batches and writes one `admin` audit record that contains the retention interval, the number of deleted records, and the number of batches. A negative or invalid interval raises an error before any records are deleted. See [Retention and pruning](../semantic-knowledge-bases/auditing#retention-and-pruning).
+Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller must be a member of the knowledge base's owner role, which `aidb.create_semantic_kb()` sets to the extension owner. To prune the records of a deleted knowledge base, you must be the extension owner or a superuser. A caller who isn't authorized gets SQLSTATE `42501`. The function deletes records in batches and writes one `admin` audit record that contains the retention interval, the number of deleted records, and the number of batches, even when it deletes nothing. A negative or invalid interval raises an error before any records are deleted. See [Retention and pruning](../semantic-knowledge-bases/auditing#retention-and-pruning).
 
 #### Parameters
 
