@@ -1,0 +1,45 @@
+---
+title: Installing on hosts where the postgres user comes from AD or LDAP
+navTitle: AD or LDAP postgres user
+description: "Steps to take before you install or upgrade EDB Postgres Extended Server RPM packages on hosts where the postgres operating system user is managed by Active Directory or LDAP."
+---
+
+EDB Postgres Extended Server RPM packages include a `systemd-sysusers` (`sysusers.d`) configuration file named `edb-pge-17.conf`. This file is included in EDB Postgres Extended Server RPM packages from version 17.11 onward. If the `postgres` operating system (OS) user doesn't exist locally when the system boots, `systemd-sysusers` creates a local `postgres` user (UID 26).
+
+This is a problem on hosts where the `postgres` user comes from Active Directory (using sssd or winbind) or LDAP. If the directory service starts after `systemd-sysusers` runs, the local `postgres` user is created with a different UID than the directory user. As a result, the service can fail to start after a reboot.
+
+If your hosts use a local `postgres` user, you don't need to do anything.
+
+If your `postgres` user comes from AD or LDAP, take the following steps before you install or upgrade the packages. This applies to the RPM-based platforms: RHEL, Oracle Linux, Rocky Linux, AlmaLinux, and SLES.
+
+1.  Check that the directory user resolves and that there's no local entry:
+
+    ```shell
+    getent passwd postgres
+    grep '^postgres:' /etc/passwd
+    ```
+
+    The `getent` command must return the AD or LDAP user. The `grep` command must print nothing.
+
+    If `getent` doesn't return the directory user, fix your sssd or winbind configuration first. If the user can't be resolved when you install the package, the package's install script creates a local `postgres` user (UID 26).
+
+1.  Mask the packaged `sysusers.d` file so that `systemd-sysusers` doesn't create a local `postgres` user at boot:
+
+    ```shell
+    sudo mkdir -p /etc/sysusers.d
+    sudo ln -sf /dev/null /etc/sysusers.d/edb-pge-17.conf
+    ```
+
+1.  Verify that the mask is in place:
+
+    ```shell
+    ls -l /etc/sysusers.d/edb-pge-17.conf
+    ```
+
+    The output must show the file linking to `/dev/null`.
+
+The mask lives in `/etc`, so package updates don't remove it. You can apply it before you install the package.
+
+## If the service fails to start after an upgrade
+
+If you already upgraded and the service fails to start after a reboot, see KB_LINK_PENDING.
