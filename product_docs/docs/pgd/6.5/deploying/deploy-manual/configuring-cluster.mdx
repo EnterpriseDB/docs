@@ -178,6 +178,27 @@ export PGDATA=/var/lib/edb-pge/$PG_VERSION/data/
 export PGPASSWORD=secret
 ```
 
+## Configuring authentication between nodes
+
+Configure authentication so that every node can connect to every other node without a password prompt. Every node connects to the others both to replicate changes and for regular connections, so each node's `pg_hba.conf` file must accept those connections, and each node needs a stored password for the Postgres user, `<db-user>`. You create the `pg_hba.conf` file in this section, and `pgd node setup` stores the password when you run it with `--update-pgpass`.
+
+On each host, as `<db-user>`, create a `pg_hba.conf` file outside the data directory, for example `~/pg_hba.conf`. The `pgd node setup` command copies this file over the node's default `pg_hba.conf` file, so the file must contain every rule the node needs. The following example has two rules that let the nodes connect to each other, and rules for connections from the host itself. Replace `<node-subnet>` with the network address range, in CIDR notation, that contains all your hosts:
+
+```text
+local   all          all                        trust
+host    all          all   127.0.0.1/32         trust
+host    all          all   ::1/128              trust
+local   replication  all                        trust
+host    replication  all   127.0.0.1/32         trust
+host    replication  all   ::1/128              trust
+host    all          all   <node-subnet>        scram-sha-256
+host    replication  all   <node-subnet>        scram-sha-256
+```
+
+Change the rules for the host itself to match your security policy, and add rules for connections from your applications and administrators. A connection that has no matching rule is rejected.
+
+For encrypted connections and certificate authentication between nodes, see [Securing inter-node connections](/pgd/current/ensuring-security/access-controls/inter-node-connections/).
+
 ## Creating the PGD cluster
 
 Run the `pgd node setup` command as the Postgres user on each host, in the session where you set the environment variables, starting with the first host. The command configures the host it runs on, so the `--dsn` host must be the host where you run it. The command initializes the database in the Postgres data directory. On the first host, it also creates the cluster and its first group. On every other host, it joins the new node to the existing cluster.
@@ -187,15 +208,17 @@ Run the `pgd node setup` command as the Postgres user on each host, in the sessi
 Create the cluster on the first host, which becomes the first node. Run the following command:
 
 ```bash
-pgd node <node-name> setup --dsn "host=<host> user=<db-user> port=<db-port> dbname=<db-name>" --group-name <group-name>
+pgd node <node-name> setup --dsn "host=<host> user=<db-user> port=<db-port> dbname=<db-name>" --group-name <group-name> --hba-conf <hba-file> --initial-node-count <total-nodes> --update-pgpass
 ```
 
-Where `<host>` is the host name or IP address of the first host.
+Where `<host>` is the host name or IP address of the first host, `<hba-file>` is the path of the `pg_hba.conf` file you created in the previous section, and `<total-nodes>` is the number of nodes you plan to have in the whole cluster, across all groups.
+
+The `--update-pgpass` option stores the Postgres user's password in the `.pgpass` file of the user that runs the command, so the nodes can connect to each other without a password prompt.
 
 For example, to create `node-1` in `group-1` on `host-1`:
 
 ```bash
-pgd node node-1 setup --dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-1
+pgd node node-1 setup --dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-1 --hba-conf ~/pg_hba.conf --initial-node-count 3 --update-pgpass
 ```
 The command initializes the database in the Postgres data directory, then creates the cluster and the group on the first node.
 
@@ -204,16 +227,16 @@ The command initializes the database in the Postgres data directory, then create
 Join every other host to the cluster by running the following command on the host you're joining. The `--cluster-dsn` option points to the first host, so the new node joins the cluster and the group that the first host created:
 
 ```bash
-pgd node <node-name> setup --dsn "host=<host> user=<db-user> port=<db-port> dbname=<db-name>" --cluster-dsn "host=<first-host> user=<db-user> port=<db-port> dbname=<db-name>"
+pgd node <node-name> setup --dsn "host=<host> user=<db-user> port=<db-port> dbname=<db-name>" --cluster-dsn "host=<first-host> user=<db-user> port=<db-port> dbname=<db-name>" --hba-conf <hba-file> --initial-node-count <total-nodes> --update-pgpass
 ```
 
-Where `<host>` is the host name or IP address of the host you're joining, and `<first-host>` is the host name or IP address of the first host.
+Where `<host>` is the host name or IP address of the host you're joining, `<first-host>` is the host name or IP address of the first host, `<hba-file>` is the path of the `pg_hba.conf` file you created on this host, and `<total-nodes>` is the same number you used on the first host.
 
 For example, to join `host-2` and `host-3` as `node-2` and `node-3`, run each command on its own host:
 
 ```bash
-pgd node node-2 setup --dsn "host=host-2 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb"
-pgd node node-3 setup --dsn "host=host-3 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb"
+pgd node node-2 setup --dsn "host=host-2 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --hba-conf ~/pg_hba.conf --initial-node-count 3 --update-pgpass
+pgd node node-3 setup --dsn "host=host-3 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --hba-conf ~/pg_hba.conf --initial-node-count 3 --update-pgpass
 ```
 
 To match your [deployment pattern](/pgd/current/planning/deployment-patterns/), add options to the command:
@@ -224,10 +247,10 @@ To match your [deployment pattern](/pgd/current/planning/deployment-patterns/), 
 For example, to follow the [two data groups pattern](/pgd/current/planning/deployment-patterns/two-data-groups/) with a witness location, add `host-4` to `host-6` as a second data group, `group-2`, and `host-7` as a witness node in its own group, `group-3`. Run each command on its own host:
 
 ```bash
-pgd node node-4 setup --dsn "host=host-4 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2 --create-group
-pgd node node-5 setup --dsn "host=host-5 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2
-pgd node node-6 setup --dsn "host=host-6 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2
-pgd node node-7 setup --dsn "host=host-7 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-3 --create-group --node-kind witness
+pgd node node-4 setup --dsn "host=host-4 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2 --create-group --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
+pgd node node-5 setup --dsn "host=host-5 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2 --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
+pgd node node-6 setup --dsn "host=host-6 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2 --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
+pgd node node-7 setup --dsn "host=host-7 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-3 --create-group --node-kind witness --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
 ```
 
 For more about distributing groups across locations, see [Setting up your geo-replication topology](/pgd/current/geo-replication-dba/topology-setup/).
