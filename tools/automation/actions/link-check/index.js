@@ -597,6 +597,7 @@ function index() {
           if (frontmatter.navigation) {
             for (let child of frontmatter.navigation) {
               if (!child.startsWith("!")) continue;
+              if (child.startsWith("!/")) continue; // an ignored absolute path is likely navigable via some other route (or ignored via some other navigation section)
               let urlPath = path.posix.resolve(
                 path.posix.sep,
                 metadata.canonical,

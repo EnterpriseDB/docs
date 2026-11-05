@@ -4,6 +4,7 @@ originalFilePath: 'src/tde.md'
 ---
 
 !!!info Important
+
 TDE is available *only* for operands that support it:
 EPAS and PG Extended, versions 15 and newer.
 !!!
@@ -17,8 +18,9 @@ Server from version 15, and is supported by the {{name.ln}}
 operator.
 
 !!!info Important
+
 Before you proceed, please take some time to familiarize with the
-[TDE feature in the EPAS documentation](/tde/latest/).
+[TDE feature in the EPAS documentation](/edb-postgres-ai/platforms-and-tools/security/tde/).
 !!!
 
 With TDE activated, both WAL files and files for tables will be encrypted.
@@ -27,6 +29,7 @@ managed by the database without requiring any application changes or updated
 client drivers.
 
 !!!note
+
 In the code samples shown below, the `epas` sub-section of `postgresql` in
 the YAML manifests is used to activate TDE. The `epas` section can be used
 to enable TDE for PG Extended images as well as for EPAS images.
@@ -44,7 +47,8 @@ The basic approach is to store the passphrase in a Kubernetes secret. Such a
 passphrase will be used to encrypt the EPAS binary key.
 
 !!!note EPAS documentation
-Please refer to [the EPAS documentation](/tde/latest/secure_key/)
+
+Please refer to [the EPAS documentation](/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/)
 for details on the EPAS encryption key.
 !!!
 
@@ -60,6 +64,7 @@ For example:
     epas:
       tde:
         enabled: true
+        keyLength: 256
         secretKeyRef:
           name: tde-key
           key: key
@@ -68,6 +73,7 @@ For example:
 You can find an example in [`cluster-example-tde.yaml`](../samples/cluster-example-tde.yaml).
 
 !!!note
+
 This file also contains the definition of the secret to hold the encryption
 key. Look at the following section for an example on how to create a secret
 for this purpose.
@@ -75,6 +81,14 @@ for this purpose.
 
 The key stored in the secret will be used as the pass-phrase to invoke
 `openssl` to wrap/unwrap the EPAS encryption key.
+
+The optional `keyLength` field selects the AES key length used to encrypt the
+database files. The supported values are `128` (the default) and `256`.
+AES-256 requires EPAS or PG Extended 16 or newer.
+When restoring a physical backup, set `keyLength` to the value used by the
+source cluster. The restored data directory keeps the source key: a
+different value is not applied and is not validated, it only makes the spec
+misleading.
 
 ### How to create the secret containing the passphrase
 
@@ -118,6 +132,7 @@ command can be run to generate a passphrase to be used with `openssl`.
     epas:
       tde:
         enabled: true
+        keyLength: 256
         passphraseCommand:
           name: tde-passphrase
           key: command
@@ -144,6 +159,7 @@ The snippet below shows a cluster with TDE enabled using custom commands.
     epas:
       tde:
         enabled: true
+        keyLength: 256
         wrapCommand:
           name: tde-wrap-command
           key: command
@@ -160,7 +176,7 @@ The custom commands need to obey the following conventions:
     should be given the string "%p", which is a placeholder EPAS will use to
     pass the file path of the new, wrapped encryption key file.
 
-2.  The custom unwrap command should write to standard output. It should have
+1.  The custom unwrap command should write to standard output. It should have
     an explicit file path argument for input (not shell redirections).
     Again, the file argument should be given the string "%p", which is the
     placeholder EPAS will fill in with the wrapped encryption key file path.
@@ -176,7 +192,7 @@ The following example shows how to use HashiCorp Vault to store the encryption
 key and use it to activate TDE. The `vault` CLI is used to interact with Vault
 and is included by default in the EDB Postgres Advanced Server (EPAS) image.
 
-First, wherever you have vault running you must enable the Transit secrets 
+First, wherever you have vault running you must enable the Transit secrets
 engine and create a key:
 
 ```shell
@@ -185,7 +201,7 @@ vault write -f transit/keys/pg-tde
 ```
 
 Then, create a secret containing the custom wrap/unwrap commands. The wrap
-and unwrap commands will 'wrap' a binary that is in the EPAS image. The 
+and unwrap commands will 'wrap' a binary that is in the EPAS image. The
 binary will interact with the vault API to encrypt/decrypt the EPAS encryption.
 
 The binary needs 5 flags: `--file`, `--host`, `--secret`, `--key` and `--vault-endpoint`. The
@@ -233,21 +249,158 @@ spec:
           key: unwrap
 ```
 
-### Enable TLS
+### Kubernetes authentication
 
-The binary needs 6 flags: `--file`, `--host`, `--secret`, `--key`, `--vault-endpoint` and `--enable-tls`. 
-The `--host` flag is in the format of `http://vault-host:vault-port` and needs to be
-provided to reach the Vault. The server`--secret` flag is the name of the Kubernetes
-secret that contains the vault token and the `--key` flag is the key in that secret
-pointing the vault token. The `--vault-endpoint` flag is the name of the key that
-was created inside vault; in the example above it is `pg-tde`.
-To enable TLS, `--enable-tls` must be set to `true`.
+Instead of storing a long-lived Vault token in a Kubernetes secret, the
+wrapper can authenticate to Vault using the Kubernetes auth method, logging
+in with the pod's own ServiceAccount token. This is required if you want to
+use a non-default auth mount path or a Vault Enterprise namespace, covered
+below.
+
+Enable the Kubernetes auth method and configure it to trust the cluster's
+API server:
+
+```shell
+vault auth enable kubernetes
+
+vault write auth/kubernetes/config \
+    kubernetes_host="https://kubernetes.default.svc" \
+    kubernetes_ca_cert=@ca.crt \
+    token_reviewer_jwt=@token
+```
+
+Create a policy granting access to the transit key, and a role binding it
+to the ServiceAccount used by the `Cluster` (by default, the ServiceAccount
+name matches the `Cluster` name, unless `spec.serviceAccountName` is set):
+
+```shell
+vault policy write tde-policy - <<EOF
+path "transit/encrypt/pg-tde" { capabilities = ["update"] }
+path "transit/decrypt/pg-tde" { capabilities = ["update"] }
+EOF
+
+vault write auth/kubernetes/role/tde-role \
+    bound_service_account_names=hashicorp-vault-tde \
+    bound_service_account_namespaces=default \
+    policies=tde-policy \
+    ttl=1h
+```
+
+Then omit `--secret` and `--key` from the wrap/unwrap commands entirely.
+Without them, the binary authenticates using the ServiceAccount token
+mounted in the pod and the Vault role passed with `--role` (default `tde-role`):
 
 ```shell
 kubectl create secret generic -o yaml vault-token \
-    --from-literal=wrap="/bin/vault wrap --file %p --host http://vault:8200 --secret vault-token --key token --vault-endpoint pg-tde --enable-tls true" \
-    --from-literal=unwrap="/bin/vault unwrap --file %p --host http://vault:8200 --secret vault-token --key token --vault-endpoint pg-tde --enable-tls true" \
+    --from-literal=wrap="/bin/vault wrap --file %p --host http://vault:8200 --vault-endpoint pg-tde --role tde-role" \
+    --from-literal=unwrap="/bin/vault unwrap --file %p --host http://vault:8200 --vault-endpoint pg-tde --role tde-role"
+```
+
+!!!note
+
+`--secret`/`--key` and Kubernetes authentication are mutually exclusive:
+if `--secret` is set, the binary reads a static token from that
+Kubernetes secret and never logs in via Kubernetes auth, so
+`--kubernetes-mount-path` and `--role` have no effect in that mode.
+`--namespace` applies either way.
+!!!
+
+### Non-default Kubernetes authentication mount path
+
+By default the wrapper logs in against the `kubernetes` auth mount. If your
+Kubernetes auth backend is enabled at a custom path — common when Vault is
+provisioned via Terraform, which often creates a dedicated mount per cluster
+or tenant — the default won't match and Vault returns `403 permission denied`.
+Use `--kubernetes-mount-path` (default `kubernetes`) to set it.
+Pass the mount name only (e.g. `cluster-abc`), not the full
+`auth/cluster-abc/login` path.
+
+Enable the Kubernetes auth method and configure it for a custom
+`cluster-abc` path:
+
+```shell
+vault auth enable -path=cluster-abc kubernetes
+
+vault write auth/cluster-abc/config \
+    kubernetes_host="https://kubernetes.default.svc" \
+    kubernetes_ca_cert=@ca.crt \
+    token_reviewer_jwt=@token
+```
+
+Create a policy granting access to the transit key, and a role binding it
+to the ServiceAccount used by the `Cluster` (by default, the ServiceAccount
+name matches the `Cluster` name, unless `spec.serviceAccountName` is set):
+
+```shell
+vault policy write tde-policy - <<EOF
+path "transit/encrypt/pg-tde" { capabilities = ["update"] }
+path "transit/decrypt/pg-tde" { capabilities = ["update"] }
+EOF
+
+vault write auth/cluster-abc/role/tde-role \
+    bound_service_account_names=hashicorp-vault-tde \
+    bound_service_account_namespaces=default \
+    policies=tde-policy
+```
+
+Create the `vault-token` secret including the `--kubernetes-mount-path cluster-abc` option:
+
+```shell
+kubectl create secret generic -o yaml vault-token \
+    --from-literal=wrap="/bin/vault wrap --file %p --host http://vault:8200 --vault-endpoint pg-tde --role tde-role --kubernetes-mount-path cluster-abc" \
+    --from-literal=unwrap="/bin/vault unwrap --file %p --host http://vault:8200 --vault-endpoint pg-tde --role tde-role --kubernetes-mount-path cluster-abc"
+```
+
+### Vault Enterprise namespaces
+
+Use `--namespace` to target a Vault Enterprise namespace explicitly. It
+overrides the ambient `VAULT_NAMESPACE` environment variable, and applies
+whether the binary authenticates via `--secret`/`--key` or via Kubernetes
+auth.
+
+```shell
+kubectl create secret generic -o yaml vault-token \
+    --from-literal=wrap="/bin/vault wrap --file %p --host http://vault:8200 --vault-endpoint pg-tde --role tde-role --namespace admin/my-team" \
+    --from-literal=unwrap="/bin/vault unwrap --file %p --host http://vault:8200 --vault-endpoint pg-tde --role tde-role --namespace admin/my-team"
+```
+
+### Enable TLS
+
+To enable TLS, set `--enable-tls` to `true` and make sure `--host` uses the
+`https://` scheme — TLS is only actually negotiated when the address scheme
+is `https`, so `--enable-tls` has no effect against an `http://` host. This
+applies both when authenticating with `--secret`/`--key` and with the
+Kubernetes authentication flow.
+
+```shell
+kubectl create secret generic -o yaml vault-token \
+    --from-literal=wrap="/bin/vault wrap --file %p --host https://vault:8200 --secret vault-token --key token --vault-endpoint pg-tde --enable-tls true" \
+    --from-literal=unwrap="/bin/vault unwrap --file %p --host https://vault:8200 --secret vault-token --key token --vault-endpoint pg-tde --enable-tls true" \
     --from-literal=token="hvs.whatever"
+```
+
+The equivalent using Kubernetes authentication instead:
+
+```shell
+kubectl create secret generic -o yaml vault-token \
+    --from-literal=wrap="/bin/vault wrap --file %p --host https://vault:8200 --vault-endpoint pg-tde --role tde-role --enable-tls true" \
+    --from-literal=unwrap="/bin/vault unwrap --file %p --host https://vault:8200 --vault-endpoint pg-tde --role tde-role --enable-tls true"
+```
+
+#### Verifying the Vault server certificate
+
+By default the client does not verify the Vault server's TLS certificate
+(`--verify-ca` defaults to `false`, applying `InsecureSkipVerify`). Set
+`--verify-ca` to `true` to enable verification. There is no dedicated flag
+for the CA bundle itself: the binary picks it up from the `VAULT_CACERT`
+environment variable, so this is needed whenever Vault's certificate is
+signed by a CA that isn't already trusted by the container's system trust
+store — the case for most self-signed or internal-CA Vault deployments.
+
+```shell
+kubectl create secret generic -o yaml vault-token \
+    --from-literal=wrap="/bin/vault wrap --file %p --host https://vault:8200 --vault-endpoint pg-tde --role tde-role --enable-tls true --verify-ca true" \
+    --from-literal=unwrap="/bin/vault unwrap --file %p --host https://vault:8200 --vault-endpoint pg-tde --role tde-role --enable-tls true --verify-ca true"
 ```
 
 Then, specify the environment variables in a secret or configMap.
@@ -298,3 +451,22 @@ spec:
           name: vault-token
           key: unwrap
 ```
+
+### Environment variables
+
+Besides its CLI flags, `/bin/vault` also reads the standard set of
+`VAULT_*` environment variables supported by HashiCorp's Go client library
+(`VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_NAMESPACE`, `VAULT_SKIP_VERIFY`,
+`VAULT_CACERT`, `VAULT_CLIENT_CERT`/`VAULT_CLIENT_KEY`, and more) — inject
+them the same way as `VAULT_CACERT` above, via `envFrom` and, for
+file-based values, `projectedVolumeTemplate`. See
+[Vault's environment variables reference](https://github.com/hashicorp/vault-client-go/blob/v0.4.3/client_option.go#L151-L166)
+for the full list and description of each.
+
+!!!note
+
+Where an environment variable and a CLI flag configure the same thing
+(e.g. `VAULT_ADDR` and `--host`, `VAULT_NAMESPACE` and `--namespace`,
+`VAULT_SKIP_VERIFY` and `--verify-ca`), the environment variable takes
+precedence if set, regardless of what the flag was given.
+!!!

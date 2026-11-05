@@ -1,0 +1,84 @@
+---
+title: Configuring the endpoint
+navTitle: Configuring the endpoint
+description: Every edb.endpoints_* parameter, what the supervisor derives on its own, and what a reload does.
+redirects:
+  - /aidb/7/mcp-endpoint/configuring-the-endpoint
+---
+
+Set endpoint parameters in `postgresql.conf` or with `ALTER SYSTEM`. AIDB registers every endpoint setting as an ordinary Postgres parameter. A change to `edb.endpoints_enabled` needs a Postgres restart. Every other parameter takes effect on `SELECT pg_reload_conf();`, unless no server switch was on when Postgres started. In that case, turning one on needs a restart too.
+
+Three on/off switches decide what runs. A server runs when its own switch is on and `edb.endpoints_enabled` is on, so out of the box nothing runs:
+
+- `edb.endpoints_mcp_enabled` and `edb.endpoints_otlp_enabled` turn the MCP server and the [OTLP/HTTP receiver](../otlp-server) on or off. Both default to `off`.
+- `edb.endpoints_enabled` is a master off switch, default `on`. Set it to `off` to disable every server, whatever the other two say.
+
+The supervisor starts when a server switch is on at Postgres startup. If both are off then, turning one on later needs a restart.
+
+## General settings
+
+These apply to every server the endpoint process runs, MCP and the OTLP receiver:
+
+| Parameter                           | Type    | Default       | Range  | Context    | Description                                                                                                                                                        |
+|-------------------------------------|---------|---------------|--------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `edb.endpoints_enabled`             | boolean | `on`          |        | postmaster | Master off switch. Requires `aidb` in `shared_preload_libraries` and a restart.                                                                                    |
+| `edb.endpoints_command_path`        | string  | empty         |        | sighup     | Path to the `edb-endpoints` binary. Empty means `<bindir>/edb-endpoints`. A relative path resolves against the Postgres `bindir`.                                  |
+| `edb.endpoints_host`                | string  | `127.0.0.1`   |        | sighup     | Address the endpoint listens on. Anything outside loopback requires the TLS pair.                                                                                  |
+| `edb.endpoints_database`            | string  | `postgres`    |        | sighup     | Databases to serve, written as an identifier list like `search_path`. The first is the default at `/mcp`, and each is served at `/mcp/<name>`. See [Serving multiple databases](serving-multiple-databases).                                                               |
+| `edb.endpoints_tls_cert`            | string  | empty         |        | sighup     | PEM certificate the endpoint serves. Set together with the key.                                                                                                    |
+| `edb.endpoints_tls_key`             | string  | empty         |        | sighup     | PEM private key for the certificate. Set together with the certificate.                                                                                            |
+| `edb.endpoints_restart_max`         | integer | `5`           | 1-100  | sighup     | Maximum number of times the supervisor starts the endpoint (the first start included) within the restart window before it stops trying. See [Restart budget](operating-the-endpoint#restart-budget). |
+| `edb.endpoints_restart_window_secs` | integer | `60`          | 1-3600 | sighup     | Length of the sliding window for the restart budget, in seconds.                                                                                                   |
+
+## MCP settings
+
+The `edb.endpoints_mcp_*` settings apply to the MCP server only. When one that has a general counterpart is empty, the general setting is used.
+
+| Parameter                    | Type    | Default | Range      | Context | Description                                                                                                                           |
+|------------------------------|---------|---------|------------|---------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `edb.endpoints_mcp_enabled`  | boolean | `off`   |            | sighup  | Serves MCP.                                                                                                                           |
+| `edb.endpoints_mcp_host`     | string  | empty   |            | sighup  | MCP listen address. Empty uses `edb.endpoints_host`.                                                                                  |
+| `edb.endpoints_mcp_port`     | integer | `8765`  | 1024-65535 | sighup  | MCP listen port.                                                                                                                      |
+| `edb.endpoints_mcp_database` | string  | empty   |            | sighup  | MCP databases, as an identifier list. Empty uses `edb.endpoints_database`.                                                                                   |
+| `edb.endpoints_mcp_tls_cert` | string  | empty   |            | sighup  | MCP certificate. When it or the key is set, MCP uses this pair instead of the general one. The two pairs are never mixed.            |
+| `edb.endpoints_mcp_tls_key`  | string  | empty   |            | sighup  | MCP private key.                                                                                                                      |
+
+## OTLP receiver settings
+
+The [OTLP/HTTP receiver](../otlp-server) has only a switch and a port of its own. It takes its host, TLS pair, and databases from the general settings.
+
+| Parameter                    | Type    | Default | Range      | Context | Description                                                                              |
+|------------------------------|---------|---------|------------|---------|------------------------------------------------------------------------------------------|
+| `edb.endpoints_otlp_enabled` | boolean | `off`   |            | sighup  | Serves the OTLP/HTTP receiver.                                                           |
+| `edb.endpoints_otlp_port`    | integer | `8766`  | 1024-65535 | sighup  | Receiver listen port. Must differ from `edb.endpoints_mcp_port`.                         |
+
+## OAuth settings
+
+To accept bearer tokens from MCP clients and OTLP senders, configure the `edb.endpoints_oauth_*` and `edb.endpoints_mcp_oauth_*` settings. See [Authenticating with OAuth](oauth#settings).
+
+## Values with no parameter
+
+The supervisor derives a few settings from the Postgres server itself:
+
+- The endpoint connects to Postgres through the first entry in `unix_socket_directories`, falling back to `127.0.0.1`, on the server's own `port`, with `sslmode=disable`.
+- Each agent connection has a 10 second connection timeout, and a `statement_timeout` and `idle_in_transaction_session_timeout` of 30 seconds. Postgres cancels a tool that runs longer, and the timeout error passes through to the client.
+- The endpoint's environment is cleared except for `RUST_LOG`, which is passed through from the postmaster's environment. See [Logging](operating-the-endpoint#logging).
+
+## What happens on a reload
+
+After a reload, the supervisor compares the new values with the running endpoint:
+
+- A change to a server switch (`edb.endpoints_mcp_enabled` or `edb.endpoints_otlp_enabled`), command path, host, port, database, or TLS path, or to any OAuth parameter, whether general, MCP, or OTLP, stops the running endpoint and starts a new one with the new values. In-flight calls on the old process get up to 10 seconds to finish.
+- A change to `edb.endpoints_restart_max` or `edb.endpoints_restart_window_secs` resets the restart budget without touching the running endpoint.
+- Any other change leaves the endpoint running. It reads its TLS certificates and keys again from the same paths, so a renewed certificate takes effect without a restart. See [Serving remote clients](../mcp-endpoint/connecting-a-client#serving-remote-clients).
+- Any reload wakes an idle supervisor and lets it try again. See [Restart budget](operating-the-endpoint#restart-budget).
+
+## Deprecated settings
+
+These settings configure the whole process rather than MCP. If you set one, it still takes precedence over its replacement, and the supervisor logs a warning. Replace each with its new name:
+
+| Parameter                               | Replacement                         |
+|-----------------------------------------|-------------------------------------|
+| `edb.endpoints_mcp_command_path`        | `edb.endpoints_command_path`        |
+| `edb.endpoints_mcp_restart_max`         | `edb.endpoints_restart_max`         |
+| `edb.endpoints_mcp_restart_window_secs` | `edb.endpoints_restart_window_secs` |

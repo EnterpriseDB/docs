@@ -1,0 +1,165 @@
+---
+title: Performing physical backups
+description: Back up and restore a PGD cluster using physical backups, and recover to a point in time.
+deepToC: true
+---
+
+Use physical backups to restore a cluster if you lose all nodes or if significant, uncorrectable data corruption affects multiple nodes. You can also recover to a specific point in time from a physical backup. A physical backup is a copy of the files of a node's Postgres instance, including all of its databases and the EDB Postgres Distributed (PGD) metadata stored with them. You can create physical backups with standard Postgres software, such as [pg_basebackup](https://www.postgresql.org/docs/current/app-pgbasebackup.html) or [Barman](https://www.enterprisedb.com/docs/supported-open-source/barman/).
+## Backing up a node
+
+Back up a node in a PGD cluster by following the standard procedure for backing up a Postgres node, since a PGD node is a Postgres node that runs the BDR extension. Use the tool that fits your architecture. See [Making a base backup](https://www.postgresql.org/docs/current/continuous-archiving.html#BACKUP-BASE-BACKUP) and [pg_basebackup](https://www.postgresql.org/docs/current/app-pgbasebackup.html) in the Postgres documentation, or the [Barman documentation](https://docs.pgbarman.org/).
+
+Choose which nodes to back up based on how your data is replicated:
+
+- If every node has a copy of all data, a backup of one node captures all data.
+- Back up at least one node per site. A single backup doesn't protect your data if the site containing that copy goes down.
+- If a node has unreplicated local data, back up that data too. If not every node subscribes to all replication sets, back up at least one node that subscribes to each replication set.
+
+A physical backup copies the entire Postgres instance, including every database on it, not only the database that PGD replicates. If the node’s instance hosts other databases, they’re included in the backup and restored with it.
+
+### Backing up extension catalog tables
+
+Take a physical backup from every node if you use extensions that keep their catalog tables outside any replication set, such as [Postgres Analytics Accelerator (PGAA)](/pgaa/latest/). PGD doesn't replicate these catalog tables, so each node holds its own copy, and a backup of one node only captures that node's copy. For PGAA specifically, see [Backing up a PGD cluster](/pgaa/latest/backup_restore#backing-up-a-pgd-cluster).
+
+## Restoring a physical backup
+
+Restore a cluster from a physical backup after you lose all its nodes, for example in a data center failure. You can also use the same procedure to create a copy of a PGD cluster, such as a QA or development instance. Restoring a PGD node takes extra steps compared with restoring a standard Postgres node, such as cleaning up PGD metadata, replication origins, and replication slots.
+
+Rebuild the cluster from a single restored node by restoring the node, starting Postgres without BDR workers, cleaning up its PGD metadata, recreating the PGD node, and adding the other nodes.
+
+### Restoring the node
+
+Restore a single node from a physical backup of one of the nodes by following the standard procedure for restoring a Postgres node, using the same tool you used to create the backup. See [Recovering using a continuous archive backup](https://www.postgresql.org/docs/current/continuous-archiving.html#BACKUP-PITR-RECOVERY) in the Postgres documentation, or the [Barman documentation](https://docs.pgbarman.org/).
+
+Before starting Postgres on a manual restore, set `max_worker_processes` to the value the other nodes in the cluster use. PGD typically runs with `max_worker_processes = 100`. If a restored node starts with the Postgres default of 32, recovery aborts:
+
+```
+FATAL: recovery aborted because of insufficient parameter settings
+```
+
+!!! Note
+    If you restore with `barman recover`, you don't need to set `max_worker_processes`, because the command sets it for you.
+
+Find the runtime value from a healthy peer:
+
+```sql
+SELECT setting FROM pg_settings WHERE name = 'max_worker_processes';
+```
+
+If no peer is available, such as when you lost every node, calculate the minimum number of workers with the formula in [Postgres configuration](/pgd/current/reference/postgres-configuration/).
+
+If you have WAL archives for the backup, set [`restore_command`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-RESTORE-COMMAND) in `postgresql.conf` to retrieve them and create a `recovery.signal` file, so Postgres replays them up to the latest state when it starts. To stop at an earlier state instead, specify a `recovery_target`. See [Recovering to a point in time](#recovering-to-a-point-in-time).
+
+### Starting Postgres without BDR workers
+
+Start Postgres on the restored node with BDR workers and connections turned off, so the node can't connect to any surviving nodes. The restored copy still holds the PGD metadata of the node it was backed up from, so keep these settings until you finish cleaning up that metadata. Start Postgres in recovery to replay the WAL archives, if you have them, or promote the node to read/write if it was in standby recovery.
+
+Pass `bdr.start_workers` and [`bdr.accept_connections`](/pgd/latest/reference/tables-views-functions/pgd-settings#bdraccept_connections) on the Postgres command line, because `bdr.start_workers` rejects any other source:
+
+```shell
+pg_ctl start -D $PGDATA -o "-c bdr.start_workers=off" -o "-c bdr.accept_connections=off"
+```
+
+### Cleaning up PGD metadata
+
+Clean up the PGD metadata left over from the backup so the restored node no longer belongs to the old cluster. The restored node still holds the PGD metadata of the node it was backed up from, including information about the other nodes in the cluster. Run the following steps on the restored node, connected to the PGD database:
+
+1.  Drop the PGD node using [`bdr.drop_node`](/pgd/latest/reference/tables-views-functions/functions-internal#bdrdrop_node) with `force := true`, because the restored node isn't parted from its old cluster. Dropping the node also removes the replication origins and slots it had for the other nodes. Get the name of the local node from [`bdr.local_node_summary`](/pgd/latest/reference/tables-views-functions/catalogs-visible#bdrlocal_node_summary):
+
+    ```sql
+    SELECT node_name FROM bdr.local_node_summary;
+    ```
+
+    Then drop it:
+
+    ```sql
+    SELECT bdr.drop_node('<node_name>', force := true);
+    ```
+
+2.  Fully stop Postgres and restart it without the `bdr.start_workers` and `bdr.accept_connections` options.
+3.  Check for leftover replication origins and drop them. `bdr.drop_node` removes the origins of the nodes it knows about, so this step covers any that remain. Origins are stored persistently in the `pg_replication_origin` system catalog, so the backup includes them.
+
+    List the replication origins on the restored node. The names of the origins that PGD created start with `bdr_`:
+
+    ```sql
+    SELECT * FROM pg_replication_origin;
+    ```
+
+    PGD creates one replication origin for each remote node to record how far incoming replication has progressed, so replication can resume from the right point after a crash. Drop the origin of each node in the previous cluster with `pg_replication_origin_drop`, running it once for each origin. For example:
+
+    ```sql
+    SELECT pg_replication_origin_drop('bdr_dbname_grpname_nodename');
+    ```
+
+4.  Check for leftover replication slots and drop them. If a physical backup was created with `pg_basebackup`, replication slots are omitted from the backup. Some other backup methods preserve replication slots, likely in outdated or invalid states.
+
+    List the replication slots on the restored node to check for leftovers:
+
+    ```sql
+    SELECT slot_name, slot_type, active FROM pg_replication_slots;
+    ```
+
+    To drop all replication slots, use the following command:
+
+    ```sql
+    SELECT pg_drop_replication_slot(slot_name)
+    FROM pg_replication_slots;
+    ```
+
+    !!! Warning
+        Never use these commands to drop replication slots on a live PGD node
+
+### Recreating the PGD node
+
+Recreate the PGD metadata on the restored node by running [`pgd node setup`](/pgd/current/reference/cli/command_ref/node/setup/) against it, as you would for the first node of a new cluster. Dropping the node removed its previous metadata, so the restored node isn't part of any cluster yet. Leave out `--cluster-dsn`. For example:
+
+```shell
+pgd node <node_name> setup --dsn "<dsn>" --listen-addr "<listen_addresses>" --group-name <group_name> -D $PGDATA
+```
+
+See [Configuring the first node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-the-first-node) for a description of each option.
+
+### Adding the remaining nodes
+
+Add the remaining nodes to the cluster by running `pgd node setup` on the host of each node, with `--cluster-dsn` pointing to the node you restored. Install Postgres and PGD on each host first, using the same PGD version as the restored node. See [Installing and configuring EDB Postgres Distributed](/pgd/current/deploying/) for installation options, [Configuring a second node](/pgd/current/reference/cli/command_ref/node/setup/#configuring-a-second-node) for an example, and [pgd node setup](/pgd/current/reference/cli/command_ref/node/setup/) for all options.
+
+### Verifying extension catalog tables
+
+After you restore every node from its own backup, confirm that each extension catalog table has the same contents on all nodes. Run a query that returns the row count and a checksum of the table's contents on each node, then compare the results. For PGAA specifically, see [Restoring a PGD cluster](/pgaa/latest/backup_restore#restoring-a-pgd-cluster).
+
+## Recovering to a point in time
+
+Recover to a point in time by restoring a physical backup of a node and replaying its WAL up to the time you choose.
+
+### Understanding eventual consistency
+
+Account for eventual consistency when you plan your backup strategy. By default, PGD replicates changes between nodes asynchronously, so at any moment the nodes can hold different data. Each node reaches the same final state through its own sequence of states. A physical backup captures one node, so you can only recover to states that node actually went through. To keep the differences between nodes small, take backups when write activity is low and replication has caught up.
+
+Two nodes in the same PGD cluster usually don't go through the same sequence of states. For example, take a cluster with two nodes, `N1` and `N2`, both in state `S`. Transaction `W1` is applied to `N1` while a non-conflicting transaction `W2` is applied to `N2`. `N1` goes through these states:
+
+```
+(N1)   S  -->  S + W1  -->  S + W1 + W2
+```
+
+`N2` goes through these states:
+
+```
+(N2)   S  -->  S + W2  -->  S + W1 + W2
+```
+
+That is, node `N1` never assumes state `S + W2`, and node `N2` likewise never assumes state `S + W1`. However, both nodes end up in the same state `S + W1 + W2`.
+
+### Using point-in-time recovery (PITR)
+
+Restore a node to a specific point in time, including changes from other nodes, using point-in-time recovery (PITR). A change can be committed at one time on one node and applied on another node only later. In the earlier example, `W1` and `W2` both occur at time `T1`, but `W1` isn't applied to `N2` until time `T2`.
+
+Postgres PITR replays the write-ahead log (WAL) up to a target time, and assumes that changes arrive from a single source in commit order. Restoring `N1` to `T1` this way gives you the state of `N1` at `T1`. That state doesn't include changes from other nodes that committed near `T1` but hadn't reached `N1` yet, so the recovery is consistent for only one replication origin. To use standard PITR, set [`recovery_target_time`](https://www.postgresql.org/docs/current/runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY-TARGET) in `postgresql.conf` to the time you want to recover to, for example:
+
+```text
+recovery_target_time = '2026-10-15 12:00:00+00'
+```
+
+If you restore with Barman, see the [Barman documentation](https://docs.pgbarman.org/) for its recovery options, such as `--target-time`.
+
+!!! Note
+    If you use PGAA, a recovery target time that falls during a `pgaa.enable_analytics_replication()` operation can leave the deployment partially recovered. See [Known limitation: PITR restore after enabling analytics replication](/pgaa/latest/backup_restore#known-limitation-pitr-restore-after-enabling-analytics-replication) for details and cleanup steps.

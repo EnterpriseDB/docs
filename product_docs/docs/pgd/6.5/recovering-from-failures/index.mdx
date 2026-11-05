@@ -1,7 +1,7 @@
 ---
 title: "Recovering from failures"
 navTitle: Recovering from failures
-description: How to handle replication apply errors and recover failed nodes in an EDB Postgres Distributed (PGD) cluster.
+description: How PGD responds to node, network, and consensus failures, and how to handle replication apply errors and recover failed nodes in an EDB Postgres Distributed (PGD) cluster.
 indexCards: simple
 navigation:
   - apply-error-policy
@@ -9,3 +9,26 @@ navigation:
 ---
 
 EDB Postgres Distributed (PGD) provides an apply error policy for managing replication failures and a recovery process for bringing failed nodes back into a cluster configured with synchronous commit scopes.
+
+## Understanding failure scenarios
+
+When a node fails, PGD keeps the cluster available by moving write traffic to a healthy node, as long as a majority of voting nodes remain connected through Raft consensus. The cluster's response depends on which node fails and how many nodes are affected. Scenarios range from a single data node failing to a majority of the cluster losing contact.
+
+PGD responds to failures at three layers. [Raft consensus](/pgd/current/overview/terminology#replicated-available-fault-tolerance-raft) decides cluster-wide state, PGD selects the write leader, and [Connection Manager](/pgd/current/connection-manager/overview) sends client connections to the node PGD selected. See [Understanding write leader failover](/pgd/current/connection-manager/overview#understanding-write-leader-failover) for how PGD detects a failed write leader and selects a replacement.
+
+### Responding to each scenario
+
+While a majority of voting nodes stay connected, PGD keeps working without intervention. Recovering a failed node isn't required for the cluster to operate, but you recover it when you want to restore redundancy. When a majority is lost, the cluster can't make decisions until you restore the nodes or remove them. The following table lists scenarios from least to most disruptive, from a single data node failing to the loss of a majority of the cluster.
+
+| Scenario | What PGD does | What you do |
+| --- | --- | --- |
+| Data node other than the write leader fails | The write leader doesn't change. PGD removes the node from the read targets. [Automatic synchronization](/pgd/current/node_management/automatic_sync) brings the remaining nodes level with each other for changes they received from the failed node, and resolves transactions the node left prepared according to the rules of their commit scope. | No action is needed for PGD to keep working. [Recover the node](/pgd/current/recovering-from-failures/node-recovery) when you want to restore redundancy. |
+| Subscriber-only or logical standby node fails | Subscriber-only nodes never receive writes, so write routing doesn't change. PGD removes the node from the read targets. If the node was the group leader of its subscriber-only group, the voting nodes of the top-level group select a new [group leader](/pgd/current/nodes/subscriber_only/optimizing-so#subscriber-only-group-leaders) from the group. | No action is needed for PGD to keep working. [Recover the node](/pgd/current/recovering-from-failures/node-recovery) when you want to restore it. |
+| Witness node fails | The witness node is never a write leader, so routing doesn't change. The witness node holds no data, so [automatic synchronization](/pgd/current/node_management/automatic_sync) has nothing to sync. The cluster keeps working while the remaining voting nodes are still a majority. See [Witness nodes](/pgd/current/nodes/witness_nodes). | No action is needed while a majority of voting nodes remain. [Recover the witness node](/pgd/current/recovering-from-failures/node-recovery) soon, because further failures can cost the cluster its majority. |
+| Node restarts or has a brief network interruption | The node reconnects and replays the changes it missed. Its join state stays `ACTIVE`, and its replication slots move from `catchup` to `streaming`. | Run [`pgd nodes list`](/pgd/current/reference/cli/command_ref/nodes/list) to confirm the node shows as `Up`. Run [`pgd replication show --slots`](/pgd/current/reference/cli/command_ref/replication/show) to confirm the slots are `streaming` and the lag clears. |
+| Write leader node or its Postgres instance fails | The Raft leader treats the node as unreachable, and PGD selects a new write leader. [Automatic synchronization](/pgd/current/node_management/automatic_sync) then runs as it does for any failed data node. | No action is needed for writes to resume on the new write leader. [Recover the failed node](/pgd/current/recovering-from-failures/node-recovery) when you want to restore redundancy. |
+| Raft leader node fails | The remaining nodes elect a new Raft leader before PGD can select a new write leader. Write leader failover is slower when the failed node was also the write leader. | No action is needed for the cluster to resume writes after the election. [Recover the failed node](/pgd/current/recovering-from-failures/node-recovery) when you want to restore redundancy. |
+| Commit scope can't get confirmations from other nodes | Behavior depends on the commit scope kind. Synchronous commit can degrade, and Quorum Commit aborts on timeout. | Restore the nodes or network connections the commit scope depends on. To change the behavior, see [Degrading commit scope rules](/pgd/current/commit-scopes/degrading) for Synchronous Commit or [Using Quorum Commit](/pgd/current/commit-scopes/quorum-commit/using-quorum-commit) for the abort timeout. |
+| Node stays offline for a long time | Healthy nodes keep a replication slot for the node, so write-ahead log (WAL) accumulates. | [Part the node and join a replacement](/pgd/current/recovering-from-failures/node-recovery). |
+| Minority of nodes lose contact with the rest of the cluster | The majority side treats the isolated nodes as failed, keeps or elects a write leader, and continues. The isolated side can't reach a Raft majority, so it can't change routing. | Restore network connectivity. The isolated nodes catch up and rejoin. |
+| Majority of nodes fail or lose contact | The cluster loses quorum, so routing can't change and operations that need consensus are blocked. Connection Manager disconnects all clients when the [consensus timeout](/pgd/current/connection-manager/configuring) expires, which is immediately by default. | Restore the nodes, or follow the [majority failure procedure](/pgd/current/recovering-from-failures/node-recovery#majority-failure-quorum-lost). |

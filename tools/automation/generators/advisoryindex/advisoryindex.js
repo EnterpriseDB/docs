@@ -107,6 +107,31 @@ function cleanCVE(cvestring) {
   return cvestring;
 }
 
+function createPublishDateSort(allDocMap) {
+  return function (a, b) {
+    const aDate = new Date(allDocMap[a]["open"]["first_published"]);
+    const bDate = new Date(allDocMap[b]["open"]["first_published"]);
+    return bDate - aDate;
+  };
+}
+
+function getShortList(list, count) {
+  if (list.length <= count) {
+    return list;
+  }
+  // return the first count elements of the list
+  // if subsequent elements have the same date as the last element, include them as well
+  let lastDate = allDocMap[list[count - 1]]?.open?.first_published;
+  let i = count;
+  while (
+    i < list.length &&
+    allDocMap[list[i]]?.open?.first_published == lastDate
+  ) {
+    i++;
+  }
+  return list.slice(0, i);
+}
+
 // Iterate over all the files that start cve and end with mdx in the source directory, and parse them
 
 njk.configure(templatesDir, { autoescape: false });
@@ -136,7 +161,9 @@ cvelist.forEach((cve) => {
   allDocMap[cve] = docMap;
 });
 
-let shortcvelist = cvelist.slice(0, seccount);
+cvelist.sort(createPublishDateSort(allDocMap));
+
+let shortcvelist = getShortList(cvelist, seccount);
 
 // Process the assessments
 const assfiles = fs
@@ -163,7 +190,8 @@ asslist.forEach((ass) => {
 });
 
 asslist.reverse();
-let shortasslist = asslist.slice(0, seccount);
+asslist.sort(createPublishDateSort(assAllDocMap));
+let shortasslist = getShortList(asslist, seccount);
 
 namespace["shortcvelist"] = shortcvelist;
 namespace["cvesorted"] = cvelist;

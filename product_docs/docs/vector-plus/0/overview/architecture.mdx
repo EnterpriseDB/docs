@@ -1,0 +1,33 @@
+---
+title: Architecture
+navTitle: Architecture
+deepToC: true
+description: How the ivfplus index type is built and scanned, hierarchical clustering, RaBitQ residual quantization, and the packing formats used for bulk-built and recently inserted data.
+---
+
+Vector Plus provides a single Postgres index access method, `ivfplus`. It's built for the same job as pgvector's [`ivfflat`](https://github.com/pgvector/pgvector#ivfflat), approximate nearest-neighbor search over vector columns, but combines three techniques to stay fast and small at large row counts: hierarchical Inverted File (IVF) clustering to narrow a search down to a handful of candidate groups, RaBitQ residual quantization to shrink each vector to a compact code, and a fast-scan packing layout to scan those codes efficiently.
+
+## Hierarchical IVF clustering
+
+Searching every row against a query vector would be accurate but slow at scale, so `ivfplus` clusters rows into groups, called lists, when the index is built, then only scans the lists closest to the query at search time.
+
+The index is either flat (one level of lists) or two-level (lists are themselves grouped into a smaller set of top-level clusters, searched first to find which lists to scan). Which one you get is automatic: a table crosses into the two-level hierarchy once `lists` reaches 1,800. See [Tuning and sizing](../using/tuning) for what the two shapes mean for build time and parallelism.
+
+Building the clustering works top-down: the index clusters the whole table first, then partitions and subdivides those clusters, rather than building up from individual rows. It reuses pgvector's Elkan k-means implementation for each clustering pass, which keeps the cost of clustering proportional to the number of rows and clusters rather than growing faster than that. When scanning a two-level index, how many top-level clusters get checked (before deciding which lists to scan) scales with how many probes you've set: the exact relationship is `outer_probes = K_probes * sqrt(probes)`, where `K_probes` is a fixed constant (see [Limits and fixed constants](../reference#limits-and-fixed-constants)).
+
+## Residual quantization
+
+Quantization shrinks each vector to a compact code so more of the index fits in memory and comparisons run faster, at the cost of some precision recovered later during reranking. RaBitQ encodes a 1 bit/dimension residual against the assigned centroid, plus `{norm, bias, dot_cv, err_fac}`, estimated asymmetrically at scan time with an optimal-stopping rule.
+
+The rerank step is exact, against an inline `f16` copy by default, or against the heap directly on a server that supports the executor rerank policy. See [Index-rerank-policy builds](../reference#index-rerank-policy-builds).
+
+A randomized Hadamard rotation (deterministic seed, no stored table) runs before encoding, which is what makes the 1-bit code work on nonisotropic embeddings. It isn't configurable — every index applies it.
+
+## Fast-scan packing
+
+Fast-scan packing arranges quantized codes in memory so a scan can compare many of them at once instead of one at a time. Leaf lists use two packing formats, chosen by how the data arrived:
+
+- Frozen packed — 32-wide `[u8;16]` blocks with a 4-bit pshufb-style lookup table, used for bulk-built data.
+- Append unpacked — Bit-sliced, used for rows inserted after the index was built.
+
+Rows inserted after the initial build land in the append region and are read by a slower scan until the index is rebuilt. See [Writes, `VACUUM`, and `REINDEX`](../reference#writes-vacuum-and-reindex) for how `REINDEX` reclaims this.
