@@ -187,7 +187,7 @@ By default, LiveCompare has `comparison_algorithm = block_hash`, even when compa
 
 -   The row is fully represented as text by concatenating all column values.
 -   On the Postgres side, timestamp, numeric, and bytea data types are handled to mimic Oracle.
--   This way, the full row representation is then hashed using MD5 on both sides.
+-   This way, the full row representation is then hashed using SHA-256 on both sides.
 -   This allows using `comparison_algorithm` set to `block_hash` and `row_hash`.
 -   If there are any mismatches when using `block_hash`, LiveCompare falls back to `row_hash` and then `full_row`, as it does in a Postgres versus Postgres comparison.
 -   The BLOB, CLOB, and NCLOB fields on Oracle are limited to only the first 2000 characters. `comparison_algorithm = full_row` allows comparison of the entire BLOB and CLOB.
@@ -197,10 +197,49 @@ By default, LiveCompare has `comparison_algorithm = block_hash`, even when compa
 ORA-01489: result of string concatenation is too long
 ```
 
-Later LiveCompare versions will fall back to `full_row` comparison on these specific tables. For now, a workaround is to configure a separate comparison sessions only on these tables, using `comparison_algorithm = full_row`. Using LiveCompare with Oracle 10g always requires setting `comparison_algorithm = full_row`.
+Later LiveCompare versions will fall back to `full_row` comparison on these specific tables. For now, a workaround is to configure a separate comparison sessions only on these tables, using `comparison_algorithm = full_row`. Using LiveCompare with Oracle versions older than 12c always requires setting `comparison_algorithm = full_row`.
 
-The common hash uses the `standard_hash` function on Oracle 12c and later. On Oracle 11g, the `standard_hash` function isn't available, so LiveCompare tries to use the `dbms_crypto.hash` function instead. However, it might require additional privileges for the user on the Oracle side, for example:
+The common hash uses the `standard_hash` function on Oracle 12c and later. The row hash is SHA-256, which Oracle provides only from 12c. Oracle 11g (like 10g) requires `comparison_algorithm = full_row` and `oracle_thick_mode = on`. If `comparison_algorithm` isn't `full_row`, LiveCompare exits with `EX_CONFIG` during validation. LiveCompare doesn't use `dbms_crypto`, so no `DBMS_CRYPTO` grant is needed.
 
-```sql
-GRANT EXECUTE ON sys.dbms_crypto TO testuser;
+## Thick mode (Oracle Instant Client)
+
+By default, LiveCompare connects to Oracle in python-oracledb thin mode, which needs no Oracle client software. Set `oracle_thick_mode = on` in `[General Settings]` to connect in thick mode through Oracle Instant Client. You need thick mode in these cases:
+
+-   You compare NCHAR, NVARCHAR2, or NCLOB columns and the database's `NLS_NCHAR_CHARACTERSET` isn't `AL16UTF16`. Without thick mode, the comparison fails with `DPY-3012`.
+-   You connect to an Oracle version older than 12.1 (11g). Without thick mode, LiveCompare exits with `EX_CONFIG` and points to `oracle_thick_mode` (`DPY-3010`).
+
+The setting applies to every Oracle connection in the run. You can't set it per connection.
+
+### Installing Instant Client
+
+You install Oracle Instant Client from Oracle, under Oracle's license. EDB doesn't ship it. The Basic package is enough.
+
+-   For Oracle 11.2, you need Instant Client 19. EDB tested 19.23. Instant Client 21 and later don't connect to Oracle 11.2.
+-   For Oracle 12c and later, use an Instant Client version that Oracle supports for your database version.
+-   Instant Client requires `libaio` (`libaio1t64` on newer Debian and Ubuntu).
+
+On Linux, the Instant Client directory must be on the library search path of the environment that runs `livecompare`. There's no setting that points LiveCompare at the directory. Add the directory using `ldconfig` (recommended) or `LD_LIBRARY_PATH`. For example:
+
+```bash
+sudo mkdir -p /opt/oracle && cd /opt/oracle
+sudo unzip instantclient-basic-linux.x64-19.23.0.0.0dbru.zip
+echo /opt/oracle/instantclient_19_23 | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+sudo ldconfig
 ```
+
+Then enable thick mode in the configuration file:
+
+```ini
+[General Settings]
+oracle_thick_mode = on
+```
+
+If LiveCompare can't load Instant Client (`DPI-1047`), it exits with `EX_CONFIG` before connecting and explains how to fix the search path. When thick mode is on, LiveCompare logs the Oracle Client version at startup, so you can confirm which client was loaded.
+
+## Troubleshooting Oracle connections
+
+| Error | Cause and fix |
+|-------|---------------|
+| `DPY-3012: national character set id ... is not supported by python-oracledb in thin mode` | The table has NCHAR, NVARCHAR2, or NCLOB columns and the database's `NLS_NCHAR_CHARACTERSET` isn't `AL16UTF16`. Set `oracle_thick_mode = on`. |
+| `DPY-3010: connections to this database server version are not supported by python-oracledb in thin mode` | The Oracle version is older than 12.1. LiveCompare exits with `EX_CONFIG` and points to `oracle_thick_mode`. Set `oracle_thick_mode = on`. |
+| `DPI-1047: Cannot locate a 64-bit Oracle Client library` | Instant Client isn't on the library search path. Add its directory using `ldconfig` or `LD_LIBRARY_PATH`. |
