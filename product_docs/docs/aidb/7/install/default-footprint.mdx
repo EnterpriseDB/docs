@@ -1,0 +1,132 @@
+---
+title: Default footprint
+navTitle: Default footprint
+description: The processes, database changes, and idle resource usage AIDB adds to a Postgres server with default settings.
+---
+
+This page lists what AIDB adds to a Postgres server when you install it with default settings: the processes it runs, the changes it makes to the database, and the memory and CPU it uses while idle.
+
+## Background workers
+
+### Workers started by default
+
+With `shared_preload_libraries = 'aidb'` and no other AIDB settings, AIDB starts these background workers:
+
+| Worker              | `backend_type` in `pg_stat_activity` | Count                   | Poll interval |
+|---------------------|--------------------------------------|-------------------------|---------------|
+| Root worker         | `aidb root bgworker`                 | 1 per cluster           | 120 s         |
+| Pipeline dispatcher | `aidb dispatcher db_oid(<oid>)`      | 1 per eligible database | 30 s          |
+
+An eligible database allows connections and isn't a template. This includes `postgres` and every user database.
+
+A new cluster with one user database runs two AIDB background workers in steady state: one root worker and one dispatcher. A short-lived dispatcher also starts in the `postgres` database and exits right away. The root worker restarts it every 120 seconds. The workers are idle between polls.
+
+The root worker waits 120 seconds before its first pass, so Background processing starts roughly three minutes after the server comes up.
+
+- **Root worker:** Starts when the server finishes recovery. It connects to the `postgres` database, so that database must exist. Every 120 seconds, it lists the eligible databases and starts any missing per-database workers. If it crashes, Postgres restarts it after 13 seconds.
+- **Pipeline dispatcher:** Runs in each eligible database, including databases where you didn't run `CREATE EXTENSION aidb`. In those databases, it exits right after it starts. The root worker starts it again on its next poll. If the dispatcher crashes, the root worker restarts it on its next poll.
+
+### Workers started on demand
+
+The dispatcher starts one pipeline worker for each pipeline with `auto_processing => 'Background'`. Pipelines in `Live` or `Disabled` mode don't get a worker. A pipeline switched from `Background` to another mode keeps an idle worker until a restart or `pg_terminate_backend()`, so it still uses a `max_worker_processes` slot.
+
+| Worker              | `backend_type` in `pg_stat_activity`                         | Count                       | Poll interval |
+|---------------------|--------------------------------------------------------------|-----------------------------|---------------|
+| Pipeline worker     | `aidb bgworker <pipeline name>(<pipeline id>) db_oid(<oid>)` | 1 per `Background` pipeline | 30 s for the first wait, then the pipeline's `background_sync_interval` |
+
+This includes pipelines that write to a knowledge base. A semantic knowledge base in `Background` mode also runs as a pipeline and gets one pipeline worker.
+
+A pipeline worker runs as the pipeline's owner role. While it has a backlog, it processes batches without waiting for the next poll. If it crashes, the dispatcher restarts it on its next poll. See [Background workers](../data-pipelines/orchestration/background-workers).
+
+### Workers enabled by settings
+
+These settings each start one more worker per database. All are off by default.
+
+| Setting                                                                                                             | Worker                  | `backend_type` in `pg_stat_activity`   | Poll interval                                       |
+|---------------------------------------------------------------------------------------------------------------------|-------------------------|----------------------------------------|-----------------------------------------------------|
+| [`aidb.enable_background_metrics_collector`](../data-pipelines/orchestration/observability#enabling-the-collector)  | Metrics collector       | `aidb metrics collector db_oid(<oid>)` | 15 s                                                |
+| [`aidb.agent_memory_enable_worker`](../agent-memory/configuring#aidbagent_memory_enable_worker)                     | Agent memory dispatcher | `aidb memory dispatcher db_oid(<oid>)` | `aidb.memory_worker_idle_wait_ms` (default 2000 ms) |
+| [`aidb.otel_cleaner_enabled`](configure#cleaner-background-worker)                                                  | OTel cleaner            | `aidb otel cleaner db_oid(<oid>)`      | 3600 s                                              |
+| [`aidb.otel_exporter_enabled`](configure#exporter-background-worker) plus a non-empty `aidb.otel_exporter_endpoint` | OTel exporter           | `aidb otel exporter db_oid(<oid>)`     | 15 s                                                |
+
+To enable a worker:
+
+- **For every database:** Set the parameter in `postgresql.conf` or with `ALTER SYSTEM`, then restart Postgres. A reload isn't enough.
+- **For one database:** Use `ALTER DATABASE <db> SET`. No restart is needed. The root worker checks these settings every 120 seconds, so the worker starts within two minutes.
+
+Role-level and session-level settings don't start or stop workers. Turning a setting off doesn't stop a worker that's already running. Postgres doesn't restart these per-database workers. The root worker respawns them every 120 seconds, using the `ALTER DATABASE` value or the instance value it read at startup.
+
+The OTel cleaner and exporter reload their configuration on every cycle and skip their work when the setting is off. If you enabled them instance-wide, `ALTER SYSTEM ... off` followed by `pg_reload_conf()` stops them from doing anything. An `ALTER DATABASE` value still wins after the reload. The metrics collector and the agent memory dispatcher keep working.
+
+To stop a worker, turn the setting off for the database, then end the process:
+
+```sql
+ALTER DATABASE my_db SET aidb.enable_background_metrics_collector = off;
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+WHERE backend_type = 'aidb metrics collector db_oid(<oid>)';
+```
+
+Use the matching `backend_type` for the agent memory dispatcher, OTel cleaner, and OTel exporter. If you enabled a worker instance-wide, either turn it off in the configuration and restart Postgres, or turn it off for the database and terminate the process.
+
+Don't terminate `aidb root bgworker`. Nothing restarts it until the next Postgres restart.
+
+The pipeline dispatcher, metrics collector, OTel cleaner, and OTel exporter also need the `aidb` extension in their database. Otherwise, they exit. The agent memory dispatcher doesn't check, so without the extension it logs errors about missing tables.
+
+### Sizing `max_worker_processes`
+
+Each AIDB worker uses one `max_worker_processes` slot. The total number of AIDB workers is:
+
+```text
+1 (root worker)
++ number of eligible databases (dispatchers)
++ number of Background pipelines, including semantic knowledge bases in Background mode
++ enabled optional workers × the number of databases where each is enabled
++ 1 (endpoints supervisor, if MCP or OTLP is on)
+```
+
+An instance-wide setting counts every eligible database, including databases without the extension. In those databases, the worker exits and restarts on each poll.
+
+Set `max_worker_processes` high enough for this total plus the workers that other extensions and parallel queries need. The Postgres default is `8`. Changing `max_worker_processes` requires a Postgres restart.
+
+If AIDB can't start a pipeline worker, it logs a `WARNING` every 30 seconds: `aidb bgworker: "<worker name>" db_name(<db>) failed to start worker`. If it can't start a per-database worker, it logs `... could not be initialized` every 120 seconds. There's no view for this. To check, compare the output of these two commands:
+
+```sql
+SELECT count(*) FROM pg_stat_activity WHERE backend_type LIKE 'aidb %';
+SHOW max_worker_processes;
+```
+
+## Other processes and connections
+
+By default, AIDB starts no processes other than the background workers listed above.
+
+If you set [`edb.endpoints_mcp_enabled`](../mcp-endpoint/enabling-the-endpoint) or `edb.endpoints_otlp_enabled` to `on` and restart Postgres, AIDB starts the following. Both settings apply only when `edb.endpoints_enabled` isn't `off`.
+
+- One supervisor background worker, `aidb endpoints supervisor`, for the cluster.
+- One `edb-endpoints` OS process, which the supervisor starts. The MCP server listens on port `8765` by default, and the OTLP endpoint listens on port `8766`.
+- For the MCP server, one Postgres client connection per MCP call. These connections count against `max_connections`.
+
+## Database hooks and changes
+
+AIDB installs the `ExecutorStart_hook` and `ProcessUtility_hook` at preload. They record SQL only while OpenTelemetry collection is on. On PostgreSQL, AIDB also installs `post_parse_analyze_hook`, which records relations only during a governed agent call. On WarehousePG, AIDB installs a `ClientAuthentication_hook` instead. AIDB installs no planner hook.
+
+`CREATE EXTENSION aidb` creates the following:
+
+- The `aidb`, `aidb_internal`, `aidb_memory`, and `aidb_otel` schemas.
+- The cluster-level roles `aidb_users`, `aidb_admins`, `aidb_governance`, and `aidb_otel_writer`. These roles remain after `DROP EXTENSION`.
+- A few `pg_monitor` grants.
+- The `aidb_model_registry` foreign data wrapper.
+- Triggers on AIDB's own tables.
+
+Triggers on your tables and the `aidb_skb_*` event triggers appear later, when you create `Live` or `Background` pipelines and semantic knowledge bases.
+
+## Idle resource usage
+
+### Memory
+
+AIDB requests no shared memory. Each AIDB background worker is a regular Postgres process, so its idle memory is similar to an idle client backend.
+
+AIDB builds its model cache and thread pools only when a process first uses a model or volume. An idle process has none. [`aidb.max_model_cache_size`](configure#model-cache) limits the model cache of each process. The default is a quarter of the host's RAM. In a container, AIDB reads the host's RAM, not the container's memory limit. Only local models use cache memory.
+
+### CPU
+
+When idle, the default workers only wake up to poll: the root worker every 120 seconds, and each dispatcher every 30 seconds. To limit CPU use during model inference and I/O, see [Threading limits](threading-limits).

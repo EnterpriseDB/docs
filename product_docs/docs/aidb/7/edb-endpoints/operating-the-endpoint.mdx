@@ -1,0 +1,102 @@
+---
+title: Operating the endpoint
+navTitle: Operating the endpoint
+description: Health checks, logging, the restart budget, configuration rejections, and troubleshooting.
+redirects:
+  - /aidb/7/mcp-endpoint/operating-the-endpoint
+---
+
+Once the endpoint is running, these sections cover checking its health, reading its logs, how it restarts itself, what stops it from starting, and how to restart, stop, or diagnose it yourself.
+
+## Health checks
+
+The endpoint answers two unauthenticated `GET` routes:
+
+| Route     | Meaning                                                                                                                                                                                        |
+|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/health` | Liveness. Returns 200 with `ok` whenever the process is up. It never touches the database, so it stays green while Postgres is down.                                                          |
+| `/ready`  | Readiness. Returns 200 with `ready` whenever the process is serving. Because every call opens its own database connection, there's no standing connection to probe, so this matches `/health`. |
+
+To confirm the database path end to end, run a `tools/list` as a real agent role, as in [Connecting a client](../mcp-endpoint/connecting-a-client).
+
+## Logging
+
+The supervisor logs to the Postgres server log with the prefix `aidb endpoints supervisor:`. It writes through Postgres's ordinary logging, not a separate file, so its output lands wherever your server sends its own logs: the destination set by `log_destination` and `logging_collector`. It logs each start with the child's PID and listen address at `LOG` level, and each exit with its status and each idle condition at `WARNING` level.
+
+The endpoint process inherits the supervisor's stderr, so its output lands in the Postgres log when `logging_collector` is on. Its log level is controlled by the `RUST_LOG` environment variable of the postmaster process, for example `RUST_LOG=debug`. Changing it requires a Postgres restart, since the postmaster environment is read at start.
+
+## Restart budget
+
+If the endpoint exits, the supervisor starts it again, up to `edb.endpoints_restart_max` starts within a sliding window of `edb.endpoints_restart_window_secs` seconds. When the budget is used up, the supervisor logs a warning and idles:
+
+```
+WARNING:  aidb endpoints supervisor: restart budget exhausted (5 spawns in 60s); idling; SELECT pg_reload_conf() retries once the window has room
+```
+
+To recover, fix the cause and reload:
+
+```sql
+SELECT pg_reload_conf();
+```
+
+The reload wakes the supervisor. If the window has room again, the endpoint starts. A reload is a single attempt, not a retry loop: if the window hasn't cleared yet, the supervisor logs the same `restart budget exhausted` warning again and idles again, and a later reload is needed once the window has room. Changing `edb.endpoints_restart_max` or `edb.endpoints_restart_window_secs` and reloading resets the budget immediately instead of waiting for the window to clear. A start that fails because the binary is missing or not executable doesn't consume budget and idles the supervisor straight away, since retrying can't fix it.
+
+## Configuration rejections
+
+The supervisor refuses to start the endpoint, and idles until the next reload, when:
+
+- The TLS certificate and key aren't set together.
+- Either TLS file doesn't exist.
+- The MCP host is outside loopback and its TLS pair isn't configured. The OTLP receiver is checked against the general `edb.endpoints_host` and TLS pair. See [OTLP/HTTP receiver](../otlp-server).
+- The server runs PostgreSQL 14 or 15. See [Passwords are always checked](../mcp-endpoint/configuring-agent-roles#passwords-are-always-checked).
+- An OAuth setting is set on a server older than PostgreSQL 18, or a required OAuth setting is missing. See [Authenticating with OAuth](oauth).
+- The database list doesn't parse, is empty, or repeats a name. See [Serving multiple databases](serving-multiple-databases).
+
+Each rejection is logged as a `WARNING` naming the reason, followed by `idling until SELECT pg_reload_conf()`. Correct the parameter and reload.
+
+## Restarting and stopping the endpoint
+
+To restart the endpoint without restarting Postgres, terminate the endpoint process. The supervisor sees it exit and starts a new one within the restart budget:
+
+```sql
+SELECT pid, backend_type FROM pg_stat_activity WHERE backend_type = 'aidb endpoints supervisor';
+```
+
+The supervisor is the background worker that query returns. The endpoint itself is a child operating system process of that worker, visible with `ps` as `edb-endpoints`. Sending it `SIGTERM` gives in-flight calls up to 10 seconds to finish before it exits.
+
+Reloading after changing one of the process parameters, as described in [What happens on a reload](configuring-the-endpoint#what-happens-on-a-reload), also restarts the endpoint.
+
+When Postgres shuts down, the supervisor sends the endpoint `SIGTERM`, waits up to 12 seconds for it to drain and exit, then sends `SIGKILL`. The endpoint also watches a pipe from the supervisor and exits when the supervisor disappears. If the supervisor worker itself dies, Postgres restarts it after 13 seconds.
+
+To disable the endpoint, set `edb.endpoints_mcp_enabled = off` and run `SELECT pg_reload_conf();`.
+
+## Launching `edb-endpoints` yourself
+
+The supervisor starts `edb-endpoints` for you with the right flags. To launch the binary yourself instead, pass the databases and servers as flags:
+
+- Repeat `--mcp-pg-dbname` once per MCP database, and `--otlp-pg-dbname` once per OTLP database. These flags don't fold names, so `--mcp-pg-dbname Sales` serves `/mcp/Sales`, and `--otlp-pg-dbname Sales` serves `/otlp/Sales`. Write a name that starts with `-` as `--mcp-pg-dbname=-archive`, or it parses as a flag.
+- The OTLP receiver is on by default and needs at least one `--otlp-pg-dbname`. A command that worked before the receiver existed, such as `edb-endpoints --pg-host /tmp --pg-dbname aidb`, now fails because it names no OTLP database. Add `--no-otlp` to keep it MCP-only, or `--otlp-pg-dbname=<database>` to serve telemetry too.
+- Use `--no-mcp` to serve only the receiver. `--no-mcp` and `--no-otlp` together are rejected.
+- Replace the unprefixed `--listen-host`, `--listen-port`, `--tls-cert`, `--tls-key`, and `--pg-dbname` flags with their `--mcp-*` forms. They're deprecated. They still work and log a warning, but they conflict with the `--mcp-*` forms.
+
+## Troubleshooting
+
+| Symptom                                                                         | Cause and fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|---------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Nothing listens on the MCP port (`8765`) or the OTLP port (`8766`)              | Run `SHOW edb.endpoints_mcp_enabled;`, or `SHOW edb.endpoints_otlp_enabled;` for the receiver, to confirm the setting took effect. Check that the master switch `edb.endpoints_enabled` isn't `off`. If no server switch was on when Postgres started, restart Postgres. Then check that `aidb` is in `shared_preload_libraries` and that the Postgres log shows the supervisor starting. Then look for a `WARNING` from the supervisor naming a configuration rejection or a missing binary. |
+| `cannot execute .../edb-endpoints: No such file or directory`                   | The binary isn't in the Postgres `bindir`. Confirm the AIDB package installed it, or set `edb.endpoints_command_path` to its location, then reload.                                                                                                                                                                                                                                                                                                                                           |
+| `restart budget exhausted`                                                      | The endpoint keeps exiting. Read the endpoint's stderr in the Postgres log for the reason (a port already in use is common), fix it, and reload. See [Restart budget](#restart-budget).                                                                                                                                                                                                                                                                                                       |
+| `edb.endpoints_mcp_tls_cert and edb.endpoints_mcp_tls_key must be set together` | Set both TLS parameters or neither, then reload. See [Configuration rejections](#configuration-rejections).                                                                                                                                                                                                                                                                                                                                                                                   |
+| A non-loopback host is rejected                                                 | Configure TLS before listening outside loopback, then reload. See [Configuration rejections](#configuration-rejections).                                                                                                                                                                                                                                                                                                                                                                      |
+| Every call fails with `PostgreSQL admitted it without checking a password`      | A `pg_hba.conf` line admitted the connection with `trust` or `peer`. Change it to a password method such as `scram-sha-256`. The endpoint's log names the method. See [Passwords are always checked](../mcp-endpoint/configuring-agent-roles#passwords-are-always-checked).                                                                                                                                                                                                                                   |
+| A request gets `404` with `unknown database`                                    | The database name in the URL isn't in `edb.endpoints_database` or `edb.endpoints_mcp_database`. Add it and reload, or fix the name. Names are case-sensitive. See [Serving multiple databases](serving-multiple-databases).                                                                                                                                                                                                                                                                   |
+| The endpoint doesn't start on PostgreSQL 14 or 15                               | The password check needs PostgreSQL 16 or later. The supervisor logs a warning and doesn't start the endpoint. Upgrade to PostgreSQL 16 or later.                                                                                                                                                                                                                                                                                                                                             |
+| An OTLP request gets `401`                                                      | Missing or wrong credentials, a refused bearer token, or a `pg_hba.conf` line that doesn't check the credential. Check the role's password or token and the matching `pg_hba.conf` line. See [Responses](../otlp-server#responses).                                                                                                                                                                                                                                                            |
+| An OTLP request gets `403`                                                      | The role isn't a member of `aidb_otel_writer`. Run `GRANT aidb_otel_writer TO <role>;`. See [Responses](../otlp-server#responses).                                                                                                                                                                                                                                                                                                                                                             |
+| An OTLP request gets `503`                                                      | The receiver is over its limit of 16 concurrent requests, or the database is unreachable, busy, or restarting. Retry after the interval in the `Retry-After` header. See [Responses](../otlp-server#responses).                                                                                                                                                                                                                                                                                |
+| An MCP client keeps returning to your identity provider's sign-in page          | Postgres refused the bearer token. The cause can be a bad signature, a missing `oauth` line in `pg_hba.conf`, an unmapped identity, a role that doesn't exist, or a validator failure. Read the Postgres server log for the cause. See [MCP clients](oauth#mcp-clients).                                                                                                                                                                                                                      |
+| Every call returns `password authentication failed`                             | Postgres rejected the credentials. Check the role's password and the `local` lines in `pg_hba.conf`. The endpoint connects over the Unix socket, so `host` lines apply only when `unix_socket_directories` is empty.                                                                                                                                                                                                                                                                          |
+| `tools/list` returns a `permission denied` error                                | The agent role lacks `EXECUTE` on `aidb.get_mcp_tools()`. Grant it membership in `aidb_users`. See [Configuring your agent role](../mcp-endpoint/configuring-agent-roles), or [Provisioning example](../mcp-endpoint/provisioning-example) for a full worked example.                                                                                                                                                                                                                                                         |
+| `tools/call` returns `canceling statement due to statement timeout`             | The tool ran longer than the 30 second per-call limit. Make the tool faster or run the work outside MCP.                                                                                                                                                                                                                                                                                                                                                                                      |
+| A newly registered tool doesn't show up                                         | The MCP client cached its last `tools/list` response. Send a new `tools/list` request from that client. The endpoint always reads the catalog fresh on every listing.                                                                                                                                                                                                                                                                                                                         |
+| The client sees `unknown argument 'execute_as_role'`                            | `aidb.run_tool()` rejects arguments the tool didn't declare. Catalog tools always run as the caller. To run as another role, provision that role's credentials for the agent instead.                                                                                                                                                                                                                                                                                                         |
