@@ -1,0 +1,453 @@
+---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
+title: Using whpg-madlib
+navTitle: Using
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/extensions/additional/madlib/using.md
+description: >-
+  Call MADlib functions from SQL in WarehousePG, and run linear regression,
+  association rules, and Naive Bayes classification examples.
+editTarget: originalFilePath
+
+---
+
+Train models and analyze your data inside WarehousePG by calling MADlib functions from SQL, like any other function. Before you start, [install and register whpg-madlib](installing.mdx) in your database.
+
+## Listing available modules
+
+To list the modules in the installed package, read the module names from the `Modules.yml` configuration file. The file also lists `pmml`, which whpg-madlib 2.1.0 doesn't include.
+
+```shell
+grep -- '- name:' /usr/local/madlib/Current/config/Modules.yml
+```
+
+MADlib organizes its methods into the following modules. Pass any module name to the `-t` option of `madpack` to test only that module.
+
+| Module                   | Purpose                                                                                                                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `array_ops`              | Mathematical operations on arrays.                                                                                                                                                       |
+| `assoc_rules`            | Association rule mining with the Apriori algorithm, to discover patterns in transactional data.                                                                                          |
+| `bayes`                  | Naive Bayes classification.                                                                                                                                                              |
+| `conjugate_gradient`     | Conjugate gradient solver for systems of linear equations.                                                                                                                               |
+| `convex`                 | Low-rank matrix factorization and neural networks.                                                                                                                                       |
+| `crf`                    | Conditional random fields for labeling sequences, such as text.                                                                                                                          |
+| `dbscan`                 | DBSCAN density-based clustering.                                                                                                                                                         |
+| `deep_learning`          | Training and evaluating deep learning models with Keras and TensorFlow, including model selection and AutoML.                                                                            |
+| `elastic_net`            | Elastic net regularization for linear and logistic regression.                                                                                                                           |
+| `glm`                    | Generalized linear models.                                                                                                                                                               |
+| `graph`                  | Graph algorithms and measures, such as shortest paths, PageRank, HITS, and weakly connected components.                                                                                  |
+| `kmeans`                 | k-means clustering.                                                                                                                                                                      |
+| `knn`                    | k-nearest neighbors classification and regression.                                                                                                                                       |
+| `lda`                    | Topic modeling with latent Dirichlet allocation.                                                                                                                                         |
+| `linalg`                 | Matrix operations, singular value decomposition, norms, and distance functions.                                                                                                          |
+| `linear_systems`         | Solvers for dense and sparse systems of linear equations.                                                                                                                                |
+| `mxgboost`               | Gradient boosted tree training and prediction with XGBoost.                                                                                                                              |
+| `pca`                    | Principal component analysis and projection, for reducing the number of variables in a data set.                                                                                         |
+| `prob`                   | Probability functions.                                                                                                                                                                   |
+| `recursive_partitioning` | Decision tree and random forest methods.                                                                                                                                                 |
+| `regress`                | Linear, logistic, and multinomial regression, marginal effects, and robust and clustered variance.                                                                                       |
+| `sample`                 | Random, balanced, and stratified sampling, and train-test splits.                                                                                                                        |
+| `sketch`                 | Cardinality estimators that approximate the number of unique values in data.                                                                                                             |
+| `stats`                  | Descriptive and inferential statistics, including hypothesis tests, correlation, Cox proportional hazards regression with robust and clustered variance, and prediction metrics.         |
+| `stemmer`                | Stemming of words with the Porter stemmer.                                                                                                                                               |
+| `summary`                | Summary statistics for the columns of a table.                                                                                                                                           |
+| `svec`                   | Sparse vector data type and operators.                                                                                                                                                   |
+| `svec_util`              | Utility functions for the sparse vector data type.                                                                                                                                       |
+| `svm`                    | Support vector machines.                                                                                                                                                                 |
+| `tsa`                    | Time series analysis, such as ARIMA.                                                                                                                                                     |
+| `utilities`              | Data preparation utilities, such as categorical encoding, pivoting, sessionization, path analysis, converting between columns and vectors, mini-batch preprocessing, and term frequency. |
+| `validation`             | Cross validation for model selection.                                                                                                                                                    |
+
+## Running linear regression
+
+Predict a numeric value from one or more other variables by training a linear regression model. This example runs a linear regression on the table `regr_example`. The dependent variable data is in the `y` column, and the independent variable data is in the `x1` and `x2` columns.
+
+1.  Create the `regr_example` table and load sample data:
+
+    ```sql
+    DROP TABLE IF EXISTS regr_example;
+    CREATE TABLE regr_example (
+       id int,
+       y int,
+       x1 int,
+       x2 int
+    );
+    INSERT INTO regr_example VALUES
+       (1,  5, 2, 3),
+       (2, 10, 7, 2),
+       (3,  6, 4, 1),
+       (4,  8, 3, 4);
+    ```
+
+2.  Use the `madlib.linregr_train()` function to run a multivariate regression on the table and save the model in the `regr_example_model` table:
+
+    ```sql
+    SELECT madlib.linregr_train (
+       'regr_example',         -- source table
+       'regr_example_model',   -- output model table
+       'y',                    -- dependent variable
+       'ARRAY[1, x1, x2]'      -- independent variables
+    );
+    ```
+
+    The function computes the intercept by setting one of the independent variables to the constant `1`. It also accepts additional arguments to set grouping columns and to calculate the heteroskedasticity of the model.
+
+3.  View the model. The `regr_example_model` table has one row of data:
+
+    ```sql
+    \x on
+    SELECT * FROM regr_example_model;
+    \x off
+    __OUTPUT__
+    Expanded display is on.
+    -[ RECORD 1 ]------------+------------------------
+    coef                     | {0.11111111111112681,1.148148148148149,1.0185185185185155}
+    r2                       | 0.9686126804771108
+    std_err                  | {1.4958791130923574,0.2070433312499029,0.3464497580344945}
+    t_stats                  | {0.07427813527085907,5.545448584201562,2.93987366103776}
+    p_values                 | {0.9527997481474364,0.11357977100637409,0.20873079069527753}
+    condition_no             | 22.650203241881005
+    num_rows_processed       | 4
+    num_missing_rows_skipped | 0
+    variance_covariance      | {{2.2376543209859783,-0.2572016460903422,-0.4372427983535821},{-0.2572016460903422,0.042866941015057024,0.034293552812045644},{-0.4372427983535821,0.03429355281204565,0.12002743484215979}}
+
+    Expanded display is off.
+    ```
+
+4.  Use the model with the `madlib.linregr_predict()` function to view the residuals:
+
+    ```sql
+    SELECT regr_example.*,
+           madlib.linregr_predict ( ARRAY[1, x1, x2], m.coef ) AS predict,
+           y - madlib.linregr_predict ( ARRAY[1, x1, x2], m.coef ) AS residual
+    FROM regr_example, regr_example_model m
+    ORDER BY id;
+    __OUTPUT__
+     id | y  | x1 | x2 |      predict       |      residual       
+    ----+----+----+----+--------------------+---------------------
+      1 |  5 |  2 |  3 |  5.462962962962971 | -0.4629629629629708
+      2 | 10 |  7 |  2 | 10.185185185185201 | -0.1851851851852011
+      3 |  6 |  4 |  1 |  5.722222222222238 |  0.2777777777777617
+      4 |  8 |  3 |  4 |  7.629629629629636 |   0.370370370370364
+    (4 rows)
+    ```
+
+## Finding association rules
+
+Find items that customers commonly purchase together by using association rule mining, a technique for discovering relationships between variables in a large data set. This example analyzes seven store transactions. Association rules are also used in bioinformatics, web analytics, and other fields.
+
+The `madlib.assoc_rules()` function expects the data in two columns, with a single item and transaction ID in each row. A transaction with multiple items has multiple rows, one for each item.
+
+1.  Create the table and load the data:
+
+    ```sql
+    DROP TABLE IF EXISTS test_data;
+    CREATE TABLE test_data (
+       trans_id INT,
+       product text
+    );
+    INSERT INTO test_data VALUES
+       (1, 'beer'),
+       (1, 'diapers'),
+       (1, 'chips'),
+       (2, 'beer'),
+       (2, 'diapers'),
+       (3, 'beer'),
+       (3, 'diapers'),
+       (4, 'beer'),
+       (4, 'chips'),
+       (5, 'beer'),
+       (6, 'beer'),
+       (6, 'diapers'),
+       (6, 'chips'),
+       (7, 'beer'),
+       (7, 'diapers');
+    ```
+
+2.  Run `madlib.assoc_rules()` to find the rules that meet both of the following thresholds. The function creates the `assoc_rules` table and stores the results in it.
+
+    -   Support of at least `.40`. Support is the ratio of transactions that contain all the items in a rule to all transactions.
+    -   Confidence of at least `.75`. Confidence is the ratio of transactions that contain all the items in a rule to transactions that contain the items on the left side of the rule.
+
+    ```sql
+    SELECT * FROM madlib.assoc_rules (
+       .40,          -- support
+       .75,          -- confidence
+       'trans_id',   -- transaction column
+       'product',    -- product purchased column
+       'test_data',  -- table name
+       'public',     -- schema name
+       false);       -- display processing details
+    __OUTPUT__
+     output_schema | output_table | total_rules | total_time
+    ---------------+--------------+-------------+-----------------
+     public        | assoc_rules  |           2 | 00:00:00.607553
+    (1 row)
+    ```
+
+    The output shows that two rules meet the thresholds.
+
+3.  View the rules. The `pre` and `post` columns hold the itemsets on the left and right sides of each rule.
+
+    ```sql
+    SELECT pre, post, support FROM assoc_rules
+       ORDER BY support DESC;
+    __OUTPUT__
+        pre    |  post  |       support       
+    -----------+--------+---------------------
+     {diapers} | {beer} |  0.7142857142857143
+     {chips}   | {beer} | 0.42857142857142855
+    (2 rows)
+    ```
+
+In this data, customers often buy beer and diapers together. A store can use the result to place the two items closer together.
+
+## Classifying data with Naive Bayes
+
+Predict the category of a record from its attributes by using [Naive Bayes classification](http://madlib.apache.org/docs/latest/group__grp__bayes.html). Represent each category with an integer, for example `1`, `2`, and `3` for `true`, `false`, and `unknown`. Pass the attributes to the training function in an array.
+
+Training produces a feature probabilities table and a class priors table. Use them to get the probability of each category for new records.
+
+!!!warning
+
+Naive Bayes is in early stage development in MADlib, and its interface can change.
+!!!
+
+### Classifying with integer attributes
+
+In this example, the `class` variable is either `1` or `2`, and each row has three integer attributes. The function treats each integer value as a category. Production data sets are larger than this sample and produce better results, because classification accuracy improves significantly with more training data.
+
+1.  Create the input table and load the sample data:
+
+    ```sql
+    DROP TABLE IF EXISTS class_example CASCADE;
+    CREATE TABLE class_example (
+       id int, class int, attributes int[]);
+    INSERT INTO class_example VALUES
+       (1, 1, '{1, 2, 3}'),
+       (2, 1, '{1, 4, 3}'),
+       (3, 2, '{0, 2, 2}'),
+       (4, 1, '{1, 2, 1}'),
+       (5, 2, '{1, 2, 2}'),
+       (6, 2, '{0, 1, 3}');
+    ```
+
+2.  Train the model with the `create_nb_prepared_data_tables()` function:
+
+    ```sql
+    SELECT * FROM madlib.create_nb_prepared_data_tables (
+       'class_example',         -- name of the training table
+       'class',                 -- name of the class (dependent) column
+       'attributes',            -- name of the attributes column
+       3,                       -- number of attributes
+       'example_feature_probs', -- feature probabilities output table
+       'example_priors'         -- class priors output table
+    );
+    ```
+
+3.  Create a table with data to classify:
+
+    ```sql
+    DROP TABLE IF EXISTS class_example_topredict;
+    CREATE TABLE class_example_topredict (
+       id int, attributes int[]);
+    INSERT INTO class_example_topredict VALUES
+       (1, '{1, 3, 2}'),
+       (2, '{4, 2, 2}'),
+       (3, '{2, 1, 1}');
+    ```
+
+4.  Create a classification view from the feature probabilities, class priors, and `class_example_topredict` tables:
+
+    ```sql
+    SELECT madlib.create_nb_probs_view (
+       'example_feature_probs',    -- feature probabilities table
+       'example_priors',           -- class priors table
+       'class_example_topredict',  -- table with data to classify
+       'id',                       -- key column
+       'attributes',               -- attributes column
+       3,                          -- number of attributes
+       'example_classified'        -- name of the view to create
+    );
+    ```
+
+5.  Display the classification results:
+
+    ```sql
+    SELECT * FROM example_classified ORDER BY key, class;
+    __OUTPUT__
+     key | class |       nb_prob       
+    -----+-------+---------------------
+       1 |     1 |                 0.4
+       1 |     2 |  0.5999999999999999
+       2 |     1 | 0.24999999999999992
+       2 |     2 |                0.75
+       3 |     1 |                 0.5
+       3 |     2 |                 0.5
+    (6 rows)
+    ```
+
+### Classifying with categorical attributes
+
+Calculate the probability that a person plays an outdoor sport, such as golf or tennis, based on the weather. The `weather_example` table has the following columns:
+
+-   `day`, an integer that identifies each row.
+-   `play`, the dependent variable. A value of `0` means no and `1` means yes.
+-   `attrs`, an array with four categorical attributes (outlook, temperature, humidity, and wind).
+
+The `create_nb_classify_view()` function expects attributes as an array of `INTEGER`, `NUMERIC`, or `FLOAT8` values, so this example encodes each attribute as an integer:
+
+| Attribute   | Encoding                          |
+| ----------- | --------------------------------- |
+| Outlook     | sunny (1), overcast (2), rain (3) |
+| Temperature | hot (1), mild (2), cool (3)       |
+| Humidity    | high (1), normal (2)              |
+| Wind        | strong (1), weak (2)              |
+
+The following table shows the training data before the variables are encoded:
+
+```text
+ day | play | outlook  | temperature | humidity | wind
+-----+------+----------+-------------+----------+--------
+  2  | No   | Sunny    | Hot         | High     | Strong
+  4  | Yes  | Rain     | Mild        | High     | Weak
+  6  | No   | Rain     | Cool        | Normal   | Strong
+  8  | No   | Sunny    | Mild        | High     | Weak
+ 10  | Yes  | Rain     | Mild        | Normal   | Weak
+ 12  | Yes  | Overcast | Mild        | High     | Strong
+ 14  | No   | Rain     | Mild        | High     | Strong
+  1  | No   | Sunny    | Hot         | High     | Weak
+  3  | Yes  | Overcast | Hot         | High     | Weak
+  5  | Yes  | Rain     | Cool        | Normal   | Weak
+  7  | Yes  | Overcast | Cool        | Normal   | Strong
+  9  | Yes  | Sunny    | Cool        | Normal   | Weak
+ 11  | Yes  | Sunny    | Mild        | Normal   | Strong
+ 13  | Yes  | Overcast | Hot         | Normal   | Weak
+(14 rows)
+```
+
+1.  Create the training table and load the encoded data:
+
+    ```sql
+    DROP TABLE IF EXISTS weather_example;
+    CREATE TABLE weather_example (
+       day int,
+       play int,
+       attrs int[]
+    );
+    INSERT INTO weather_example VALUES
+       ( 2, 0, '{1,1,1,1}'), -- sunny, hot, high, strong
+       ( 4, 1, '{3,2,1,2}'), -- rain, mild, high, weak
+       ( 6, 0, '{3,3,2,1}'), -- rain, cool, normal, strong
+       ( 8, 0, '{1,2,1,2}'), -- sunny, mild, high, weak
+       (10, 1, '{3,2,2,2}'), -- rain, mild, normal, weak
+       (12, 1, '{2,2,1,1}'), -- overcast, mild, high, strong
+       (14, 0, '{3,2,1,1}'), -- rain, mild, high, strong
+       ( 1, 0, '{1,1,1,2}'), -- sunny, hot, high, weak
+       ( 3, 1, '{2,1,1,2}'), -- overcast, hot, high, weak
+       ( 5, 1, '{3,3,2,2}'), -- rain, cool, normal, weak
+       ( 7, 1, '{2,3,2,1}'), -- overcast, cool, normal, strong
+       ( 9, 1, '{1,3,2,2}'), -- sunny, cool, normal, weak
+       (11, 1, '{1,2,2,1}'), -- sunny, mild, normal, strong
+       (13, 1, '{2,1,2,2}'); -- overcast, hot, normal, weak
+    ```
+
+2.  Create the model from the training table:
+
+    ```sql
+    SELECT madlib.create_nb_prepared_data_tables (
+       'weather_example',  -- training source table
+       'play',             -- dependent class column
+       'attrs',            -- attributes column
+       4,                  -- number of attributes
+       'weather_probs',    -- feature probabilities output table
+       'weather_priors'    -- class priors output table
+    );
+    ```
+
+3.  View the feature probabilities:
+
+    ```sql
+    SELECT * FROM weather_probs ORDER BY class, attr, value;
+    __OUTPUT__
+     class | attr | value | cnt | attr_cnt 
+    -------+------+-------+-----+----------
+         0 |    1 |     1 |   3 |        3
+         0 |    1 |     2 |   0 |        3
+         0 |    1 |     3 |   2 |        3
+         0 |    2 |     1 |   2 |        3
+         0 |    2 |     2 |   2 |        3
+         0 |    2 |     3 |   1 |        3
+         0 |    3 |     1 |   4 |        2
+         0 |    3 |     2 |   1 |        2
+         0 |    4 |     1 |   3 |        2
+         0 |    4 |     2 |   2 |        2
+         1 |    1 |     1 |   2 |        3
+         1 |    1 |     2 |   4 |        3
+         1 |    1 |     3 |   3 |        3
+         1 |    2 |     1 |   2 |        3
+         1 |    2 |     2 |   4 |        3
+         1 |    2 |     3 |   3 |        3
+         1 |    3 |     1 |   3 |        2
+         1 |    3 |     2 |   6 |        2
+         1 |    4 |     1 |   3 |        2
+         1 |    4 |     2 |   6 |        2
+    (20 rows)
+    ```
+
+4.  Load the records to classify into a table. In this example, the table `t1` has four rows:
+
+    ```sql
+    DROP TABLE IF EXISTS t1;
+    CREATE TABLE t1 (
+       id integer,
+       attributes integer[]);
+    INSERT INTO t1 VALUES
+       (1, '{1, 2, 1, 1}'),
+       (2, '{3, 3, 2, 1}'),
+       (3, '{2, 1, 2, 2}'),
+       (4, '{3, 1, 1, 2}');
+    ```
+
+5.  Use the `madlib.create_nb_classify_view()` function to classify the rows in the table:
+
+    ```sql
+    SELECT madlib.create_nb_classify_view (
+       'weather_probs',      -- feature probabilities table
+       'weather_priors',     -- class priors table
+       't1',                 -- table with data to classify
+       'id',                 -- key column
+       'attributes',         -- attributes column
+       4,                    -- number of attributes
+       't1_out'              -- output table name
+    );
+    ```
+
+6.  View the results. The output has one row for each record in `t1`:
+
+    ```sql
+    SELECT * FROM t1_out ORDER BY key;
+    __OUTPUT__
+     key | nb_classification
+    -----+-------------------
+       1 | {0}
+       2 | {1}
+       3 | {1}
+       4 | {0}
+    (4 rows)
+    ```
+
+## Additional resources
+
+Use the following resources to learn about and try other MADlib methods:
+
+-   [whpg-madlib repository](https://github.com/warehouse-pg/whpg-madlib/tree/madlib2-master/doc/example): SQL examples of PageRank, weakly connected components, and XGBoost.
+-   [MADlib wiki](https://cwiki.apache.org/confluence/display/MADLIB/Deep+Learning) and [Keras API documentation](http://madlib.apache.org/docs/latest/group__grp__dl.html): Supported libraries, configuration, and usage for deep learning with Keras and a TensorFlow backend. You manage GPUs and deep learning libraries separately from whpg-madlib.
+-   [Apache MADlib user guide](http://madlib.apache.org/docs/latest/index.html): All other methods.

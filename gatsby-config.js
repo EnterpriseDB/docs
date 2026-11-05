@@ -41,6 +41,9 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 
 /******** Sourcing *********/
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
+// .registry.yaml files define products for the Docusaurus build. Sourced, each
+// would become a File node, and onCreateNode publishes every .yaml file.
+const sourceIgnore = ["**/.registry.yaml"];
 const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
   clickhouse: { name: "clickhouse", path: "product_docs/docs/clickhouse" },
@@ -185,6 +188,7 @@ const externalSourcePlugins = () => {
         options: {
           name: config.name,
           path: config.path,
+          ignore: sourceIgnore,
         },
       });
     }
@@ -392,6 +396,7 @@ module.exports = {
       options: {
         name: "advocacy_docs",
         path: "advocacy_docs",
+        ignore: sourceIgnore,
       },
     },
     {
