@@ -1,0 +1,45 @@
+---
+title: Installing on hosts where the enterprisedb user is managed by AD or LDAP
+navTitle: AD- or LDAP-managed enterprisedb user
+description: "Steps to take before you install or upgrade EDB Postgres Advanced Server RPM packages on hosts where the enterprisedb operating system user is managed by Active Directory or LDAP."
+---
+
+EDB Postgres Advanced Server RPM packages include a `systemd-sysusers` (`sysusers.d`) configuration file named `edb-as-18.conf`. This file is included in EDB Postgres Advanced Server RPM packages from version 18.6.0 onward. If the `enterprisedb` operating system (OS) user doesn't exist locally when the system boots, `systemd-sysusers` creates a local `enterprisedb` user.
+
+This is a problem on hosts where the `enterprisedb` user is managed by Active Directory (using sssd or winbind) or LDAP. If the directory service starts after `systemd-sysusers` runs, the local `enterprisedb` user is created with a different UID than the directory user. As a result, the service can fail to start after a reboot.
+
+If your hosts use a local `enterprisedb` user, you don't need to do anything.
+
+If your `enterprisedb` user is managed by AD or LDAP, take the following steps before you install or upgrade the packages. This applies to the RPM-based platforms: RHEL, Oracle Linux, Rocky Linux, AlmaLinux, and SLES.
+
+1.  Check that the directory user resolves and that there's no local entry:
+
+    ```shell
+    getent passwd enterprisedb
+    grep '^enterprisedb:' /etc/passwd
+    ```
+
+    The `getent` command must return the AD or LDAP user. The `grep` command must print nothing.
+
+    If `getent` doesn't return the directory user, fix your sssd or winbind configuration first.
+
+1.  Mask the packaged `sysusers.d` file so that `systemd-sysusers` doesn't create a local `enterprisedb` user at boot:
+
+    ```shell
+    sudo mkdir -p /etc/sysusers.d
+    sudo ln -sf /dev/null /etc/sysusers.d/edb-as-18.conf
+    ```
+
+1.  Verify that the mask is in place:
+
+    ```shell
+    ls -l /etc/sysusers.d/edb-as-18.conf
+    ```
+
+    The output must show the file linking to `/dev/null`.
+
+The mask lives in `/etc`, so package updates don't remove it. You can apply it before you install the package.
+
+## If the service fails to start after an upgrade
+
+If you already upgraded and the service fails to start after a reboot, see KB_LINK_PENDING.
