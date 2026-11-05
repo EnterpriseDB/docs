@@ -132,14 +132,16 @@ Search that tree with `git grep` (nothing is checked out). Three things to get r
 
 ### Step 6: Account for in-flight PRs
 
-Other open PRs against the same bases may already fix, or collide with, what you find. List them and compare:
+Other open PRs may already fix, or collide with, what you find. **Find them by the files they touch, never by title.** A title filter misses PRs like "AI Factory - Removal" that have none of the obvious keywords. Check open PRs against **every base in the chain, `develop` included**, not only the PR's own base.
 
 ```bash
-gh api "repos/$R/pulls?state=open&base=<base>&per_page=100" --paginate --jq '.[] | [.number,.head.ref,.title] | @tsv'
-gh api repos/$R/pulls/<M>/files --paginate --jq '.[].filename'
+# every open PR against each base in the chain (loop over the bases); skip this PR itself
+gh api "repos/$R/pulls?state=open&base=<base>&per_page=100" --paginate --jq '.[].number'
+# for each number M, keep it only if it touches the HM search root
+gh api repos/$R/pulls/<M>/files --paginate --jq '.[].filename' | grep -c '^product_docs/docs/edb-postgres-ai/'
 ```
 
-Filter by title and by the paths your claims touch. For each overlapping PR, fetch its head into `origin/pr-<M>`, check whether it conflicts with this PR (`git merge-tree --write-tree origin/pr-<M> origin/pr-<N>`; note any `CONFLICT` lines), and build a **combined tree** (the tree ID from that command) to search. Then each gap is one of:
+Then narrow to the PRs whose files overlap this PR's files or the pages your claims point at (read the file list; a PR that removes or rewrites a whole section is relevant even if its title is unrelated). Report the number of open PRs you checked and how many overlapped, so a miss is visible. For each overlapping PR, fetch its head into `origin/pr-<M>`, check whether it conflicts with this PR (`git merge-tree --write-tree origin/pr-<M> origin/pr-<N>`; note any `CONFLICT` lines, and compare against the same merge without this PR so you only blame this PR for the difference), and build a **combined tree** (the tree ID from that command) to search. Then each gap is one of:
 
 - **Open**: not covered by anything in flight.
 - **Covered by #M**: that PR's diff already addresses it. Say so and cite the PR.
@@ -197,42 +199,36 @@ For very large PRs, you may fan out one read-only subagent per top-level folder,
 
 ### Step 8: Report
 
-Lead with the answer, not the process.
+Write it the way a colleague would: short, specific, plain words. Lead with the question or ask. One line per finding, with a file path and line, and quote only the few words that show the problem. No filler, no restating the method, no bold-everything, no headers for sections that have one item.
+
+**Default (chat reply and anything posted to a PR):**
 
 ```
-## HM consistency check: PR <N> (<title>)
-Preflight: <one-line result>
-Chain: <PR branch> -> <base 1> -> <base 2> (confirmed with <writer>)
-In flight: <overlapping PRs and how they relate>
-Verdict: <counts by category> | No issues found
+Checked #<N> against <bases> and open PRs <#a, #b>. First pass, not SME-reviewed.
 
-### Needs SME decision
-(timeline conflicts and anything ambiguous; both quotes and the question to ask)
+**Question:** <the decision someone has to make, with the 1-3 quotes that conflict>
 
-### Needs action before merge
-1. [Contradiction | High] <short title>
-   - PR change: `<path>`  "<old>" -> "<new>"
-   - Conflicts with: `<path>:<line>` @ <ref> says "<quote>"
-   - Why it matters: <one sentence, in terms of what a reader would do wrong>
-   - Status: <Open | Covered by #M | Collides with #M>
-   - Fix belongs in: <this PR | follow-up on <base> | needs SME>
+**Not covered by any of those PRs:**
+- `<path>:<line>` <what it still says, in a few words>
+- ...
 
-### Worth a follow-up
-(stale, gaps, drift, sibling-version candidates; same format, shorter)
+**Heads-up:** <collisions and base drift, one or two lines>
 
-### Coverage and method
-- Refs compared: <ref @ sha for each>
-- Claims extracted: <count> (<themes>)
-- Searched: <trees, paths, term lists>; HM checklist locations covered
-- Not verified: <skipped trees, images, external links, anything unverifiable, and why>
-- Commands run: <the exact git and gh commands>
+Not checked: <short list>
 ```
 
-Order: Needs SME decision first (blocks everything else), then contradictions, then gaps that break links or leave readers without required steps, then stale content, then drift, collisions, and sibling candidates. Severity tracks reader impact: High = a reader following the docs fails or loses data; Medium = misleading or incomplete; Low = cosmetic.
+Rules for the default report:
 
-If there are no findings, say so and still give the coverage section. A bare "looks fine" is not useful.
+- Order: questions that need an SME first (they block the rest), then contradictions, gaps, stale items, drift and collisions.
+- Drop any section that is empty. Say "nothing found" in one line if so, plus what you searched.
+- Mark a finding **Covered by #M** or **Collides with #M** when an in-flight PR already handles it, and leave covered items out of the "Not covered" list.
+- Group repeats: "the five `migration_portal/` pages have no removal notice", not five lines.
+- Skip severity labels and categories unless the writer asks. Use them to order the list, not to decorate it.
+- Don't claim certainty you don't have. "Possibly stale, depends on the answer above" beats a confident wrong call.
 
-Keep the report in the conversation. Offer to save it as a markdown file outside the repo if it is long. Do not write files into the clone.
+**Full report (only when the writer asks for detail or the coverage record):** add the preflight line, the confirmed chain, refs compared with SHAs, the claim inventory, terms and trees searched, how many open PRs were checked and how many overlapped, what wasn't verified, and the exact `git` and `gh` commands run.
+
+Do not post a report to a PR, or edit one already posted, without the writer's go-ahead. Keep long reports in the conversation and offer to save them as a markdown file outside the repo. Do not write files into the clone.
 
 ## Safety gates
 
@@ -265,6 +261,8 @@ If it differs, say which direction: `git log --oneline HEAD..<editorial-remote>/
 - Treating a difference between version trees as a contradiction.
 - Reporting a hit without both quotes and paths, or without reading the surrounding lines.
 - Flagging older release notes and upgrade guides as stale.
+- Finding in-flight PRs by title keyword, or only on the PR's own base. Match on files touched, across every base in the chain including `develop`.
+- A long, headered, bolded report where a few plain lines would do.
 - Reporting a gap that an in-flight PR already closes, or blaming the PR for conflicts that exist between the base branches already.
 - Treating "file absent on develop" as an error when it arrives through the release-to-develop PR.
 - Forgetting release notes, known issues, the upgrade index page, and sample manifests, which are the most common misses.
