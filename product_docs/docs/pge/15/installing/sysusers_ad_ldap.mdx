@@ -4,42 +4,43 @@ navTitle: AD- or LDAP-managed postgres user
 description: "Steps to take before you install or upgrade EDB Postgres Extended Server RPM packages on hosts where the postgres operating system user is managed by Active Directory or LDAP."
 ---
 
-EDB Postgres Extended Server RPM packages include a `systemd-sysusers` (`sysusers.d`) configuration file named `edb-pge-15.conf`. This file is included in EDB Postgres Extended Server RPM packages from version 15.19 onward. If the `postgres` operating system (OS) user doesn't exist locally when the system boots, `systemd-sysusers` creates a local `postgres` user (UID 26).
-
-This is a problem on hosts where the `postgres` user is managed by Active Directory (using sssd or winbind) or LDAP. If the directory service starts after `systemd-sysusers` runs, the local `postgres` user is created with a different UID than the directory user. As a result, the service can fail to start after a reboot.
+If the `postgres` operating system (OS) user on your host is managed by Active Directory (using sssd or winbind) or LDAP, take the steps in [Before you install or upgrade](#before-you-install-or-upgrade) before you install or upgrade EDB Postgres Extended Server RPM packages (RHEL, Oracle Linux, Rocky Linux, AlmaLinux, and SLES) from version 15.19 onward. Otherwise, the service can fail to start after a reboot.
 
 If your hosts use a local `postgres` user, you don't need to do anything.
 
-If your `postgres` user is managed by AD or LDAP, take the following steps before you install or upgrade the packages. This applies to the RPM-based platforms: RHEL, Oracle Linux, Rocky Linux, AlmaLinux, and SLES.
+## Why this happens
 
-1.  Check that the directory user resolves and that there's no local entry:
+Starting with version 15.19, the RPM packages include a `systemd-sysusers` (`sysusers.d`) configuration file named `edb-pge-15.conf`. At boot, `systemd-sysusers` creates the `postgres` user locally if it doesn't exist.
+
+On a host where the `postgres` user is managed by a directory service, the directory service might not be running yet when `systemd-sysusers` runs. In that case, a local `postgres` user (UID 26) is created, and its UID differs from the directory user's UID. The data directory is owned by the directory user, so the service can fail to start.
+
+If the directory user can't be resolved when you install or upgrade the package, the package's install script also creates a local `postgres` user (UID 26). Masking the `sysusers.d` file doesn't prevent this, so make sure the directory user resolves first.
+
+## Before you install or upgrade
+
+1.  Confirm that the directory user resolves and that there's no local entry:
 
     ```shell
     getent passwd postgres
     grep '^postgres:' /etc/passwd
     ```
 
-    The `getent` command must return the AD or LDAP user. The `grep` command must print nothing.
+    The `getent` command returns the AD or LDAP user. The `grep` command prints nothing.
 
-    If `getent` doesn't return the directory user, fix your sssd or winbind configuration first. If the user can't be resolved when you install the package, the package's install script creates a local `postgres` user (UID 26).
+    If `getent` doesn't return the directory user, fix your sssd or winbind configuration before you continue.
 
-1.  Mask the packaged `sysusers.d` file so that `systemd-sysusers` doesn't create a local `postgres` user at boot:
+1.  Mask the packaged `sysusers.d` file so that `systemd-sysusers` doesn't create a local `postgres` user at boot, and then verify the mask:
 
     ```shell
     sudo mkdir -p /etc/sysusers.d
     sudo ln -sf /dev/null /etc/sysusers.d/edb-pge-15.conf
-    ```
-
-1.  Verify that the mask is in place:
-
-    ```shell
     ls -l /etc/sysusers.d/edb-pge-15.conf
     ```
 
-    The output must show the file linking to `/dev/null`.
+    The output shows the file linking to `/dev/null`.
 
 The mask lives in `/etc`, so package updates don't remove it. You can apply it before you install the package.
 
-## If the service fails to start after an upgrade
+## If you already upgraded
 
 If you already upgraded and the service fails to start after a reboot, see KB_LINK_PENDING.
