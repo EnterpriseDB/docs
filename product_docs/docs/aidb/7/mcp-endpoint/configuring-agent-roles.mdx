@@ -57,6 +57,41 @@ ALTER ROLE <agent_role> CONNECTION LIMIT 5;
 
 The limit counts every connection the role opens, including `tools/list` and other tool calls.
 
+## Read-only roles
+
+To guard an agent role against accidental writes through `execute_sql`, turn on `default_transaction_read_only` for the role, in every database or in one:
+
+```sql
+ALTER ROLE <agent_role> SET default_transaction_read_only = on;
+ALTER ROLE <agent_role> IN DATABASE <database> SET default_transaction_read_only = on;
+```
+
+Set it on the agent role itself, because a setting on a profile role doesn't reach its members. The endpoint reads the setting each time it opens a connection, so a change applies from the role's next call.
+
+When the setting resolves to `on`, whether it comes from the role, `ALTER DATABASE`, or the server configuration, the endpoint runs each `execute_sql` statement inside a `BEGIN READ ONLY` block and never commits it. Without the block, a top-level `DO` or `CALL` can commit the read-only transaction and write in the next one. Inside the block, these all fail and write nothing:
+
+- A `COMMIT` or `ROLLBACK` inside `DO` or `CALL`, which returns `invalid transaction termination`.
+- `SET transaction_read_only = off` inside a `DO` block.
+- `ALTER ROLE` to clear the role's own setting.
+- `PREPARE TRANSACTION`, however it's spelled. The block exports a snapshot when it opens, and Postgres refuses to prepare a transaction that has exported one.
+
+A bare `COMMIT` ends the block without an error and writes nothing. The next call opens a new connection, so it's read-only again.
+
+Read-only roles can't run commands that refuse to run inside a transaction block: `VACUUM`, `CREATE INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`, and procedures that commit. Run them as a read-write role instead. Read-write roles aren't wrapped and keep them. A server-wide or `ALTER DATABASE` setting of `default_transaction_read_only = on` makes every role read-only, so every role loses them through `execute_sql`. A `NOTIFY` sent from a read-only role is discarded with the block.
+
+Catalog tools, AIDB agent calls, and `tools/list` aren't wrapped. Each runs only `SELECT` statements, which the role's read-only default already covers.
+
+The block calls `pg_export_snapshot()`, so the role needs `EXECUTE` on it. `PUBLIC` holds that grant by default. If someone revoked it, `execute_sql` refuses every read-only role, and the error names the grant to restore. Grant it back to `PUBLIC`, or to the agent role alone:
+
+```sql
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO PUBLIC;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO <agent_role>;
+```
+
+Every `execute_sql` error for a read-only role carries a `read-only role` context that names the `BEGIN READ ONLY` block. Errors that the block itself causes also tell you to run the command as a read-write role. Those are SQLSTATE `2D000`, from a `COMMIT` or `ROLLBACK` inside the block, and `25001`, from a command that can't run inside a transaction block.
+
+The read-only setting isn't a security boundary. The role can clear its own setting from any read-write session outside the endpoint. Where `dblink` is installed and the role can run `dblink_exec`, it can open that session from inside `execute_sql`. A member of `pg_write_server_files` can still write a server file with `COPY TO`, since that writes no table. Treat the setting as a guard against accidental writes, and control what the role can change with grants. Grant a read-only role only read privileges, through a profile role as in [Granting the role what it needs](#granting-the-role-what-it-needs).
+
 ## Passwords are always checked
 
 The endpoint requires PostgreSQL 16 or later, because the password check reads `SYSTEM_USER`, which is new in 16. On PostgreSQL 14 and 15, the supervisor logs a warning and doesn't start the endpoint.

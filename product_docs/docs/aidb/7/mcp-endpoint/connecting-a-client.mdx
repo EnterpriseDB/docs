@@ -82,7 +82,7 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
           "params": {"name": "execute_sql", "arguments": {"sql": "SELECT 41 + 1 AS answer"}}}'
    ```
 
-   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Each `execute_sql` call runs as one statement in autocommit mode, so `BEGIN`/`COMMIT` across separate calls aren't supported — see [Result encoding for `execute_sql`](#result-encoding-for-execute_sql) for the full constraints.
+   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Each `execute_sql` call runs as one statement in autocommit mode, or in a read-only transaction for a [read-only role](configuring-agent-roles#read-only-roles), so `BEGIN`/`COMMIT` across separate calls aren't supported. See [Result encoding for `execute_sql`](#result-encoding-for-execute_sql) for the full constraints.
 
 ## What an agent can do once provisioned
 
@@ -157,7 +157,7 @@ Each agent call holds one Postgres connection for its whole run. See [Limiting c
 
 ## Result encoding for `execute_sql`
 
-Each `execute_sql` call is one statement in autocommit mode. Transactions can't span calls, so `BEGIN` and `COMMIT` in separate calls aren't supported. Results are capped at 10000 rows and 10 MiB serialized, and a query over either cap returns an error with no rows. DML without `RETURNING` returns `{"rows_affected": N}`, and row-returning statements return a JSON array of objects keyed by column name.
+Each `execute_sql` call is one statement in autocommit mode. For a role whose `default_transaction_read_only` is `on`, the statement instead runs inside a `BEGIN READ ONLY` block that's never committed. See [Read-only roles](configuring-agent-roles#read-only-roles). Transactions can't span calls, so `BEGIN` and `COMMIT` in separate calls aren't supported. Results are capped at 10000 rows and 10 MiB serialized, and a query over either cap returns an error with no rows. DML without `RETURNING` returns `{"rows_affected": N}`, and row-returning statements return a JSON array of objects keyed by column name.
 
 The built-in `execute_sql` tool renders each column from its binary value, so the output doesn't depend on session settings such as `DateStyle`, `IntervalStyle`, or `bytea_output`. Unsupported column types are rejected before any row is returned, so `SELECT 1.00::money WHERE false` fails the same way as `SELECT 1.00::money`. User-defined enums, arrays, ranges, and domains over supported types work.
 
