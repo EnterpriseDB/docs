@@ -39,6 +39,26 @@ Keep the agent role itself free of direct privileges and grant it profile roles 
 
 See [Provisioning example](provisioning-example) for a worked example that creates an agent role and profile roles together.
 
+## Which agents a role sees
+
+The endpoint lists AIDB agents as tools through `aidb.get_mcp_agents()`, which reads `aidb.agents` as the role. Membership in `aidb_users` grants `EXECUTE` on that function and `SELECT` on `aidb.agents`, so a member sees every agent. A role without that access gets no agents, and its catalog tools still list and run. The same holds when the installed extension predates `aidb.get_mcp_agents()`.
+
+The endpoint lists an agent only when its name matches `[A-Za-z_][A-Za-z0-9_-]*`, so an agent named `Sales Bot` isn't exposed. A catalog tool or `execute_sql` with the same name as an agent hides the agent in both `tools/list` and `tools/call`, and the endpoint logs a warning.
+
+A role with `default_transaction_read_only` set to `on` runs agents in [read-only mode](../agents/conversing-with-agents#read-only-mode), so its agent calls return `"conversation_id": null`.
+
+See [Calling agents as tools](connecting-a-client#calling-agents-as-tools) for the arguments, the result, and the timeout.
+
+## Limiting concurrent AIDB agent calls
+
+The endpoint doesn't cap how many AIDB agent calls run at once. Each call holds one Postgres connection for its whole run, up to 920 seconds, so `max_connections` and per-role connection limits are the only bound. Set a `CONNECTION LIMIT` on the roles your MCP clients use:
+
+```sql
+ALTER ROLE <agent_role> CONNECTION LIMIT 5;
+```
+
+The limit counts every connection the role opens, including `tools/list` and other tool calls.
+
 ## Passwords are always checked
 
 The endpoint requires PostgreSQL 16 or later, because the password check reads `SYSTEM_USER`, which is new in 16. On PostgreSQL 14 and 15, the supervisor logs a warning and doesn't start the endpoint.
