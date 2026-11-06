@@ -168,7 +168,7 @@ AIDB has limited air-gapped support. The built-in CPU model runtimes (Candle and
 
 ## Configuring AIDB parameters (GUCs)
 
-AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Parameters that enable background workers are an exception. See [Workers enabled by settings](default-footprint#workers-enabled-by-settings). Only `aidb.download_log_level` and `aidb.download_max_attempts` are `USERSET`, so any role can change them for its own session. All other parameters are `SUSET`, so only superusers, or roles granted `SET` on the parameter, can change them. The sections below cover threading limits, the model cache, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
+AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Parameters that enable background workers are an exception. See [Workers enabled by settings](default-footprint#workers-enabled-by-settings). Only `aidb.encode_memo`, `aidb.download_log_level`, and `aidb.download_max_attempts` are `USERSET`, so any role can change them for its own session. All other parameters are `SUSET`, so only superusers, or roles granted `SET` on the parameter, can change them. The sections below cover threading limits, the model cache, the encode memo, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
 
 ### Threading limits
 
@@ -210,6 +210,33 @@ SET aidb.max_model_cache_size = '2GB';
 ```
 
 If the limit is too small, AIDB reloads models on every call, which is slow. If it's too large, the host can run out of memory.
+
+### Encode memo
+
+| Parameter          | Type    | Default | Description                                                                                                                                       |
+|--------------------|---------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.encode_memo` | boolean | `on`    | Reuses the last result of `aidb.encode_text()`, `aidb.encode_text_query()`, or `aidb.encode_image()` at each place the call appears in a query. `USERSET`. |
+
+#### `aidb.encode_memo`
+
+The encode functions are `STABLE`, so Postgres evaluates a call with constant arguments once when it's an index scan key. Postgres doesn't cache `STABLE` results, though, so without the memo a sequential scan calls the model for every row.
+
+With the memo on, each place `aidb.encode_text()`, `aidb.encode_text_query()`, or `aidb.encode_image()` appears in a query keeps its last result for the rest of the statement. The result is keyed by function, model, input, and effective user, so a `SET ROLE` or `SECURITY DEFINER` boundary doesn't reuse another role's result. A query such as `ORDER BY embedding <=> aidb.encode_text_query('my_model', 'my query')` over a sequential scan, or a distance filter in `WHERE`, calls the model once instead of once per row. The next statement calls the model again.
+
+A call inside a SQL function that Postgres doesn't inline, such as a `SECURITY DEFINER` function, still calls the model for every row. The batch functions `aidb.encode_text_batch()` and `aidb.encode_text_query_batch()` don't use the memo.
+
+In PL/pgSQL, a call site keeps its last result until the transaction ends, across statements and loop iterations. A model or credential change made later in the transaction, or committed by another session in the meantime, isn't seen at that call site. If that matters for your code, turn the memo off to call the model on every evaluation:
+
+```sql
+SET aidb.encode_memo = off;
+```
+
+To compute the query embedding once per execution with nothing reusing it, for example to bound model load or to avoid a stale vector after a model change, use a CTE:
+
+```sql
+WITH q AS (SELECT aidb.encode_text_query('my_model', 'my query') AS v)
+SELECT id FROM my_docs ORDER BY embedding <=> (SELECT v FROM q) LIMIT 10;
+```
 
 ### Model download
 
