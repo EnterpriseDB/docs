@@ -1,7 +1,7 @@
 ---
 title: Connecting a client
 navTitle: Connecting a client
-description: The MCP wire protocol over curl, what an agent's grants let it do, what execute_sql returns, and reaching the endpoint from another host.
+description: The MCP wire protocol over curl, what an agent's grants let it do, what execute_sql returns, calling AIDB agents as tools, and reaching the endpoint from another host.
 ---
 
 The MCP server speaks streamable HTTP at `/mcp`, which serves the default database. When the endpoint serves several databases, each one has its own path, `/mcp/<database>`. See [Serving multiple databases](../edb-endpoints/serving-multiple-databases). Point any MCP client that supports streamable HTTP and HTTP Basic authentication at the endpoint's URL, and give it a Postgres username and password. To create one, see [Configuring your agent role](configuring-agent-roles). The examples below use `http://<mcp-host>:8765/mcp` as a placeholder. Substitute `127.0.0.1` if your client runs on the database host itself (the loopback default), or the endpoint's routable host and `https` if you've set up [Serving remote clients](#serving-remote-clients).
@@ -35,7 +35,7 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
      -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
    ```
 
-1. List tools as a Postgres role. `tools/list` returns every tool the catalog holds, plus the built-in `execute_sql`.
+1. List tools as a Postgres role. `tools/list` returns the built-in `execute_sql`, then every tool the catalog holds, then every AIDB agent, for a member of `aidb_users`. See [Calling agents as tools](#calling-agents-as-tools).
 
    ```shell
    curl -sS http://<mcp-host>:8765/mcp \
@@ -51,7 +51,8 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
    ```json
    {"jsonrpc": "2.0", "id": 2, "result": {"tools": [
      {"name": "execute_sql", "description": "Run a single SQL statement", "inputSchema": {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}},
-     {"name": "add_order", "description": "Insert an order", "inputSchema": {"type": "object", "properties": {"item": {"type": "string"}, "amount": {"type": "number"}}, "required": ["item", "amount"]}}
+     {"name": "add_order", "description": "Insert an order", "inputSchema": {"type": "object", "properties": {"item": {"type": "string"}, "amount": {"type": "number"}}, "required": ["item", "amount"]}},
+     {"name": "db_helper", "description": "Delegate part of the request to the 'db_helper' agent: ...", "inputSchema": {"type": "object", "properties": {"prompt": {"type": "string", "description": "The request to hand off to this delegate agent."}, "conversation_id": {"type": "string", "description": "Conversation id returned by a previous call to this delegate, to continue that conversation. Omit to start a new one."}}, "required": ["prompt"]}}
    ]}}
    ```
 
@@ -89,8 +90,9 @@ After the handshake, an agent's calls behave according to its own grants, not an
 
 | Call                                | Behavior                                                                                                                                    |
 |--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| `tools/list`                        | Returns every tool in the catalog regardless of the caller's grants — the [listing shows what exists, not what the caller may run](../mcp-endpoint#what-tools-the-endpoint-surfaces). |
+| `tools/list`                        | Returns every tool in the catalog regardless of the caller's grants, plus every AIDB agent for a member of `aidb_users`. The [listing shows what exists, not what the caller may run](../mcp-endpoint#what-tools-the-endpoint-surfaces). |
 | `tools/call` on a catalog tool       | Succeeds if the role holds the privileges the tool's SQL needs. Otherwise Postgres returns `permission denied` and no rows are affected.      |
+| `tools/call` on an AIDB agent        | Runs the agent through `aidb.agent_converse()` as the role. See [Calling agents as tools](#calling-agents-as-tools).                         |
 | `tools/call` with a wrong password   | `isError` with `password authentication failed`.                                                                                             |
 
 Arguments are bound as query parameters, and arguments a tool didn't declare are rejected with `unknown argument '<name>'`, so an agent can't ask a tool to run as someone else.
@@ -109,6 +111,49 @@ curl -sS http://<mcp-host>:8765/mcp \
   -d '{"jsonrpc": "2.0", "method": "notifications/cancelled",
        "params": {"requestId": 3, "reason": "user aborted"}}'
 ```
+
+## Calling agents as tools
+
+For a member of `aidb_users`, every [AIDB agent](../agents) is also an MCP tool under its own name, listed after the catalog tools. Calling one runs [`aidb.agent_converse()`](../agents/conversing-with-agents) as the authenticated role, the same function you call from `psql`. The tool's description wraps the agent's instructions and its plugins' descriptions, so the client and its model can read them. See [Which agents a role sees](configuring-agent-roles#which-agents-a-role-sees) for which agents appear and how name collisions resolve.
+
+An agent tool takes two arguments: `prompt`, a required string, and `conversation_id`, an optional string. The endpoint refuses any other argument and names it in the error.
+
+```shell
+curl -sS http://<mcp-host>:8765/mcp \
+  -u <username>:<password> \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+       "params": {"name": "db_helper", "arguments": {"prompt": "How many rows are in the orders table?"}}}'
+```
+
+The `data:` line carries a result whose `content[0].text` is a JSON object with the agent's answer and the conversation's id:
+
+```json
+{"answer":"The orders table has 4,213 rows.","conversation_id":"8f14e45f-ceea-467e-9575-a3d1a2c1a123"}
+```
+
+To continue the conversation, pass the `conversation_id` back on the next call:
+
+```shell
+curl -sS http://<mcp-host>:8765/mcp \
+  -u <username>:<password> \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+       "params": {"name": "db_helper", "arguments": {"prompt": "And how many are still pending?",
+                  "conversation_id": "8f14e45f-ceea-467e-9575-a3d1a2c1a123"}}}'
+```
+
+A read-only role gets `"conversation_id": null`, and so does any call on a read replica, because a [read-only run](../agents/conversing-with-agents#read-only-mode) keeps no history to resume. When the agent fails, the result is `isError` and carries the error from `agent_converse`'s `error` column.
+
+An agent call raises the connection's `statement_timeout` to the agent's `timeout_seconds` plus 10 seconds, with `timeout_seconds` capped at 900 (15 minutes). An agent with no timeout set runs under the 300-second default. Every other call keeps the endpoint's 30-second limit. The extra 10 seconds let the agent report its own timeout first. If Postgres still hasn't answered 10 seconds after `statement_timeout`, the endpoint closes the connection and returns an `isError` result, so an agent call lasts at most 920 seconds. Errors from an agent call name the agent's timeout and the 15-minute ceiling, so you can tell when the ceiling cut a call off. Raise your MCP client's request timeout for long-running agents. The MCP TypeScript SDK, for example, gives up after 60 seconds by default.
+
+To cancel an agent call, send `notifications/cancelled` with the call's `id`, as shown above for a catalog tool. The endpoint sends Postgres a cancel request and also closes the connection, because a tool inside the agent's run can catch the cancel request and keep going.
+
+Each agent call holds one Postgres connection for its whole run. See [Limiting concurrent AIDB agent calls](configuring-agent-roles#limiting-concurrent-aidb-agent-calls).
 
 ## Result encoding for `execute_sql`
 
