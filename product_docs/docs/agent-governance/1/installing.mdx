@@ -100,14 +100,16 @@ Follow these steps to deploy the chart:
     The username must match the repository you're pulling from — here `pgai-platform`. Docker stores credentials keyed by registry with no distinction between repositories, so if you also pull other EDB products from `docker.enterprisedb.com` (for example with username `clickhouse` or `k8s`), each login overwrites the previous one.
     !!!
 
-1.  Provide your TLS certificate. If you're using bundled nginx (the default), store it as a `kubernetes.io/tls` secret:
+1.  Provide your TLS certificate. For bundled nginx (the default) or TLS termination at an external ingress controller, create a `kubernetes.io/tls` secret in the deployment namespace, or use an existing one:
 
     ```bash
     kubectl create secret tls -n governance governance-tls \
       --cert=fullchain.pem --key=privkey.pem
     ```
 
-    If using an external ingress controller instead, skip this step — your controller handles TLS, and you'll set `ingress.tlsSecret` or `ingress.externalTLS=true` in the next step.
+    For bundled nginx, reference this secret with `tls.existingSecret`. For an external ingress controller, use `ingress.tlsSecret`. The chart doesn't create the secret for `ingress.tlsSecret`; if a certificate manager provides it, make sure it's available in the deployment namespace.
+
+    If TLS is terminated outside the ingress controller, skip creating this secret and set `ingress.externalTLS=true` instead of `ingress.tlsSecret`.
 
 1.  Install the chart. For bundled nginx:
 
@@ -134,18 +136,20 @@ Follow these steps to deploy the chart:
       --set postgres.enabled=true \
       --set ingress.enabled=true \
       --set ingress.className=<your-controller> \
-      --set ingress.tlsSecret=<your-secret>
+      --set ingress.tlsSecret=governance-tls
     ```
 
     Both examples assume the bundled Postgres (`postgres.enabled=true`, the default) — set it to `false` and add your external database's `postgres.*` values instead if you're bringing your own, and use `ingress.externalTLS=true` in place of `ingress.tlsSecret` if TLS is terminated out of band.
 
     See [Configuration values](#configuration-values) for the full list of values, including which are required.
 
-1.  Point DNS at the deployment. The nginx service is a `LoadBalancer` by default. Read its external address and make the host in `publicBaseURL` resolve to it:
+1.  Point DNS at the deployment. For bundled nginx, the nginx service is a `LoadBalancer` by default. Read its external address and make the host in `publicBaseURL` resolve to it:
 
     ```bash
     kubectl -n governance get svc gov-governance-nginx
     ```
+
+    For an external ingress controller, point DNS to the controller's external address instead. The application's nginx service is a `ClusterIP` service in this mode and has no external address. If TLS is terminated by a separate proxy or load balancer in front of the controller, point DNS to that entry point.
 
 1.  Sign in and federate. Retrieve the break-glass admin password the bootstrap job generated:
 
