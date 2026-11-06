@@ -5,85 +5,84 @@ date: 9 November 2026
 intro: |2
 
   !!! Note Note on upgrading
-  LiveCompare 4.0.0 removes the `ignore_nullable` setting and changes how Oracle 11g connections work. You can't resume or recheck a session that was started with `ignore_nullable` set, so finish those sessions before you upgrade. Review the Change entries in these release notes and update your configuration files as described.
+  LiveCompare 4.0.0 removes the `ignore_nullable` setting and changes how Oracle 11g connections work. Finish any sessions started with `ignore_nullable` before you upgrade, because you can't resume or recheck them afterward. Review the Changes section and update your configuration files.
   !!!
 
   LiveCompare 4.0.0 includes the following new features, enhancements, bug fixes, and other changes:
 relnotes:
 - relnote: |-
-    LiveCompare now compares NULLs in the comparison key correctly on both PostgreSQL and Oracle. Keys with NULLs are ordered NULLs last and matched NULL-to-NULL, and the generated fix DML addresses NULL key columns with `IS NULL`. Previously, a NULL in a key column could cause key paging and row lookups to silently skip rows, hide differences on NULL-keyed rows, or report false differences on identical data. Customer impact: comparisons of tables that have a nullable column in the comparison key are now complete and accurate, and the fix DML now updates and deletes the intended rows. Tables whose key has no nullable column are unaffected. Action: none required. If you compared tables with nullable key columns using an earlier version, rerun those comparisons and review the results.
+    Fixed an issue whereby a `NULL` value in the comparison key could cause key paging and row lookups to silently skip rows, hide differences, or report false differences on identical data, on both PostgreSQL and Oracle. LiveCompare now orders `NULL` values last and matches `NULL` to `NULL`, and the generated fix DML uses `IS NULL` for `NULL` key columns, so the fix DML affects the intended rows. Tables whose key has no nullable column are unaffected. If you compared tables with a nullable comparison key column using an earlier version, rerun those comparisons and review the results.
   jira: LIV-367
-  addresses: null
-  type: Feature
+  addresses: 53513, 65020
+  type: Bug Fix
   impact: highest
 - relnote: |-
-    You can now set `oracle_thick_mode` in `[General Settings]` (default `off`) to connect to Oracle through python-oracledb thick mode using Oracle Instant Client. Thick mode is required to compare NCHAR, NVARCHAR2, or NCLOB columns when the database's `NLS_NCHAR_CHARACTERSET` isn't `AL16UTF16` (previously reported as DPY-3012), and to connect to Oracle 11g (previously reported as DPY-3010). The setting applies to every Oracle connection in the run, not to individual connections. Customer impact: you can now compare Oracle databases that thin mode can't reach. Action: to use thick mode, install Oracle Instant Client from Oracle, add its directory to the library search path (using `ldconfig` or `LD_LIBRARY_PATH`), and set `oracle_thick_mode = on`. Oracle 11.2 requires Instant Client 19. If LiveCompare can't load Instant Client (DPI-1047), it exits with `EX_CONFIG`. For more information, see [Oracle support](/livecompare/latest/oracle_support/#thick-mode-oracle-instant-client). Support ticket: 65424
+    You can now set `oracle_thick_mode` in `[General Settings]` (default `off`) to connect to Oracle in python-oracledb thick mode through Oracle Instant Client. Thick mode is required to compare NCHAR, NVARCHAR2, or NCLOB columns when the database's `NLS_NCHAR_CHARACTERSET` isn't `AL16UTF16` (previously reported as error code DPY-3012) and to connect to Oracle 11g (previously reported as error code DPY-3010). The setting applies to every Oracle connection in the run. You must install Oracle Instant Client, which you download from Oracle. For requirements and setup steps, see [Oracle support](/livecompare/latest/oracle_support/#thick-mode-oracle-instant-client).
   jira: LIV-357
-  addresses: null
+  addresses: 65424
   type: Feature
   impact: high
 - relnote: |-
-    LiveCompare now compares tables whose columns are the same but are in a different physical order on each connection, matching columns by name. Previously, such tables were aborted with a "columns do not match" error. With `column_intersection = on`, they were compared row by row instead of by block, which was far slower, and in LiveCompare 3.2.0 every row was also reported as different. A `[Comparison Key]` that follows another connection's column order now gets the same performance warning as a primary key when no index serves its ordering with `data_fetch_mode = prepared_statements`. Customer impact: tables that were previously skipped, slow, or reported as entirely different now compare normally. Action: none required. A primary key or unique index must still list its columns in the same order on every connection.
+    LiveCompare now compares tables whose columns are in a different physical order on each connection, matching columns by name. Previously, such tables were aborted with a "columns do not match" error. With `column_intersection = on`, they were compared row by row instead of by block, which was far slower. In LiveCompare 3.2.0, every row was also reported as different. A `[Comparison Key]` that follows another connection's column order now gets the same performance warning as a primary key when no index serves its ordering with `data_fetch_mode = prepared_statements`. A primary key or unique index must still list its columns in the same order on every connection. For more information, see [`column_intersection`](/livecompare/latest/settings/general/#column_intersection).
   jira: LIV-372
-  addresses: LIV-373
+  addresses: null
   type: Enhancement
   impact: high
 - relnote: |-
-    The `ignore_nullable` setting has been removed from `[General Settings]`. Its default behavior (on) is now unconditional: for a table without a primary key or unique index, nullable columns are left out of the comparison. Customer impact: a configuration file that still sets `ignore_nullable` now exits with `EX_CONFIG`, and you can't resume or recheck a comparison session that was started with that setting after you upgrade. Action required: delete the `ignore_nullable` line from your configuration files. Before you upgrade, finish and recheck any in-progress sessions that were started with the setting. After you upgrade, start a new session. If you relied on `ignore_nullable = off`, list the nullable columns in a `[Comparison Key]` section instead.
+    Removed the `ignore_nullable` setting. The setting's default behavior (on) is now unconditional: for a table without a primary key or unique index, nullable columns are left out of the comparison. A configuration file that still sets `ignore_nullable` now exits with `EX_CONFIG`, and you can't resume or recheck a session that was started with the setting. Before you upgrade, finish and recheck any in-progress sessions that used the setting, and delete the `ignore_nullable` line from your configuration files. If you relied on `ignore_nullable = off`, list the nullable columns in a `[Comparison Key]` section instead.
   jira: LIV-367
   addresses: null
   type: Change
   impact: highest
 - relnote: |-
-    Oracle 11g now requires `comparison_algorithm = full_row`. The row hash is SHA-256, which Oracle provides only from 12c (`STANDARD_HASH`), so on Oracle 11g LiveCompare now exits with `EX_CONFIG` unless `comparison_algorithm = full_row` is set. The `DBMS_CRYPTO` grant is no longer needed or used. In thin mode, a connection to an Oracle database older than 12.1 now exits with `EX_CONFIG` and points to `oracle_thick_mode`, instead of being reported as unreachable. Customer impact: existing Oracle 11g configurations fail validation until they're updated. Action required: for Oracle 11g, set `comparison_algorithm = full_row` and `oracle_thick_mode = on`. You can remove any `DBMS_CRYPTO` grant that you made only for LiveCompare.
+    Oracle 11g now requires `comparison_algorithm = full_row`, because the SHA-256 row hash is available on Oracle only from 12c. Without that setting, LiveCompare exits with `EX_CONFIG`. In thin mode, a connection to an Oracle database older than 12.1 now exits with `EX_CONFIG` and points to `oracle_thick_mode`, instead of being reported as unreachable. For Oracle 11g, set `comparison_algorithm = full_row` and `oracle_thick_mode = on`. The `DBMS_CRYPTO` grant is no longer used, so you can remove it if you granted it only for LiveCompare.
   jira: LIV-357
   addresses: null
   type: Change
   impact: high
 - relnote: |-
-    LiveCompare now evaluates differences consistently across the `block_hash`, `row_hash`, and `full_row` algorithms and consensus. Customer impact: the following comparisons can report differences that earlier versions didn't. Between two PostgreSQL databases, NULL and the empty string are now reported as different by every algorithm, and the hash algorithms now detect values that shift across column separators. An Oracle `NUMBER(1)` column compared with a PostgreSQL `boolean` column is now reported as different under every algorithm, including `full_row`. In addition, fix DML `UPDATE` statements now set only the columns whose values differ, and numbers in fix DML are written as exact plain values (for example, `10` instead of `1E+1`) without rounding. Action: none required, but expect a first comparison after the upgrade to report differences that previously went unnoticed, and review them before you apply any fix DML.
+    LiveCompare now evaluates differences consistently across the `block_hash`, `row_hash`, and `full_row` algorithms and consensus, so some comparisons report differences that earlier versions didn't. Between two PostgreSQL databases, every algorithm now reports `NULL` and the empty string as different, and the hash algorithms detect values that shift across column separators. Every algorithm, including `full_row`, now reports an Oracle NUMBER(1) column and a PostgreSQL `boolean` column as different. Fix DML `UPDATE` statements now set only the columns whose values differ, and numbers in fix DML are exact plain values (for example, `10` instead of `1E+1`) without rounding. Expect the first comparison after you upgrade to report previously unnoticed differences, and review them before you apply any fix DML.
   jira: LIV-358
   addresses: null
   type: Change
   impact: high
 - relnote: |-
-    Improved comparison performance when `data_fetch_mode = prepared_statements` by no longer forcing `COLLATE "C"` on key columns whose collation already sorts like C. Previously, every collatable key column was forced to `COLLATE "C"`, which prevented the key's index from serving the ordering, so every buffer re-sorted the rest of the table and fetch time grew quadratically. In testing, a comparison of a 3-million-row table on a database that uses the C collation ran more than four times faster, with identical results. Customer impact: large tables on databases that use the C or POSIX collation compare considerably faster. If a primary key or unique key still needs the forced collation, the table spans more than one buffer, and no index serves the ordering, LiveCompare logs a one-time performance warning for that table. Action: none required. If you see the warning, create the index named in it or use a server-side cursor `data_fetch_mode`. Comparison results aren't affected.
+    Improved comparison performance with `data_fetch_mode = prepared_statements` by no longer forcing `COLLATE "C"` on key columns whose collation already sorts like C. The forced collation prevented the key's index from serving the ordering, so fetch time grew quadratically with table size. In testing, a 3-million-row table on a database that uses the C collation compared more than four times faster, with identical results. If a primary key or unique key still needs the forced collation, the table spans more than one buffer, and no index serves the ordering, LiveCompare logs a one-time performance warning for that table. To resolve the warning, create the index named in the warning or use a server-side cursor with [`data_fetch_mode`](/livecompare/latest/settings/general/#data_fetch_mode). Comparison results aren't affected.
   jira: LIV-366
   addresses: null
   type: Enhancement
   impact: medium
 - relnote: |-
-    Fixed an issue whereby comparing a table on Oracle with a block or row hash algorithm could stop reading the remaining Oracle rows after a hash mismatch on any table larger than `buffer_size`. Every remaining PostgreSQL row then looked missing from Oracle, and the generated fix DML deleted them. Customer impact: Oracle comparisons of tables larger than `buffer_size` that contained at least one real difference could produce fix DML with incorrect `DELETE` statements. Action required: don't apply fix DML generated by an earlier version for an Oracle comparison of a table larger than `buffer_size` without first rerunning the comparison on 4.0.0 and reviewing the results. Support ticket: 65020
+    Fixed an issue whereby a hash mismatch in a `block_hash` or `row_hash` comparison of an Oracle table larger than `buffer_size` could stop LiveCompare from reading the remaining Oracle rows. Every remaining PostgreSQL row then looked missing from Oracle, so the generated fix DML deleted them. Don't apply fix DML that an earlier version generated for such a comparison. Rerun the comparison with LiveCompare 4.0.0 and review the results first.
   jira: LIV-364
-  addresses: null
+  addresses: 65020
   type: Bug Fix
   impact: highest
 - relnote: |-
-    Fixed an issue whereby a `[Comparison Key]` could fail to resolve for PostgreSQL columns with mixed-case names and for Oracle columns with standard-case names. On PostgreSQL, the comparison then fell back to a key of all columns, ignored nullable columns, and could report no differences on divergent data. Customer impact: comparisons that use a custom comparison key on these columns now use the key you configured and report differences correctly. Action: rerun comparisons that used a `[Comparison Key]` on such columns with an earlier version.
+    Fixed an issue whereby a `[Comparison Key]` could fail to resolve for PostgreSQL columns with mixed-case names and Oracle columns with standard-case names. On PostgreSQL, the comparison then fell back to a key of all columns, ignored nullable columns, and could report no differences on divergent data. If you ran comparisons with a custom comparison key on such columns, rerun them.
   jira: LIV-368
-  addresses: LIV-362
+  addresses: null
   type: Bug Fix
   impact: high
 - relnote: |-
-    Fixed an issue whereby, with `server_side_block_hash` enabled, a mismatched block containing keys present on only one connection caused the comparison to resume at the wrong key. Differences could be counted twice, missed, or invented, the repair script could delete correct rows, and some comparisons never finished. Customer impact: `server_side_block_hash` results are now accurate for tables with keys that exist on only some connections. Action: if you used `server_side_block_hash` in an earlier version, rerun the comparison and review any fix DML before applying it.
+    Fixed an issue whereby, with `server_side_block_hash` enabled, a mismatched block containing keys present on only one connection made the comparison resume at the wrong key. Differences could be counted twice, missed, or invented, the repair script could delete correct rows, and some comparisons never finished. If you used `server_side_block_hash` in an earlier version, don't apply the fix DML it generated. Rerun the comparison with LiveCompare 4.0.0 and review the results first.
   jira: LIV-393
   addresses: null
   type: Bug Fix
   impact: high
-- relnote: |-
-    Fixed an issue whereby, in comparisons between Oracle and PostgreSQL, dates and timestamps could be rendered at different precisions, so equal values could hash differently depending on connection order. LiveCompare now renders every date and timestamp at microsecond precision on both sides. Customer impact: mixed Oracle and PostgreSQL comparisons are more reliable. Fractional-second differences, which truncation could hide, are now detected. Action: none required.
+- relnote: Fixed an issue whereby, in Oracle and PostgreSQL comparisons, dates and timestamps could be rendered at different precisions, so equal values could hash differently depending on connection order. LiveCompare now renders every date and timestamp at microsecond precision on both sides, which also detects fractional-second differences that truncation could hide.
   jira: LIV-365
   addresses: null
   type: Bug Fix
   impact: medium
 - relnote: |-
-    Fixed an issue whereby `server_side_block_hash` could fail on tables whose primary key uses a data type that has no `max()` aggregate on the database server, for example `bytea` on community PostgreSQL. Customer impact: `server_side_block_hash` now works with these key types. Action: none required.
+    Fixed an issue whereby `server_side_block_hash` could fail on tables whose primary key has a data type with no `max()` aggregate on the database server, for example `bytea` on community PostgreSQL.
   jira: LIV-369
   addresses: null
   type: Bug Fix
   impact: medium
 - relnote: |-
-    Fixed an issue whereby `livecompare --version` and `livecompare -v` printed the usage text and exited with status 64, and `livecompare <file>.ini --version` printed the version and then went on to run a comparison. The option now prints the version and exits with status 0 from any position. The help text for the option, which read "Prints the help site", is also corrected. Customer impact: scripts and tools that check the installed version now get a reliable result. Action: none required.
+    Fixed an issue whereby `livecompare --version` and `livecompare -v` printed the usage text and exited with status 64, and `livecompare <file>.ini --version` printed the version and then ran a comparison. The option now prints the version and exits with status 0 from any position. The option's help text, which read "Prints the help site", is also corrected.
   jira: LIV-334
   addresses: null
   type: Bug Fix
