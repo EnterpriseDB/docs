@@ -58,3 +58,45 @@ For more details on these functions and their full parameter lists, see [SQL ref
 |----------------------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
 | `auto_processing`          | `aidb.PipelineAutoProcessingMode` | Auto-processing mode: `Live`, `Background`, or `Disabled`.                                                                        |
 | `background_sync_interval` | `interval`                        | Interval between background executions. Must be between 1 second and 2 days. Only applies when `auto_processing` is `Background`. |
+
+## Pipelines whose owner role is gone
+
+A pipeline runs as its owner role, and AIDB stores that role by name. If the role is renamed or dropped, the pipeline stops processing:
+
+- In `Background` mode, the pipeline's worker exits and the dispatcher doesn't start a new one. The dispatcher logs a warning once for each pipeline.
+- In `Live` mode, the trigger raises an error, so `INSERT`, `UPDATE`, and `DELETE` statements on the source table fail.
+- `aidb.run_pipeline()` fails.
+- Setting `auto_processing` to `Live` or `Background` with `aidb.update_pipeline()` fails, even if the pipeline is already in that mode.
+
+The pipeline still appears in `aidb.pipelines`, with the old role name in `owner_role`. The `auto_processing` column shows the stored mode, so a stopped `Background` pipeline still shows `Background`.
+
+The error names the role and the ways to recover. For example, for a pipeline `my_pipeline` whose owner role `alice` was renamed to `alice_old`:
+
+```text
+ERROR:  Owner role "alice" of pipeline my_pipeline no longer exists (renamed or dropped), so the pipeline does not process. Rename the role back with ALTER ROLE ... RENAME TO "alice", or as a superuser or aidb_admins member disable it with aidb.update_pipeline('my_pipeline', auto_processing => 'Disabled') or delete it with aidb.delete_pipeline('my_pipeline') (both need the privileges of the role that now owns its tables)
+```
+
+To start the pipeline again, rename the role back to the name the pipeline stores:
+
+```sql
+ALTER ROLE alice_old RENAME TO alice;
+```
+
+`Live` processing works again right away, and the dispatcher starts the `Background` worker on its next poll.
+
+If you no longer need the pipeline, a superuser or a member of [`aidb_admins`](../../install/configure#managing-credential-access-with-the-aidb_admins-role) can disable or delete it:
+
+```sql
+SELECT aidb.update_pipeline('my_pipeline', auto_processing => 'Disabled');
+SELECT aidb.delete_pipeline('my_pipeline');
+```
+
+A member of `aidb_admins` can make only these two changes, and only while the owner role is gone. Changing any other setting, such as `batch_size`, fails.
+
+Both calls change objects that the pipeline created, such as its triggers and tables, and neither runs with extra privileges. The caller also needs the privileges of the role that now owns those objects. After a rename, that's the renamed role:
+
+```sql
+GRANT alice_old TO <your_admin_role>;
+```
+
+Postgres doesn't drop a role that still owns objects, so before the role was dropped, its objects went to another role, for example with `REASSIGN OWNED`. In that case, the caller needs the privileges of that role.
