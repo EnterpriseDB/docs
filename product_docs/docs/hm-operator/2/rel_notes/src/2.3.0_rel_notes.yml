@@ -5,11 +5,9 @@ version: 2.3.0
 # (https://lantern.edb.dev/release/foundation/container-releases), then delete this comment.
 date: 3 November 2026
 intro: |
-  Version 2.3.0 takes the values for `spec.scenarios` from the Hybrid Manager (HM) version you install, so a scenario that a later HM version adds needs no operator upgrade. It also refuses to uninstall an installed scenario unless you confirm it, periodically recreates resources deleted outside the operator, and stops copying image pull secrets into every namespace in the cluster.
+  Version 2.3.0 takes the values for `spec.scenarios` from the Hybrid Manager (HM) version you install, so a scenario that a later HM version adds needs no operator upgrade. It also refuses to uninstall an installed scenario unless you confirm it, and periodically recreates resources deleted outside the operator.
 highlights: |
   - **The values `spec.scenarios` accepts now come from the HM version you install, not from the operator.** Each HM version defines its own scenarios, and the operator accepts the ones defined by the version in `spec.version`, so a scenario a later HM version adds needs no operator upgrade. If `spec.scenarios` contains a well-formed name that the target version doesn’t define, the operator now accepts it, drops it from the spec, and emits an event. Earlier versions rejected such names outright.
-
-  - **The operator no longer copies image pull secrets to every namespace in the cluster.** It stops adding `replicator.v1.mittwald.de/replicate-to: "*"` to the secrets named in `spec.registry.imagePullSecrets`, so a secret reaches only the namespaces its own replicator annotations name. `edbctl` 1.11 or later annotates the pull secret it creates for the namespaces that need it. A secret created with an earlier `edbctl` keeps the `"*"` annotation that `edbctl` set and is still copied everywhere. If you create the secret by hand, annotate it yourself, or workloads outside its namespace can't pull their images.
 
   - **Removing an installed scenario from `spec.scenarios` is refused unless you confirm it with an annotation.** Re-applying a manifest that lists fewer scenarios than are installed now fails at admission instead of uninstalling those components and losing the data they hold. Pipelines that re-apply a trimmed manifest need the confirmation annotation.
 
@@ -34,9 +32,9 @@ relnotes:
   impact: High
 
 - relnote: |
-    The operator no longer replicates image pull secrets to every namespace
+    An image pull secret you create by hand needs a replication annotation
   details: |
-    **Action required for a pull secret you create by hand.** The operator no longer stamps `replicator.v1.mittwald.de/replicate-to: "*"` on the secrets named in `spec.registry.imagePullSecrets` (or the deprecated `spec.imagePullSecrets`), which copied the registry credentials into every namespace in the cluster, project namespaces included. Distributing the secret is now left to whatever created it: `edbctl` 1.11 or later annotates the pull secret it creates with the namespaces that pull with it, while a secret created with `edbctl` 1.10 or earlier already carries `replicate-to: "*"`, set by `edbctl` itself, and is still copied to every namespace. If you create the secret by hand, annotate it with `replicator.v1.mittwald.de/replicate-to` or `replicator.v1.mittwald.de/replicate-to-matching` for those namespaces yourself. Upgrading the operator doesn't remove an annotation an earlier version added, so the pull secret of an existing installation keeps being copied as before. The operator logs a message naming the secret when it finds no replicator annotation on it, and still reports an error when a configured pull secret doesn't exist at all.
+    **Action required if you create the image pull secret yourself** instead of with `edbctl image-pull-secret create`, for example with `kubectl create secret docker-registry` as in the "Manual Helm fallback" of the installation guide. The operator no longer adds `replicator.v1.mittwald.de/replicate-to: "*"` to the secrets named in `spec.registry.imagePullSecrets`, so annotate yours with `replicator.v1.mittwald.de/replicate-to` or `replicator.v1.mittwald.de/replicate-to-matching` for the namespaces that pull with it. Without the annotation, workloads outside the secret's namespace can't pull their images, and the operator logs a message naming the secret. Pull secrets created with `edbctl` are already annotated, and upgrading the operator keeps the annotation an existing secret has.
   jira: UPM-139591
   addresses:
   type: Change
