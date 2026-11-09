@@ -223,9 +223,9 @@ Error: WAL replay failed: segments are not running and not in expected recovery 
     whpg-dr restore my_cluster --resume-failed
     ```
 
-### WAL file is missing during S3 restore
+### Stale FAILED mark on S3 storage
 
-This issue affects `whpg-dr` 1.1.0 with S3 storage.
+1.1.0 and earlier releases with S3 storage could mark a good backup as `FAILED` in the bucket when a restore attempt checked it from the recovery site.
 
 **Symptom:**
 
@@ -244,28 +244,13 @@ Later attempts fail with:
 ERROR: The validity of a failed backup cannot be checked
 ```
 
-**Cause:** The [backup configuration](reference/configuration#backup-configuration-yaml) enables WAL compression with `barman_options.compression`, but the restore YAML doesn't set a matching parameter. The DR site can't find the compressed WAL files and records the backup as `status=FAILED` in the `backup.info` file of each server in the bucket. The backup data is intact, but every retry fails until you reset the status.
+**Cause:** Earlier releases ran `barman check-backup` from the recovery site and recorded the result as `status=FAILED` in the `backup.info` file of each server in the bucket. The backup data is intact, but the mark stays until you clear it. Versions 1.1.1 and later verify backups with S3 reads only and never write a `FAILED` status from the recovery site. `whpg-dr restore` and `whpg-dr check-backup` report whether the mark is stale, meaning every WAL segment is archived, or real. Clear only a stale mark.
 
 **Resolution:**
 
-!!! Warning
-Don't retry the restore until the compression is set in the restore YAML and you've re-run `configure restore`. Every failed attempt marks the backup as `FAILED` again.
-!!!
+1. Upgrade `whpg-dr` on the recovery site to 1.1.1, as described in [Upgrading whpg-dr](configuring-dr#upgrading-whpg-dr).
 
-1. In the restore YAML, set the same [`barman_options.compression`](reference/configuration#restore-configuration-yaml) value as in the backup configuration:
-
-    ```yaml
-    barman_options:
-      compression: gzip   # must match the backup configuration
-    ```
-
-1. Re-run `configure restore`:
-
-    ```bash
-    whpg-dr configure restore /home/gpadmin/restore.yaml
-    ```
-
-1. If a restore attempt has already failed, the backup is still marked as failed in the bucket. Clear the failed status depending on your situation:
+1. Clear the failed status depending on your situation:
 
     **If the primary cluster is available:** run the integrity check on the primary cluster. The primary cluster still has the backup recorded as `DONE`, and the check uploads that status to the bucket:
 
@@ -289,3 +274,13 @@ Don't retry the restore until the compression is set in the restore YAML and you
     ```
 
 1. Run the restore again.
+
+### Stale FAILED mark on POSIX storage
+
+1.1.0 and earlier releases ran `barman check-backup` on the recovery site, which writes its verdict into the backup site's own `backup.info` file on POSIX storage. That check sometimes marked a good backup `FAILED`. Barman refuses to check a `FAILED` backup, so `whpg-dr check-backup` on the backup site can't clear the mark. If `whpg-dr restore` or `whpg-dr check-backup` on the recovery site reports that the mark is stale for a server, clear it by hand for that server only:
+
+1. Edit the `backup.info` file whose path is in the message. The path is `<storage.path>/<cluster_name>/<server>/meta/<backup_id>-backup.info`.
+
+1. Change `status=FAILED` to `status=DONE` and the `error=` line to `error=None`. Leave all other lines unchanged.
+
+1. Run `whpg-dr check-backup <cluster_name> --backup-name <backup_name>` on the recovery site. It must report success before you run `restore`.
