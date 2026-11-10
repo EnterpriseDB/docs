@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EDB docs product registry definition (.registry.yaml)",
+  "description": "Defines one product or section of the docs: the content directory it sits in. Checked when the docs are built and, through the yaml-language-server comment at the top of each file, as it's edited. What a schema can't say (a name used by two products, an icon that doesn't exist, a version directory the content lacks) is checked at build time.",
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "icon": {
+      "type": "string",
+      "pattern": "^(default|color|logos|flags|edb_logos)/[A-Z][A-Za-z0-9]*$",
+      "x-error": "must be written <set>/<Symbol>, where <set> is default, color, logos, flags or edb_logos, e.g. default/Connect",
+      "description": "An icon of @enterprisedb/icons, as <set>/<Symbol>, e.g. default/Connect or logos/Postgresql."
+    },
+    "nameRegistryId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "x-error": "must be a name-registry id (lowercase words joined by '-')"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "names"],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "x-error": "must be lowercase letters, digits, '-' and '_'",
+      "description": "Nested products only, and only to resolve a collision: a top-level definition's key is its directory's name."
+    },
+    "kind": {"enum": ["product", "section"], "description": "A product has versions, a landing page placement and updates; a section is a group of pages that isn't one."},
+    "names": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {"$ref": "#/$defs/text", "description": "The full name, as it's introduced in the product's first paragraph."},
+        "shortName": {"$ref": "#/$defs/text"},
+        "abbreviation": {"$ref": "#/$defs/text"},
+        "commonCommandName": {"$ref": "#/$defs/text"}
+      }
+    },
+    "aliases": {"type": "array", "items": {"$ref": "#/$defs/text"}, "description": "Other `product:` and {{name(x)}} values that mean this product."},
+    "icon": {"$ref": "#/$defs/icon"},
+    "versions": {
+      "type": ["string", "array"],
+      "description": "`all` if every directory under the product is a version; a list if only those are (a hybrid); absent if the product has none.",
+      "if": {"type": "string"},
+      "then": {"const": "all"},
+      "else": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}}
+    },
+    "hideVersion": {"type": "boolean", "description": "Omit the version dropdown. Only for a product with exactly one version."},
+    "navbarTitle": {"$ref": "#/$defs/text"},
+    "noSearch": {"type": "boolean"},
+    "nameRegistry": {"$ref": "#/$defs/nameRegistryId", "description": "The id of this product's entry in EnterpriseDB/name-registry."},
+    "type": {"enum": ["product", "component", "feature", "category", "layer"], "description": "The name-registry entry's kind. Written by the name-registry sync."},
+    "parents": {"type": "array", "items": {"$ref": "#/$defs/nameRegistryId"}, "description": "The name-registry entry's part_of ids. Written by the name-registry sync."},
+    "nameStatus": {"enum": ["approved", "proposed"], "description": "Written by the name-registry sync."},
+    "alternateNames": {
+      "type": "array",
+      "description": "The name-registry entry's legacy names and variants. Written by the name-registry sync.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status"],
+        "properties": {
+          "name": {"$ref": "#/$defs/text"},
+          "status": {"enum": ["preferred", "allowed", "discouraged", "legacy", "unknown"]},
+          "allowedUntil": {"type": "string", "format": "date"}
+        }
+      }
+    },
+    "homepage": {
+      "type": ["boolean", "object"],
+      "description": "Where the landing page lists this product: `false` for nowhere, or a placement. The link is derived from the product (its latest version, or its directory); `href` overrides it.",
+      "if": {"type": "boolean"},
+      "then": {"const": false, "x-error": "must be false (not listed) or a placement"},
+      "else": {
+        "additionalProperties": false,
+        "required": ["group", "order"],
+        "properties": {
+          "group": {"$ref": "#/$defs/text", "description": "The id of a group in homepage.yaml."},
+          "section": {"$ref": "#/$defs/text", "description": "The id of a section of a wide group."},
+          "label": {"$ref": "#/$defs/text", "description": "Defaults to names.shortName, then names.name."},
+          "subtitle": {"$ref": "#/$defs/text"},
+          "order": {"type": "number", "description": "A sparse weight: entries of a group are sorted by it, then by label."},
+          "href": {"$ref": "#/$defs/text", "description": "The route to link, where the product's own root isn't the target."}
+        }
+      }
+    },
+    "updates": {
+      "type": "array",
+      "description": "\"What's new\" items about this product, written with the docs they announce. The landing page shows the newest three across all products.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "date", "description"],
+        "properties": {
+          "title": {"$ref": "#/$defs/text"},
+          "date": {"type": "string", "format": "date", "description": "YYYY-MM-DD: the date the update is ordered by."},
+          "description": {"$ref": "#/$defs/text"},
+          "url": {"$ref": "#/$defs/text", "description": "Defaults to the product's own link."},
+          "moreUrl": {"$ref": "#/$defs/text", "description": "The release notes."},
+          "icon": {"$ref": "#/$defs/icon", "description": "Defaults to the product's icon."}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "product"}}, "required": ["kind"]},
+      "then": {
+        "required": ["homepage"],
+        "x-error": "homepage is required for a product: a placement ({group, order, ...}), or false to leave it off the landing page"
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "section"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "homepage": {"not": {}, "x-error": "is only for products"},
+          "updates": {"not": {}, "x-error": "is only for products"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"hideVersion": {"const": true}}, "required": ["hideVersion"]},
+      "then": {
+        "required": ["versions"],
+        "x-error": "hideVersion on an unversioned definition",
+        "properties": {
+          "versions": {
+            "if": {"type": "array"},
+            "then": {"maxItems": 1, "x-error": "must have exactly one version when hideVersion is set"}
+          }
+        }
+      }
+    }
+  ]
+}
