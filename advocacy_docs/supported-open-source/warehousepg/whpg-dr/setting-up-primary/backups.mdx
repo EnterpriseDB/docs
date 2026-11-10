@@ -82,6 +82,8 @@ Filter by date range:
 whpg-dr list-restore-point my_cluster --from 2026-06-01 --to 2026-06-15
 ```
 
+The `--from` and `--to` options accept ISO dates and times only. See [`whpg-dr list-backup`](../reference/commands#whpg-dr-list-backup) for the accepted formats.
+
 ## Managing backup retention
 
 Automatically expire old backups to keep storage use under control. Without this setup, backups accumulate indefinitely and you must remove them manually with `whpg-dr delete`.
@@ -89,7 +91,7 @@ Automatically expire old backups to keep storage use under control. Without this
 1. Add retention settings to `barman_options` in your [backup configuration YAML](../reference/configuration#backup-configuration-yaml):
 
    - `retention_policy` — sets the expiry rule. It accepts `REDUNDANCY <n>` to keep the n most recent backups, or `RECOVERY WINDOW OF <n> DAYS|WEEKS|MONTHS` to keep all backups within the time window.
-   - `minimum_redundancy` — sets a floor. Barman won't expire backups below this count regardless of the retention policy. Leave it unset until at least one backup exists. Setting it to `1` or higher before the first backup causes pre-backup checks to fail.
+   - `minimum_redundancy` — sets the minimum number of restorable cluster backups that `whpg-dr cron` keeps, regardless of the retention policy. `whpg-dr cron` never keeps fewer than one. Leave it unset until at least one backup exists. Setting it to `1` or higher before the first backup causes pre-backup checks to fail.
 
    ```yaml
    barman_options:
@@ -97,7 +99,7 @@ Automatically expire old backups to keep storage use under control. Without this
      minimum_redundancy: 1
    ```
 
-1. Schedule `whpg-dr cron` to run regularly on the primary coordinator. `whpg-dr cron` applies the retention policy by running Barman maintenance for all segment servers in the cluster. After expiring backups, it also removes the corresponding restore-point metadata so `list-restore-point` never shows restore points whose backup is gone.
+1. Schedule `whpg-dr cron` to run regularly on the primary coordinator. `whpg-dr cron` runs Barman maintenance for all segment servers in the cluster and applies the retention policy to whole cluster backups. Only restorable backups count toward the policy, and the command also deletes failed and partial backups that are older than the backups it keeps. After expiring backups, it also removes the corresponding restore-point metadata so `list-restore-point` never shows restore points whose backup is gone.
 
    Add a cron job under `gpadmin`:
 
