@@ -71,13 +71,129 @@ In both cases, use the recorded SQL in `db.query.text` to inspect what the agent
 
 AIDB 7.8.0 and later record the effective purpose used for the decision. This can differ from the agent's configured purpose when a delegated agent runs under its caller's purpose.
 
-AIDB 7.9.0 adds the relations referenced by the SQL statement and more detail about PostgreSQL privilege errors. These details help explain a decision:
+AIDB 7.9.0 adds the relations referenced by the SQL statement and more detail about PostgreSQL privilege errors. See [Relation and denial attributes](#relation-and-denial-attributes).
 
-- Referenced relations identify the tables, views, or other relations named by the statement. They don't identify which object caused a denial or list every object accessed indirectly.
-- The denial class groups PostgreSQL privilege errors, including object permissions and row-level security. The database message provides the error text.
-- These error details are recorded for PostgreSQL privilege errors (`42501`). Decisions rejected before SQL reaches the database don't have them.
+Older records don't gain these fields after an upgrade. For field names, limits, and availability, see [Decision attributes](../reference/observability#recording-purpose-enforcement-decisions).
 
-Older records don't gain these fields after an upgrade. For field names, limits, and availability, see [Decision attributes](/aidb/latest/reference/observability/#recording-purpose-enforcement-decisions).
+## Relation and denial attributes
+
+Decision records carry two groups of attributes that help explain a decision. Each attribute is listed in [Decision attributes](../reference/observability#recording-purpose-enforcement-decisions).
+
+- The relation attributes (`referenced_relations` and `referenced_relations_total`) describe the statement, and appear on allowed and denied decisions.
+
+- The denial attributes (`denial_class`, `denial_funcname`, `denial_message`, and `db.response.status_code`) describe the PostgreSQL error, and appear only on a denial that PostgreSQL raises.
+
+A denial that AIDB itself rejects before the statement reaches PostgreSQL (`role_not_found`, `not_role_member`, `pre_execution_rejected`, and an `escalation_blocked` found by AIDB's validator) carries neither group, because PostgreSQL never analyzed or executed the statement.
+
+An allowed decision carries the relation attributes and no denial attributes, including when the call failed for a reason other than a privilege check.
+
+### Referenced relations
+
+`referenced_relations` lists the relations the statement named, after PostgreSQL resolved the names for the agent's role and `search_path`. Each entry is a schema-qualified name, quoted where SQL requires it. Relations are listed once even if the statement uses them several times, and the order is not part of the contract.
+
+The list includes tables, partitioned tables, views, materialized views, foreign tables, and sequences read as relations. It includes relations in subqueries, `UNION` branches, CTEs, `EXPLAIN`, and expressions such as `WHERE x IN (SELECT ...)`. Temporary relations appear under their `pg_temp_N` schema. Relations in `pg_catalog` and `information_schema` are listed like any other relation.
+
+!!! Important
+    The list records only the relations named in the statement. It is not a list of everything the agent read during the statement, and it does not say which relation PostgreSQL denied access to. To see what was refused, read `denial_message`.
+
+An empty array means the statement was analyzed and named no relations, for example `SELECT 1`. If the attribute is missing, no analysis exists for the statement, which is different from naming no relations. See [Limitations](#limitations).
+
+On EDB Postgres Advanced Server, a synonym is recorded as its target table. Oracle compatibility objects appear under the `sys` schema, for example `sys.dual`.
+
+The array is cut by whole names so that it stays valid JSON and fits in 5 KB. When the array has fewer entries than `referenced_relations_total`, the array is partial.
+
+### Limiting what an agent can submit
+
+Use [custom SQL tools](../tools/custom-sql-tools) instead of `run_sql_query`. A custom SQL tool runs a stored query with typed parameters, and the role needs no privileges on functions in the `aidb` schema.
+
+### Denial class
+
+`denial_class` is the category of a denial, derived from the name of the PostgreSQL C function that raised the error. `denial_funcname` holds the function name itself.
+
+| `denial_class`         | `denial_funcname`                                                                                             | Meaning                                                                                                                                                                                                                                    |
+|------------------------|---------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `object_privilege`     | `aclcheck_error`, `aclcheck_error_col`                                                                        | An ACL or ownership check denied access.                                                                                                                                                                                                   |
+| `sequence_privilege`   | `nextval_internal`, `currval_oid`, `lastval`, `do_setval`, `pg_sequence_parameters`, `pg_sequence_last_value` | A sequence function denied access. `pg_sequence_last_value` raises on PostgreSQL 14 to 17 only.                                                                                                                                            |
+| `rls_policy`           | `ExecWithCheckOptions`                                                                                        | A row failed a row-level security policy expression.                                                                                                                                                                                       |
+| `rls_setting`          | `check_enable_rls`                                                                                            | `row_security` is off while a policy applies. No policy refused anything.                                                                                                                                                                  |
+| `raised_by_user_code`  | `exec_stmt_raise`                                                                                             | A PL/pgSQL or SPL `RAISE` statement. A function the agent called wrote the message.                                                                                                                                                        |
+| `rebuilt_by_pl`        | `PLy_elog_impl`                                                                                               | PL/Python rebuilt the error and the original site is lost.                                                                                                                                                                                 |
+| `escalation`           | `set_config_option`, `set_config_option_ext`, `set_config_with_handle`, `call_string_check_hook`              | An attempt to change a setting that the agent's role may not change. The decision's `denial_reason` is `escalation_blocked` for the `set_config_*` functions. A denial raised by `call_string_check_hook` keeps `engine_privilege_denied`. |
+| `restricted_operation` | `CheckRestrictedOperation`, `PerformCursorOpen`                                                               | AIDB's restricted execution context refused a command such as `PREPARE`, `LISTEN`, `DISCARD`, or `DECLARE ... WITH HOLD`. The decision's `denial_reason` stays `engine_privilege_denied`.                                                  |
+| `other`                | any other function                                                                                            | Includes large-object, `COPY`, backend-signalling and DDL-only checks.                                                                                                                                                                     |
+
+A function name that is not in the table has class `other`. If PostgreSQL reports no function name, `denial_funcname` is absent and the class is `other`.
+
+!!! Note
+    The function that raises a `set_config_option` denial differs by version: `set_config_option` itself on PostgreSQL 14, `set_config_option_ext` on PostgreSQL 15 and 16, and `set_config_with_handle` on PostgreSQL 17 and 18. The class is the same.
+
+### Error message and SQLSTATE
+
+`denial_message` is the primary message of the PostgreSQL error, as PostgreSQL wrote it, in the server's `lc_messages` language. It is cut from the end at 5 KB, like `db.query.text`. It does not include the `[decision_id=...]` marker that the caller sees. It names at most one object, without a schema.
+
+`db.response.status_code` is `42501` for every denial that carries the denial attributes, including a `42501` that a user function itself raised.
+
+When `denial_class` is `raised_by_user_code`, a function the agent called wrote the message, and `denial_funcname` is not a PostgreSQL privilege check.
+
+!!! Warning
+    `denial_message` is PostgreSQL's text and can contain row data if a user function or PostgreSQL extension includes row values in the message. Anyone who can read `aidb_otel.traces` can read it, such as a holder of the `aidb_governance` role or a read-only viewer role. The agent also receives the same message content.
+
+## Limitations
+
+The relation and denial attributes describe what PostgreSQL reports. They don't always give a complete picture of what happened, for the reasons described in this section.
+
+### Permission errors in functions that are not recorded as denials
+
+In the following two cases, the agent's statement can be refused access to an object but the decision record does not show a denial:
+
+- If a function catches the denial and continues, the error never reaches AIDB, so the decision is recorded as `allowed`.
+
+- PL/Perl and PL/Tcl convert a denial to SQLSTATE `38000`. The call fails and the error does reach AIDB, but AIDB no longer sees a privilege error (`42501`). The decision is `allowed` with a failed call.
+
+### Queried objects that are missing from `referenced_relations`
+
+`referenced_relations` lists the relations the top-level statement named. It is not a record of everything the statement read, and it does not say which relation PostgreSQL refused. The following objects are never included in `referenced_relations`:
+
+- Relations used inside functions that the statement calls.
+
+- Relations read by SQL that is built and run while the statement executes, for example `query_to_xml('SELECT * FROM t', true, false, '')`, `ts_stat`, `ts_rewrite`, `EXECUTE` in a PL/pgSQL function, and a call to `aidb.run_sql_query` inside the statement.
+
+- Relations passed to functions as arguments, for example `table_to_xml` and `database_to_xml`.
+
+- Relations behind a view. The list only includes the view named in the SQL provided by the agent.
+
+- Partitions and inheritance children. Only the parent the statement named appears.
+
+- Relations in row-level security policy expressions, rule actions, trigger bodies, and foreign-key targets.
+
+- Sequences used through `nextval`, `currval`, and similar functions.
+
+- Functions that the statement calls.
+
+A governed tool call records one decision, so SQL that runs nested inside the statement records no decision of its own. `db.query.text` shows that SQL only if the statement contains it literally and the text fits in 5 KB.
+
+The list is also partial when it is cut to 5 KB. See [Referenced relations](#referenced-relations).
+
+### Missing attributes
+
+Which attributes a decision record carries depends on how far the statement got.
+
+- The relation attributes (`referenced_relations` and `referenced_relations_total`) appear once PostgreSQL has resolved the names in the statement.
+
+- The denial attributes (`denial_class`, `denial_funcname`, `denial_message`, and `db.response.status_code`) appear when PostgreSQL raised a privilege error.
+
+If `referenced_relations` is an empty array, the statement named no relations. If the attribute is missing, AIDB has no relation information for that decision.
+
+The following table shows which attributes each outcome carries, in the order the statement moves through AIDB and PostgreSQL.
+
+| How far the statement got              | Outcome                                                                       | Relation attributes | Denial attributes              |
+|----------------------------------------|-------------------------------------------------------------------------------|---------------------|--------------------------------|
+| Rejected before reaching PostgreSQL    | Denied by AIDB                                                                | Absent              | Absent                         |
+| Failed while PostgreSQL resolved names | Denied, for example the role lacks `USAGE` on a schema named in the statement | Absent              | Present                        |
+| Failed while PostgreSQL resolved names | Allowed, with a failed call, for example the relation does not exist          | Absent              | Absent                         |
+| Names resolved                         | Allowed                                                                       | Present             | Absent                         |
+| Names resolved                         | Allowed, and the call failed for a reason other than a privilege check        | Present             | Absent, including the SQLSTATE |
+| Names resolved                         | Denied by PostgreSQL                                                          | Present             | Present                        |
 
 ## Finding the record from a denial
 
@@ -86,6 +202,21 @@ A denied caller's error carries the decision id inline for cross-referencing aga
 ```text
 Tool error: current user is not a member of role 'sales_tickets_rw'; refusing to switch [decision_id=3fa85f64-5717-4562-b3fc-2c963f66afa6]
 ```
+
+## Seeing what happened during a denied call
+
+AIDB reports what happens during an operation as log records, not span events, so the `events` array of a span is empty. To see the log records for denied decisions, join `aidb_otel.logs` to `aidb_otel.traces` on `trace_id` and `span_id`:
+
+```sql
+SELECT l.recorded_at, l.payload_json
+FROM aidb_otel.logs l
+JOIN aidb_otel.traces t USING (trace_id, span_id)
+WHERE t.decision_status = 'denied'
+  AND t.source = 'internal'
+ORDER BY l.recorded_at;
+```
+
+For why AIDB uses logs instead of span events, see [Schemas](../reference/observability#schemas).
 
 ## Seeing the attempted SQL
 
@@ -118,3 +249,4 @@ LIMIT 10;
 ```
 
 Starting in AIDB 7.9.0, add `source = 'internal'` to decision queries to exclude decisions reported by external telemetry senders. Older rows retained during upgrade are also labeled `internal`, but their original source wasn't recorded. See [Common columns](../reference/observability#common-columns).
+

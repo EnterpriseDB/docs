@@ -345,51 +345,22 @@ The crawl looks after relationships it found. Anything added by hand is the call
 
 ## Learning from the query workload
 
-Use this to catch joins your application relies on but the schema never declared as a foreign key. `aidb.import_query_history()` reads `pg_stat_statements` to find them. It's the only source of query history — there's no fallback, and nothing else populates the store.
+Use this to catch joins your application relies on but the schema never declared as a foreign key. `aidb.import_query_history()` reads `pg_stat_statements`, keeps the statements that join tables in the KB's schemas, and proposes each join no foreign key declares as a `proposed` relationship with `source = 'history'`. Nothing proposed is routed until a person accepts it:
 
-!!!note `pg_stat_statements` is required
-Two separate things must both be true: the server must load `pg_stat_statements` (in `shared_preload_libraries`, which needs a restart — see [Configuring shared_preload_libraries](../install/configure#configuring-shared_preload_libraries)), and the database must have the extension installed (`CREATE EXTENSION pg_stat_statements;`). Installing the extension without loading the library is the usual mistake — `CREATE EXTENSION` succeeds, so it looks done, but nothing is ever recorded. Both settings are outside AIDB's control, so on a managed or hardened Postgres service you may not be able to set either. Calling `import_query_history()` without the extension installed errors rather than returning zero rows, so you can tell "nobody has queried this" apart from "the dependency is missing."
-!!!
+```sql
+SELECT * FROM aidb.import_query_history('bank_kb');
 
-With the dependency satisfied, import query history in four steps:
+SELECT relationship_id, left_object, right_object, statements, executions
+FROM   aidb.relationship_candidates('bank_kb');
 
-1. Import:
+SELECT * FROM aidb.accept_relationship_candidates(
+  ARRAY[(SELECT relationship_id FROM aidb.relationship_candidates('bank_kb') LIMIT 1)]::bigint[],
+  'bank_kb');
+```
 
-   ```sql
-   SELECT statements_read, statements_ingested, skipped, candidates_derived, outcome
-   FROM   aidb.import_query_history('bank_kb');
-   __OUTPUT__
-    statements_read | statements_ingested | skipped | candidates_derived | outcome
-   ------------------+----------------------+---------+--------------------+---------
-                  2 |                    2 | {}      |                  1 | ok
-   (1 row)
-   ```
+`pg_stat_statements` must be both preloaded and installed, and the default `min_calls => 5` hides statements that ran fewer times. `accept_relationship_candidates()` accepts only candidates derived from query history. If an agent proposes a relationship directly, it refuses with `accepted = false`, and the message tells you to reassert it with `aidb.add_relationship()` instead.
 
-   The default `min_calls => 5` means a statement executed fewer times than that is invisible to the import — run it again after the workload changes. For each qualifying statement, `import_query_history()` records the normalized SQL, the relations it touched, and its join predicates (`aidb.list_query_history()`), and derives a candidate for any join that isn't already a known relationship.
-
-2. Review the candidates it derived:
-
-   ```sql
-   SELECT relationship_id, left_object, left_columns, right_object, right_columns,
-          confidence, statements, executions, definition
-   FROM   aidb.relationship_candidates('bank_kb');
-   ```
-
-   A candidate is proposed, and the routability rule means nothing proposed is routed.
-
-3. Accept the ones you trust. Accepting is a deliberate act, and makes the claim yours — `source` becomes `manual`, provenance keeps the evidence (execution count, who approved it), and the relationship starts routing:
-
-   ```sql
-   SELECT * FROM aidb.accept_relationship_candidates(
-     ARRAY[(SELECT relationship_id FROM aidb.relationship_candidates('bank_kb') LIMIT 1)]::bigint[],
-     'bank_kb');
-   ```
-
-   Only candidates surfaced by query history can be accepted this way. If an agent proposes a relationship directly, `accept_relationship_candidates()` refuses it with `accepted = false`, and the error message tells you to reassert it with `aidb.add_relationship()` instead.
-
-   `accept_relationship_candidates(candidate_ids, kb_name)` takes `kb_name` second — unlike every other function on this page, which takes it first.
-
-4. If an import ingested less than you expected, use `aidb.classify_query_history_statement(statement)` to see why any single statement would or wouldn't be used.
+For setup, keeping an application's generated SQL out of the store, searching past queries, reviewing candidates, and cleanup, see [Query history](query-history).
 
 ## Permissions
 

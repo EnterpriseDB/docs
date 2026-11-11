@@ -1,0 +1,53 @@
+---
+title: WarehousePG Disaster Recovery 1.1.1 release notes
+navTitle: Version 1.1.1
+description: Release notes for version 1.1.1 of WarehousePG Disaster Recovery.
+---
+
+Released: 28 Oct 2026
+
+WarehousePG Disaster Recovery 1.1.1 includes new features, changes, bug fixes, and a security update.
+
+### Features
+
+- Adds `--restart-mode smart|fast|immediate` to [`whpg-dr configure backup`](../reference/commands#whpg-dr-configure-backup), [`whpg-dr configure reset`](../reference/commands#whpg-dr-configure-reset), and [`whpg-dr archiving resume`](../reference/commands#whpg-dr-archiving-resume). The default `smart` mode waits for client sessions to end and can end in a forced stop if one stays connected. `fast` ends client sessions and stops the cluster cleanly. `immediate` stops all instances without a clean shutdown, so the cluster runs crash recovery at the next start.
+- Adds progress output to [`whpg-dr restore`](../reference/commands#whpg-dr-restore) for the base backup copy and WAL replay.
+- Adds a WarehousePG version check on recovery hosts to [`whpg-dr configure restore`](../reference/commands#whpg-dr-configure-restore) and [`whpg-dr restore`](../reference/commands#whpg-dr-restore). A different major version returns an error, and an older minor or patch release returns a warning.
+- [`whpg-dr backup`](../reference/commands#whpg-dr-backup) now reports what a failed or interrupted backup left in the backup catalog, and how to make it restorable or delete it.
+- [`whpg-dr list-restore-point`](../reference/commands#whpg-dr-list-restore-point) now marks base backups that can't be restored. [`whpg-dr check-backup`](../reference/commands#whpg-dr-check-backup) and [`whpg-dr restore`](../reference/commands#whpg-dr-restore) refuse incomplete or in-progress backups.
+- [`whpg-dr list-backup`](../reference/commands#whpg-dr-list-backup) now shows backups that are still waiting for their WAL to be archived (`WAITING_FOR_WALS`), and the correct WAL size.
+
+### Changes
+
+- [`whpg-dr cron`](../reference/commands#whpg-dr-cron) now applies backup retention to whole cluster backups. Reconfigure existing clusters after upgrading. See [Upgrade notes](#upgrade-notes).
+- The `--from` and `--to` options of [`whpg-dr list-backup`](../reference/commands#whpg-dr-list-backup) and [`whpg-dr list-restore-point`](../reference/commands#whpg-dr-list-restore-point) now accept only ISO date and time formats. Other forms, such as `Oct 14 2026`, `20261014`, and Unix seconds, are refused.
+- [`whpg-dr configure backup`](../reference/commands#whpg-dr-configure-backup) now rejects `compression: pigz` with S3 storage, because WAL archiving fails with it, and `compression: custom` with any storage. Saved configurations that use one of these settings still load, so `whpg-dr configure reset` and the other commands keep working. `whpg-dr configure backup --reconfigure` succeeds once the YAML sets a supported [`barman_options.compression`](../reference/configuration#backup-configuration-yaml).
+
+### Bug fixes
+
+- Fixed S3 restores that failed with `At least one WAL file is missing`. Restores now verify backups with S3 reads only and accept WAL under any compression suffix. If a backup is marked `FAILED`, the message now says whether the mark is stale or real. See [Stale FAILED mark on S3 storage](../troubleshooting#stale-failed-mark-on-s3-storage).
+- Fixed restores from POSIX storage writing to the backup site's storage. A restore no longer moves the backup site's incoming WAL into the archive or changes a backup's status. A restore whose required WAL is missing now fails at verification, before it copies any data.
+- Fixed retention expiring the last restorable backup. Retention now applies to whole cluster backups, so failed or partial backups no longer count toward the policy. See [`whpg-dr cron`](../reference/commands#whpg-dr-cron).
+- Fixed `whpg-dr cron` deleting every restore point when it couldn't read Barman's backup list. `whpg-dr` now treats unreadable output as an error, and `whpg-dr cron` exits with a non-zero status instead of deleting restore points.
+- S3 full restores now refuse to run when a tablespace directory on a recovery host isn't empty. Leftover files from an earlier restore could previously survive and make queries return incorrect rows.
+- Fixed co-located tablespaces on S3 so each segment backs up and restores only its own directory. Previously, parallel restores could overwrite each other or fail with `Cannot mkdir`. Existing backups restore correctly without being retaken.
+- Backup and restore point times are now real local instants. Retention windows and `--from`/`--to` filters given with `Z` or an offset are no longer off by the host's UTC offset. Printed times are unchanged.
+- `whpg-dr create-restore-point` can now recover a backup whose `segment_configuration.csv` is missing, which happens when a backup fails after it finished on every segment. If the live primaries still match the configured topology, and that topology was recorded before the backup started, the command regenerates the file from `gp_segment_configuration` (`--dry-run` shows the decision first). Otherwise it skips the backup with a warning and anchors the restore point to the newest older usable backup. On POSIX, the CSV is now written atomically.
+- Post-backup checks now run `check-backup` only where needed. After an S3 backup, `whpg-dr` used to run `check-backup` on every segment. It now re-checks only segments that Barman left in `WAITING_FOR_WALS`, and prints a warning, not an error, if one still isn't `DONE`.
+
+### Security
+
+- Upgraded `golang.org/x/text` to v0.41.0 to address [GO-2026-5970](https://pkg.go.dev/vuln/GO-2026-5970) ([CVE-2026-56852](https://nvd.nist.gov/vuln/detail/CVE-2026-56852)), an infinite loop on invalid UTF-8 during SCRAM authentication.
+
+### Upgrade notes
+
+After [upgrading the backup site](../setting-up-primary/configuring-primary#upgrading-the-package), complete these tasks:
+
+- Check your WAL compression setting. If your backup YAML uses `compression: pigz` with S3 storage or `compression: custom`, change [`barman_options.compression`](../reference/configuration#backup-configuration-yaml) to a supported algorithm before the next step. Otherwise, `whpg-dr configure backup --reconfigure` fails.
+- Rerun `whpg-dr configure backup --reconfigure`. `whpg-dr cron` now applies backup retention itself, and refuses to run until you reconfigure.
+- Update any scripts that pass `--from` or `--to` to [`whpg-dr list-backup`](../reference/commands#whpg-dr-list-backup) or [`whpg-dr list-restore-point`](../reference/commands#whpg-dr-list-restore-point). These options now accept only ISO formats, and other forms are refused. See the command reference for the accepted formats.
+
+After [upgrading the recovery site](../configuring-dr#upgrading-whpg-dr):
+
+- Recovery hosts must run the same WarehousePG major version as the backup. `whpg-dr configure restore` checks the version on the coordinator and every segment host before generating configurations, and `whpg-dr restore` repeats the check before a full restore, `--delta`, and `--resume-failed`. A different major version returns an error. An older minor or patch release returns a warning.
+- Recovery sites configured with 1.1.0 restore without reconfiguring, because 1.1.1 verifies backups by reading the storage and finds WAL under any compression suffix. A backup that 1.1.0 already marked `FAILED` stays refused until you clear the mark. See [Stale FAILED mark on S3 storage](../troubleshooting#stale-failed-mark-on-s3-storage).

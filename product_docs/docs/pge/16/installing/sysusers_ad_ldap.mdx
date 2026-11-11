@@ -1,0 +1,42 @@
+---
+title: Installing on hosts where the postgres user is managed by AD or LDAP
+navTitle: AD- or LDAP-managed postgres user
+description: "Steps to take before you install or upgrade EDB Postgres Extended Server RPM packages on hosts where the postgres operating system user is managed by Active Directory or LDAP."
+---
+
+If the `postgres` operating system (OS) user on your host is managed by Active Directory (using sssd or winbind) or LDAP, you must prepare the host before you install or upgrade EDB Postgres Extended Server RPM packages from version 16.15 onward. Otherwise, the service can fail to start after a reboot. This requirement applies to hosts running RHEL, Oracle Linux, Rocky Linux, AlmaLinux, or SLES. For the steps, see [Preparing the host](#preparing-the-host).
+
+If your hosts use a local `postgres` user, you don't need to do anything.
+
+## Why the service can fail to start
+
+Starting with version 16.15, the RPM packages include a `systemd-sysusers` (`sysusers.d`) configuration file named `edb-pge-16.conf`. At boot, `systemd-sysusers` creates the `postgres` user locally if it doesn't exist.
+
+On a host where the `postgres` user is managed by a directory service, the directory service might not be running yet when `systemd-sysusers` runs. In that case, a local `postgres` user (UID 26) is created, and its UID differs from the directory user's UID. The data directory is owned by the directory user, so the service can fail to start.
+
+If the directory user can't be resolved when you install or upgrade the package, the package's install script also creates a local `postgres` user (UID 26). Masking the `sysusers.d` file doesn't prevent the install script from creating that user, so make sure the directory user resolves first.
+
+## Preparing the host
+
+1.  Confirm that the directory user resolves and that there's no local entry:
+
+    ```shell
+    getent passwd postgres
+    grep '^postgres:' /etc/passwd
+    ```
+
+    The `getent` command returns the AD or LDAP user. The `grep` command prints nothing.
+
+    If `getent` doesn't return the directory user, fix your sssd or winbind configuration before you continue.
+
+1.  Mask the packaged `sysusers.d` file so that `systemd-sysusers` doesn't create a local `postgres` user at boot, and then verify the mask:
+
+    ```shell
+    sudo mkdir -p /etc/sysusers.d
+    sudo ln -sf /dev/null /etc/sysusers.d/edb-pge-16.conf
+    ls -l /etc/sysusers.d/edb-pge-16.conf
+    ```
+
+    The output shows the file linking to `/dev/null`.
+
+The mask lives in `/etc`, so package updates don't remove it. You can apply it before you install the package.

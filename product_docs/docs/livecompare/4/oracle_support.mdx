@@ -1,0 +1,245 @@
+---
+navTitle: Oracle support
+title: Oracle support
+originalFilePath: oracle_support.md
+
+---
+
+You can use LiveCompare to compare data from an Oracle database against any number of PostgreSQL or PGD databases.
+
+For example, you can define `technology = oracle` in a data connection. You can then use other settings to define the connection to Oracle:
+
+-   `host`
+-   `port`
+-   `service`
+-   `user`
+-   `password`
+
+All other data connections must be PostgreSQL.
+
+The `user` you use to connect to Oracle must have the privileges needed to read the data from the tables you want to compare. Specifically, these privileges are `CONNECT`, `SELECT ANY TABLE`, and `SELECT_CATALOG_ROLE`. These can be granted with the command:
+
+```sql
+GRANT CONNECT, SELECT ANY TABLE, SELECT_CATALOG_ROLE TO username;
+```
+
+Where `username` is the user you want to use to connect to Oracle.
+
+Here's a simple example of comparison between an Oracle database and a PostgreSQL database:
+
+```ini
+[General Settings]
+logical_replication_mode = off
+max_parallel_workers = 4
+oracle_user_tables_only = on
+oracle_ignore_unsortable = on
+column_intersection = on
+difference_tie_breakers = oracle
+
+[Oracle Connection]
+technology = oracle
+host = 127.0.0.1
+port = 1521
+service = XE
+user = LIVE
+password = live
+
+[Postgres Connection]
+technology = postgresql
+dsn = dbname=liveoracle user=william
+
+[Output Connection]
+dsn = dbname=liveoutput user=william
+
+[Table Filter]
+schemas = schema_name = 'live'
+```
+
+Here, the `schema_name` in Oracle is the user table sandbox. All table names are schema qualified by default:
+
+-   Postgres: `<schema_name> . <table_name>`
+-   Oracle: `<user> . <table_name`
+
+You can disable schema-qualified table names by setting `schema_qualified_table_names = off`. You can do this only if `oracle_user_tables_only = on`. This setting tells LiveCompare to search only on tables that belong to the Oracle user that's connected. When schema-qualified table names is disabled, then on Postgres you need to have set a default `search_path` on your role or configuration. Or, you can use the connection `start_query` parameter to set an appropriate `search_path`, for example:
+
+```ini
+[General Settings]
+logical_replication_mode = off
+max_parallel_workers = 4
+oracle_user_tables_only = on
+oracle_ignore_unsortable = on
+column_intersection = on
+difference_tie_breakers = oracle
+schema_qualified_table_names = off
+
+[Oracle Connection]
+technology = oracle
+host = 127.0.0.1
+port = 1521
+service = XE
+user = LIVE
+password = live
+
+[Postgres Connection]
+technology = postgresql
+dsn = dbname=liveoracle user=william
+start_query = SET search_path = myschema1, myschema2, public
+
+[Output Connection]
+dsn = dbname=liveoutput user=william
+
+[Table Filter]
+tables = table_name in ('mytable1', 'mytable2')
+```
+
+When `schema_qualified_table_names = off`, you can also use non-qualified table names in `Table Filter`, `Row Filter`, and `Column Filter`.
+
+!!! Note
+    The `Output Connection` is required to write progress and reporting information from LiveCompare.
+
+If you need to compare a PGD database against Oracle, and you want to take advantage of `Initial Connection`, `node_name`, and `replication_sets` features (described in [PGD support](bdr_support/)), then you can point the last data connection to Oracle, like this:
+
+```ini
+[General Settings]
+logical_replication_mode = bdr
+max_parallel_workers = 4
+oracle_user_tables_only = on
+oracle_ignore_unsortable = on
+column_intersection = on
+difference_tie_breakers = oracle
+
+[Initial Connection]
+dsn = port=5432 dbname=live user=postgres
+
+[BDR Connection]
+node_name = node1
+
+[Oracle Connection]
+technology = oracle
+host = 127.0.0.1
+port = 1521
+service = XE
+user = LIVE
+password = live
+
+[Output Connection]
+dsn = port=5432 dbname=liveoutput user=postgres
+
+[Table Filter]
+replication_sets = set_name = 'bdrgroup'
+```
+
+You also can compare a whole PGD cluster against a single Oracle database, for example:
+
+```ini
+[General Settings]
+logical_replication_mode = bdr
+max_parallel_workers = 4
+oracle_user_tables_only = on
+oracle_ignore_unsortable = on
+column_intersection = on
+difference_tie_breakers = oracle
+all_bdr_nodes = on
+
+[Initial Connection]
+dsn = port=5432 dbname=live user=postgres
+
+[Oracle Connection]
+technology = oracle
+host = 127.0.0.1
+port = 1521
+service = XE
+user = LIVE
+password = live
+
+[Output Connection]
+dsn = port=5432 dbname=liveoutput user=postgres
+
+[Table Filter]
+replication_sets = set_name = 'bdrgroup'
+```
+
+## Differences
+
+If LiveCompare finds any difference, it generates a DML script to apply only on the PostgreSQL connections. No DML script to apply on the Oracle connection is generated.
+
+## BLOB and CLOB data types
+
+LiveCompare can compare CLOB fields from Oracle, provided that the equivalent field in PostgreSQL is of type `text`. The same goes for BLOB fields from Oracle. The equivalent in PostgreSQL is of type `bytea`.
+
+However, by default, LiveCompare doesn't handle BLOB/CLOB fields if they're in the primary key or if the table has no primary key. If that's the case, then the table is ignored, and LiveCompare logs has a message like
+this:
+
+```
+ORA-00932: inconsistent datatypes: expected - got BLOB
+```
+
+You can work around this behavior by telling LiveCompare to ignore BLOB/CLOB fields if the table has no primary key. Enable these two settings in the `General Settings` section:
+
+```
+oracle_ignore_unsortable = on
+column_intersection = on
+```
+
+## Common hash
+
+By default, LiveCompare has `comparison_algorithm = block_hash`, even when comparing PostgreSQL to Oracle. However, a *common hash* is built following these rules:
+
+-   The row is fully represented as text by concatenating all column values.
+-   On the Postgres side, timestamp, numeric, and bytea data types are handled to mimic Oracle.
+-   This way, the full row representation is then hashed using SHA-256 on both sides.
+-   This allows using `comparison_algorithm` set to `block_hash` and `row_hash`.
+-   If there are any mismatches when using `block_hash`, LiveCompare falls back to `row_hash` and then `full_row`, as it does in a Postgres versus Postgres comparison.
+-   The BLOB, CLOB, and NCLOB fields on Oracle are limited to only the first 2000 characters. `comparison_algorithm = full_row` allows comparison of the entire BLOB and CLOB.
+-   On Oracle, the full row representation must not be wider than 4000 characters. If the full row representation is wider than 4000 characters, LiveCompare aborts the comparison for that specific table, and the following error message is added to the logs:
+
+```
+ORA-01489: result of string concatenation is too long
+```
+
+Later LiveCompare versions will fall back to `full_row` comparison on these specific tables. For now, a workaround is to configure a separate comparison sessions only on these tables, using `comparison_algorithm = full_row`.
+
+The common hash uses the `standard_hash` function to compute a SHA-256 row hash. This function is available only on Oracle 12c and later, so Oracle versions older than 12c, such as 11g, require `comparison_algorithm = full_row`, and LiveCompare exits with `EX_CONFIG` during validation if it isn't set. Oracle 11g also requires `oracle_thick_mode = on`. LiveCompare doesn't use `dbms_crypto`, so no `DBMS_CRYPTO` grant is needed.
+
+## Thick mode (Oracle Instant Client)
+
+By default, LiveCompare connects to Oracle in python-oracledb thin mode, which needs no Oracle client software. Set `oracle_thick_mode = on` in `[General Settings]` to connect in thick mode through Oracle Instant Client. You need thick mode in these cases:
+
+-   You compare NCHAR, NVARCHAR2, or NCLOB columns and the database's `NLS_NCHAR_CHARACTERSET` isn't `AL16UTF16`. Without thick mode, the comparison fails with `DPY-3012`.
+-   You connect to an Oracle version older than 12.1 (11g). Without thick mode, LiveCompare exits with `EX_CONFIG` and points to `oracle_thick_mode` (`DPY-3010`).
+
+The setting applies to every Oracle connection in the run. You can't set it per connection.
+
+### Installing Instant Client
+
+Download the Instant Client Basic package from Oracle. EDB doesn't ship Instant Client, and Oracle's license applies.
+
+-   For Oracle 11.2, you need Instant Client 19. EDB tested 19.23. Instant Client 21 and later don't connect to Oracle 11.2.
+-   For Oracle 12c and later, use an Instant Client version that Oracle supports for your database version.
+-   Instant Client requires `libaio` (`libaio1t64` on newer Debian and Ubuntu).
+
+On Linux, the Instant Client directory must be on the library search path of the environment that runs `livecompare`. There's no setting that points LiveCompare at the directory. Add the directory using `ldconfig` (recommended) or `LD_LIBRARY_PATH`. For example:
+
+```bash
+sudo mkdir -p /opt/oracle && cd /opt/oracle
+sudo unzip instantclient-basic-linux.x64-19.23.0.0.0dbru.zip
+echo /opt/oracle/instantclient_19_23 | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+sudo ldconfig
+```
+
+Then enable thick mode in the configuration file:
+
+```ini
+[General Settings]
+oracle_thick_mode = on
+```
+
+If LiveCompare can't load Instant Client (`DPI-1047`), it exits with `EX_CONFIG` before connecting and explains how to fix the search path. When thick mode is on, LiveCompare logs the Oracle Client version at startup, so you can confirm which client was loaded.
+
+## Troubleshooting Oracle connections
+
+| Error | Cause and fix |
+|-------|---------------|
+| `DPY-3012: national character set id ... is not supported by python-oracledb in thin mode` | The table has NCHAR, NVARCHAR2, or NCLOB columns and the database's `NLS_NCHAR_CHARACTERSET` isn't `AL16UTF16`. Set `oracle_thick_mode = on`. |
+| `DPY-3010: connections to this database server version are not supported by python-oracledb in thin mode` | The Oracle version is older than 12.1. LiveCompare exits with `EX_CONFIG` and points to `oracle_thick_mode`. Set `oracle_thick_mode = on`. |
+| `DPI-1047: Cannot locate a 64-bit Oracle Client library` | Instant Client isn't on the library search path. Add its directory using `ldconfig` or `LD_LIBRARY_PATH`. |
