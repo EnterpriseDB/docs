@@ -88,10 +88,10 @@ Apply the excluded unique, foreign key, check, and exclusion constraints after m
 
 ## Tables without a primary key
 
-How DMS handles a source table with no primary key depends on the snapshot type you select when you create the migration.
+How DMS handles a source table with no primary key depends on the snapshot type you select when you create the migration and on your HM version.
 
-- **Snapshot**: DMS doesn't create a Postgres publication on the source database, so it doesn't require a key or replica identity, and it migrates tables without a primary key. DMS treats these tables as keyless and provides at-least-once delivery, so rows can be duplicated — for example, if a snapshot is retried. Check for duplicate rows after any snapshot retry, and as part of your post-migration verification.
-- **Snapshot + Streaming**: Every selected table must have a primary key, `REPLICA IDENTITY FULL`, or `REPLICA IDENTITY USING INDEX` on the source database. If any selected table doesn't, DMS refuses to start the migration and reports an error that begins with `Refusing to add the following table(s) to the publication` and lists the tables.
+- **Snapshot**: From HM 1.4.2 onwards, DMS doesn't create a Postgres publication on the source database for a Snapshot migration, so it doesn't require a key or replica identity and it migrates tables without a primary key. DMS treats these tables as keyless and provides at-least-once delivery, so rows can be duplicated — for example, if a snapshot is retried. Check for duplicate rows after any snapshot retry, and as part of your post-migration verification. On HM 1.4.0 and 1.4.1, a Snapshot migration creates the publication too, so the **Snapshot + Streaming** requirement applies to it as well.
+- **Snapshot + Streaming**: Every selected table must have a primary key, `REPLICA IDENTITY FULL`, or `REPLICA IDENTITY USING INDEX` on the source database. If any selected table doesn't, the migration doesn't move any data and reports an error that begins with `Refusing to add the following table(s) to the publication` and lists the tables.
 
 To make a table without a primary key eligible for a migration that streams changes, run one of the following on the **source** database:
 
@@ -105,7 +105,35 @@ ALTER TABLE <schema_name>.<table_name>
   REPLICA IDENTITY FULL;
 ```
 
-`REPLICA IDENTITY USING INDEX` gives DMS a key, so writes are idempotent and deduplication applies. With `REPLICA IDENTITY FULL`, DMS still treats the table as keyless, so writes aren't idempotent and duplicate rows aren't removed. Alternatively, leave the table out of the migration by not selecting it on the **Review your Tables** tab.
+From HM 1.4.1 onwards, `REPLICA IDENTITY USING INDEX` gives DMS a key, so writes are idempotent and deduplication applies. See [UK-identity tables](#uk-identity-tables-replica-identity-and-post-snapshot-constraints). With `REPLICA IDENTITY FULL`, DMS still treats the table as keyless, so writes aren't idempotent and duplicate rows aren't removed. Alternatively, leave the table out of the migration by not selecting it on the **Review your Tables** tab.
+
+!!!important
+On a Postgres 18 source, a table that has a stored generated column and `REPLICA IDENTITY FULL` rejects `UPDATE` and `DELETE` statements while the table is in the DMS publication, because the publication doesn't publish generated columns. For these tables, use `REPLICA IDENTITY USING INDEX` on an index that has no generated columns.
+!!!
+
+### Partitioned tables
+
+For a partitioned table without a primary key, run the `ALTER TABLE` statement on every partition, not only on the parent table. Postgres doesn't apply the parent's replica identity to its partitions, including partitions you create later. For `REPLICA IDENTITY USING INDEX`, use each partition's own index.
+
+If a partition has no usable replica identity, `UPDATE` and `DELETE` statements on it fail on the source database once DMS creates the publication, with an error such as `cannot update table "p_2025" because it does not have a replica identity and publishes updates`. DMS currently checks only the parent table, so it doesn't report this before the migration starts. A partitioned table that has a primary key on the parent needs no extra steps, because each partition gets its own primary key.
+
+To list the partitions that are missing a usable replica identity, run the following query on the source database:
+
+```sql
+SELECT n.nspname AS schema_name, c.relname AS partition_name
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relispartition
+AND c.relkind = 'r'
+AND NOT (
+  c.relreplident = 'f'
+  OR (c.relreplident = 'd' AND EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conrelid = c.oid AND contype = 'p'))
+  OR (c.relreplident = 'i' AND EXISTS (
+    SELECT 1 FROM pg_index WHERE indrelid = c.oid AND indisreplident))
+)
+ORDER BY 1, 2;
+```
 
 ## Next step
 
