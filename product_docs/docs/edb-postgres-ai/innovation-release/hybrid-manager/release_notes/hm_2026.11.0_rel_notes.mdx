@@ -7,30 +7,116 @@ redirects:
   - /edb-postgres-ai/innovation-release/hybrid-manager/install/configuration/customizing_secrets/migration_portal_secrets/
 ---
 
-
-!!!warning Every Postgres cluster restarts during this upgrade
-This release bumps the Barman Cloud Plugin, which restarts every Postgres cluster in your estate as part of applying the HM upgrade — not on your own database maintenance schedule. If you manage a large estate and rely on scheduling platform and Postgres upgrades independently, plan for this before you upgrade.
-!!!
-
 This Innovation Release includes features and enhancements.
 
 **Release date:** 12 Nov 2026
 
-!!!important What to know before you upgrade to HM 2026.11
+!!!important Before you upgrade to HM 2026.11
+This release moves several components to the `edb-system` namespace, changes how Chat Agent gets its models, removes the `migration` scenario (deleting Migration Portal data), and briefly pauses database management during the upgrade. See [Upgrade considerations](#upgrade-considerations) before you begin.
+!!!
 
--   **The `edb-system` namespace.** Starting with HM 2026.11, the following components use the `edb-system` namespace instead of `default`:
+!!!info Release cadence
 
-    -   The Beacon server resources: your clusters, backups and backup schedules, locations, AI pipelines, and automations, plus the certificates and secrets that Beacon creates for each cluster.
-    -   The app catalog: the OSS Library `PackageRepository` and the packages that it lists.
-    -   The install secrets, such as `edb-object-storage`.
+HM now follows a dual release strategy: LTS and Innovation Releases. For details on this model, see [Hybrid Manager (HM) dual release strategy](/edb-postgres-ai/current/hybrid-manager/release_notes/#hybrid-manager-dual-release-strategy).
+!!!
 
-    The HM upgrade command automatically copies the Beacon server resources to `edb-system` and removes the old copies from `default`. It also automatically moves the `edb-object-storage` secret. You create the other install secrets, such as `hm-portal-bootstrap`, `langflow-secret`, and the `db-*` secrets, in `edb-system` before you upgrade. If you have scripts, monitoring, or `kubectl` commands that read these resources in `default`, update them to use `edb-system`.
+## Component versions
 
--   **OSS Library apps.** The upgrade doesn't move OSS Library apps that you installed before it. They keep running, and EDB recommends that you delete and recreate them, preferably before the upgrade. See [Choose when to recreate OSS Library apps](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/#choose-when-to-recreate-oss-library-apps).
+| Component name | Package name | Compatible version |
+| --- | --- | --- |
+| [Hybrid Manager (HM) Operator](/hm-operator/2/) | `edb-hcp-operator` | 2.3.0 |
+| [Hybrid Manager operand images](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/image-management/custom-operand-images/) | `operandSet` | 1.3.1 (timestamp 2611060646) |
+| [EDB Postgres AI agent](/tools/agent/) | `beacon-agent` | 1.413.11 |
+| EDB Postgres AI agent - Helm chart | `beacon-agent` (Helm chart) | 2.1.0 |
+| [Hybrid Manager CLI](/edbctl/1/) | `edbctl` | 1.11.0 |
+| [AIDB](/aidb/7/) | AIDB | 7.9.0 |
+| [Postgres Analytics Accelerator](/pgaa/1.11/) | PGAA | 1.11.0 |
+| [Postgres File System](/pg_extensions/pgfs/) | PGFS | 3.2.1 |
+| [Distributed High Availability](/pgd/6/) | PGD | 6.5.0 |
+| [EDB Postgres AI for CloudNativePG Cluster](/postgres_for_kubernetes/latest/) (formerly EDB Postgres for Kubernetes) | PG4K | 1.30.0 |
+
+!!!note No `cdcagent` version for this release
+HM 2026.11 removes the `migration` scenario, so `cdcagent` is no longer installed. See [DMS agent version compatibility](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/cdcagent_compatibility/) for earlier releases and HM 1.4.x (LTS).
+!!!
+
+!!!note Postgres refers to all distributions supported by EDB
+-   PostgreSQL
+-   EDB Enterprise Postgres - formerly, EDB Postgres Extended Server (PGE)
+-   EDB Enterprise Postgres (Oracle Compatible) - formerly, EDB Postgres Advanced Server (EPAS)
+!!!
+
+## Release highlights
+
+-   **Project-level resource quotas:** Platform admins can now set optional CPU, memory, and storage caps per project, enforced across cluster create, patch, scale, and autoscale operations.
+
+-   **More disaster-recovery options:** You can now recover a control plane by installing a new HM with `spec.recoveryFrom`, restoring it from the old installation's object storage. The **Promote Replica** dialog also gains a **Force failover** option for promoting a replica when the current primary is unreachable.
+
+-   **New backup-failure alerts, extended to AWS RDS:** New alert definitions notify you when a scheduled backup fails or runs longer than expected, and existing CPU, memory, disk IOPS, connection, and rollback alerting now also covers AWS RDS instances.
+
+-   **Metrics and alerting backend moves from Thanos to ClickHouse:** HM's monitoring and alerting now read from the ClickHouse-backed telemetry stack instead of Prometheus (Thanos) and LogQL, covering Kubernetes-based cluster metrics, bare metal infrastructure and database alerts, and log-based Postgres alerts, while preserving existing alerting behavior.
+
+-   **HM chatbot available independently of the AI scenario:** The chatbot now has its own dedicated `chatbot` scenario, decoupled from the `ai` scenario and the inference service it previously required.
+
+## Release details
+
+### Upgrade considerations
+
+This upgrade moves several resources to a new namespace, changes how Chat Agent gets its models, and briefly pauses database management. For the full procedure, see [Upgrading from 2026.10.1 to 2026.11](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/). Here's what to prepare:
+
+-   **The `edb-system` namespace.** HM 2026.11 moves Beacon server resources, the OSS Library app catalog, and install secrets to `edb-system` instead of `default`. Most of this happens automatically, but you must create a few install secrets yourself beforehand, and you'll need to update any scripts or `kubectl` commands that read these resources in `default`. See [What to expect during the upgrade](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/#what-to-expect-during-the-upgrade).
+
+-   **Chat Agent model configuration.** Chat Agent no longer uses the inference services you configured in HM, and that configuration doesn't carry over. If you use Chat Agent, configure it again before or after you upgrade. See [Chat Agent model credentials](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/#chat-agent-model-credentials).
+
+-   **OSS Library apps.** The upgrade doesn't move apps you installed before it. EDB recommends deleting and recreating them, preferably before you upgrade. See [Choose when to recreate OSS Library apps](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/#choose-when-to-recreate-oss-library-apps).
 
 -   **The `ai` and `migration` scenarios are removed.** The upgrade removes both scenarios and uninstalls the `migration` components. You don't need to change `spec.scenarios`. See [Prepare for the removal of the `ai` and `migration` scenarios](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/#prepare-for-the-removal-of-the-ai-and-migration-scenarios).
 
 -   **Brief database-management downtime.** While the pre-upgrade job copies your resources, the Beacon server is stopped, so you can't manage databases from the HM console or the API until HM 2026.11 is deployed — your Postgres clusters keep running and serving connections the whole time. The time depends on the number of backups that you have. See [What to expect during the upgrade](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/#what-to-expect-during-the-upgrade).
 
-For the full upgrade procedure, see [Upgrading from 2026.10.1 to 2026.11](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/).
-!!!
+### Hybrid Manager (HM) platform
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Added support for resource quota controls at the project level. Platform admins can set, edit, or unset optional CPU, memory, and storage caps per project from **Organization Settings > Quota**. Quotas are enforced across cluster create, patch, scale, and autoscale operations, and admins can view usage against configured quotas; actions that would exceed a quota are rejected with an error detailing the required, limit, and current usage values. |
+| Enhancement | Added operator-driven disaster recovery for Hybrid Manager (HM). You can now recover a control plane by installing a new HM with [`spec.recoveryFrom`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/hadr_recovery_operator/), which restores the control plane from the old installation's object storage, including Postgres management resources and their backups. For recovering into an environment with its own bucket, or for cases the operator doesn't cover, continue to use the existing manual disaster recovery procedures. |
+| Enhancement | Added support for customizing the upgrade job's CPU and memory resource requests and limits through the [`upgrade_job_cpu_request`, `upgrade_job_cpu_limit`, `upgrade_job_memory_request`, and `upgrade_job_memory_limit` global parameters](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/#estimating-the-time-and-tuning-the-upgrade-job). The default memory limit increased from 512Mi to 1Gi, and the default CPU limit increased from 100m to 1 CPU; adjust your operator namespace's `ResourceQuota` or `LimitRange` if needed. |
+| Enhancement | Added a **Force failover** option to the **Promote Replica** dialog, allowing you to promote a replica to primary even when the current primary is unreachable, such as during a disaster recovery scenario. When enabled, the dialog warns that unreplicated writes on the current primary might be lost, and the replica list is limited to replicas that are healthy and deployed. |
+| Change | Moved Beacon server resources, the OSS Library app catalog, and install secrets, including [`edb-object-storage`](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/#create-object-storage-secret), from the `default` namespace to [`edb-system`](#upgrade-considerations). Upgrades migrate existing resources automatically; the namespace used to create install secrets is now configurable, and the operator syncs them to the correct location. |
+| Change | The promote and network access API documentation and the CLI now clarify that [a switchover between a primary and replica cluster](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/switchover-clusters/) requires both clusters to be able to reach each other's connection endpoints. If the clusters can't reach each other, a switchover can't complete and neither cluster accepts writes. A forced failover doesn't require the former primary to be reachable, but any changes not yet replicated to the replica are lost. |
+| Change | The chatbot is now available as a standalone feature through a [dedicated chatbot scenario](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/chat_agent/configure/), decoupled from the `ai` scenario and its inference service. |
+
+### HM console
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Added the ability to enable or disable streaming for managed locations directly from the HM console, in addition to the existing API and CLI support. Fixed the **Streaming disabled** location status indicator. |
+| Change | The HM console now prevents you from creating or editing a replica cluster or group when streaming is disabled for any location in the cluster, and displays a message explaining why the action is disabled. |
+
+### Observability and monitoring
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Added support for serving metrics and evaluating alerts from ClickHouse alongside the existing Prometheus (Thanos) backend. [Existing alerting rules](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/alerts/) for CPU, memory, disk IOPS, connection count, and transaction rollback percentage were extended to cover [AWS RDS instances](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_csp/rds/), and new alert definitions notify you when a backup fails within the last hour or runs longer than expected. |
+| Enhancement | The HammerDB benchmark app in the Marketplace can now read its performance metrics from ClickHouse instead of Prometheus/Thanos when configured to do so, using the same metric series and report structure as before; it falls back to Prometheus if ClickHouse access isn't available. |
+| Change | Improved log migration performance by writing older rows to local disk first, then moving them to the cold (object store) tier in the background, instead of writing directly to the object store on insert. Insert times drop from roughly 3.5 seconds to about 44 milliseconds per operation; live data ingestion, which already writes to local disk first, is unaffected. |
+| Change | In the monitoring single chart section, the p99 chart has been replaced with a queries-per-second chart. |
+| Change | Migrated the [metrics and alerting backend](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/#understanding-the-monitoring-architecture) from Prometheus (Thanos) and LogQL to ClickHouse SQL, improving query performance and alerting reliability while preserving existing behavior. This covers Kubernetes-based cluster metrics for HM-managed and external CNPG and PGD clusters, bare metal infrastructure and database alert rules, and log-based Postgres alerts for critical errors and excessive error rates. |
+| Bug fix | Fixed an issue whereby the istio-proxy sidecar for ClickHouse could be OOM-killed under heavy object-store traffic, causing ClickHouse to lose its connection to Keeper and crash-loop. ClickHouse's object-store traffic now bypasses the istio-proxy sidecar by default, while traffic to in-mesh dependencies such as Keeper continues to be routed through the sidecar as before. |
+| Bug fix | Fixed several query diagnostics issues from the migration to `pg_stat_ch`. The wait-state statistics collector in the EDB Postgres AI agent no longer drops a batch of scraped samples when `query_start_time` is `-infinity`. [**Query Diagnostics**](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/view_clusters/cluster-query-diagnostics-tab/) now shows the correct first-time-seen timestamp instead of the Unix epoch, and **Query Stats** can now be filtered by database user and by affected tables. |
+| Bug fix | Fixed an issue whereby uninstalling HM could hang indefinitely on the `upm-clickhouse` component while waiting for the ClickHouse keeper's persistent volume claim to be deleted. |
+| Bug fix | Fixed an issue whereby the `ruler-operator` component could be OOM-killed and enter a crash loop due to an insufficient memory limit, and enabled the Ruler alerting component by default. |
+| Deprecation | Removed the `edb_stat_monitor` extension from new clusters. Query latency and related statistics are now collected through [`pg_stat_ch`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/monitoring/#enabling-database-monitoring) and OTLP ingestion instead, and the query latency chart has been removed from the **Monitoring** overview; equivalent percentile latency data is available in **Query Diagnostics**. Existing clusters need no action, but see the [upgrade guide](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/2026.10.1_to_2026.11/) if you want to disable `edb_stat_monitor` data collection. |
+| Deprecation | Removed the vmagent alerting rules and Grafana dashboards, since vmagent and vm-operator have been decommissioned and are no longer deployed in HM environments. If you previously relied on these alerts or dashboards for monitoring, they're no longer available. |
+
+### Analytics
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Updated the PGAA version shipped with HM to [1.11.0](https://www.enterprisedb.com/docs/pgaa/latest/release_notes/). |
+
+### Migrations
+
+| Type | Description |
+| ---- | ----------- |
+| Deprecation | Removed the `migration` scenario and the components built on it: Migration Portal, AI Copilot, the Data Migration Service (DMS/Transporter), migration assessment, and the agentic migration templates, along with their associated secrets, roles, and project configurations. Migration Portal projects, assessment results, and repaired DDL aren't preserved; download anything you want to keep before you upgrade from HM 2026.10.1 to 2026.11. HM 1.4.x (LTS) continues to support the `migration` scenario, if you still need these capabilities. EDB plans to offer migration capabilities again through a standalone migration solution in a future release. Contact [EDB Support](https://support.enterprisedb.com) if you have questions about this change or need help planning around it. |
+
