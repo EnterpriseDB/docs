@@ -1,0 +1,364 @@
+---
+title: Upgrading from 2026.10.1 to 2026.11 (Innovation Release)
+navTitle: 2026.10.1 to 2026.11
+description: Follow the step-by-step procedures for upgrading from HM 2026.10.1 to HM 2026.11.
+deepToC: true
+---
+
+Upgrade from 2026.10.1 to 2026.11. This upgrade changes more than the HM version: it moves key resources to a new namespace, changes how Chat Agent gets its models, and briefly pauses database management while that move happens.
+
+> **Role:** Infrastructure engineer
+
+## Prerequisites
+
+- Administrative access to the Kubernetes cluster (`kubectl`, `helm`).
+- Required tools:
+    - `helm` (latest version recommended)
+    - `kubectl`
+    - [`edbctl`](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI, version 1.11 or later — see the [edbctl compatibility matrix](/edbctl/latest/compatibility_matrix/) for the supported version.
+
+## What to expect during the upgrade
+
+Starting in 2026.11, HM moves to the `edb-system` namespace instead of `default`:
+
+- **Beacon server resources** — your clusters, backups, backup schedules, locations, AI pipelines, and automations, plus the secrets and certificates that Beacon creates for each cluster. A pre-upgrade job and a post-upgrade job copy these for you automatically.
+- **Install secrets** — HM moves `edb-object-storage` for you. Create the rest — `hm-portal-bootstrap`, `langflow-secret`, the `db-*` secrets, and so on — in `edb-system` yourself before you upgrade. See [Create secrets](#create-secrets).
+- **OSS Library app catalog** — the `PackageRepository` resource and the packages it lists. The upgrade moves this for you automatically.
+- **Installed OSS Library apps** — the upgrade doesn't move apps that you installed before it. See [Choose when to recreate OSS Library apps](#choose-when-to-recreate-oss-library-apps).
+
+If you have scripts, monitoring, or `kubectl` commands that read these resources in `default`, update them to use `edb-system`.
+
+Chat Agent also stops relying on the inference services you configured in HM, and that configuration doesn't carry over. If you use Chat Agent, see [Chat Agent model credentials](#chat-agent-model-credentials).
+
+### Database management downtime
+
+!!!important Database management is unavailable while the pre-upgrade job copies your resources
+The pre-upgrade job stops the Beacon server while it copies your resources to `edb-system`. During that time, you can't manage databases from the HM console or the API. Your Postgres clusters keep running. The Beacon server starts again when the upgrade deploys HM 2026.11.
+!!!
+
+- **The time depends on how many resources you have.** Each backup is one resource, so an installation with thousands of backups takes much longer than one with a few hundred. If you have a long backup history, plan the upgrade for a maintenance window.
+- **The `HybridControlPlane` stays in `deploying` until the post-upgrade job finishes.** The post-upgrade job removes the old copies from `default`. The Beacon server is running again by then, so this phase doesn't affect database management.
+- **Don't delete or restart the upgrade jobs while they run.**
+
+### Estimating the time and tuning the upgrade job
+
+Before you upgrade, count the Beacon resources in `default` that the pre-upgrade job copies:
+
+```shell
+total=0
+for r in locations.beacon clusterwrappers.beacon clusterresources.beacon \
+         beaconpackagemetadatas.beacon beaconappwrappers.beacon tasks.tasks.beacon \
+         remotepgs.beacon backupwrappers.beacon scheduledbackupwrappers.beacon \
+         aidbpipelineconfigs.beacon aidbpipelinerecords.beacon beaconpackages.beacon \
+         taskapprovals.tasks.beacon maintenancewindows.tasks.beacon \
+         automations.automations.beacon remotequeries.beacon; do
+  n=$(kubectl get "$r.enterprisedb.com" -n default --no-headers | wc -l)
+  printf '%-34s %s\n' "$r" "$n"
+  total=$((total + n))
+done
+echo "total: $total"
+```
+
+The `total` line is the number of resources that the job copies. Backups are usually most of them, so a long backup history is what makes the job slow.
+
+The following table shows the approximate time that the pre-upgrade job needs to copy that many resources, which is the time database management is unavailable. The figures come from one measurement of an installation with about 2,800 resources, nearly all of them backups, scaled to other sizes, so treat them as estimates:
+
+| Resources | Copy at 100m CPU | Copy at 1 CPU (default) |
+|-----------|------------------|-------------------------|
+| 500 | ~5 min | ~2 min |
+| 1,000 | ~10 min | ~4 min |
+| 2,800 | ~28 min | ~10 min |
+| 5,000 | ~50 min | ~18 min |
+
+The post-upgrade job deletes the old copies in less time than the copy takes (about a third at 100m CPU), and it runs while the Beacon server is up, so it doesn't affect database management.
+
+The upgrade job gets 1 CPU and 1Gi of memory by default, which is enough for installations with a few thousand resources. If a job is killed for lack of memory (its pod shows `OOMKilled`), raise the limit in `spec.globalParameters` of your `HybridControlPlane`:
+
+```yaml
+spec:
+  globalParameters:
+    upgrade_job_memory_limit: "3Gi"
+```
+
+You can also set `upgrade_job_cpu_limit`, `upgrade_job_cpu_request` and `upgrade_job_memory_request`. The values apply to jobs that the operator creates afterwards. To retry a failed job with new values, set them and delete the failed job. The operator creates it again.
+
+## Upgrade 2026.10.1 → 2026.11
+
+Complete the steps in the order given:
+
+1. If you have OSS Library apps, decide when to recreate them. EDB recommends that you delete them before the upgrade. See [Choose when to recreate OSS Library apps](#choose-when-to-recreate-oss-library-apps).
+1. Upgrade the operator to `2.3` or later, if it isn't already.
+1. Create secrets, including Chat Agent model credentials if you use Chat Agent.
+1. If you have the `ai` or `migration` scenarios enabled, download any Migration Portal reports that you want to keep. Leave `spec.scenarios` as it is. The upgrade removes both scenarios for you. See [Prepare for the removal of the `ai` and `migration` scenarios](#prepare-for-the-removal-of-the-ai-and-migration-scenarios).
+1. Update `spec.version` (and `spec.scenarios`, if you're enabling Chat Agent) and trigger the HM platform upgrade.
+
+### Choose when to recreate OSS Library apps
+
+This section only applies if you have OSS Library apps installed.
+
+Starting with HM 2026.11, HM tracks OSS Library apps in the `edb-system` namespace instead of the `default` namespace. The upgrade doesn't move the apps that you installed on 2026.10.1 or earlier versions. If you don't delete the existing apps before or after the upgrade, those apps keep running and serving, but HM still tracks them in `default`.
+
+!!!important Export app data
+EDB recommends deleting and recreating each app you installed before the upgrade. This can be done before or after you upgrade HM. The same advice applies when you move an app to a newer version. OSS Library apps are third-party software, and EDB can't know what changes between versions. A recreated app is a new installation with a new app ID and an empty volume, so its URL differs from the old app's. Export any app data that you need before deleting it, and update any scripts or integrations that point to the old app's URL.
+!!!
+
+You can delete an app before the upgrade (option A, recommended) or after it (option B). Option A removes the app completely through the console, but it's unavailable until you reinstall it after the upgrade. Option B keeps the app running through the upgrade, but you must manually remove the old copy with `kubectl` afterward.
+
+#### Option A (recommended): delete the app before the upgrade
+
+With this option, HM 2026.10.1 removes the app completely, including its storage and route. You don't need to run any `kubectl` commands. The app isn't available from the time that you delete it until you install it again after the upgrade.
+
+1. Export any data that you need from the app.
+1. In the HM console, on 2026.10.1, delete the app.
+
+Then continue with the upgrade. See [Finish recreating OSS Library apps](#finish-recreating-oss-library-apps) once HM is on 2026.11.
+
+### Upgrade the operator
+
+!!!note
+HM 2026.11 requires operator version `2.3` or later. If your operator is already on `2.3` or later, skip this section.
+!!!
+
+!!!Note Red Hat OpenShift
+On RHOS, upgrade the operator through OperatorHub (OLM) by switching the subscription channel to `stable`. See [Upgrade the operator on Red Hat OpenShift](upgrade_operator_rhos). Do not use `edbctl hm upgrade-operator` on RHOS.
+!!!
+
+The operator's namespace depends on how it was installed. Fresh operator installs use `edb-hcp-operator-system`. Installations converted from the bootstrap method usually remain in `edbpgai-bootstrap`. Set `OPERATOR_NS` to the namespace of your operator release:
+
+```shell
+OPERATOR_NS=$(helm list -A --filter '^edb-hcp-operator$' --no-headers | awk '{print $2}')
+echo "$OPERATOR_NS"
+```
+
+If `echo` prints nothing, your release isn't named `edb-hcp-operator` and the environment variable `OPERATOR_NS` is empty. Run `helm list -A` to find its actual name and namespace, then set `OPERATOR_NS` to that namespace yourself.
+
+Choose one of the following methods to upgrade the `edb-hcp-operator` Helm chart.
+
+#### Using edbctl (recommended)
+
+Run the upgrade:
+
+```shell
+edbctl hm upgrade-operator \
+  --release-name edb-hcp-operator \
+  --namespace "$OPERATOR_NS" \
+  --registry-uri docker.enterprisedb.com/pgai-platform \
+  --registry-username pgai-platform \
+  --registry-password <password>
+```
+
+#### Using Helm
+
+1. Create the values file:
+
+    ```shell
+    cat <<EOF > edb-hcp-operator.values.yaml
+    controllerManager:
+      manager:
+        image:
+          repository: docker.enterprisedb.com/pgai-platform/edb-hcp-operator/manager
+          tag: <OPERATOR_VERSION>
+    imagePullSecrets:
+      - name: edb-cred
+    EOF
+    ```
+
+1. Run the upgrade:
+
+    ```shell
+    helm upgrade --install \
+      --version <OPERATOR_VERSION> \
+      --values edb-hcp-operator.values.yaml \
+      -n "$OPERATOR_NS" \
+      edb-hcp-operator enterprisedb-edbpgai/edb-hcp-operator
+    ```
+
+### Create secrets
+
+#### Install secrets in `edb-system`
+
+Before upgrading, use `edbctl` 1.11 or later to create the install secrets in the `edb-system` namespace:
+
+```shell
+edbctl hm create-install-secrets --version v2026.11.0
+```
+
+Use the same `--scenario` options that you listed in `spec.scenarios`. For more information, see [Create component secrets](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/#create-component-secrets).
+
+For more CLI options, see [edbctl hybrid-manager](/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/).
+
+#### Chat Agent model credentials
+
+In 2026.11, Chat Agent no longer uses the inference services that you configured in HM, and that configuration doesn't carry over automatically. If you want to keep using Chat Agent, you'll need to configure it again.
+
+Create the `chatbot-model-creds` secret yourself with `edbctl`, using the `chatbot` scenario:
+
+```shell
+edbctl hybrid-manager create-install-secrets --version v2026.11.0 --scenario chatbot
+```
+
+Then make sure `chatbot` is included in `spec.scenarios` when you update the manifest in [Upgrade Hybrid Manager](#upgrade-hybrid-manager).
+
+The secret holds the endpoint, model name, and API key for each model that Chat Agent uses. For the settings and options, see [Customizing Chat Agent model secrets](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/chatbot_secrets). For how Chat Agent uses the models, see [Configuring the Chat Agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/chat_agent/configure).
+
+!!!note
+Create the secret before you upgrade, since HM doesn't restart Chat Agent when it first creates the secret — if you create it after upgrading instead, restart Chat Agent yourself. See [Changing the models later](/edb-postgres-ai/current/hybrid-manager/install/configuration/customizing_secrets/chatbot_secrets#changing-the-models-later).
+!!!
+
+### Prepare for the removal of the `ai` and `migration` scenarios
+
+Prepare for the removal of the `ai` or `migration` scenarios, only if you had them enabled in `spec.scenarios` on 2026.10.1.
+
+HM 2026.11 removes the `ai` and `migration` installation scenarios. The components of the `ai` scenario were already removed in 2026.10.1, so for `ai` the upgrade removes only the scenario itself. For `migration`, it removes the scenario and its components.
+
+!!!warning Migration Portal data is deleted
+The upgrade deletes your Migration Portal projects, assessment results, and repaired DDL. HM doesn't migrate or keep this data. Before you upgrade, finish any migration work in progress and download the assessment reports that you want to keep from the HM console.
+!!!
+
+Leave `spec.scenarios` as it is when you update the manifest. The upgrade removes both scenarios for you, and you don't need to take any further action.
+
+### Upgrade Hybrid Manager
+
+1. In your `HybridControlPlane` manifest (`hybridmanager.yaml`), update the `spec.version` field to `v2026.11.0`:
+
+    ```yaml
+    apiVersion: edbpgai.edb.com/v1alpha1
+    kind: HybridControlPlane
+    metadata:
+      name: edbpgai
+    spec:
+      version: v2026.11.0 # was v2026.10.1
+    ```
+
+    If you want to use Chat Agent and already created its [required secret](#chat-agent-model-credentials), also add `chatbot` to the scenarios that you already list in `spec.scenarios`. Keep the others as they are. For example, if you only had `core`:
+
+    ```yaml
+    spec:
+      scenarios:
+        - core
+        - chatbot
+      version: v2026.11.0 # was v2026.10.1
+    ```
+
+1. Apply the updated manifest:
+
+    ```shell
+    kubectl apply -f hybridmanager.yaml
+    ```
+
+1. Monitor progress:
+
+    ```shell
+    kubectl get hybridcontrolplane edbpgai -w
+    ```
+
+    To follow the pre-upgrade and post-upgrade jobs that move your resources to `edb-system` (see [What to expect during the upgrade](#what-to-expect-during-the-upgrade)), also run:
+
+    ```shell
+    kubectl get jobs -n "$OPERATOR_NS" -l edbpgai.edb.com/hm-upgrader=true
+    kubectl logs -f job/hm-pre-upgrader-2026-10-to-2026-11 -n "$OPERATOR_NS"
+    kubectl logs -f job/hm-post-upgrader-2026-10-to-2026-11 -n "$OPERATOR_NS"
+    ```
+
+    The logs list every object that the job copies or deletes, and end with a summary that shows how many objects were copied or deleted and how many failed.
+
+### Finish recreating OSS Library apps
+
+This section only applies if you have OSS Library apps installed.
+
+If you took option A, reinstall the app now: in the HM console, install the app again from the OSS Library, then load the data you exported earlier into it and point any scripts or integrations at its new URL.
+
+If you took option B, use the following steps to delete the app and remove the old copy.
+
+#### Option B: delete the app after the upgrade
+
+Use this option if the app can't be unavailable while you upgrade. It keeps running and stays editable until you replace it; removing the old copy by hand is the only step that needs `kubectl`.
+
+To recreate the app:
+
+1. Export any data that you need from the app.
+1. In the HM console, delete the app. This removes only the app's entry — the app itself keeps running, with its storage and route, until you remove it manually with `kubectl`.
+1. In the HM console, install the app again from the OSS Library. The new app is available as soon as you install it, but it's a new installation with a new app ID and an empty volume — load the data you exported earlier into it, and point any scripts or integrations at its new URL.
+1. Once you've switched over, remove the old copy of the deleted app. List the apps in the `default` namespace and find the one with the name of the app that you deleted:
+
+    ```shell
+    kubectl get beaconapp -n default
+    ```
+
+    Then delete it:
+
+    ```shell
+    kubectl delete beaconapp <app-id> -n default
+    ```
+
+    Replace `<app-id>` with the value in the `NAME` column. This uninstalls the old app, including its storage.
+
+!!!warning Only remove the old copy of an app that you already deleted
+Don't run `kubectl delete beaconapp` for an app that you still use, even if you edited it or upgraded it after the HM upgrade. The old copy and the new one share the same Kubernetes namespace, so deleting the old copy uninstalls the running app and deletes its data.
+!!!
+
+Apps that you install after the upgrade are tracked in `edb-system` and need no extra steps.
+
+### Disabling edb_stat_monitor data collection
+
+Query data is collected by `pg_stat_ch`, so you can stop `edb_stat_monitor` from collecting data on existing clusters.
+
+1. Set this Postgres parameter on the cluster:
+
+    ```ini
+    edb_stat_monitor.edbsm_track = none
+    ```
+
+1. Reload the configuration. No restart is needed:
+
+    ```sql
+    > SELECT pg_reload_conf();
+    ```
+
+1. Check that the change is active:
+
+    ```sql
+    > SHOW edb_stat_monitor.edbsm_track;   -- returns: none
+    ```
+
+The change applies to the primary and all replicas.
+
+!!!note HM-managed clusters
+On HM-managed clusters, you don't need `pg_reload_conf()`. When you set the parameter through the cluster spec, the operator reloads the configuration itself. You only need the command where you edit the configuration directly, as on a self-managed cluster.
+!!!
+
+## Upgrading multi-DC deployments
+
+In a [multi-DC deployment](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/), all locations must run the same HM version. Upgrade the primary location first, then upgrade each data-only secondary location to the same version immediately after. For the full procedure, see [Upgrading a multi-DC deployment](/edb-postgres-ai/current/hybrid-manager/install/configuration/multi_dc/multi-dc/#upgrading-a-multi-dc-deployment).
+
+## Troubleshooting upgrade job failures
+
+The upgrade operator creates and manages upgrade jobs automatically. If an upgrade job fails and doesn't reach a `Complete` or `Succeeded` state, the operator pauses and retries. It doesn't proceed to apply updated manifests until the job succeeds.
+
+!!!note
+The operator owns and manages the upgrade job exclusively. Don't create upgrade jobs manually, as doing so can conflict with the operator's reconciliation loop.
+!!!
+
+To investigate a failed upgrade job:
+
+1. Check the status of upgrade jobs:
+
+    ```shell
+    kubectl get jobs -A -l edbpgai.edb.com/hm-upgrader=true
+    ```
+
+1. Check the logs for the failed job:
+
+    ```shell
+    kubectl logs job/<job-name> -n <namespace>
+    ```
+
+    Replace `<job-name>` and `<namespace>` with the failed job from the previous command.
+
+1. Check the `HybridControlPlane` status for upgrade-related events:
+
+    ```shell
+    kubectl describe hybridcontrolplane edbpgai
+    ```
+
+If the issue persists after the operator retries, contact EDB support with the job logs.
