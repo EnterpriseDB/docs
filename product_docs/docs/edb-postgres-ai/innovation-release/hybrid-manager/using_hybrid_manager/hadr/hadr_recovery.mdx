@@ -15,6 +15,10 @@ The Disaster Recovery (DR) procedure is defined as the series of manual steps th
 
     This page describes recovering a single HM installation. If your HM is deployed across multiple data centers, several of the steps below change — and if the location you lost is a data-only one, most of them don't apply at all. Start from [Disaster recovery for a multi-DC Hybrid Manager deployment](hadr_recovery_multi_dc) instead.
 
+!!! Note
+
+    From HM 2026.11, the HM operator can recover the control plane for you: you install the new HM with `spec.recoveryFrom`, and it restores the internal databases, secrets and resources from the old object storage. See [Operator-driven disaster recovery](hadr_recovery_operator). Follow this page for what the operator doesn't cover, such as recovering into an environment with its own bucket.
+
 ## Before you start
 
 Before starting the DR procedure, ensure you have made yourself familiar with:
@@ -347,14 +351,14 @@ After the old backups are available in the new bucket, you can restore the HM-in
     !!! Note
         This step is only applicable to versions of HM from `2026.2` and later.
 
-        Run the command `kubectl get secret hm-portal-bootstrap -n default` against your new HM instance, and if the
+        Run the command `kubectl get secret hm-portal-bootstrap -n edb-system` against your new HM instance, and if the
         secret doesn't exist, then you can skip this step because you are using a version of HM from before `2026.2`.
 
     The `hm-portal-bootstrap` secret on the new HM instance needs to be replaced with the version that was on the old HM instance.
     This secret contains a Fernet key used for encrypting sensitive configuration data, and the static passwords used for initial bootstrap access.
     Without the correct Fernet key from the old environment, it isn't possible for HM to decrypt some of the data restored in the next step.
 
-    This step involves restoring a single secret found in the `default` namespace.
+    This step involves restoring a single secret found in the `edb-system` namespace.
     Velero doesn't support this well, as it is typically used to restore all resources of a given type for a given namespace.
     Therefore, the only way to perform this restoration is to download the entire Velero backup and pull out a specific file.
 
@@ -381,18 +385,18 @@ After the old backups are available in the new bucket, you can restore the HM-in
     tar -xzf "${BACKUP_NAME}/backup.tar.gz" -C "${BACKUP_NAME}"
     ```
 
-    Confirm that the file `${BACKUP_NAME}/resources/secrets/namespaces/default/hm-portal-bootstrap.json` exists.  Now
+    Confirm that the file `${BACKUP_NAME}/resources/secrets/namespaces/edb-system/hm-portal-bootstrap.json` exists.  Now
     delete the existing `hm-portal-boostrap` secret, and replace it with the one from the backup you just downloaded:
 
     ```shell
-    kubectl delete secret hm-portal-bootstrap -n default
-    kubectl apply -f "${BACKUP_NAME}/resources/secrets/namespaces/default/hm-portal-bootstrap.json"
+    kubectl delete secret hm-portal-bootstrap -n edb-system
+    kubectl apply -f "${BACKUP_NAME}/resources/secrets/namespaces/edb-system/hm-portal-bootstrap.json"
     ```
 
     Confirm the secret is there using the following command:
 
     ```shell
-    kubectl get secret hm-portal-bootstrap -n default
+    kubectl get secret hm-portal-bootstrap -n edb-system
     ```
 
     And you can now remove the local copy of the backup you downloaded, as you will not be needing these files again:
