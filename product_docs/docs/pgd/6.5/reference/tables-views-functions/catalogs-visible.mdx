@@ -70,7 +70,7 @@ A view used internally on nodes configured as Commit At Most Once (CAMO) partner
 | local_xid      | xid         | Transaction ID on the local node                    |
 | commit_ts      | timestamptz | Commit timestamp of the transaction                 |
 | decision_ts    | timestamptz | Decision time                                       |
-| is_raft | boolean | Whether the commit decision was made through Raft |
+| is_raft | boolean | True when the decision came through Raft (commit scopes with `commit_decision = raft`). False for CAMO-partner and writer-recorded decisions. |
 
 ### `bdr.commit_scopes`
 
@@ -155,7 +155,7 @@ A persistent storage for the internal Raft-based KV store used by
 | kv_key       | text        | Unique key                                       |
 | kv_val       | json        | Arbitrary value in json format                   |
 | kv_create_ts | timestamptz | Last write timestamp                             |
-| kv_ttl       | int         | Time to live for the value in milliseconds       |
+| kv_ttl       | integer         | Time to live for the value in milliseconds       |
 | kv_expire_ts | timestamptz | Expiration timestamp (`kv_create_ts` + `kv_ttl`) |
 
 ### `bdr.crdt_handlers`
@@ -203,11 +203,11 @@ This table tracks the status of logical replication slots that are being used wi
 | plugin        | name    | Name of the plugin                             |
 | twophase      | boolean | Is the slot used for two-phase commit          |
 | active_node   | oid     | ID of the active node                          |
-| active_pid    | int     | PID of the process currently decoding the slot |
+| active_pid    | integer     | PID of the process currently decoding the slot |
 | prev_node     | oid     | ID of the previous node                        |
 | creator_node | oid | ID of the node that created the slot |
 | creator_consistent_lsn | pg_lsn | Consistent LSN of the slot on the node that created it |
-| failover_safe | boolean | TODO: Description to be confirmed with engineering |
+| failover_safe | boolean | Whether the slot has passed a consistent point since it was created. Until it's true, only `creator_node` can decode the slot. PGD sets it once a logical checkpoint from the creator exists between `creator_consistent_lsn` and the slot's confirmed flush position. It never reverts to false. |
 
 ### `bdr.global_consensus_journal`
 
@@ -293,7 +293,7 @@ Don't modify the contents of this table. It is an important PGD catalog.
 | -------------- | ------- | ---------------------------------------------------------------------------- |
 | ddl_epoch      | int8    | DDL epoch for the lock                                                       |
 | origin_node_id | oid     | OID of the node where the global lock has originated                         |
-| lock_type      | oid     | Type of the lock (DDL or DML)                                                |
+| lock_type      | oid     | Type of the lock, as a code: `1` global DDL, `2` global DML, `3` advisory, `4` leader DML, or `5` leader DDL |
 | nspname        | name    | Schema name for the locked relation                                          |
 | relname        | name    | Relation name for the locked relation                                        |
 | groupid        | oid     | OID of the top level group (for Advisory locks)                              |
@@ -316,7 +316,7 @@ for more information about global locking.
 | ------------------------ | ----------- | ----------------------------------------------------------------- |
 | origin_node_id           | oid         | OID of the node where the global lock has originated              |
 | origin_node_name         | name        | Name of the node where the global lock has originated             |
-| lock_type                | text        | Type of the lock (DDL or DML)                                     |
+| lock_type                | text        | Type of the lock: `GLOBAL_LOCK_DDL`, `GLOBAL_LOCK_DML`, `GLOBAL_LOCK_ADVISORY`, `LEADER_LOCK_DDL`, or `LEADER_LOCK_DML` |
 | relation                 | text        | Locked relation name (for DML locks) or keys (for advisory locks) |
 | pid                      | int4        | PID of the process holding the lock                               |
 | acquire_stage            | text        | Internal state of the lock acquisition process                    |
@@ -406,14 +406,14 @@ Uses `bdr.run_on_all_nodes` to gather Raft Consensus status from all nodes.
 | node_name        | name | Name of the node               |
 | node_group_name  | name | Name of the group is part of   |
 | state            | text | Raft worker state on the node  |
-| leader_type | text | Type of the Raft leader ID: `N` (node), `G` (group), or `U` (unset) |
+| leader_type | text | Type of the Raft leader ID: `NODE` or `UNSET`. `GROUP` is reserved and never produced in PGD 6 |
 | leader_id        | oid  | Node id of the RAFT_LEADER     |
 | leader_name | name | Name of the Raft leader node, if any |
-| current_term     | int  | Raft election internal ID      |
-| commit_index     | int  | Raft snapshot internal ID      |
-| nodes            | int  | Number of nodes accessible     |
-| voting_nodes     | int  | Number of nodes voting         |
-| protocol_version | int  | Protocol version for this node |
+| current_term     | integer  | Raft election internal ID      |
+| commit_index     | integer  | Raft snapshot internal ID      |
+| nodes            | integer  | Number of nodes accessible     |
+| voting_nodes     | integer  | Number of nodes voting         |
+| protocol_version | integer  | Protocol version for this node |
 
 ### `bdr.group_replslots_details`
 
@@ -474,7 +474,7 @@ Tracks leader nodes across subgroups in the cluster. Shows the status of all wri
 | -------------- | ------ | ---------------------------------------------------------- |
 | node_group_id  | oid    | ID of the node group.                                      |
 | leader_node_id | oid    | ID of the leader node.                                     |
-| generation     | int    | Generation of the leader node. Leader_kind sets semantics. |
+| generation     | bigint    | Generation of the leader node. Leader_kind sets semantics. |
 | leader_kind    | "char" | Kind of the leader node.                                   |
 
 Leader_kind values can be:
@@ -506,13 +506,13 @@ This catalog table stores the current state of Raft on the local node.
 | Name              | Type | Description                         |
 | ----------------- | ---- | ----------------------------------- |
 | instance_id | oid | ID of the Raft instance |
-| node_type | "char" | Type of the local Raft ID: `N` (node), `G` (group), or `U` (unset) |
+| node_type | "char" | Type of the local Raft ID: `N` (node) or `U` (unset). `G` (group) is reserved and never produced in PGD 6 |
 | node_id           | oid  | ID of the node                      |
 | current_term      | int8 | Raft term                           |
 | apply_index       | int8 | Raft apply index                    |
-| voted_for_type | "char" | Type of the ID of the vote cast by this node in this term: `N` (node), `G` (group), or `U` (unset) |
+| voted_for_type | "char" | Type of the ID of the vote cast by this node in this term: `N` (node) or `U` (unset). `G` (group) is reserved and never produced in PGD 6 |
 | voted_for_id | oid | ID of the vote cast by this node in this term |
-| last_known_leader_type | "char" | Type of the ID of the last known Raft leader: `N` (node), `G` (group), or `U` (unset) |
+| last_known_leader_type | "char" | Type of the ID of the last known Raft leader: `N` (node) or `U` (unset). `G` (group) is reserved and never produced in PGD 6 |
 | last_known_leader_id | oid | ID of the last known Raft leader |
 
 ### `bdr.local_node`
@@ -550,20 +550,24 @@ Information about status of either subscription or table synchronization process
 
 ### `bdr.logical_checkpoints`
 
-A catalog table that records replication progress across all nodes. TODO: Description to be confirmed with engineering.
+Per-node record of a replication-progress watermark. For a watermark message from
+`origin_node` at `origin_lsn`, it stores how far `origin_node` had replayed each peer's
+changes. CDC failover slots use it to decide whether a node can take over decoding a
+slot, and to hold back the group slot. PGD removes rows older than the group slot
+position.
 
 #### `bdr.logical_checkpoints` columns
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| id | name | TODO: Description to be confirmed with engineering |
-| origin_node | oid | TODO: Description to be confirmed with engineering |
-| origin_lsn | pg_lsn | TODO: Description to be confirmed with engineering |
-| local_node | oid | TODO: Description to be confirmed with engineering |
-| local_lsn | pg_lsn | TODO: Description to be confirmed with engineering |
-| peer_count | int | TODO: Description to be confirmed with engineering |
-| peer_nodes | oid\[] | TODO: Description to be confirmed with engineering |
-| peer_lsns | pg_lsn\[] | TODO: Description to be confirmed with engineering |
+| id | name | Key, in the form `<origin_node>-<origin_lsn>` |
+| origin_node | oid | Node that emitted the watermark |
+| origin_lsn | pg_lsn | LSN of the watermark on `origin_node` |
+| local_node | oid | Node storing the row (always the local node) |
+| local_lsn | pg_lsn | Local WAL insert position when the row was recorded |
+| peer_count | integer | Number of peers, which is the length of the `peer_nodes` and `peer_lsns` arrays |
+| peer_nodes | oid\[] | Peer nodes. `peer_nodes[i]` pairs with `peer_lsns[i]` |
+| peer_lsns | pg_lsn\[] | For each peer in `peer_nodes`, the LSN up to which `origin_node` had replayed that peer's changes |
 
 ### `bdr.node`
 
@@ -584,7 +588,7 @@ The view [`bdr.node_summary`](#bdrnode_summary) provides a human-readable versio
 | target_state          | oid      | State that the node is trying to reach (during join or promotion)           |
 | seq_id                | int4     | Sequence identifier of the node used for generating unique sequence numbers |
 | dbname                | name     | Database name of the node                                                   |
-| node_dsn              | char     | Connection string for the node                                              |
+| node_dsn              | text     | Connection string for the node                                              |
 | proto_version_ranges  | int\[]   | Supported protocol version ranges by the node                               |
 | generation            | smallint | Counter incremented when a node joins with the same name as a previous node |
 | node_kind             | oid      | ID of the node kind                                                         |
@@ -642,19 +646,19 @@ user-readable details.
 | node_group_default_repset       | oid      | Default replication set for this node group.                                                   |
 | node_group_default_repset_ext   | oid      | Default replication set for this node group.                                                   |
 | node_group_parent_id            | oid      | ID of parent group (0 if this is a root group).                                                |
-| node_group_flags                | int      | Group flags.                                                                                   |
+| node_group_flags                | integer      | Group flags.                                                                                   |
 | node_group_uuid                 | uuid     | The uuid of the group.                                                                         |
 | node_group_apply_delay          | interval | How long a subscriber waits before applying changes from the provider.                         |
 | node_group_check_constraints    | bool     | Whether the apply process checks constraints when applying data.                               |
-| node_group_num_writers          | int      | Number of writers to use for subscriptions backing this node group.                            |
+| node_group_num_writers          | integer      | Number of writers to use for subscriptions backing this node group.                            |
 | node_group_enable_wal_decoder   | bool     | Whether the group has enable_wal_decoder set.                                                  |
-| node_group_streaming_mode       | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default. |
+| node_group_streaming_mode       | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default. NULL if not set. |
 | node_group_default_commit_scope | oid      | ID of the node group's default commit scope.                                                   |
-| node_group_location             | char     | Name of the location associated with the node group.                                           |
-| node_group_enable_routing       | char     | Whether the node group allows routing through Connection Manager.                              |
+| node_group_location             | name     | Name of the location associated with the node group.                                           |
+| node_group_enable_routing       | boolean     | Whether the node group allows routing through Connection Manager.                              |
 | node_group_enable_raft          | bool     | Whether the node group allows Raft Consensus.                                                  |
 | node_group_analytics_storage | text | PGFS path where the analytical data files are stored |
-| node_group_failover_slot_scope | "char" | Scope for logical slot failover support, either global or local |
+| node_group_failover_slot_scope | "char" | Scope for logical slot failover support: one of global, subgroup, or local |
 | node_group_analytics_storage_format | "char" | Columnar table format PGAA uses for analytical data, `d` for `delta` and `i` (the default) for `iceberg` |
 | node_group_analytics_catalog | text | Name of the catalog service PGAA uses to manage table metadata |
 | node_group_enable_fast_track_writer | bool | Whether an additional writer processes prepared transactions generated by Quorum Commit |
@@ -674,8 +678,8 @@ A view that shows each node group option with its current and default values, on
 | current_value_source | text | Source of the current value of the node group option: `group`, `inherited`, `pg_config`, or `default` |
 | value_can_inherit | boolean | Whether the node group option value can be inherited from the parent group |
 | default_value | text | Default value for the node group option |
-| default_value_source | text | Source of the default value for the node group option: `group`, `pg_config`, or `constant` |
-| option_type | text | Type of the node group option: `string`, `int`, `bool`, or `enum` |
+| default_value_source | text | Source of the default value for the node group option: `pg_config` or `constant` |
+| option_type | text | Type of the node group option: `string`, `integer`, `bool`, or `enum` |
 
 ### `bdr.node_group_replication_sets`
 
@@ -709,7 +713,7 @@ A view containing user-readable details about node groups. See also
 | check_constraints       | boolean  | Whether the apply process checks constraints when applying data                |
 | num_writers             | integer  | Number of writers to use for subscriptions backing this node group             |
 | enable_wal_decoder      | boolean  | Whether the group has enable_wal_decoder set                                   |
-| streaming_mode          | text     | Transaction streaming setting: "off", "file", "writer", "auto" or "default"    |
+| streaming_mode          | text     | Transaction streaming setting: "off", "file", "writer", "auto" or "default". NULL if not set. |
 | default_commit_scope    | name     | Name of the node group's default commit scope                                  |
 | location                | name     | Name of the location associated with the node group                            |
 | server_pool_mode        | text     | [Connection pooling](/pgd/current/connection-manager/connection-pooling) mode for this node group: `none`, `session`, or `transaction` |
@@ -793,7 +797,7 @@ purposes. See also [Monitoring](/pgd/current/lifecycle/monitoring).
 | last_update_node_lsn    | pg_lsn      | LSN on the originating node at the time of the report                                |
 | peer_position           | pg_lsn      | Latest LSN of the node's peer seen by the originating node                           |
 | peer_replay_time        | timestamptz | Latest replay time of peer seen by the reporting node                                |
-| last_update_node_horizon_xid | oid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
+| last_update_node_horizon_xid | xid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
 | last_update_node_horizon_lsn | pg_lsn      | Internal resolution horizon: same in terms of an LSN of the reporting node           |
 
 ### `bdr.node_replication_rates`
@@ -1011,7 +1015,7 @@ Stores the data pages of replicated large objects. This table is the PGD equival
 | Name     | Type    | Description                                                    |
 | -------- | ------- | -------------------------------------------------------------- |
 | `loid`   | `oid`   | OID of the large object this page belongs to.                  |
-| `pageno` | `int`   | Page number within the large object, starting from 0.         |
+| `pageno` | `integer`   | Page number within the large object, starting from 0.         |
 | `data`   | `bytea` | Data stored in this page. May be zero-length for sparse pages. |
 
 ### `bdr.pgd_largeobject_metadata`
@@ -1024,7 +1028,7 @@ Stores ownership and access control information for replicated large objects. Th
 | ---------- | ---------- | ----------------------------------- |
 | `oid`      | `oid`      | OID of the large object.            |
 | `lomowner` | `oid`      | OID of the owner of the large object. |
-| `lomacl`   | `aclitem[]`| Access privileges for the large object. |
+| `lomacl`   | `text`| Access privileges for the large object. |
 
 ### `bdr.queue`
 
@@ -1182,19 +1186,19 @@ A view over `bdr.resolved_transactions` that adds human-readable subscription an
 
 ### `bdr.schema_changes`
 
-A simple view to show all the changes to schemas win PGD.
+A catalog table that records changes to schema objects on the node. In this release, PGD records only dropped objects, and only objects that aren't part of the PGD extension.
 
 #### `bdr.schema_changes` columns
 
-| Name                     | Type         | Description               |
-| ------------------------ | ------------ | ------------------------- |
-| schema_changes_ts        | timestampstz | ID of the trigger         |
-| schema_changes_change    | char         | Flag of change type       |
-| schema_changes_classid   | oid          | Class ID                  |
-| schema_changes_objectid  | oid          | Object ID                 |
-| schema_changes_subid     | smallint     | Subscription              |
-| schema_changes_descr     | text         | Object changed            |
-| schema_changes_addrnames | text\[]      | Location of schema change |
+| Name                     | Type         | Description                                                                                       |
+| ------------------------ | ------------ | ------------------------------------------------------------------------------------------------- |
+| schema_changes_ts        | timestamptz  | Time at which PGD recorded the change                                                             |
+| schema_changes_change    | "char"       | Type of change. The only value recorded is `D` (drop)                                             |
+| schema_changes_classid   | oid          | OID of the system catalog that holds the changed object                                           |
+| schema_changes_objectid  | oid          | OID of the changed object                                                                         |
+| schema_changes_subid     | smallint     | Sub-object ID, for example the column number when a column is dropped. 0 for the object itself   |
+| schema_changes_descr     | text         | Type of the changed object, for example `table`                                                   |
+| schema_changes_addrnames | text\[]      | Name parts that identify the changed object, for example its schema and name                      |
 
 ### `bdr.sequence_alloc`
 
@@ -1240,7 +1244,7 @@ is set correctly when the wait relates to PGD and the following Connection Manag
 | Name                               | Type    | Description                                                                                                      |
 | ---------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
 | connection_manager_client_addr     | inet    | IP address of the client connection                                                                              |
-| connection_manager_client_port     | int     | The source port of client connected to connection manager (if the connection is done through connection manager) |
+| connection_manager_client_port     | integer     | The source port of client connected to connection manager (if the connection is done through connection manager) |
 | session_read_only                  | boolean | Whether the session is a read-only; connected to read-only port of the connection manager                        |
 
 ### `bdr.stat_commit_scope`
@@ -1291,8 +1295,8 @@ A view contianing statistics for the connection manager on this node.
 | ---------------- | ------ | --------------------------------------- |
 | ntotal_rw_conns  | bigint | Total number of read-write connections  |
 | ntotal_ro_conns  | bigint | Total number of read-only connections   |
-| nactive_rw_conns | int    | Number of active read-write connections |
-| nactive_ro_conns | int    | Number of active read-only connections  |
+| nactive_rw_conns | integer    | Number of active read-write connections |
+| nactive_ro_conns | integer    | Number of active read-only connections  |
 
 ### `bdr.stat_connection_manager_connections`
 
@@ -1303,9 +1307,9 @@ A view containing information about the connections to the connection manager.
 | Column                         | Type    | Description                                                                                 |
 | ------------------------------ | ------- | ------------------------------------------------------------------------------------------- |
 | connection_manager_client_addr | text    | IP address of the client connected to the connection manager.                               |
-| connection_manager_client_port | int     | TCP port number that the client is using for communication with the connection manager.     |
+| connection_manager_client_port | integer     | TCP port number that the client is using for communication with the connection manager.     |
 | connection_manager_addr        | text    | IP address of the connection manager node.                                                  |
-| connection_manager_port        | int     | TCP port number that the connection manager is using to communicate with the Postgres node. |
+| connection_manager_port        | integer     | TCP port number that the connection manager is using to communicate with the Postgres node. |
 | session_read_only              | boolean | Whether the session is read-only or not.                                                    |
 | client_uses_tls                | boolean | Whether the client is using TLS to connect to the connection manager node, or not.          |
 | client_fips_mode | boolean | Whether the connection between the client and Connection Manager operates in FIPS mode |
@@ -1326,8 +1330,8 @@ A view containing information about server connection statistics for the connect
 | route_ro_connections | boolean | Whether read-only connections are routed to this node  |
 | ntotal_rw_conns      | bigint  | Total number of read-write connections                 |
 | ntotal_ro_conns      | bigint  | Total number of read-only connections                  |
-| nactive_rw_conns     | int     | Number of active read-write connections                |
-| nactive_ro_conns     | int     | Number of active read-only connections                 |
+| nactive_rw_conns     | integer     | Number of active read-write connections                |
+| nactive_ro_conns     | integer     | Number of active read-only connections                 |
 
 ### `bdr.stat_connection_manager_hba_file_rules`
 
@@ -1518,7 +1522,7 @@ A view of information about the routing candidate nodes on the Raft leader (empt
 | node_route_fence  | boolean                  | The node is fenced (when true it cannot become leader or read-only connection target)                          |
 | node_route_reads  | boolean                  | The node is being considered as a read-only connection target                                                  |
 | node_route_writes | boolean                  | The node is being considered as a write lead candidate.                                                        |
-| node_route_priority | int                      | Priority of this node compared to others when picking the write lead candidate                               |
+| node_route_priority | integer                      | Priority of this node compared to others when picking the write lead candidate                               |
 | last_message_time | timestamp with time zone | The time of the last Raft message (any, including requests) seen by this node (used to check liveness of node) |
 
 ### `bdr.stat_routing_state`
@@ -1699,12 +1703,12 @@ node and their modes.
 | apply_delay       | interval | How much behind should the apply of changes on this subscription be (normally 0) |
 | slot_name         | name     | Slot on upstream used by this subscription                                       |
 | origin_name       | name     | Local origin used by this subscription                                           |
-| num_writers       | int      | Number of writer processes this subscription uses                                |
+| num_writers       | integer      | Number of writer processes this subscription uses                                |
 | streaming_mode    | char     | Streaming configuration for the subscription                                     |
 | replication_sets  | text\[]  | Replication sets replicated by this subscription (NULL = all)                    |
 | forward_origins   | text\[]  | Origins forwarded by this subscription (NULL = all)                              |
-| sub_error_current_retries | integer | Current number of retries after an apply error (runtime counter) |
-| sub_error_total_skips | integer | Total number of transactions skipped after apply errors (runtime counter) |
+| sub_error_current_retries | integer | Number of failed apply attempts counted under the `disable_after_retries` policy. Persisted; reset by [`bdr.alter_subscription_reset_error_counters`](functions#bdralter_subscription_reset_error_counters). |
+| sub_error_total_skips | integer | Number of transactions skipped under the `record_all_and_skip` policy. Once it reaches `apply_error_max_skips`, PGD records the failed transaction and disables the subscription. Persisted; reset by [`bdr.alter_subscription_reset_error_counters`](functions#bdralter_subscription_reset_error_counters). |
 | sub_capture_only_origin | oid | Persisted for restart recovery. Origin of the transaction to capture without applying |
 | sub_capture_only_lsn | pg_lsn | Persisted for restart recovery. LSN of the transaction to capture without applying |
 | sub_capture_only_policy | "char" | Persisted for restart recovery. Error policy that triggered the capture |
@@ -1796,7 +1800,7 @@ only one node and processed on different nodes.
 | ap_wq_relname       | name   | Name of the relation the task belongs to                                                                              |
 | ap_wq_relnamespace  | name   | Name of the tablespace specified in rule for this work item                                                           |
 | ap_wq_partname      | name   | Name of the partition created by the workitem                                                                         |
-| ap_wq_work_category | char   | Work category; can be `c` (create partition), `m` (migrate partition), `d` (drop partition), or `a` (alter partition) |
+| ap_wq_work_category | char   | Work category, `a` for autopartition (the only category) |
 | ap_wq_work_sql      | text   | SQL query for the work item                                                                                           |
 | ap_wq_depends_on     | Oid\[] | OIDs of the nodes on which the work item depends                                                                      |
 
@@ -1829,7 +1833,7 @@ items, independent of other nodes in the cluster.
 | ap_wq_relname       | name   | Name of the relation the task belongs to                                                                         |
 | ap_wq_relnamespace  | name   | Name of the tablespace specified in rule for this work item.                                                     |
 | ap_wq_partname      | name   | Name of the partition created by the workitem                                                                    |
-| ap_wq_work_category | char   | Category; can be `c` (create partition), `m` (migrate partition), `d` (drop partition), or `a` (alter partition) |
+| ap_wq_work_category | char   | Category, `a` for autopartition (the only category) |
 | ap_wq_work_sql      | text   | SQL query for the work item                                                                                      |
 | ap_wq_depends_on     | Oid\[] | Always NULL                                                                                                      |
 
@@ -1858,9 +1862,9 @@ A view of the global task manager work queue with the status of each work item, 
 | workid | bigint | Unique ID of the work item |
 | relname | text | Schema-qualified name of the relation the task belongs to |
 | partition | name | Name of the partition created by the work item |
-| work_category | char | Work category; can be `c` (create partition), `m` (migrate partition), `d` (drop partition), or `a` (alter partition) |
+| work_category | char | Work category, `a` for autopartition (the only category) |
 | sql | text | SQL query for the work item |
-| status | text | Status of the work item |
+| status | text | Status of the work item: `failed`, `in-progress`, `finished`, or `unknown` |
 
 ### `bdr.taskmgr_work_queue_local_status`
 
@@ -1873,9 +1877,9 @@ A view of the global task manager work queue with the status of each work item o
 | workid | bigint | Unique ID of the work item |
 | relname | text | Schema-qualified name of the relation the task belongs to |
 | partition | name | Name of the partition created by the work item |
-| work_category | char | Work category; can be `c` (create partition), `m` (migrate partition), `d` (drop partition), or `a` (alter partition) |
+| work_category | char | Work category, `a` for autopartition (the only category) |
 | sql | text | SQL query for the work item |
-| status | text | Status of the work item on the local node |
+| status | "char" | Status of the work item on the local node: `q` (queued), `c` (complete), `f` (failed), or `u` (unknown) |
 
 ### `bdr.trigger`
 
@@ -1900,8 +1904,8 @@ An expanded view of `bdr.trigger` with columns that are easier to read.
 | ------------------ | ------------------ | ---------------------------- |
 | trigger_name       | name               | Name of the trigger          |
 | event_manipulation | text               | Operations                   |
-| trigger_type       | bdr.trigger_type   | Type of trigger              |
-| trigger_table      | bdr.trigger_reloid | Table that calls the trigger |
+| trigger_type       | "char"   | Type of trigger              |
+| trigger_table      | regclass | Table that calls the trigger |
 | trigger_function   | name               | Function used                |
 
 ### `bdr.workers`
@@ -1915,8 +1919,8 @@ into the state of PGD workers.
 
 | Name             | Type | Description                                          |
 | ---------------- | ---- | ---------------------------------------------------- |
-| worker_pid       | int  | Process ID of the worker process                     |
-| worker_role      | int  | Numeric representation of worker role                |
+| worker_pid       | integer  | Process ID of the worker process                     |
+| worker_role      | integer  | Numeric representation of worker role                |
 | worker_role_name | text | Name of the worker role                              |
 | worker_subid     | oid  | Subscription ID if the worker is associated with one |
 
@@ -1929,14 +1933,14 @@ Specific information about PGD writer processes.
 | Name                  | Type                     | Description                                                          |
 | --------------------- | ------------------------ | -------------------------------------------------------------------- |
 | sub_name              | name                     | Name of the subscription                                             |
-| writer_nr             | int                      | Number of changes applied by the writer in the current transaction   |
-| pid                   | int                      | Process ID of the worker process                                     |
-| syncing_rel           | int                      | OID of the relation being synchronized (if any)                      |
+| writer_nr             | integer                      | Number of changes applied by the writer in the current transaction   |
+| pid                   | integer                      | Process ID of the worker process                                     |
+| syncing_rel           | regclass                      | OID of the relation being synchronized (if any)                      |
 | streaming_allowed     | text                     | Can this writer be target of direct to writer streaming              |
 | is_streaming          | bool                     | Is there transaction being streamed to this writer                   |
 | remote_xid            | xid                      | Remote transaction id of the transaction being processed (if any)    |
 | remote_commit_lsn     | pg_lsn                   | LSN of last commit processed                                         |
-| commit_queue_position | int                      | Position in the internal commit queue                                |
+| commit_queue_position | integer                      | Position in the internal commit queue                                |
 | nxacts                | bigint                   | Number of transactions processed by this writer                      |
 | ncommits              | bigint                   | Number of transactions committed by this writer                      |
 | naborts               | bigint                   | Number of transactions aborted by this writer                        |
@@ -2019,15 +2023,22 @@ instance is shown. Join on the current database to filter it.
 
 ### `bdr.xid_peer_progress`
 
-A catalog table. TODO: Description to be confirmed with engineering.
+Tracks how far each node has applied a transaction that added a `NOT VALID` constraint.
+PGD creates `NOT VALID` constraints without a global DML lock, so a later
+`ALTER TABLE … VALIDATE CONSTRAINT` uses this table instead of taking the lock. It
+waits until every peer data node has applied the `ADD CONSTRAINT … NOT VALID`, and
+until the local node has received all the changes that peer made before applying it.
+Each node records its own row when it commits the transaction, and learns the other
+nodes' rows through replication progress messages. PGD deletes the rows once the
+constraint is validated or dropped.
 
 #### `bdr.xid_peer_progress` columns
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| origin_node_id | oid | TODO: Description to be confirmed with engineering |
-| origin_node_topxid | xid | TODO: Description to be confirmed with engineering |
-| origin_node_lsn | pg_lsn | TODO: Description to be confirmed with engineering |
-| peer_node_id | oid | TODO: Description to be confirmed with engineering |
-| peer_apply_xid | xid | TODO: Description to be confirmed with engineering |
-| peer_apply_lsn | pg_lsn | TODO: Description to be confirmed with engineering |
+| origin_node_id | oid | Node where `ADD CONSTRAINT … NOT VALID` ran |
+| origin_node_topxid | xid | Top-level xid of that transaction on the origin |
+| origin_node_lsn | pg_lsn | Origin WAL position when the DDL ran |
+| peer_node_id | oid | Node this row describes (the origin has a row too) |
+| peer_apply_xid | xid | xid that applied the transaction on `peer_node_id` |
+| peer_apply_lsn | pg_lsn | `peer_node_id`'s WAL position when that transaction committed (approximate). `VALIDATE CONSTRAINT` waits until the local node has replayed that peer's changes up to here |
