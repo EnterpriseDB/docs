@@ -150,8 +150,8 @@ def setup(args):
     doc_path = args.doc_path
     index_meta = load_index_metadata(doc_path)
     directoryDefaults = index_meta.get("directoryDefaults", None) or {}
-    product = directoryDefaults.get("product", None) or index_meta.get("product", None) or (doc_path.parts[-2] if len(doc_path.parts) >= 4 else doc_path.parts[-1])
-    version = directoryDefaults.get("version", None) or index_meta.get("version", None) or (doc_path.parts[-1] if len(doc_path.parts) >= 4 else '')
+    product = directoryDefaults.get("product", None) or index_meta.get("product", None) or (doc_path.parts[-2] if len(doc_path.parts) >= 4 and doc_path.parts[-4] == 'product_docs' else doc_path.parts[-1])
+    version = directoryDefaults.get("version", None) or index_meta.get("version", None) or (doc_path.parts[-1] if len(doc_path.parts) >= 4 and doc_path.parts[-4] == 'product_docs' else '')
 
     _file_prefix = product + (version and "_v" + version or "") + "_documentation"
 

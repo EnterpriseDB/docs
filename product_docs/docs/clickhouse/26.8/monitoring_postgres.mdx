@@ -29,20 +29,22 @@ Set up ClickHouse before configuring Postgres.
 This procedure targets a single ClickHouse node. Data isn't replicated or sharded automatically, so the node you provision here is also the one pg_stat_ch must point at later, and the one you query back. For a multi-node cluster, see the note on `pg_stat_ch.clickhouse_host` under [Installing and configuring pg_stat_ch](#installing-and-configuring-pg_stat_ch).
 !!!
 
-1. Provision the `pg_stat_ch` schema before configuring Postgres. Apply the migration from the [upstream pg_stat_ch repository](https://github.com/ClickHouse/pg_stat_ch), which creates the `pg_stat_ch` database along with the `events_raw` table and its materialized views. The file is a [goose](https://github.com/pressly/goose) migration with an `Up` and a `Down` section, so extract only the `Up` section:
+1. Provision the `pg_stat_ch` schema before configuring Postgres. The [ClickHouse setup guide](https://pg-stat-ch.clickhouse.com/guides/clickhouse) from the pg_stat_ch documentation applies the migrations in the [upstream pg_stat_ch repository](https://github.com/ClickHouse/pg_stat_ch) with [goose](https://github.com/pressly/goose), a database migration tool. Install goose, then clone the repository to get the migrations:
 
    ```bash
-   curl -O https://raw.githubusercontent.com/ClickHouse/pg_stat_ch/main/schema/migrations/20260519000001_create_initial_schema.sql
-   awk '/-- \+goose Down/{exit} {print}' 20260519000001_create_initial_schema.sql > up_only.sql
+   git clone https://github.com/ClickHouse/pg_stat_ch.git
+   cd pg_stat_ch
    ```
 
-1. Apply it to ClickHouse:
+1. Create the `pg_stat_ch` database, then apply the migrations to ClickHouse. The migrations create the `events_raw` table and its materialized views:
 
    ```bash
-   clickhouse-client --host <your-clickhouse-host> --multiquery < up_only.sql
+   clickhouse-client --host <your-clickhouse-host> --port 9000 --database default \
+     --query "CREATE DATABASE IF NOT EXISTS pg_stat_ch"
+   goose -dir schema/migrations clickhouse "tcp://<your-clickhouse-host>:9000?database=pg_stat_ch" up
    ```
 
-   Replace `<your-clickhouse-host>` with your server's hostname or IP, adding `--port`, `--user`, and `--password` as needed. Check [`schema/migrations`](https://github.com/ClickHouse/pg_stat_ch/tree/main/schema/migrations) for later files and apply those the same way, in order.
+   Replace `<your-clickhouse-host>` with your server's hostname or IP, adjusting the port and adding credentials as needed. goose applies every migration in [`schema/migrations`](https://github.com/ClickHouse/pg_stat_ch/tree/main/schema/migrations) in order.
 
 1. Verify the schema was created:
 
@@ -137,7 +139,7 @@ Run the following steps on your Postgres instance. For the supported platforms, 
    !!! Note
    `pg_stat_ch.clickhouse_host` takes a single host, there's no cluster-aware setting. If your ClickHouse deployment is a multi-node cluster, point it at a single entry point, a specific node, a `Distributed` table target, or a load balancer in front of the cluster, rather than listing multiple hosts.
 
-   The migration in [Configuring ClickHouse](#configuring-clickhouse) creates plain `MergeTree` and `AggregatingMergeTree` tables, so data only lives on whichever node received it, it isn't replicated or sharded automatically. To make it visible from any node in a cluster, you'd need to modify that schema yourself: replace those engines with `ReplicatedMergeTree` and `ReplicatedAggregatingMergeTree` for replication, or add `Distributed` tables on top for sharding, backed by a configured ClickHouse cluster and Keeper. See [Architecture](/clickhouse/current/overview/architecture) for these concepts.
+   The migrations in [Configuring ClickHouse](#configuring-clickhouse) create plain `MergeTree` and `AggregatingMergeTree` tables, so data only lives on whichever node received it, it isn't replicated or sharded automatically. To make it visible from any node in a cluster, you'd need to modify that schema yourself: replace those engines with `ReplicatedMergeTree` and `ReplicatedAggregatingMergeTree` for replication, or add `Distributed` tables on top for sharding, backed by a configured ClickHouse cluster and Keeper. See [Architecture](/clickhouse/current/overview/architecture) for these concepts.
    !!!
 
 1. Restart Postgres for both changes to take effect, then create the extension and verify the EDB build:

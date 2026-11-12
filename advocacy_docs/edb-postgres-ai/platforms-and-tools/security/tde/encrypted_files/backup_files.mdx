@@ -1,34 +1,51 @@
 ---
 title: "Working with encrypted backup files"
-navTitle: Backup files
+navTitle: Working with backup files
+description: Learn how to work with and troubleshoot encrypted backup files.
+deepToC: true
 redirects:
   - /edb-postgres-ai/platforms-and-tools/security/tde/backups/ #generated for TDE/refresh
 ---
 
-When TDE is enabled, backup files are encrypted. If you want to perform operations on the encrypted backup files, you need to allow the operations to decrypt the file.
+When TDE is enabled, backup files are encrypted. To perform operations on them directly, you must allow the operation to decrypt the file.
 
-## Verify a backup of a TDE system
+The examples on this page use the OpenSSL passphrase command from [Using a passphrase](../secure_key/passphrase) to illustrate the syntax. Replace it with whichever unwrap command you actually configured for the cluster. See [Choosing a key protection mechanism](../secure_key) if you haven't chosen a mechanism yet.
 
-To verify an encrypted backup file, the [pg_verifybackup](https://www.postgresql.org/docs/current/app-pgverifybackup.html) command needs to be aware of the unwrap key. You can either pass the key for the unwrap command using the following option to the `pg_verifybackup` command or depend on the fallback environment variable.
+## Verifying a TDE-encrypted backup
 
-### `--key-unwrap-command=<command>` 
+To verify an encrypted backup, run [pg_verifybackup](https://www.postgresql.org/docs/current/app-pgverifybackup.html), providing the same unwrap command you configured for the cluster, either as a command argument or as an environment variable.
 
-Specifies a command to unwrap (decrypt) the data encryption key. The command must include a placeholder `%p` that specifies the file to read the wrapped key from. The command needs to write the unwrapped key to its standard output. If you don't specify this option, the environment variable `PGDATAKEYUNWRAPCMD` is used.  
- 
-Use the special value `-` if you don't want to apply any key unwrapping command. 
-  
-You must specify this option or the environment variable fallback if you're using data encryption. See [Securing the data encryption key](../secure_key/) for more information.
+### Via command argument
 
+```shell
+pg_verifybackup --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"' /path/to/backup
+```
 
-## Resynchronize timelines in a TDE system
+### Via environment variable
 
-To resynchronize an encrypted cluster with its backup, the [pg_rewind](https://www.postgresql.org/docs/current/app-pgrewind.html) command needs to be aware of the unwrap key. You can either pass the key for the unwrap command using the following option to the `pg_rewind` command or depend on the fallback environment variable:
+```shell
+export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"'
+pg_verifybackup /path/to/backup
+```
 
-### `--key-unwrap-command=<command>`
+See [pg_verifybackup TDE options](../reference/backup_file_options/#pg_verifybackup) for details.
 
-Specifies a command to unwrap (decrypt) the data encryption key. The command must include a placeholder `%p` that specifies the file to read the wrapped key from. The command needs to write the unwrapped key to its standard output. If you don't specify this option, the environment variable `PGDATAKEYUNWRAPCMD` is used.  
+## Resynchronizing timelines on a TDE-encrypted backup
 
-Use the special value `-` if you don't want to apply any key unwrapping command. 
- 
-You must specify this option or the environment variable fallback if you're using data encryption. See [Securing the data encryption key](../secure_key/) for more information.
+To resynchronize an encrypted cluster with its backup, run [pg_rewind](https://www.postgresql.org/docs/current/app-pgrewind.html), providing the same unwrap command you configured for the cluster, either as a command argument or as an environment variable.
 
+### Via command argument
+
+```shell
+pg_rewind -D /var/lib/edb/as16/data --source-server="host=primary dbname=postgres" \
+  --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"'
+```
+
+### Via environment variable
+
+```shell
+export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"'
+pg_rewind -D /var/lib/edb/as16/data --source-server="host=primary dbname=postgres"
+```
+
+See [pg_rewind TDE options](../reference/backup_file_options/#pg_rewind) for details.
