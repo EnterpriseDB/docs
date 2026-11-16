@@ -35,3 +35,22 @@ Your instances must use a Replication Server version that includes this feature.
 1.  [Reload the configuration file](../../../08_xdb_cli/03_xdb_cli_commands/52_reload_conf_file).
 
     Now, each time you perform a synchronization, the Replication Server copies 150 rows with LOB objects per network roundtrip.
+
+## Sizing LOB columns that use custom type mappings
+
+When you use a [custom column mapping](/eprs/latest/08_xdb_cli/03_xdb_cli_commands/36_creating_subscription_cli) to map an Oracle `CLOB`, `NCLOB`, or `BLOB` column to a `JSON`, `JSONB`, `XML`, `VARCHAR`, `TEXT`, or `NAME` column, Replication Server can't stream the value during synchronization. Instead, it reads the entire value into memory before writing it to the target. For `BLOB` columns, Replication Server decodes the bytes as UTF-8 text. Large object columns without a custom mapping continue to stream and aren't affected.
+
+Custom mappings for large object columns are intended for columns that use a LOB as storage for small, structured content, such as a JSON document, an XML fragment, or a moderately sized block of text. Keep each mapped value small, in the range of kilobytes. Values in the megabyte range aren't the design target. Don't use a custom mapping for columns that hold large payloads, such as large documents, images, video, or PDFs.
+
+Replication Server stages rows in batches of `syncLOBBatchSize` rows before applying them to the target. Peak memory use for a batch is approximately:
+
+```text
+syncLOBBatchSize × average LOB value size × 2 to 3
+```
+
+The factor of 2 to 3 accounts for the byte and text copies of each value that are held in memory at the same time. For example, with the default batch size of 5 and an average value size of 50 MB, a single batch can use 500 MB to 750 MB of heap memory.
+
+If you map large values to a text-based type, heap use in the publication server can increase and, in extreme cases, the publication server can fail with an `OutOfMemoryError`. To reduce the risk:
+
+-   For large binary or text payloads, don't apply a custom mapping. Leave the target column as `bytea` or `text` so that Replication Server streams the value.
+-   If you must map columns that contain larger values, lower the `syncLOBBatchSize` value. See [Altering the number of rows per batch](#altering-the-number-of-rows-per-batch).
