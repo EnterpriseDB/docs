@@ -9,7 +9,7 @@ description: >-
   anything", "what else needs updating because of this change", "consistency check
   on this branch", "downstream impact of this PR", or hands over a PR number,
   URL, or branch name touching Hybrid Manager content and wants it vetted before
-  merge. Read-only: it reports findings and never edits, pushes, or comments.
+  merge. Read-only on the repo: it reports findings, never edits or pushes, and prepares the PR comment for the writer to approve before it posts anything.
 ---
 
 # HM PR Consistency Check
@@ -204,7 +204,7 @@ Write it the way a colleague would: short, specific, plain words. Lead with the 
 **Default (chat reply and anything posted to a PR):**
 
 ```
-Checked #<N> against <bases> and open PRs <#a, #b>. First pass, not SME-reviewed.
+Checked #<N> at `<head sha, 7 chars>` against <bases> and open PRs <#a, #b>. First pass, not SME-reviewed.
 
 **Question:** <the decision someone has to make, with the 1-3 quotes that conflict>
 
@@ -228,11 +228,26 @@ Rules for the default report:
 
 **Full report (only when the writer asks for detail or the coverage record):** add the preflight line, the confirmed chain, refs compared with SHAs, the claim inventory, terms and trees searched, how many open PRs were checked and how many overlapped, what wasn't verified, and the exact `git` and `gh` commands run.
 
-Do not post a report to a PR, or edit one already posted, without the writer's go-ahead. Keep long reports in the conversation and offer to save them as a markdown file outside the repo. Do not write files into the clone.
+Keep long reports in the conversation and offer to save them as a markdown file outside the repo. Do not write files into the clone. Then go to Step 9 to put the result on the PR.
+
+### Step 9: Tee up the PR comment
+
+A run that leaves no trace on the PR can't be reviewed later, and "Checked for consistency." with nothing else doesn't say what was checked, against which commit, or what was found. After every run on a PR, prepare the comment and offer to post it. This applies when the result is "nothing found" too.
+
+1. **Pin the commit.** Re-read the PR head (`gh api repos/$R/pulls/<N> --jq .head.sha`). If it differs from the SHA you checked, say so and ask whether to re-run on the new head before posting. Branches get force-pushed after a check, and a result that names no commit can't be tied to what merged.
+2. **Prepare the comment.** Show the exact text in the conversation, in a code block, so the writer can copy it or approve it as is. It is the Step 8 default report, plus:
+   - a first line the team can scan for: `HM consistency check at <sha7>`, then a hidden marker on its own line, `<!-- hm-consistency-check sha=<full head sha> -->`, so later tooling can find these comments;
+   - a `Status` for each finding, set to `Open`, `Covered by #M`, or `Needs SME`, so reviewers can see what still needs action;
+   - for a clean result, one line ("No issues found at `<sha7>`") and the searched/not-checked lines;
+   - a collapsed `<details><summary>Coverage and method</summary>` block holding the refs compared with SHAs, the trees and terms searched, and the exact `git` and `gh` commands. Keep the visible part short.
+   Don't post a bare "Checked for consistency." in place of this. The prepared comment is the record.
+3. **Offer to post it.** Ask once, plainly: post this to #<N>, or leave it for you to paste? Post only after the writer says yes to the text shown. Edit the text first if they ask. Post with `gh api repos/$R/issues/<N>/comments -F body=@<file>`, writing the file outside the clone (for example the scratchpad or a temp folder). If posting is refused (no write access to the repo), hand over the text to paste and say why. In a cloud session posting needs the repo attached with push access (`add_repo` with `access: "push"`), which the writer must approve.
+4. **Offer a follow-up after fixes.** If the writer then fixes findings, offer to prepare a short follow-up comment, one line per finding with its outcome: `Fixed in <sha7>`, `Deferred (<reason or ticket>)`, `Not an issue (<why>)`, or `Needs SME (<who>)`. Same rule: show it, post only on a yes.
+5. **No PR yet.** If the check ran on a branch with no PR, give the text and say it can go on the PR once it exists.
 
 ## Safety gates
 
-- Never post the report as a PR comment, push, or edit files unless the writer explicitly asks and confirms. Comments are visible to the whole team.
+- Never push or edit files. The only write this skill makes is the single PR comment from Step 9, and only after the writer approves the exact text shown. Comments are visible to the whole team. Never edit or delete a comment already posted without the writer's go-ahead.
 - To act on the findings (edit the markdown, run Vale, push to the PR), hand off to the `docs-pr-review` skill.
 - `git fetch` only updates remote-tracking refs and is fine. Never run `checkout`, `reset`, `merge`, `rebase`, or `stash` in a clone that may hold the writer's uncommitted work or other worktrees.
 
@@ -263,6 +278,8 @@ If it differs, say which direction: `git log --oneline HEAD..<editorial-remote>/
 - Flagging older release notes and upgrade guides as stale.
 - Finding in-flight PRs by title keyword, or only on the PR's own base. Match on files touched, across every base in the chain including `develop`.
 - A long, headered, bolded report where a few plain lines would do.
+- Posting, or leaving the writer to post, a bare "Checked for consistency." with no commit, findings, or coverage. Prepare the Step 9 comment instead.
+- Posting a result without checking that the PR head still matches the commit you checked.
 - Reporting a gap that an in-flight PR already closes, or blaming the PR for conflicts that exist between the base branches already.
 - Treating "file absent on develop" as an error when it arrives through the release-to-develop PR.
 - Forgetting release notes, known issues, the upgrade index page, and sample manifests, which are the most common misses.
