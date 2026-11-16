@@ -1,6 +1,7 @@
 ---
 title: "Migration Toolkit command options"
 navTitle: "Command options"
+deepToC: true
 redirects:
   - /migration_toolkit/latest/08_mtk_command_options/
 ---
@@ -43,50 +44,55 @@ If you specify the `-offlineMigration` option in the command line, Migration Too
 !!! Note 
     The following examples invoke Migration Toolkit in Linux. To invoke Migration Toolkit in Windows, use the `runMTK.bat` command instead of the `runMTK.sh` command.
 
-To perform an offline migration of both schema and data, specify the `‑offlineMigration` keyword, followed by the [schema scope](../07_invoking_mtk/#migrating-schemas):
+-  To perform an offline migration of both schema and data, specify the `‑offlineMigration` keyword, followed by the [schema scope](../07_invoking_mtk/#migrating-schemas):
 
-```shell
-./runMTK.sh -offlineMigration <schema_scope>
-```
+    ```shell
+    ./runMTK.sh -offlineMigration <schema_scope>
+    ```
 
-Each database object definition is saved in a separate file with a name derived from each schema name and object type in your home folder. To specify an alternative file destination, include a directory name after the `‑offlineMigration` option:
+-   Each database object definition is saved in a separate file with a name derived from each schema name and object type in your home folder. To specify an alternative file destination, include a directory name after the `‑offlineMigration` option:
 
-```shell
-./runMTK.sh -offlineMigration <file_dest> <schema_scope>
-```
+    ```shell
+    ./runMTK.sh -offlineMigration <file_dest> <schema_scope>
+    ```
 
-To perform an offline migration of only schema objects (creating empty tables), specify the `‑schemaOnly` keyword in addition to the `‑offlineMigration` keyword when invoking Migration Toolkit:
+-   To perform an offline migration of only schema objects (creating empty tables), specify the `‑schemaOnly` keyword in addition to the `‑offlineMigration` keyword when invoking Migration Toolkit:
 
-```shell
-./runMTK.sh -offlineMigration -schemaOnly <schema_scope>
-```
+    ```shell
+    ./runMTK.sh -offlineMigration -schemaOnly <schema_scope>
+    ```
 
-To perform an offline migration of only data, omitting any schema object definitions, specify the `‑dataOnly` keyword and the `‑offlineMigration` keyword when invoking Migration Toolkit:
+-   To perform an offline migration of only data, omitting any schema object definitions, specify the `‑dataOnly` keyword and the `‑offlineMigration` keyword when invoking Migration Toolkit:
 
-```shell
-./runMTK.sh -offlineMigration -dataOnly <schema_scope>
-```
+    ```shell
+    ./runMTK.sh -offlineMigration -dataOnly <schema_scope>
+    ```
 
-By default, data is written in COPY format. To write the data in a plain SQL format, include the `‑safeMode` keyword:
+-   By default, data is written in COPY format. To write the data in a plain SQL format, include the `‑safeMode` keyword:
 
-```shell
-./runMTK.sh -offlineMigration -dataOnly -safeMode <schema_scope>
-```
+    ```shell
+    ./runMTK.sh -offlineMigration -dataOnly -safeMode <schema_scope>
+    ```
 
-By default, when you perform an offline migration that contains table data, a separate file is created for each table. To create a single file that contains the data from multiple tables, specify the `‑singleDataFile` keyword:
+    !!!note
+    When the target is Oracle or SQL Server, Migration Toolkit always writes data in plain SQL format. You don't need to include the `‑safeMode` keyword.
+    !!!
 
-```shell
-./runMTK.sh -offlineMigration -dataOnly -singleDataFile -safeMode <schema_scope>
-```
+-   By default, when you perform an offline migration that contains table data, a separate file is created for each table. To create a single file that contains the data from multiple tables, specify the `‑singleDataFile` keyword:
 
-!!! Note
+    ```shell
+    ./runMTK.sh -offlineMigration -dataOnly -singleDataFile -safeMode <schema_scope>
+    ```
+
+    !!! Note
     The `-singleDataFile` option is available only when migrating data in a plain SQL format. You must include the `-safeMode` keyword if you include the `‑singleDataFile` option.
+    !!!
 
 <div id="execute_offline_migration" class="registered_link"></div>
 
 ### Executing offline migration scripts
 
-You can use the edb-psql or psql command line to execute the scripts generated during an offline migration. The following example describes restoring a schema (named hr) into a new database (named acctg) stored in EDB Postgres Advanced Server.
+You can use the edb-psql or psql command line to execute the scripts generated during an offline migration. To run scripts generated for an Oracle or SQL Server target, use the command-line client for that database, such as SQL\*Plus or sqlcmd. The following example describes restoring a schema (named hr) into a new database (named acctg) stored in EDB Postgres Advanced Server.
 
 1.  Use the `createdb` command to create the acctg database, into which you'll restore the migrated database objects:
 
@@ -112,6 +118,22 @@ You can use the edb-psql or psql command line to execute the scripts generated d
     acctg=# \i ./mtk_hr_data.sql
     ```
 
+### Executing offline migration scripts for Oracle targets with identity columns
+
+When you run an offline migration from EDB Postgres Advanced Server to an Oracle target (`-offlineMigration -targetdbtype oracle`) with table-level parallel loading (`-parallelLoadRowLimit` and `-tableLoaderLimit`), Migration Toolkit writes the data for each table that qualifies for table-level parallel loading to multiple numbered part scripts, one for each chunk. The part number is added to the table name in the script name. For example, `mtk_hr_emp_1_data.sql`, `mtk_hr_emp_2_data.sql`, and `mtk_hr_emp_3_data.sql`.
+
+For a table with a `GENERATED ALWAYS AS IDENTITY` column, Migration Toolkit includes the DDL needed to load the data in the part scripts. You don't run these commands separately:
+
+-   The first part script begins with an `ALTER TABLE ... MODIFY (... GENERATED BY DEFAULT AS IDENTITY)` command. This command relaxes the identity constraint so that the scripts can insert explicit values into the column.
+-   The last part script ends with an `ALTER TABLE ... MODIFY (... GENERATED ALWAYS AS IDENTITY (START WITH <value>))` command. This command restores the identity constraint and sets the starting value to follow the highest value loaded.
+
+To make sure these commands take effect at the right time, run the part scripts in the correct order:
+
+-   Run the part scripts for each table in ascending order: part 1 first, then part 2, and so on, with the last part last.
+-   Wait for part 1 to complete before you run any other part script. Until the identity constraint is relaxed, inserts into the column fail.
+-   Run the last part script only after all other part scripts for the table complete. After the identity constraint is restored, any remaining inserts that specify an explicit value for the column fail with `ORA-32796: cannot insert explicit value into a GENERATED ALWAYS identity column`.
+-   Don't run the part scripts for the same table concurrently. Running them concurrently isn't supported for tables with `GENERATED ALWAYS AS IDENTITY` columns. You can run scripts for different tables concurrently.
+
 <div id="import_options" class="registered_link"></div>
 
 ## Import options
@@ -126,7 +148,9 @@ The `-sourcedbtype` option specifies the source database type. For `source_type`
 
 ### `-targetdbtype <target_type>`
 
-The `-targetdbtype` option specifies the target database type. For `target_type`, use one of the following values: `enterprisedb`, `postgres`, or `postgresql`. `target_type` isn't case sensitive. By default, `target_type` is `enterprisedb`.
+The `-targetdbtype` option specifies the target database type. For `target_type`, use one of the following values: `enterprisedb`, `postgres`, `postgresql`, `oracle`, or `sqlserver`. `target_type` isn't case sensitive. By default, `target_type` is `enterprisedb`.
+
+You can specify `oracle` or `sqlserver` only when the source database is EDB Postgres Advanced Server or PostgreSQL.
 
 ### `-schemaOnly`
 
