@@ -282,30 +282,6 @@ The pods now start successfully, using the model profiles you manually provided 
 
 <br/>
 
-### Model configuration settings reset after Innovation Release upgrade
-
-!!!tip
-HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
-!!!
-
-[GRIP-935]: #
-
-**Description:** After upgrading HM from the `2025.11` to the `2025.12` Innovation Release, the existing model configuration settings are unintentionally reset to empty. This results in a `model_not_found` error, preventing access to AI services and causing issues like knowledge bases (KBs) failing to display in the HM console.
-
-**Workaround:** In the HM console, manually reenter or set your required model configurations to restore functionality.
-
-### Error page appears when editing knowledge base credentials
-
-!!!tip
-HM now uses Langflow instead of Griptape, so this issue is no longer applicable.
-!!!
-
-[GRIP-934]: #
-
-**Description:** When editing a knowledge base (KB) that was created from a pipeline in the HM console, skipping the username field and immediately navigating to the password field triggers a client-side JavaScript error (Cannot read properties of null), which results in an **Unexpected Application Error!** page.
-
-**Workaround:** To prevent the error page from appearing, fill in the **Username** field immediately after selecting **Edit KB** and before attempting to enter the password.
-
 ### Missing aidb_users role on PGD witness node prevents AI functionality
 
 **Description:** The `aidb_users` role (necessary for Agent Factory functionality) and its related extension aren't being successfully replicated to the witness node of a PGD cluster during cluster initialization. This issue is specific to PGD clusters that use a single witness node (as opposed to a witness group) and results in the Agent Factory encountering errors due to the missing required role.
@@ -321,71 +297,6 @@ commit;
 ```
 
 [UPM-71454, blocked]: #
-
-### Pipeline Designer-created knowledge bases not visible to GenAI Builder
-
-**Description:** In HM 2025.12, knowledge bases (KBs) created with Pipeline Designer (PD) are assigned to the `visual_pipeline_user` role. 
-This is done to enforce strict isolation, ensuring HM users can't access SQL-created KBs (and vice versa) by default. 
-However, this isolation prevents GenAI Builder from querying these KBs out of the box.
-
-**Workaround:** Explicitly share PD-created KBs with your specific PostgreSQL user account to make them queryable in GenAI Builder.
-
-[UPM-72526, limitation]: #
-
-<details><summary>Workaround details</summary>
-
-**Example scenario**
-
-Alice connects to HM as `alice@acme.org` and to PostgreSQL as the database user `alice`. She must share the PD KBs with the `alice` database user to enable GenAI Builder agents to query them using her credentials.
-
-1.  Prerequisite: Ensure user existence
-
-    Ensure the target PostgreSQL user (`alice` in this example) exists and is assigned the `aidb_users` role. 
-    If the user doesn't exist, execute the following (assuming EDB documentation was followed for AIDB installation):
-
-    ```
-    CREATE USER alice WITH PASSWORD '********';
-    GRANT CONNECT ON DATABASE <some_db> TO alice;
-    GRANT CREATE ON SCHEMA <some_schema> TO alice;
-    GRANT aidb_users TO alice;
-    ```
-
-2.  Grant role access (the workaround)
-
-    To allow the user to view and query PD-created knowledge bases, grant them membership in the `visual_pipeline_user` role:
-
-    ```
-    GRANT visual_pipeline_user TO alice;
-    ```
-
-3.  Configure
-
-    Update the GenAI Builder agent configuration to use the `alice` credentials (username and password) you set.
-
-</details>
-
-<br/>
-
-### Pipeline creation fails on PGD clusters with AIDB v6.1
-
-!!!tip
-Resolved in HM versions 1.4.0 and later, which ships with AIDB 7.3.2.
-!!!
-
-[AID-1076]: #
-
-**Description:** In HM version 2026.3, when using Agent Factory with EDB Postgres Distributed (PGD) and AIDB v6.1, creating a pipeline on a replicated table may fail. You may encounter the following error: `ERROR: replicated relation <table_name> cannot have triggers that are owned by roles other than the relation owner (SQLSTATE 42501)`.
-
-This occurs because PGD requires that both the trigger and its associated trigger handler functions be owned by the same role that owns the table (typically `visual_pipeline_user`). In version 2026.3, these functions may be assigned to a different owner by default.
-
-**Workaround:** To resolve this ownership conflict, a superuser must manually transfer ownership of the AIDB trigger handler functions to the `visual_pipeline_user` role.
-
-Execute the following SQL commands on the affected database:
-
-```sql
-ALTER FUNCTION aidb.pipeline_background_trigger_handler OWNER TO visual_pipeline_user;
-ALTER FUNCTION aidb.pipeline_live_trigger_handler OWNER TO visual_pipeline_user;
-```
 
 ### External cloud-hosted OCR models fail to register via the HM console
 
@@ -619,58 +530,6 @@ SELECT bdr.replication_set_add_table('aidb.knowledge_base_pipeline');
 **Workaround:** There is currently no manual workaround to install this extension on managed clusters. Avoid using these two specific actions until the extension is included in a future image update.
 
 [UPM-74007, backlog]: #
-
-### Some EDB Component tools are non-functional due to incompatible API request formatting
-
-!!!tip
-Resolved in HM versions 2026.9 and later.
-!!!
-
-[AID-1288]: #
-
-**Description:** Some tools within the EDB Component are currently non-functional due to incompatible API request formatting. By default, the component exposes too many tools, which can exceed API limits and trigger errors.
-
-**Workaround:** Enable tool mode and apply specific filters to limit the number of tools exposed by the component.
-
-### Agent Studio MCP server components not supported in HM Flow Hosting
-
-[AID-1214]: #
-
-**Description:** Flows that include an Agent Studio MCP (Model Context Protocol) server component fail when executed via the Hybrid Manager Flow Hosting API with the following error: `Error building Component my_mcp: Error updating tool list: Langflow MCP server functionality is not available. This feature requires the full Langflow installation.` The HM Flow Hosting runtime (`lfx-runtime`) is a lightweight environment that does not include the full Agent Studio installation. Flows using MCP server components will appear to deploy successfully — the pod reports as healthy — but will fail at runtime when invoked via the REST API.
-
-**Workaround:** Avoid including Agent Studio MCP server components in flows intended for deployment via the HM Flow Hosting API. If you need to run the Airman or HM MCP servers, use the EDB Airman or EDB Platform components instead — these components are compatible with the lfx-runtime environment. For any other MCP server functionality, use the full Agent Studio interactive environment instead.
-
-### Running a test query against an empty knowledge base returns a 500 error
-
-!!!tip
-Resolved in HM versions 1.4.0 and later.
-!!!
-
-[UPM-91738, AID-1621]: #
-
-**Description:** When running a test query from the **Knowledge Bases** list view against a knowledge base whose underlying embeddings table is empty — for example, while the KB pipeline is still in a `Processing` state — the API returns an HTTP 500 error: `ERROR: Query returned no data. Hint: The "<pipeline_name>" table is likely empty`. The API should return an empty result set instead.
-
-**Workaround:** Wait until the knowledge base pipeline finishes processing before running test queries. The pipeline status changes from `Processing` to an active state once data has been indexed and the embeddings table is populated.
-
-### EDB Model Server component causes agent failures when used with the EDB Airman MCP component
-
-!!!tip
-Resolved in HM versions 1.4.0 and later.
-!!!
-
-[AID-1614]: #
-
-**Description:** When building an agent flow in Agent Studio that uses the EDB Model Server component together with the EDB Airman MCP component, the agent may fail with an error similar to: `messages with role 'tool' must be a response to a preceding message with 'tool_calls'`. This issue is intermittent and doesn't occur when using other model provider components.
-
-**Workaround:** Use the OpenAI component or the generic model component in place of the EDB Model Server component. Flows using these alternative model providers aren't affected by this issue.
-
-### Updated Agent Studio flow changes aren't immediately reflected in HM after republishing
-
-[AID-2059]: #
-
-**Description:** When you edit a previously published Agent Studio flow in the HM Agent Studio editor and republish it to the Asset Library, the updated version doesn't immediately appear in HM. There is a delay of up to 5 minutes before the changes propagate and become visible.
-
-**Workaround:** After republishing a flow, wait approximately 5 minutes before verifying that the changes are reflected in HM.
 
 ## Migrations
 
