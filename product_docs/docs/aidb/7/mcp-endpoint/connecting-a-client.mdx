@@ -35,7 +35,7 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
      -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
    ```
 
-1. List tools as a Postgres role. `tools/list` returns the built-in `execute_sql`, then every tool the catalog holds, then every AIDB agent, for a member of `aidb_users`. See [Calling agents as tools](#calling-agents-as-tools).
+1. List tools as a Postgres role. `tools/list` returns the built-in `execute_sql`, then every tool the catalog holds, then, for a member of `aidb_users`, every AIDB agent. See [Calling agents as tools](#calling-agents-as-tools).
 
    ```shell
    curl -sS http://<mcp-host>:8765/mcp \
@@ -90,7 +90,7 @@ After the handshake, an agent's calls behave according to its own grants, not an
 
 | Call                                | Behavior                                                                                                                                    |
 |--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| `tools/list`                        | Returns every tool in the catalog regardless of the caller's grants, plus every AIDB agent for a member of `aidb_users`. The [listing shows what exists, not what the caller may run](../mcp-endpoint#what-tools-the-endpoint-surfaces). |
+| `tools/list`                        | Returns every tool in the catalog regardless of the caller's grants, plus, for a member of `aidb_users`, every AIDB agent. The [listing shows what exists, not what the caller may run](../mcp-endpoint#what-tools-the-endpoint-surfaces). |
 | `tools/call` on a catalog tool       | Succeeds if the role holds the privileges the tool's SQL needs. Otherwise Postgres returns `permission denied` and no rows are affected.      |
 | `tools/call` on an AIDB agent        | Runs the agent through `aidb.agent_converse()` as the role. See [Calling agents as tools](#calling-agents-as-tools).                         |
 | `tools/call` with a wrong password   | `isError` with `password authentication failed`.                                                                                             |
@@ -149,7 +149,13 @@ curl -sS http://<mcp-host>:8765/mcp \
 
 A read-only role gets `"conversation_id": null`, and so does any call on a read replica, because a [read-only run](../agents/conversing-with-agents#read-only-mode) keeps no history to resume. When the agent fails, the result is `isError` and carries the error from `agent_converse`'s `error` column.
 
-An agent call raises the connection's `statement_timeout` to the agent's `timeout_seconds` plus 10 seconds, with `timeout_seconds` capped at 900 (15 minutes). An agent with no timeout set runs under the 300-second default. Every other call keeps the endpoint's 30-second limit. The extra 10 seconds let the agent report its own timeout first. If Postgres still hasn't answered 10 seconds after `statement_timeout`, the endpoint closes the connection and returns an `isError` result, so an agent call lasts at most 920 seconds. Errors from an agent call name the agent's timeout and the 15-minute ceiling, so you can tell when the ceiling cut a call off. Raise your MCP client's request timeout for long-running agents. The MCP TypeScript SDK, for example, gives up after 60 seconds by default.
+An agent call runs under a longer limit than other calls:
+
+- The connection's `statement_timeout` is the agent's `timeout_seconds` plus 10 seconds. The extra 10 seconds let the agent report its own timeout first. `timeout_seconds` is capped at 900 (15 minutes), and an agent with no timeout set uses the 300-second default.
+- If Postgres hasn't answered 10 seconds after `statement_timeout`, the endpoint closes the connection and returns an `isError` result. An agent call therefore lasts at most 920 seconds.
+- Every other call keeps the endpoint's 30-second limit.
+
+Errors from an agent call name the agent's timeout and the 15-minute ceiling, so you can tell when the ceiling cut a call off. Raise your MCP client's request timeout for long-running agents. The MCP TypeScript SDK, for example, gives up after 60 seconds by default.
 
 To cancel an agent call, send `notifications/cancelled` with the call's `id`, as shown above for a catalog tool. The endpoint sends Postgres a cancel request and also closes the connection, because a tool inside the agent's run can catch the cancel request and keep going.
 
