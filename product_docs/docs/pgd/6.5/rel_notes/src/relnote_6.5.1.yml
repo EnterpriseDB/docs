@@ -1,0 +1,204 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: EDB Postgres Distributed
+version: 6.5.1
+date: 19 November 2026
+intro: |
+  EDB Postgres Distributed (PGD) 6.5.1 includes enhancements and bug fixes focused on improving stability and reliability. For a list of known issues, see [Known issues and limitations](/pgd/current/overview/known_issues/).
+
+relnotes:
+- relnote: Added the `route_writer_election_quorum` group option.
+  details: |
+    New group option, off by default and inherited from the parent group. When on, the Raft leader doesn't close a write leader election before it has enough bids to include a node that holds every transaction acknowledged under a majority Quorum Commit. Requires data nodes with synchronous commit, equal `route_priority`, and consensus protocol 6007.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Added the `route_writer_election_timeout` group option.
+  details: |
+    New group option that sets how long the Raft leader waits for candidates' progress bids before electing a write leader. The default is 500ms, the minimum is 100ms, and a group that doesn't set it inherits the parent group's value. A failover takes at least this long unless the failed leader returns.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Nodes now send progress bids to the Raft leader when the write leader is unset.
+  details: |
+    When the write leader is lost, every routable data node reports to the Raft leader how far it durably applied the previous leader's changes, instead of relying on advertised progress that can be a second old. Bids are resent on changes and while the leader stays unset, independent of `leader_progress_tracking_enable`.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: The write leader is now elected from the candidates' progress bids.
+  details: |
+    The Raft leader elects once, after `route_writer_election_timeout`, ranking candidates by highest `route_priority`, then highest bid position, then a node that isn't the Raft leader, then lowest node ID. A previous leader that returns closes the round as soon as it bids, unless a candidate has a higher `route_priority`. Previously, a failover could elect a lagging node. The new election takes effect once all nodes in the group run PGD 6.5.1.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: High
+- relnote: Switchover targets that PGD selects automatically are now elected from progress bids.
+  details: |
+    Leadership transfers without a target, including `bdr.transfer_all_leaderships()`, run an election round and pick the furthest-ahead candidate, so they now honor `route_priority`. The `strict` transfer method waits for the target to catch up, and the `fast` method switches at once.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Quorum Commit and CAMO transactions are now applied with `keep_retrying`.
+  details: |
+    Quorum Commit transactions on every applying node, and CAMO transactions on the CAMO partner, use `keep_retrying` regardless of `apply_error_policy`. Previously, another policy could skip or disable the subscription for a transaction whose outcome the origin decides from the votes of its peers. A `WARNING` is logged when the policy is overridden. Other transactions keep the configured policy.
+  jira: BDR-9346
+  addresses: ""
+  type: Change
+  impact: High
+- relnote: Fixed a retried leadership transfer changing the write leader twice.
+  details: |
+    A retried `bdr.routing_leadership_transfer()` request, for example across a Raft leader change, could run again after the transfer completed and elect another, possibly lagging, node. Requests now carry the `write_leader_version` their caller saw, and the Raft leader drops a request that is behind. Requests from nodes older than 6.5.1 are processed unchecked.
+  jira: BDR-8992
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: PGD CLI now honors `ssl_password_command` from its configuration file.
+  details: |
+    The `cluster.ssl.ssl_password_command` setting in `pgd-cli-config.yml` was accepted but ignored, so an obfuscated `sslpassword` failed with "bad decrypt" for users without a libpq deobfuscation preload, such as `root`. The CLI again runs the command with `sslpassword` on standard input and uses its output as the passphrase. Passwords are no longer shown in `--debug` output.
+  jira: BDR-9328
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Lag values in `bdr.node_slots` are no longer reset when a peer reconnects.
+  details: |
+    During the catch-up phase, the `write_lag`, `flush_lag`, and `replay_lag` fields in [`bdr.node_slots`](/pgd/current/reference/tables-views-functions/catalogs-visible/#bdrnode_slots) now report the calculated `offline_lag` until the slot goes back to the streaming state and lag can be measured again, instead of being reset to 0.
+  jira: BDR-7634
+  addresses: "57149"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a deadlock between Quorum Commit transactions doing DDL, the manager, and consensus.
+  details: |
+    Quorum Commit can cause prepared transactions that happen to do DDL to contend for a lock on the `bdr.leader` table until the transaction is resolved. The PGD manager and consensus processes also access this table. If these prepared transactions are orphaned, the manager is the process that resolves them, which caused a deadlock. This is now fixed.
+  jira: BDR-8922
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a memory leak and stuck replication in Quorum Commit transactions.
+  details: |
+    Quorum Commit transactions could cause a memory leak in the walsender. A Quorum Commit transaction could also be streamed to a writer before a commit scope was assigned, so the writer didn't know the commit scope, which could get replication stuck. Both issues were present in 6.5.0 and not in earlier versions.
+  jira: BDR-8927
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a hard hang between a writer and the receiver in CAMO.
+  details: |
+    A receiver restart, for example after the origin node was partitioned and then recovered, could hang when the downstream node had CAMO transactions in its commit decisions. The receiver waited on a flush while the writers waited for the full commit decision feedback queues that the receiver never emptied. The deadlock detector didn't detect this hang, and only a server restart resolved it. This issue has been present since 5.9.1.
+  jira: BDR-8942
+  addresses: "65610"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a hang when a writer restarts while a global lock is held.
+  details: |
+    If a writer or a node restarted after a global lock was acquired (after `ACQUIRE` or `ACQUIRE FINISH`, or after DDL had committed or prepared but before the lock was released), the manager or the writer doing DDL could hang forever. Locks recovered after a restart are now rebuilt without re-acquiring them, writers for the lock's origin are let through, and `FINISH` and `RELEASE` are routed to the same writer.
+  jira: BDR-8700
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a Quorum Commit transaction being confirmed as durable before its prepare is on disk.
+  details: |
+    With the `ON DURABLE` confirmation level of Quorum Commit, a node could confirm a prepared transaction as durable before the `PREPARE` was flushed to disk. If such nodes crashed after confirming, they could lose the prepared transaction while the origin had already committed it, leaving the nodes diverged. The prepare is now flushed before the confirmation is sent.
+  jira: BDR-9180
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a subscription wedged by a Quorum Commit transaction that a node voted down.
+  details: |
+    When a node voted a Quorum Commit (two-phase) transaction down, for example because of a unique violation on a row it already has, its writer exited. On reconnect, the origin decoded the transaction again at `PREPARE`, even though it had since aborted, and re-sent its changes. The node failed on them on every reconnect, never reached the rollback, and stopped applying anything further from that origin. The same applied to aborted transactions streamed again after a reconnect. Changes of an already aborted transaction are no longer forwarded or streamed.
+  jira: BDR-9238
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed Quorum Commit transactions streamed to a file being applied as plain transactions.
+  details: |
+    A Quorum Commit transaction streamed to a file on the peer was applied without the Quorum Commit rules: conflict resolution was asynchronous, and the peer didn't use the commit timestamp and clock skew handling of Quorum Commit. The hint that tells the origin's decoder to stream to a file could also be lost across a reconnect, so the transaction was streamed to a writer and failed at `PREPARE`. In addition, a peer that received a streamed transaction that had already committed could abort it on every reconnect when it hit an `update_origin_change` conflict. All three issues are fixed.
+  jira: BDR-9248
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed inconsistent commit timestamps across nodes for Quorum Commit transactions that use `commit_decision=raft`.
+  details: |
+    For Quorum Commit transactions with `commit_decision=raft`, nodes could record different commit timestamps for the same transaction instead of agreeing on one value. Because this timestamp drives last-writer-wins conflict resolution, the mismatch could resolve the same conflict differently on different nodes. This is fixed.
+  jira: BDR-9348
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a crash-restart loop on EDB Postgres Extended when a Quorum Commit transaction aborts during a forward-mode subscription.
+  details: |
+    On EDB Postgres Extended, a crash-restart loop could occur when a Quorum Commit transaction aborted concurrently while a forward-mode subscription was in progress. This is fixed.
+  jira: BDR-8806
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Prevented DDL from creating galloc sequences with the `CYCLE` option.
+  details: |
+    The `CYCLE` option on galloc sequences could cause duplicate `nextval()` values across nodes. PGD now prevents DDL that results in a galloc sequence with the `CYCLE` option, unless it's replicated DDL from another node.
+  jira: BDR-8594
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the receiver skipping cleanup when it exits with a broken upstream connection.
+  details: |
+    When a receiver exited gracefully while its upstream connection was already broken, sending standby status or CAMO feedback raised an `ERROR` inside the exit callback. That unwound out of the finish function and skipped writer cleanup, closing the connection, and the remaining exit callbacks. The same could happen when the writers were already gone. During process exit, these failures are now logged as warnings and the cleanup runs to completion.
+  jira: BDR-8956
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a Quorum Commit pre-commit message being reported as applied before it is handled.
+  details: |
+    A Quorum Commit pre-commit message is handed to a writer asynchronously. Feedback could report it as written, applied, and flushed before any writer handled it. After a restart, the message was never delivered again, and the origin could count a commit confirmation from a peer that hadn't committed the transaction yet. Non-transactional messages could be skipped this way. This is fixed.
+  jira: BDR-9196
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed global DML lock acquisition failing after a lock holder exits abnormally.
+  details: |
+    The cleanup that clears the per-database global lock group leader never ran in PGD workers and backends. If the leader (a writer dying in the middle of a drain, or a backend disconnecting while holding a DML lock) exited without clearing it, every DML global lock acquisition on that database failed with `cannot drain replication queue for DML lock, another lock is already draining` until the postmaster was restarted. The leader entry is now cleared when its owner exits.
+  jira: BDR-9118
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Allowed pgaudit's event triggers in guarded DDL.
+  details: |
+    DDL run by `bdr.replicate_ddl_command()` or applied by the writer is guarded against changing the current role. The guard also rejected the user ID switch of pgaudit's `SECURITY DEFINER` event trigger functions, so DDL failed whenever pgaudit was installed. PGD now allows a `SECURITY DEFINER` switch to the owner of pgaudit's functions. `SET ROLE` and other switches stay rejected.
+  jira: BDR-9228
+  addresses: "66530"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed prepared transactions of a parted origin not being resolved on some nodes.
+  details: |
+    For a commit scope with commit decision `group`, there were scenarios in which prepared transactions corresponding to an origin that was parted might not get resolved on some nodes in the cluster. This is fixed.
+  jira: null
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the coordinator not being able to reconcile transactions in some scenarios.
+  details: |
+    For a commit scope with commit decision `group`, if remote nodes that have prepared transactions for a down origin are parted after the coordinator has started reconciling that origin, the reconciliation might not complete. This is fixed.
+  jira: null
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed an assertion failure on subtransaction order in file-streamed transactions.
+  details: |
+    The receiver asserted that the subtransactions of a transaction streamed to a file are in XID order. They are added in the order of their first change, which can differ: after `SAVEPOINT a; SAVEPOINT b; INSERT; RELEASE b; INSERT`, both get XIDs with a < b, but the change for b comes first. The receiver then crashed on assert-enabled builds. The receiver no longer checks the XID order and only checks that positions in the changes file increase, comparing the file number as well as the offset.
+  jira: BDR-9144
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed a writer assertion failure when preparing a Quorum Commit transaction drained under a global DML lock.
+  details: |
+    A writer could hit `Assert(proclock->groupLeader == proclock->tag.myProc)` when preparing a Quorum Commit transaction that had been drained under a global DML lock, because the lock group leader was still recorded on its heavyweight locks. This affects assert-enabled builds. The leader is now reset before the transaction is prepared, which also avoids deadlocks during the drain.
+  jira: BDR-9114
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed an out-of-order writer flush that caused an assertion failure on non-transactional messages.
+  details: |
+    When a receiver handled a non-transactional message, it flushed all writers before and after it, but an earlier asynchronous flush request could satisfy a flush. Writers could then keep running transactions and push out-of-order positions into the flush queue, hitting `Assert(pos->local_end < local_pos)` on assert-enabled builds. Flushes are now acknowledged with a flush sequence number, and the receiver waits for its own flush.
+  jira: BDR-8919
+  addresses: ""
+  type: Bug Fix
+  impact: Low
