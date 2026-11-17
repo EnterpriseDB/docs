@@ -1,0 +1,223 @@
+---
+title: Replicating Postgres tables natively
+navTitle: Replicating Postgres tables natively
+description: Replicate standard Postgres tables to Delta Lake or Iceberg tables with Analytics Accelerator, without the need to use Postgres Distributed.
+deepToC: true
+---
+
+Use native replication to copy standard Postgres tables to Delta Lake or Iceberg tables in object storage, and to keep the lakehouse copies up to date, without the need to use Postgres Distributed (PGD). PGAA first copies each table's existing rows, and then streams the table's changes by decoding the server's write-ahead log (WAL) in-process.
+
+!!! Note
+Native replication works with tables on Postgres (PG), EDB Postgres Extended Server (PGE), and EDB Postgres Advanced Server (EPAS). It isn't available on WarehousePG or on PGD nodes. On PGD nodes, use [`pgd.replicate_to_analytics`](pgd#replicating-to-analytics) instead, which replicates through the same PGAA engine.
+!!!
+
+## Preparing for replication
+
+To use native replication:
+
+1.  Set `wal_level` to `logical` and enable the [`pgaa.enable_replication_worker`](reference/configuration_parameters#pgaaenable_replication_worker) parameter. You can set the parameters in `postgresql.conf` or with `ALTER SYSTEM`:
+
+    ```sql
+    ALTER SYSTEM SET wal_level = 'logical';
+    ALTER SYSTEM SET pgaa.enable_replication_worker = on;
+    ```
+
+1.  Make sure `max_replication_slots` is at least 2. The Postgres default is 10, so you only need to increase the value if it's lower:
+
+    ```sql
+    SHOW max_replication_slots;
+    ALTER SYSTEM SET max_replication_slots = 10;   -- only if the value shown is lower than 2
+    ```
+
+1.  Restart Postgres to apply `wal_level`, and `max_replication_slots` if you changed it. A configuration reload is enough to apply `pgaa.enable_replication_worker` on its own. After you enable the parameter, the replication worker can take up to two minutes to start.
+
+    ```shell
+    sudo systemctl restart <postgres-service>
+    ```
+
+    Where `<postgres-service>` is the name of your Postgres service.
+
+1.  Choose a [storage location](ctas#creating-a-storage-location) or an [Iceberg catalog](catalog) to hold the replicated table, and create one if you don't have one yet. PGAA needs write access to it, so test it with the `test_writes` argument set to `true`. For example, to create a storage location and test it:
+
+    ```sql
+    SELECT pgfs.create_storage_location(
+        'my_lake',
+        's3://your-bucket-name/path',
+        '{"aws_region": "us-east-1", "aws_access_key_id": "...", "aws_secret_access_key": "..."}'
+    );
+    SELECT pgaa.test_storage_location('my_lake', true);
+    ```
+
+    To test a catalog instead:
+
+    ```sql
+    SELECT pgaa.test_catalog('my_catalog', true);
+    ```
+
+    Both functions return `NULL` if the test succeeds, and an error message if it fails.
+
+    If your catalog doesn't vend object store credentials, add a `store_config` object to the catalog options so that PGAA can write the table's data files. See [REST catalog](catalog#rest-catalog).
+
+## Replicating a table
+
+Enable replication for a table by setting the [`pgaa.replicate`](reference/table_options) table option. The table you replicate must meet the following requirements:
+
+-   It's a heap table, or an individual partition of a partitioned table. You can't replicate a partitioned table itself, views, materialized views, or foreign tables.
+-   It has a primary key.
+-   Its columns use data types that PGAA can write, as listed in [Data types](reference/data_types). For example, PGAA can't write the `interval` type, or a `numeric` column with a precision above 38. If a table has such a column, the statement fails with an error such as `column "duration" of table "orders" is an interval, which can't be written to the lake yet`.
+
+PGAA writes the replicated table to either a storage location or an Iceberg catalog.
+
+### Replicating to a storage location
+
+To replicate to a storage location, set `pgaa.storage_location` along with `pgaa.replicate`. You can also set `pgaa.path` and `pgaa.format`:
+
+-   If you omit the location, PGAA uses the default storage location set with `pgfs.set_default_storage_location`. If no default storage location is set, the statement fails.
+-   If you omit the path, PGAA uses `<schema>.<table>`.
+-   If you omit the format, PGAA uses `iceberg`. You can also choose `delta`.
+
+To create a table and replicate it:
+
+```sql
+CREATE TABLE public.orders (
+    id   bigint PRIMARY KEY,
+    item text
+)
+WITH (
+    pgaa.replicate = true,
+    pgaa.storage_location = 'my_lake',
+    pgaa.format = 'iceberg'
+);
+```
+
+To replicate an existing table:
+
+```sql
+ALTER TABLE public.items SET (
+    pgaa.replicate = true,
+    pgaa.storage_location = 'my_lake'
+);
+```
+
+Each replicated table needs its own path, so a storage location can hold several replicated tables. If another replicated table already uses the same location and path, pass a different `pgaa.path`. If the path already holds data, the statement fails. To replace the data, set [`pgaa.purge_data_if_exists = true`](reference/table_options). The initial load then replaces the existing data.
+
+### Replicating to an Iceberg catalog
+
+To replicate to an [Iceberg catalog](catalog), set `pgaa.managed_by` to the name of the catalog. You can also set `pgaa.catalog_namespace` and `pgaa.catalog_table`, which default to the schema and name of the source table. Tables in a catalog are always Iceberg, so you can't combine `pgaa.managed_by` with `pgaa.storage_location` or `pgaa.path`.
+
+To create a table and replicate it:
+
+```sql
+CREATE TABLE public.orders (
+    id   bigint PRIMARY KEY,
+    item text
+)
+WITH (
+    pgaa.replicate = true,
+    pgaa.managed_by = 'my_catalog',
+    pgaa.catalog_namespace = 'sales',
+    pgaa.catalog_table = 'orders'
+);
+```
+
+To replicate an existing table:
+
+```sql
+ALTER TABLE public.items SET (
+    pgaa.replicate = true,
+    pgaa.managed_by = 'my_catalog',
+    pgaa.catalog_namespace = 'sales',
+    pgaa.catalog_table = 'items'
+);
+```
+
+Each replicated table needs its own catalog table. If another replicated table already uses the same catalog, namespace and table, pass a different namespace or table name. If the catalog table already holds data, the statement fails. To replace the data, set [`pgaa.purge_data_if_exists = true`](reference/table_options).
+
+## Monitoring replication
+
+Query the `pgaa.replicated_table_status` view to see the state of each replicated table:
+
+```sql
+SELECT relation, format, state, lag_bytes FROM pgaa.replicated_table_status;
+__OUTPUT__
+ relation | format  |   state   | lag_bytes
+----------+---------+-----------+-----------
+ orders   | iceberg | streaming |         0
+ items    | iceberg | loading   |    327712
+(2 rows)
+```
+
+A table's `state` is `loading` while PGAA copies its existing rows, and then `streaming`. The `lag_bytes` column shows the WAL that PGAA hasn't yet acknowledged to the replication slot. It also grows while a table loads, because PGAA holds the slot until the load completes.
+
+Use the [`pgaa.max_replication_lag_s`](reference/configuration_parameters#pgaamax_replication_lag_s) and [`pgaa.max_in_memory_mb`](reference/configuration_parameters#pgaamax_in_memory_mb) parameters to control when the writer flushes changes to the lakehouse.
+
+## Querying the replicated data
+
+The replicated table stays a Postgres heap table. To query the lakehouse copy through PGAA, create a separate PGAA table that points at the replicated location. For example, for the `public.orders` table replicated in the earlier example:
+
+```sql
+CREATE TABLE orders_lake ()
+USING PGAA
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.storage_location = 'my_lake',
+    pgaa.path = 'public.orders'
+);
+```
+
+To query a table replicated to an Iceberg catalog, point the PGAA table at the catalog and always set `pgaa.format` to `iceberg`. The statement fails without it, even though replicated catalog tables are always Iceberg:
+
+```sql
+CREATE TABLE orders_lake ()
+USING PGAA
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.managed_by = 'my_catalog',
+    pgaa.catalog_namespace = 'public',
+    pgaa.catalog_table = 'orders'
+);
+```
+
+PGAA discovers the schema from the table metadata when you first query the table. Then query the PGAA table like any other table:
+
+```sql
+SELECT * FROM orders_lake LIMIT 10;
+```
+
+For more information, see [Table options](reference/table_options).
+
+## Stopping replication
+
+To stop replicating a table, reset the `pgaa.replicate` option, set it to `false`, or drop the Postgres table:
+
+```sql
+ALTER TABLE public.items RESET (pgaa.replicate);
+```
+
+PGAA keeps the data it already wrote to the lakehouse. If you drop a table and create a new one with the same name, the new table isn't replicated. Register it like any other table, with a different path or catalog table, or purge the old data with `pgaa.purge_data_if_exists = true`.
+
+If a table stops meeting the [requirements for replication](#replicating-a-table), PGAA removes it from replication and issues a warning that explains why. PGAA continues replicating the other tables. A table stops meeting the requirements when you:
+
+-   Add a column with an unsupported type.
+-   Drop the primary key.
+-   Set `REPLICA IDENTITY NOTHING`. PGAA removes the table at its first update or delete.
+
+PGAA reads the changes to replicated tables from a logical replication slot. If the slot is lost, the changes made while there was no slot can't be recovered, so PGAA removes the tables that were streaming and issues a warning that lists them. A slot is lost if someone drops it, for example with `pg_drop_replication_slot`, or if Postgres invalidates it. PGAA then creates a new slot at the current WAL position. If no replicated tables remain, PGAA drops the slot again, and creates a new one when you register a table.
+
+To resume replication for a removed table, fix the table if needed and register it again. The location already holds data, so set `pgaa.purge_data_if_exists = true` to replace it.
+
+## Renaming tables
+
+PGAA tracks replicated tables by relation, and fixes the lakehouse location at registration. Renaming a table or its schema, or moving it to another schema, doesn't affect replication. The lakehouse location keeps the path, or the catalog namespace and table, that it had when you registered the table. If you created a PGAA table to query the replicated data, that table keeps working after the rename.
+
+## Limitations
+
+-   Column changes that you make after replication starts don't reach the lakehouse table, and PGAA issues a warning. To add the changes to the lakehouse table, stop replicating the table and register it again with `pgaa.purge_data_if_exists = true`.
+-   PGAA applies a `TRUNCATE` of a replicated table at commit. A transaction that truncates a replicated table fails if it's too large for the writer's memory. After a crash, replaying WAL across a `TRUNCATE` can bring back deleted rows.
+-   PGAA doesn't support replicating a partitioned table itself. To replicate a partitioned table, register each partition separately.
+-   PGAA sets the replica identity of a table to `FULL` when you register it. Don't change it. Without `FULL`, replication fails with the error `cannot decode relation ... TOAST value without REPLICA IDENTITY FULL`, and `NOTHING` removes the table from replication.
+-   Native replication doesn't support Amazon S3 Tables catalogs. Use a storage location or an Iceberg REST catalog.
+-   You can't combine `pgaa.replicate` with `USING PGAA`, `pgaa.tiered_table`, or `pgaa.auto_truncate`.
+-   You can't use `pgaa.replicate` with `CREATE TABLE AS`, because the new table has no primary key. Create the table first, and then run `ALTER TABLE ... SET (pgaa.replicate = true)`.
+-   If a transaction is too large for the writer's memory, PGAA commits it to a Delta Lake table before it completes. After a crash or during an initial load, replaying such a transaction can leave older values for rows that a later transaction changed.
+-   PGAA loads tables one at a time. If a table can't be loaded, PGAA retries it, which can delay the loading of other tables that are waiting.

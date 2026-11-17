@@ -1,13 +1,14 @@
 ---
-title: Analytics Accelerator 1.11 release notes
+title: Analytics Accelerator 1.12 release notes
 navTitle: Release notes
-description: Release notes for version 1.11 of Analytics Accelerator.
+description: Release notes for version 1.12 of Analytics Accelerator.
 ---
 
-The Postgres Analytics Accelerator (PGAA) 1.11.0 documentation describes the latest version of Analytics Accelerator. Release notes for all supported versions are also included below.
+The Postgres Analytics Accelerator (PGAA) 1.12.0 documentation describes the latest version of Analytics Accelerator. Release notes for all supported versions are also included below.
 
 | Version        | Release date |
 |----------------|--------------|
+| [1.12.0](#pgaa-1120) | 18 November 2026 |
 | [1.11.0](#pgaa-1110) | 28 August 2026 |
 | [1.10.0](#pgaa-1100) | 7 July 2026 |
 | [1.9.1](#pgaa-191) | 14 May 2026 |
@@ -16,6 +17,46 @@ The Postgres Analytics Accelerator (PGAA) 1.11.0 documentation describes the lat
 | [1.7.0](#pgaa-170)   | 5 March 2026  |
 | [1.6.0](#pgaa-160)    | 4 February 2026 |
 
+
+## PGAA 1.12.0
+
+Released: 18 November 2026
+
+Analytics Accelerator 1.12 includes the following features, enhancements, and bug fixes:
+
+### Features
+
+- **Native replication of Postgres tables:** PGAA can now replicate standard Postgres tables to Delta Lake or Iceberg tables without PGD. See [Replicating Postgres tables natively](replication).
+- **`INSERT` support on PGAA tables:** You can now append rows to an existing PGAA table with `INSERT`, either from a query or from a list of values. See [Inserting data into existing tables](ctas#inserting-data-into-existing-tables).
+- **AWS Glue compatibility:** PGAA now works with the AWS Glue Data Catalog, including with the Spark Connect executor. The SigV4 signing service name is now configurable, and SigV4 supports session tokens. See [AWS Glue Data Catalog](catalog#aws-glue-data-catalog).
+- **PGAA API for replication hosts:** PGAA now provides an application binary interface (ABI), `pgaa_api_v500`, that lets a replication host, such as PGD, have PGAA decode its WAL and replicate tables to the lakehouse. The interface is intended for software that integrates with PGAA, and you don't use it directly.
+- **Expanded CompatScan pushdown:** CompatScan now also pushes down `CAST`, `CASE`, and `COALESCE`, more scalar functions, string concatenation (`||`), date arithmetic with integers, `DISTINCT` aggregates, partially supported aggregates, `HAVING`, and `UNION ALL`. The new [`pgaa.enable_setop_pushdown`](reference/configuration_parameters#pgaaenable_setop_pushdown) parameter controls `UNION ALL` pushdown.
+- **CompatScan pushdown over partitioned tables:** CompatScan now pushes down scans and aggregates over partitioned tables that have PGAA partitions, including tables that mix PGAA and heap partitions. Set [`pgaa.enable_partition_pushdown`](reference/configuration_parameters#pgaaenable_partition_pushdown) to `off` to disable this behavior.
+- **In-process vectorized execution (experimental):** PGAA can now run eligible joins, aggregates, sorts, and window functions over regular Postgres tables in its vectorized engine, without replicating the data to Iceberg or Delta Lake. Enable it with [`pgaa.enable_vectorized_execution`](reference/configuration_parameters#pgaaenable_vectorized_execution). See [Using vectorized execution](optimize_performance#using-vectorized-execution-experimental).
+- **Seafowl memory reaper:** Seafowl can now periodically return idle heap memory to the operating system. The reaper is disabled by default. Enable it with [`pgaa.autostart_seafowl_memory_reaper_check_interval_s`](reference/configuration_parameters#pgaaautostart_seafowl_memory_reaper_check_interval_s). For details, see [Managing Seafowl memory](optimize_performance#managing-seafowl-memory).
+- **Delta Lake replay protection:** PGAA now skips a replay of already written changes for Delta Lake tables, as it does for Iceberg tables.
+
+### Bug fixes
+
+- Fixed an Arrow offset overflow error on large Iceberg scans by mapping Iceberg strings to `Utf8View`.
+- Hardened CTAS, including staging Delta Lake files until the end of the statement.
+- Fixed updates that change part of a composite primary key leaving duplicate rows in Delta Lake tables.
+- Fixed pushed-down expressions that returned different results than Postgres, including `sum(int8)` overflow, integer overflow, division by zero, `upper` and `lower` handling of `ß` in DataFusion, and `date_part`/`extract` and text casts.
+- Fixed cast pushdown. CompatScan now pushes down widening casts such as `int` to `numeric`, and no longer pushes down casts from `numeric` or `float` to integer types, which Postgres rounds but Seafowl and Spark round down.
+- Fixed `GROUP BY` estimates on analyzed partitioned tables with PGAA partitions and on analyzed PGAA tables with `pgaa.enable_metadata_stats` off.
+- Fixed an issue where running `ANALYZE` on a PGAA table could lead the planner to choose slower CompatScan plans. PGAA now estimates the number of distinct values (`ndistinct`) from the collected most common values and Iceberg metadata.
+- Fixed intermittent `h2 protocol error: error reading a body from connection` query failures caused by concurrent reads of Seafowl's object store cache. Panics while streaming query results are now reported as errors that include the panic message.
+- Changes to Seafowl-related configuration parameters, for example with `ALTER SYSTEM` and `pg_reload_conf()`, now take effect. PGAA restarts the Seafowl process when you reload the configuration.
+- Fixed stale reads of Parquet tables whose files are replaced under the same path. Seafowl now invalidates its object store cache entries when objects are written or deleted.
+- CompatScan queries now keep the join order that Postgres chose, instead of Seafowl reordering joins, which fixes inefficient join orders that joined large tables before applying selective filters.
+
+### Infrastructure and other changes
+
+- Upgraded DataFusion to version 55.3, Delta Lake (delta-rs) to the latest version, and Iceberg (iceberg-rust) to the latest main branch. The Iceberg upgrade fixes nested column statistics for Iceberg tables with array columns.
+
+### Deprecations and removals
+
+- Deprecated the [`pgaa.use_seafowl_cost_estimates`](reference/configuration_parameters#pgaause_seafowl_cost_estimates) configuration parameter. PGAA now injects Iceberg and Delta Lake statistics at plan time, and its planner has improved in other ways, so requesting cost estimates from Seafowl no longer produces better plans. The parameter is now always off.
 
 ## PGAA 1.11.0
 

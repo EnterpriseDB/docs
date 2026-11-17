@@ -63,9 +63,53 @@ Offload resource-intensive operations to maintain high performance, even in hybr
 - [`pgaa.enable_orderby_pushdown`](reference/configuration_parameters#pgaaenable_orderby_pushdown): Authorizes the offloading of `ORDER BY` and any constant `LIMIT`/`OFFSET` as a bounded top-N operation, so sorting and truncation happen at the source instead of after streaming full results back to Postgres.
 - [`pgaa.enable_distinct_pushdown`](reference/configuration_parameters#pgaaenable_distinct_pushdown): Authorizes the offloading of plain `SELECT DISTINCT` to the remote executor.
 - [`pgaa.enable_window_pushdown`](reference/configuration_parameters#pgaaenable_window_pushdown): Authorizes the offloading of window functions to the remote executor.
+- [`pgaa.enable_setop_pushdown`](reference/configuration_parameters#pgaaenable_setop_pushdown): Authorizes the offloading of `UNION ALL` to the remote executor.
+- [`pgaa.enable_partition_pushdown`](reference/configuration_parameters#pgaaenable_partition_pushdown): Authorizes the offloading of scans and aggregates over the PGAA partitions of a partitioned table, including sub-partitioned tables. If the table also has heap partitions, Postgres combines the offloaded partial aggregate with the results from the heap partitions. For these mixed tables, only `count`, `min`, `max`, `sum`, and `avg` over integer or numeric values push down.
 
 Whole-row references, such as `to_json(r.*)`, are pushed down to the remote executor automatically and don't have a dedicated toggle.
+
+### Expressions that push down
+
+PGAA pushes down the following expressions along with the operations that contain them. They don't have dedicated toggles.
+
+- `CAST` and `::` casts, `CASE`, `COALESCE`, and string concatenation (`||`).
+- Date arithmetic with integers, such as `date_column + 7`, where the integer is a number of days.
+- The scalar functions `substr`/`substring`, `extract`/`date_part`, `upper`, `lower`, `length`, the `trim` family, `abs`, `floor`, `ceil`, `round`, `replace`, `lpad`, `rpad`, and `strpos`.
+- `DISTINCT` aggregates: `count`, `sum`, and `avg`.
+- `HAVING` clauses.
+- Partially supported aggregates. When an expression contains an aggregate that the remote executor can't evaluate as a whole, such as `round(avg(x), 2)` or `sum(a) / nullif(sum(b), 0)`, PGAA offloads the aggregate parts and Postgres computes the rest.
+
+PGAA doesn't push down casts from `numeric` or floating-point types to integer types. Postgres rounds the value in these casts, while the remote executor truncates it.
 
 !!!Note
 `pgaa.enable_distinct_pushdown` doesn't apply on WarehousePG, where the MPP planner deduplicates `DISTINCT` with a Motion and HashAggregate above the scan before PGAA's pushdown stage runs.
 !!!
+
+## Using vectorized execution (experimental)
+
+By default, PGAA accelerates queries over analytical tables. With vectorized execution, PGAA can also run part of a query over regular Postgres tables in its built-in vectorized engine, which is based on DataFusion, without replicating the data to Iceberg or Delta Lake. Postgres still handles table scans and other parts of the plan, and PGAA works with the Postgres planner to decide which joins, aggregates, sorts, and window functions to execute in the vectorized engine. The vectorized engine runs in the Postgres process on a single thread.
+
+!!! Note
+Vectorized execution is experimental. The cost model and configuration might change in future versions. WarehousePG isn't supported.
+!!!
+
+To enable vectorized execution for your session:
+
+```sql
+SET pgaa.enable_vectorized_execution = on;
+```
+
+The following parameters control how frequently vectorized nodes appear in query plans:
+
+- [`pgaa.vectorized_conversion_cost`](reference/configuration_parameters#pgaavectorized_conversion_cost): The planner cost per row of converting data between Postgres and Arrow.
+- [`pgaa.vectorized_compute_cost_factor`](reference/configuration_parameters#pgaavectorized_compute_cost_factor): How much cheaper the planner prices vectorized aggregates, sorts, and window functions than the equivalent Postgres nodes.
+- [`pgaa.vectorized_join_cost_factor`](reference/configuration_parameters#pgaavectorized_join_cost_factor): How much cheaper the planner prices vectorized joins than the equivalent Postgres joins.
+- [`pgaa.vectorized_batch_size`](reference/configuration_parameters#pgaavectorized_batch_size): The number of rows converted per Arrow record batch.
+
+To check whether a query uses vectorized execution, run `EXPLAIN`. Vectorized nodes appear as `Custom Scan (PGAA Vectorized)` and show the vectorized plan and query. `EXPLAIN ANALYZE` also shows the runtime metrics of the vectorized plan, such as row counts and elapsed compute time.
+
+## Managing Seafowl memory
+
+After a query finishes, Seafowl can keep memory that it no longer uses instead of returning it to the operating system, so the memory the Seafowl process occupies can stay high while it's idle. To return this memory, enable the memory reaper by setting [`pgaa.autostart_seafowl_memory_reaper_check_interval_s`](reference/configuration_parameters#pgaaautostart_seafowl_memory_reaper_check_interval_s) to the number of seconds between checks. The reaper is disabled by default.
+
+The reaper acts only when resident memory exceeds the pool's reservation by more than [`pgaa.autostart_seafowl_memory_reaper_slack_threshold_mb`](reference/configuration_parameters#pgaaautostart_seafowl_memory_reaper_slack_threshold_mb) (512 MB by default). To limit how much memory Seafowl can use, set [`pgaa.autostart_seafowl_max_memory_mb`](reference/configuration_parameters#pgaaautostart_seafowl_max_memory_mb).

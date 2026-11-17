@@ -92,9 +92,53 @@ In CompatScan, attempt to offload window functions to the remote executor engine
 
 Default is `on`.
 
+### pgaa.enable_setop_pushdown
+
+In CompatScan, attempt to offload `UNION ALL` to the remote executor engine (Seafowl or Spark).
+
+Default is `on`.
+
+### pgaa.enable_partition_pushdown
+
+In CompatScan, attempt to offload queries over partitioned tables that have PGAA partitions, including sub-partitioned tables, to the remote executor engine (Seafowl or Spark). PGAA fuses the PGAA partitions of a partitioned table into one remote query. For tables that mix PGAA and heap partitions, PGAA splits aggregates into a remote partial aggregate over the PGAA partitions and a local partial aggregate over the heap partitions, and Postgres combines the results.
+
+Default is `on`.
+
+### pgaa.enable_vectorized_execution
+
+Experimental. Enables PGAA to propose plans that run eligible joins, aggregates, sorts, and window functions over regular Postgres tables in PGAA's built-in vectorized engine, which is based on DataFusion, without requiring replication to Iceberg or Delta Lake. Postgres handles table scans and other parts of the plan. This works together with the Postgres planner. The [`pgaa.vectorized_conversion_cost`](#pgaavectorized_conversion_cost), [`pgaa.vectorized_compute_cost_factor`](#pgaavectorized_compute_cost_factor), and [`pgaa.vectorized_join_cost_factor`](#pgaavectorized_join_cost_factor) parameters determine how frequently vectorized nodes appear in plans.
+
+The cost model and configuration for this feature might change in future versions. WarehousePG isn't supported.
+
+Default is `off`.
+
+### pgaa.vectorized_batch_size
+
+Experimental. Sets the number of Postgres rows that PGAA converts per Arrow record batch before feeding them to the vectorized engine. Used when [`pgaa.enable_vectorized_execution`](#pgaaenable_vectorized_execution) is on.
+
+Default is 8192.
+
+### pgaa.vectorized_conversion_cost
+
+Experimental. Sets the planner cost of converting one row between Postgres and Arrow. The planner charges this cost for each row that enters or leaves the vectorized engine. Accepts values of `0` or greater. Used when [`pgaa.enable_vectorized_execution`](#pgaaenable_vectorized_execution) is on.
+
+Default is 0.0025.
+
+### pgaa.vectorized_compute_cost_factor
+
+Experimental. Sets the planner cost of a vectorized aggregate, sort, window function, or distinct operation relative to the Postgres estimate for the same operator. Lower values make the planner favor vectorized nodes. Accepts values of `0` or greater. Used when [`pgaa.enable_vectorized_execution`](#pgaaenable_vectorized_execution) is on.
+
+Default is 0.1.
+
+### pgaa.vectorized_join_cost_factor
+
+Experimental. Sets the planner cost of a vectorized join relative to the Postgres estimate for the same join. Lower values make the planner favor vectorized joins. At the default value of 1, the planner prefers a vectorized join only when its input is already in Arrow format or when the join feeds a vectorized aggregate. Accepts values of `0` or greater. Used when [`pgaa.enable_vectorized_execution`](#pgaaenable_vectorized_execution) is on.
+
+Default is 1.0.
+
 ### pgaa.ctas_intermediate_flush_size
 
-Controls the batching behavior during large `INSERT` or `CREATE TABLE AS (CTAS)` operations into PGAA-managed tables.
+Controls the batching behavior during large `INSERT` or `CREATE TABLE AS (CTAS)` operations into PGAA-managed tables. PGAA collects rows into in-memory batches and flushes a batch to storage after this many rows. Smaller values reduce peak memory use but can increase I/O overhead. Larger values can improve bulk insert performance but use more memory. Changes to this parameter require a restart.
 
 Default is 8192.
 
@@ -106,13 +150,13 @@ Default is 3072 (MB).
 
 ### pgaa.scan_aggregation_cost_factor
 
-A multiplier used by the Postgres query planner to weight the cost of performing aggregations on the remote backend (Spark or Seafowl) compared to local Postgres execution.
+A discount factor that the Postgres query planner applies to the cost of aggregations that PGAA pushes down to the remote backend (Spark or Seafowl), relative to Postgres's `cpu_tuple_cost`.
 
 Default is 0.005.
 
 ### pgaa.scan_per_tuple_cost
 
-A multiplier used by the Postgres query planner to weight the cost of scanning a single row (tuple) on the remote backend (Spark or Seafowl) compared to local Postgres execution.
+The cost the Postgres query planner assigns to processing a single row (tuple) in a scan on the remote backend (Spark or Seafowl). Mainly intended for debugging.
 
 Default is 0.02.
 
@@ -124,15 +168,13 @@ Default is 0.5.
 
 ### pgaa.scan_startup_cost
 
-A multiplier used by the Postgres query planner to weight the fixed "startup" cost of initiating a scan on the remote backend (Spark or Seafowl) compared to local Postgres execution.
+The fixed startup cost the Postgres query planner assigns to starting a scan on the remote backend (Spark or Seafowl). Mainly intended for debugging.
 
 Default is 25.
 
 ### pgaa.use_seafowl_cost_estimates
 
-Determines whether the Postgres query planner should request real-time cost estimates directly from the Seafowl engine instead of relying on the statistics collected internally by Postgres.
-
-Default is `on`.
+Deprecated. Previously determined whether the Postgres query planner requested real-time cost estimates directly from the Seafowl engine instead of relying on the statistics collected internally by Postgres. PGAA now injects Iceberg and Delta Lake statistics at plan time, and other planner improvements mean this parameter no longer results in better plans. PGAA keeps the parameter for backward compatibility, but it's always off. Remove it from your configuration.
 
 ### pgaa.enable_metadata_stats
 
@@ -145,6 +187,8 @@ Default is `on`.
 !!!Note
 The `pgaa.autostart_seafowl` parameters are not available on PGAA for WarehousePG. On WarehousePG, Seafowl is managed as a `systemd` service on each host. See the [WarehousePG installation](../whpg/installing#enabling-the-extension) section for details.
 !!!
+
+When you change a `pgaa.autostart_seafowl` parameter and reload the configuration, for example with `pg_reload_conf()`, PGAA restarts the Seafowl process so the change takes effect. Queries that are running when Seafowl restarts might fail.
 
 ### pgaa.autostart_seafowl
 
@@ -169,6 +213,18 @@ Default is `greedy`.
 Wraps the Seafowl memory pool with a tracking layer that includes the top memory consumers in out-of-memory error messages, making it easier to diagnose which query or operation exhausted memory.
 
 Default is `off`.
+
+### pgaa.autostart_seafowl_memory_reaper_check_interval_s
+
+Sets how often, in seconds, the Seafowl process checks whether its resident memory has drifted above what its memory pool is tracking. When it has, the memory reaper returns idle heap memory to the operating system. Setting this to `0` disables the reaper.
+
+Default is 0.
+
+### pgaa.autostart_seafowl_memory_reaper_slack_threshold_mb
+
+Sets how far, in megabytes, the resident memory of the Seafowl process must drift above its memory pool's reservation before the memory reaper tries to reclaim it. Used when [`pgaa.autostart_seafowl_memory_reaper_check_interval_s`](#pgaaautostart_seafowl_memory_reaper_check_interval_s) is greater than `0`.
+
+Default is 512.
 
 ### pgaa.autostart_seafowl_enable_metrics
 
@@ -230,9 +286,9 @@ Default is `info`.
 
 ### pgaa.autostart_seafowl_path
 
-Specifies the absolute file path to the Seafowl executable. This tells the PGAA supervisor exactly which binary to launch when starting the background analytical engine. Modification of this parameter is only required for custom configurations where you are running the Seafowl service on a separate machine or container.
+Specifies the path to the Seafowl executable. The path tells the PGAA supervisor which binary to launch when starting the background analytical engine. If you don't set this parameter, PGAA searches the `PATH` of the Postgres server for an executable named `seafowl`. Set it only if the Seafowl binary isn't on that `PATH`.
 
-Default is an empty string.
+Default is `NULL`.
 
 ###  pgaa.autostart_seafowl_port
 
@@ -249,6 +305,12 @@ Default is an empty string.
 ### pgaa.enable_maintenance_worker
 
 Controls whether the PGAA background supervisor launches and manages a dedicated maintenance worker process.
+
+Default is `off`.
+
+### pgaa.enable_replication_worker
+
+Enables the background worker that natively replicates the tables registered in `pgaa.replicated_table` to Delta Lake or Iceberg tables. Changing this parameter requires a configuration reload (`SIGHUP`). Native replication also requires `wal_level = logical`. See [Replicating Postgres tables natively](../replication).
 
 Default is `off`.
 
@@ -274,13 +336,13 @@ Default is `http://localhost:47470`.
 
 ### pgaa.metastore_sync_poll_rate_s
 
-Sets the interval, in seconds, for polling the state of the current attached catalog. Setting this to 0 completely disables the automatic background synchronization.
+Sets the interval, in seconds, for polling the state of the current attached catalog. Setting this to 0 completely disables the automatic background synchronization. Changes to this parameter require a restart.
 
 Default is 60 seconds.
 
 ### pgaa.metastore_sync_stale_duration_s
 
-Defines the threshold at which the local metadata for an attached catalog is considered stale. If the metadata in the local cache is older than this duration, the system prioritizes a refresh to ensure consistency with the data lake.
+Defines the threshold at which the local metadata for an attached catalog is considered stale. If the metadata in the local cache is older than this duration, the system prioritizes a refresh to ensure consistency with the data lake. Changes to this parameter require a restart.
 
 Default is 60 seconds.
 
@@ -326,7 +388,7 @@ Default is 3600.
 
 ### pgaa.max_replication_lag_s
 
-Maximum allowed lag (seconds) before a flush is forced.
+Sets the maximum time, in seconds, that the PGAA writer can hold changes in memory before it must flush them to storage. Also see [`pgaa.max_in_memory_mb`](#pgaamax_in_memory_mb), which forces a flush based on size.
 
 Default is 5.
 
@@ -341,6 +403,8 @@ You can check the full list of DataFusion configuration parameters that PGAA inc
 ```sql
 SELECT name, setting, short_desc, context FROM pg_settings WHERE name LIKE '%pgaa.data%';
 ```
+
+PGAA changes one DataFusion default: `pgaa.datafusion.explain.physical_plan_only` is `true` so that `EXPLAIN` shows only the physical plan.
 
 Refer to the [DataFusion documentation](https://datafusion.apache.org/user-guide/configs.html) for a comprehensive list of keys, default values, and performance impacts. When referring to the DataFusion documentation, you can translate their documentation keys to the PGAA configuration parameters by prefixing them with `pgaa.`.
 

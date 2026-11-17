@@ -13,13 +13,14 @@ You can run `CREATE TABLE`, `ALTER TABLE` statements with the `USING PGAA WITH .
 | Option                   | Type | Description |
 | ------------------------ | ---- | ----------- | 
 | `pgaa.storage_location`  | text | PGFS storage location name. |
-| `pgaa.path`              | text | Path within storage location. |
-| `pgaa.format`            | enum | Table format. Valid values are `delta`, `iceberg`, and `parquet`. (Some might not be supported depending on the feature).| 
-| `pgaa.managed_by`        | text | Catalog name for catalog-managed tables. |
+| `pgaa.path`              | text | Path within storage location. If you set `pgaa.path` without `pgaa.storage_location`, PGAA uses the default storage location. |
+| `pgaa.format`            | enum | Table format. Valid values are `delta`, `iceberg`, and `parquet`. (Some might not be supported depending on the feature). If you don't set it for a table with a storage location and path, PGAA infers the format from the files at that path. Catalog-managed tables must use `iceberg`. | 
+| `pgaa.managed_by`        | text | Catalog name for catalog-managed tables. Requires `pgaa.catalog_namespace` and `pgaa.catalog_table`, and can't be combined with `pgaa.storage_location` or `pgaa.path`. |
 | `pgaa.catalog_namespace` | text | Namespace/schema in catalog. |
 | `pgaa.catalog_table`     | text | Table name in catalog.|
 | `pgaa.auto_truncate`     | boolean | Truncate heap data on access method switch to PGAA. Requires PGD integration. See [Offloading to analytics](/pgd/latest/tiered-storage/offload/) for details. |
-| `pgaa.purge_data_if_exists` | boolean | Purge existing analytics data when running `CREATE TABLE AS`. |
+| `pgaa.purge_data_if_exists` | boolean | Purge existing analytics data when running `CREATE TABLE AS`, or when registering a table for native replication with `pgaa.replicate`. |
+| `pgaa.replicate`          | boolean | Natively replicate a Postgres table to Delta Lake or Iceberg. Use `CREATE TABLE ... WITH (pgaa.replicate = true)` or `ALTER TABLE ... SET (pgaa.replicate = true)` on a heap table, without `USING PGAA`. Use `ALTER TABLE ... RESET (pgaa.replicate)` to stop replicating. Can't be combined with `USING PGAA`, `pgaa.tiered_table`, or `pgaa.auto_truncate`. Not available on a PGD node. See [Replicating Postgres tables natively](../replication). |
 | `pgaa.tiered_table`       | boolean | Mark as tiered table. Requires PGD integration. See [Implementing tiered tables](/pgd/latest/tiered-storage/tiered-tables/) for details. | 
 
 
@@ -47,13 +48,16 @@ You can run `CREATE TABLE`, `ALTER TABLE` statements with the `USING PGAA WITH .
     If you leave the column definitions empty (`()`), PGAA will automatically discover the schema from the metadata files when you first query the table and will map columns by name to the fields found in the remote Iceberg/Delta metadata or Parquet headers.
 
 
-- Altering the table from the previous example to point at a PGFS storage location:
+- Altering the table from the previous example to point at a PGFS storage location. Because catalog-managed tables can't also have a storage location, reset the catalog options in the same statement:
 
     ```sql
     ALTER TABLE managed_sales_data
-    SET ACCESS METHOD PGAA,
+    RESET (
+        pgaa.managed_by,
+        pgaa.catalog_namespace,
+        pgaa.catalog_table
+    ),
     SET (
-        pgaa.format = 'iceberg',
         pgaa.storage_location = 'my_lake_data',
         pgaa.path = 'warehouse_data'
     );
@@ -86,7 +90,7 @@ Transition tables between transactional and analytical storage by altering the t
 To offload an HTAP table to object storage and reclaim local disk space, change the access method to PGAA. The local data will be removed, leaving the data exclusively in the data lake. This is a manual alternative to the automated lifecycle offloading.
 
 ```sql
-ALTER TABLE sales SET ACCESS METHOD PGAA;
+ALTER TABLE sales SET ACCESS METHOD PGAA,
 SET (
   pgaa.auto_truncate = 'true',
   pgaa.format = 'iceberg',

@@ -10,7 +10,7 @@ A catalog service acts as the centralized "brain" of a data lake, decoupling phy
 The Postgres Analytics Accelerator (PGAA) integrates with third-party catalogs to provide seamless data lake connectivity for analytical workloads within your Postgres deployment.
 
 PGAA supports reading from and writing (using [CTAS](ctas/#using-an-iceberg-catalog)) to Iceberg tables using the following catalog implementations: 
-- **REST catalogs:** Any service following the Apache Iceberg REST API, such as Lakekeeper, Tabular, Apache Polaris, Project Nessie, or MinIO AIStor. 
+- **REST catalogs:** Any service following the Apache Iceberg REST API, such as Lakekeeper, Tabular, Apache Polaris, Project Nessie, MinIO AIStor, or the AWS Glue Data Catalog. 
 - **AWS S3 Tables:** A high-performance, AWS-native catalog designed for cloud-scale analytics. 
 
 Managing external Iceberg catalogs with PGAA involves two main phases: 
@@ -34,7 +34,7 @@ SELECT pgaa.add_catalog(
 ```
 
 Specify one of the following catalog types:
-- `iceberg-rest`: For Iceberg REST catalog (Lakekeeper, Snowflake Polaris, Tabular, MinIO AIStor).
+- `iceberg-rest`: For Iceberg REST catalog (Lakekeeper, Snowflake Polaris, Tabular, MinIO AIStor, AWS Glue Data Catalog).
 - `iceberg-s3tables`: For AWS S3 Tables.
 
 ### REST catalog
@@ -53,6 +53,8 @@ SELECT pgaa.add_catalog(
     }'
 );
 ```
+
+Set `url` to the endpoint of the catalog service up to, but not including, the `/v1` API path. PGAA adds `/v1` and the warehouse name to each request.
 
 A REST catalog typically holds the object store credentials itself, or authenticates to the object store using a method such as IMDSv2 or WebIdentity. When a client requests a table, the catalog checks access and vends short-term, table-scoped credentials back to the client. This credential-vending model is the recommended architecture because the catalog governs data access centrally, and the client never needs to hold long-lived object store credentials, only an API token to authenticate with the catalog.
 
@@ -85,6 +87,8 @@ Where:
 - `endpoint`: The object store endpoint, required for S3-compatible stores such as MinIO.
 - `allow_http`: Set to `"true"` to allow non-TLS connections to the endpoint.
 
+If the catalog doesn't vend credentials and you don't set `store_config`, PGAA can't write the table's data files, and operations that write to the catalog's tables, such as [native replication](replication), fail.
+
 `store_config` supports the same object store providers as PGFS. For the connection options for Azure or Google Cloud Storage, see the [PGFS storage provider documentation](/pg_extensions/pgfs/using/#storage-provider-types).
 
 
@@ -103,6 +107,40 @@ SELECT pgaa.add_catalog(
     }'
 );
 ```
+
+#### AWS Glue Data Catalog
+
+To connect to the AWS Glue Data Catalog through its Iceberg REST endpoint, use the `iceberg-rest` catalog type and add a `sigv4` object to `catalog_options`. The `sigv4` object holds your AWS credentials and the name of the AWS service that signs the requests:
+
+```sql
+SELECT pgaa.add_catalog(
+    'my_glue_catalog',
+    'iceberg-rest',
+    '{
+        "url": "https://glue.us-east-1.amazonaws.com/iceberg",
+        "warehouse": "your_warehouse_id",
+        "sigv4": {
+            "access_key": "your_access_key",
+            "secret_key": "your_secret_key",
+            "session_token": "your_session_token",
+            "region": "us-east-1",
+            "service": "glue"
+        }
+    }'
+);
+```
+
+The `sigv4` object accepts the following fields:
+
+| Field           | Description |
+| --------------- | ----------- |
+| `access_key`    | The AWS access key ID. Required. |
+| `secret_key`    | The AWS secret access key. Required. |
+| `session_token` | The AWS session token, if you use temporary credentials. |
+| `region`        | The AWS region. |
+| `service`       | The SigV4 signing service name, for example `glue` for the AWS Glue Data Catalog Iceberg REST endpoint or `s3tables` for the S3 Tables native REST endpoint. |
+
+If you don't also specify a `store_config` object, PGAA uses the `sigv4` credentials to access the table data in Amazon S3.
 
 ### AWS S3 Tables
 

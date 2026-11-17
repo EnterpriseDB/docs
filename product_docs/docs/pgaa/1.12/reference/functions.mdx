@@ -36,7 +36,7 @@ None.
 | `reloid`                             | `OID`                     | The OID of the table relation.                                                                              |
 | `schema_name`                        | `TEXT`                    | Name of the Postgres schema.                                                                                |
 | `table_name`                         | `TEXT`                    | Name of the analytics table.                                                                                |
-| `format`                             | `pgaa.table_format`       | The storage format (`delta`, `iceberg`, or `parquet`).                                                      |
+| `format`                             | `TEXT`                    | The storage format (`delta`, `iceberg`, or `parquet`).                                                      |
 | `object_storage_snapshot_size_bytes` | `BIGINT`                  | The size in bytes of the latest table snapshot in object storage.                                           |
 | `object_storage_total_size_bytes`    | `BIGINT`                  | The total size in bytes of all versions/files for this table in object storage.                             |
 | `replication_status`                 | `pgaa.replication_status` | The current state of data movement (`enabled`, `disabled`, or `initial_offload`). Requires PGD integration. |
@@ -136,6 +136,24 @@ None.
 
 A string containing version details for the active executor engine.
 
+### pgaa.replication_slot_name()
+
+Returns the name of the logical replication slot that the native replication worker of the current database uses. Use it to look up the slot in `pg_replication_slots`. See [Replicating Postgres tables natively](../replication).
+
+**Synopsis**
+
+```sql
+SELECT pgaa.replication_slot_name();
+```
+
+**Parameters**
+
+None.
+
+**Returns**
+
+A `TEXT` value with the slot name.
+
 ## Catalog functions
 
 ### pgaa.add_catalog()
@@ -153,7 +171,7 @@ SELECT pgaa.add_catalog('catalog_name', 'catalog_type', 'catalog_options'::json)
 | Parameter         | Type                | Description                                                                                                           |
 | ----------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `catalog_name`    | `VARCHAR`           | A unique name for the catalog within PGAA.                                                                            |
-| `catalog_type`    | `pgaa.catalog_type` | The catalog type. Supported values are `iceberg-rest` (Iceberg REST catalog), and `iceberg-s3tables` (AWS S3 Tables). |
+| `catalog_type`    | `VARCHAR`           | The catalog type. Supported values are `iceberg-rest` (Iceberg REST catalog, including the AWS Glue Data Catalog), and `iceberg-s3tables` (AWS S3 Tables). |
 | `catalog_options` | `JSON`              | A JSON object containing the the connection and authentication parameters.                                            |
 
 Depending on which storage you use, your JSON file for the `catalog_options` must specify different options.
@@ -165,18 +183,20 @@ Depending on which storage you use, your JSON file for the `catalog_options` mus
     "url": "https://your-catalog-endpoint.com",
     "warehouse_name": "your_warehouse_name",
     "warehouse": "your_warehouse_id",
-    "token": "your_secret_auth_token"
+    "token": "your_secret_auth_token",
     "danger_accept_invalid_certs": "false"
     }
     ```
 
       Where:
 
-    -   `url`: The base HTTP(S) endpoint of the REST catalog service.
+    -   `url`: The HTTP(S) endpoint of the REST catalog service, up to but not including the `/v1` API path. PGAA adds `/v1` and the warehouse name to each request.
 
     -   `warehouse_name`: A human-readable alternative to the warehouse ID, supported by some REST providers for easier configuration.
 
     -   `warehouse`: The unique identifier for the specific warehouse within the catalog service.
+
+    -   `token`: (Optional) A bearer token that PGAA uses to authenticate with the catalog.
 
     -   `danger_accept_invalid_certs`: If set to `true`, Postgres skips SSL certificate validation. Use this only for internal testing or with self-signed certificates; never use it for sensitive public connections.
 
@@ -237,6 +257,34 @@ Depending on which storage you use, your JSON file for the `catalog_options` mus
 
     -   `oauth2.scope`: (Optional) A space-delimited list of permissions or resources the client is requesting access to.
 
+        To connect to the AWS Glue Data Catalog through its Iceberg REST endpoint, sign requests with AWS Signature Version 4 (SigV4) by adding a `sigv4` object:
+
+        ```json
+        {
+        "url": "https://glue.us-east-1.amazonaws.com/iceberg",
+        "warehouse": "your_warehouse_id",
+        "sigv4": {
+            "access_key": "your_access_key",
+            "secret_key": "your_secret_key",
+            "session_token": "your_session_token",
+            "region": "us-east-1",
+            "service": "glue"
+        }
+        }
+        ```
+
+        Where:
+
+    -   `sigv4.access_key` and `sigv4.secret_key`: The AWS credentials used to sign requests.
+
+    -   `sigv4.session_token`: (Optional) The AWS session token, if you use temporary credentials.
+
+    -   `sigv4.region`: (Optional) The AWS region.
+
+    -   `sigv4.service`: (Optional) The SigV4 signing service name, `glue` for the AWS Glue Data Catalog.
+
+        If you don't specify `store_config`, PGAA also uses the `sigv4` credentials to access the table data in Amazon S3. See [AWS Glue Data Catalog](../catalog#aws-glue-data-catalog).
+
 
 -   For AWS S3 Tables: 
 
@@ -284,7 +332,7 @@ Returns the name of the catalog upon successful update.
 Rotate an OAuth2 token:
 
 ```sql
-SELECT * FROM pgaa.lakehouse.update_catalog(
+SELECT * FROM pgaa.update_catalog(
     'marketing_lakehouse', 
     '{
         "url": "https://iceberg.example.com",
@@ -335,9 +383,9 @@ None.
 | Column              | Type                  | Description                                                                                                           |
 | ------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `name`              | `TEXT`                | The name of the catalog.                                                                                              |
-| `type`              | `pgaa.catalog_type`   | The catalog type. Supported values are `iceberg-rest` (Iceberg REST catalog), and `iceberg-s3tables` (AWS S3 Tables). |
+| `type`              | `TEXT`                | The catalog type. Supported values are `iceberg-rest` (Iceberg REST catalog, including the AWS Glue Data Catalog), and `iceberg-s3tables` (AWS S3 Tables). |
 | `options`           | `JSON`                | The connection parameters (URL, ARN, etc.) used for this catalog.                                                     |
-| `status`            | `pgaa.catalog_status` | The current health of the catalog ( `detached`, `attached`, `refresh_retry`, or `refresh_failed`).                    |
+| `status`            | `TEXT`                | The current health of the catalog ( `detached`, `attached`, `refresh_retry`, or `refresh_failed`).                    |
 | `created_at`        | `TIMESTAMPTZ`         | The timestamp when the catalog was first registered.                                                                  |
 | `last_refreshed_at` | `TIMESTAMPTZ`         | The last time PGAA successfully synced metadata from this catalog.                                                    |
 
@@ -410,8 +458,8 @@ The function returns the row from the `pgaa.catalog` system table for the catalo
 | Column   | Type                  | Description                               |
 | -------- | --------------------- | ----------------------------------------- |
 | `name`   | `TEXT`                | The name of detached catalog.             |
-| `type`   | `pgaa.catalog_type`   | The catalog type.                         |
-| `status` | `pgaa.catalog_status` | The new status, which will be `detached`. |
+| `type`   | `TEXT`                | The catalog type.                         |
+| `status` | `TEXT`                | The new status, which will be `detached`. |
 
 ### pgaa.test_catalog()
 
@@ -573,11 +621,7 @@ SELECT pgaa.execute_compaction('table_name'::regclass, 'settings'::json);
 | Parameter  | Type       | Description                                                                    |
 | ---------- | ---------- | ------------------------------------------------------------------------------ |
 | `relation` | `REGCLASS` | The name or OID of the analytical table to compact.                            |
-| `settings` | `JSON`     | Currently not supported. An optional JSON object defining compaction behavior. |
-
-!!! Note
-
-    The parameter `settings` is currently not supported. Use [pgaa.spark_sql()](#pgaaspark_sql) for more granular control over compaction behavior.
+| `settings` | `JSON`     | An optional JSON object defining compaction options, passed to [`pgaa.launch_task()`](#pgaalaunch_task) as the task options. |
 
 **Returns**
 
@@ -630,7 +674,6 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
     ```json
     {
     "target_size": 536870912,
-    "preserve_insertion_order": true,
     "max_concurrent_tasks": 10,
     "max_spill_size": 2147483648,
     "min_commit_interval": 60,
@@ -641,11 +684,11 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
       Where:
 
     -   `target_size` (Delta only): Specifies the size of the output files in bytes.
-    -   `preserve_insertion_order` (Delta only): Whether to maintain the existing sort order of rows.
+    -   `preserve_insertion_order` (Delta only): Accepted for backward compatibility, but PGAA ignores it. Compaction always preserves partition order.
     -   `max_concurrent_tasks` (Delta only): Limits the number of parallel tasks the executor can run.
     -   `max_spill_size` (Delta only): Sets the maximum data size in bytes allowed to spill to disk during the process.
     -   `min_commit_interval` (Delta only): Sets the minimum wait time in seconds between committing updates to the Delta log.
-    -   `dry_run`: If `true`, calculates and logs the operation, but does not perform compaction.
+    -   `dry_run` (Iceberg only): If `true`, calculates and logs the operation, but does not perform compaction. Delta Lake tables don't accept this option.
 
 
 -   `zorder` (Delta only): A clustering technique that reorganizes data across multiple columns to improve "data skipping" for queries with filters on those columns. The available `task_options` are:
@@ -654,7 +697,6 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
     {
     "columns": ["customer_id", "transaction_date"],        
     "target_size": 1073741824,
-    "preserve_insertion_order": false,
     "max_concurrent_tasks": 4,
     "max_spill_size": 2147483648,
     "min_commit_interval": 30
@@ -665,7 +707,7 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
 
     -   `columns`: (Required) An array of strings representing the columns to be used for Z-ordering.
     -   `target_size`: Specifies the size of the output files in bytes.
-    -   `preserve_insertion_order`: Whether to maintain the existing sort order of rows.
+    -   `preserve_insertion_order`: Accepted for backward compatibility, but PGAA ignores it. Z-ordering never preserves the existing row order.
     -   `max_concurrent_tasks`: Limits the number of parallel tasks the executor can run.
     -   `max_spill_size`: Sets the maximum data size in bytes allowed to spill to disk during the process.
     -   `min_commit_interval`: Sets the minimum wait time in seconds between committing updates to the Delta log.
@@ -686,7 +728,7 @@ The values for the JSONB `task_options` depend on each `task_type`. All options 
     -   `dry_run`: If `true`, calculates and logs the files that would be deleted, but performs no deletions.
     -   `enforce_retention_duration`: If `true`, the task validates the `retention_period` against the system's global minimum safety limit.
 
--   `purge` (Delta only): Explicitly removes data from a specific storage path. The available `task_options` are:
+-   `purge`: Explicitly removes data from a specific storage path. PGAA deletes all objects under the path, and doesn't check the table format or whether the objects belong to the table. The available `task_options` are:
 
     ```json
     {
