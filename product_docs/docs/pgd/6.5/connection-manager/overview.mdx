@@ -57,6 +57,18 @@ Because the Raft leader selects the write leader, failover takes longer when the
 
 See [Understanding failure scenarios](/pgd/current/recovering-from-failures/) for the behavior in other failure cases.
 
+## Raft leader elections and PreVote
+
+A Raft leader is elected when the nodes of a group stop hearing from the current leader. In a plain Raft election, a node whose timeout expires raises its term and asks the others for votes. A node that was cut off from the group, for example by a flapping network link, keeps raising its term while it's isolated. When it reconnects, its higher term forces the healthy leader to step down and triggers an unnecessary election, which briefly leaves the group without a Raft leader and without a write leader.
+
+PGD prevents these unnecessary elections with Raft PreVote. Before it starts a real election, a node first runs a straw poll. It asks the other voting nodes whether they would vote for it, without raising its own term. Granting a PreVote doesn't change which node the voter treats as the Raft leader. Only if a majority of the voting nodes would vote for it does the node become a candidate and start a real election. An isolated node can't gather that majority, so it doesn't inflate its term, and it rejoins the group without disrupting the leader.
+
+PreVote needs no configuration and you can't turn it off. It's active when every node in the group runs PGD 6.2 or later, because that's when the group negotiates Raft protocol version 6003 or later. In a cluster that's mid-upgrade, the group keeps using ordinary elections until the last node is upgraded, and PreVote then switches on automatically. To check, look at the `Protocol Version` column of [`pgd raft show`](/pgd/current/reference/cli/command_ref/raft/show) or the `protocol_version` column of [`bdr.group_raft_details`](/pgd/current/reference/tables-views-functions/catalogs-visible#bdrgroup_raft_details).
+
+!!! Note
+PreVote applies to the Raft instance of the top-level group. Raft subgroups still use ordinary elections in this release.
+!!!
+
 ## Authentication
 
 Connection Manager performs TLS termination and pre-authentication using the same `pg_hba.conf` configuration as Postgres, with no separate user list to maintain. See [Authentication](/pgd/current/connection-manager/authentication) for supported methods and constraints.

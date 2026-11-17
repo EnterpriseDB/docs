@@ -10,6 +10,18 @@ With the Raft leader established, the leader then queries the catalog to see if 
 
 If no write leader is designated, the Raft leader takes steps to designate a new write leader. The process starts by querying all the nodes in the group to establish their state. The resulting list of nodes is then filtered for ineligible nodes (for example, witness nodes) and prioritized. The first/top entry on the list is then set as the new write leader in the Raft log.
 
+## Raft leader elections and PreVote
+
+A Raft leader is elected when the nodes of a group stop hearing from the current leader. In a plain Raft election, a node whose timeout expires raises its term and asks the others for votes. A node that was cut off from the group, for example by a flapping network link, keeps raising its term while it's isolated. When it reconnects, its higher term forces the healthy leader to step down and triggers an unnecessary election, which briefly leaves the group without a Raft leader and without a write leader.
+
+PGD 5.10 adds Raft PreVote to prevent these unnecessary elections. Before it starts a real election, a node first runs a straw poll. It asks the other voting nodes whether they would vote for it, without raising its own term. Granting a PreVote doesn't change which node the voter treats as the Raft leader. Only if a majority of the voting nodes would vote for it does the node become a candidate and start a real election. An isolated node can't gather that majority, so it doesn't inflate its term, and it rejoins the group without disrupting the leader.
+
+PreVote needs no configuration and you can't turn it off. It's active when every node in the group runs PGD 5.10 or later, because that's when the group negotiates Raft protocol version 5011. In a cluster that's mid-upgrade, the group keeps using ordinary elections until the last node is upgraded, and PreVote then switches on automatically. To check, look at the `Protocol Version` column of [`pgd raft show`](../../cli/command_ref/raft/show) or the `protocol_version` column of [`bdr.group_raft_details`](../../reference/catalogs-visible#bdrgroup_raft_details).
+
+!!! Note
+In PGD 5.10.0, PreVote applies to the Raft instance of the top-level group. Raft subgroups still use ordinary elections.
+!!!
+
 ## Proxy interaction
 
 All proxies initially connect any data node in their group. This behavior allows them to query the catalog for the current write leader and begin routing connections to that node.
