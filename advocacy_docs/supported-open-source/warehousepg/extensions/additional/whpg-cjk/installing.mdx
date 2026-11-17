@@ -1,7 +1,7 @@
 ---
-title: Installing whpg-cjk
-navTitle: Installing
-description: Install, register, and preload the whpg-cjk extension for WarehousePG.
+title: Installing and upgrading whpg-cjk
+navTitle: Installing and upgrading
+description: Install, register, preload, and upgrade the whpg-cjk extension for WarehousePG.
 ---
 
 Install the whpg-cjk package on each host in your WarehousePG cluster, as it doesn't ship as part of the WarehousePG server package.
@@ -91,3 +91,52 @@ Optionally, preload whpg-cjk to build the analyzers once at server start, instea
     ```
 
 On restart, the server builds the analyzers for the languages listed in the `whpg_cjk.preload_languages` configuration parameter, which defaults to `korean, japanese, chinese`. Every backend on every segment inherits them, so the first-use delay and the per-backend memory copy disappear.
+
+## Upgrading whpg-cjk
+
+Upgrade whpg-cjk by installing the new package on every host, updating the extension in each database, and rebuilding the objects that depend on it. Don't drop and re-create the extension to upgrade. Check the [release notes](release_notes.mdx) to find out whether a release changes how text is analyzed. If it does, rebuild those objects so that indexed text and queries are analyzed the same way.
+
+1.  Upgrade the whpg-cjk package on every host in the cluster. Refer to [Upgrading an extension](/supported-open-source/warehousepg/extensions/additional/#upgrading-an-extension) for downloading and distributing the new package. The package name is `edb-whpg7-cjk`.
+
+1.  If you [preloaded whpg-cjk](#preloading-whpg-cjk), restart WarehousePG to load the new library:
+
+    ```bash
+    gpstop -ar
+    ```
+
+1.  In every database where you registered the extension, update it:
+
+    ```sql
+    ALTER EXTENSION whpg_cjk UPDATE;
+    ```
+
+    !!!note
+
+    In whpg-cjk 1.1.0, the update switches the parsers to the new headline function on the coordinator and on all segments. It also raises a `WARNING` that names the objects built with whpg-cjk:
+
+    -   Indexes
+    -   Generated columns
+    -   Column defaults
+    -   `CHECK` constraints
+    -   Materialized views
+    -   Objects that use `cjk_normalize()`
+
+    The warning doesn't list `tsvector` columns that triggers or your application fill.
+    !!!
+
+1.  Rebuild the objects from the warning. Run `REINDEX` on the listed indexes, run `REFRESH MATERIALIZED VIEW` on the listed materialized views, and recompute any stored `tsvector` columns, including the ones that the warning doesn't list. For more information about stored `tsvector` columns, see [Indexing large tables](using.mdx#indexing-large-tables):
+
+    ```sql
+    REINDEX INDEX <index_name>;
+    REFRESH MATERIALIZED VIEW <view_name>;
+    UPDATE <table_name> SET <tsvector_column> = to_tsvector('<config>', <column_name>);
+    ```
+
+    Where:
+
+    -   `<index_name>` is a listed index.
+    -   `<view_name>` is a listed materialized view.
+    -   `<table_name>` is a table with a stored `tsvector` column that a trigger or your application fills.
+    -   `<tsvector_column>` is that column.
+    -   `<config>` is the text search configuration for the language of your data, either `korean`, `japanese`, or `chinese`.
+    -   `<column_name>` is the text column that the `tsvector` column is built from.
