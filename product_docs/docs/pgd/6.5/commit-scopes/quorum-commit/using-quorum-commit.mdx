@@ -162,6 +162,16 @@ Quorum Commit requires a fast track writer enabled on every subscription. Before
 SELECT bdr.alter_node_group_option('topgroup', 'enable_fast_track_writer', 'true');
 ```
 
+Quorum Commit also requires the [`route_writer_election_quorum`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes) option on the node group. A write leader elected with the option off might not hold every transaction that the Quorum Commit scope acknowledged. With the option on, the write leader election collects enough answers to include a node that holds them. The default is `off`, so enable it explicitly on the top-level group. Subgroups use the top-level group's value unless they set their own:
+
+```sql
+SELECT bdr.alter_node_group_option('topgroup', 'route_writer_election_quorum', 'true');
+```
+
+The option takes effect only once consensus protocol 6007 is set, which needs all nodes to run PGD 6.5.1 or later. During a rolling upgrade, Quorum Commit runs without the guarantee until then, so enable the option as soon as the upgrade completes.
+
+Enabling the option has a cost. While too few data nodes can answer, the group has no write leader, and a failover takes at least `route_writer_election_timeout`, which also bounds the failover time of a Quorum Commit group. See [How the write leader is chosen](/pgd/current/geo-replication-dba/routing/#how-the-write-leader-is-chosen) for how the election works.
+
 Because Quorum Commit uses eager conflict resolution, applications encounter serialization errors more often than with asynchronous replication. Wrap transactions in a retry loop to handle serialization errors:
 
 ```sql

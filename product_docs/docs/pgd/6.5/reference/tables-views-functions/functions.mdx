@@ -427,7 +427,7 @@ bdr.transfer_all_leaderships(writeleader_timeout interval DEFAULT '10s')
 
 | Name                  | Type     | Default | Description                                                                                                                       |
 | --------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `writeleader_timeout` | interval | `'10s'` | Timeout for each write leadership transfer. The write leader is auto-selected and retried until this timeout is reached. |
+| `writeleader_timeout` | interval | `'10s'` | Timeout for each write leadership transfer. The write leader is auto-selected through an election round, honoring `route_priority`, and retried until this timeout is reached. |
 
 #### Return value
 
@@ -1465,7 +1465,7 @@ bdr.lag_control()
 
 ### `bdr.routing_leadership_transfer`
 
-Changing the routing leader transfers the leadership of the node group to another node. If `leader_name` is `NULL`, the system automatically selects the most appropriate node based on write leader progress.
+Changing the routing leader transfers the leadership of the node group to another node. If `leader_name` is `NULL`, the system automatically selects the target by running a write leader election round. See [How the write leader is chosen](/pgd/current/geo-replication-dba/routing/#how-the-write-leader-is-chosen).
 
 #### Synopsis
 
@@ -1481,13 +1481,13 @@ bdr.routing_leadership_transfer(node_group_name text,
 | Name               | Type     | Default    | Description                                                                                                                                                                                          |
 | ------------------ | -------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `node_group_name`  | text     |            | Name of group where the leadership transfer is requested.                                                                                                                                            |
-| `leader_name`      | text     | `NULL`       | Name of node that will become write leader. If NULL, the system automatically selects the most appropriate candidate based on write leader progress.                                                  |
-| `transfer_method`  | text     | `'strict'` | Type of the transfer. It can be `'fast'` or the default, `'strict'`, which checks the maximum lag.                                                                                                   |
+| `leader_name`      | text     | `NULL`       | Name of node that will become write leader. If NULL, the system automatically selects the target by running a write leader election round.                                                  |
+| `transfer_method`  | text     | `'strict'` | Type of the transfer. It can be `'fast'`, which switches at once, or the default, `'strict'`, which waits for the target to catch up with the leader it replaces.                                                                                                   |
 | `transfer_timeout` | interval | `'10s'`    | Timeout of the leadership transfer. Default is 10 seconds. When using auto-selection (`leader_name` is NULL), the system retries selecting the furthest-progressed node until the timeout is reached. |
 
 #### Notes
 
-When `leader_name` is `NULL`, the function selects the best candidate node by identifying the node with the furthest write leader progress and retrying selection until a suitable candidate is available or the timeout is reached. Automatic selection is useful for automated failover scenarios where manual node selection isn't required. When using Quorum Commit as the commit scope kind, pass `NULL` for `leader_name` to trigger automatic selection of the most appropriate node.
+When `leader_name` is `NULL`, the function runs an election round among the eligible candidates, excluding the current write leader. The candidates report how far they durably applied the current leader's changes, and the function ranks them by highest `route_priority`, then furthest reported position, then a node that isn't the Raft leader, then lowest node ID. It retries until a suitable candidate is available or the timeout is reached. Automatic selection is useful for automated failover scenarios where manual node selection isn't required. When using Quorum Commit as the commit scope kind, pass `NULL` for `leader_name` to trigger automatic selection of the most appropriate node.
 
 #### Selecting a candidate automatically
 
@@ -1495,7 +1495,7 @@ During automatic leader selection (when `leader_name` is `NULL`):
 
 - Route-fenced nodes (nodes with `route_fence` enabled via [`bdr.alter_node_option`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_option)) aren't considered candidates for leadership transfer.
 - Nodes with `route_writes` set to `false` aren't considered candidates for leadership transfer.
-- The `route_priority` option doesn't influence automatic selection. Selection is based solely on write leader progress among eligible nodes.
+- The `route_priority` option influences automatic selection: a candidate with a higher `route_priority` is preferred over one that's further ahead. Among candidates with equal priority, the furthest-progressed node is selected.
 
 #### Running in a mixed-version cluster
 
