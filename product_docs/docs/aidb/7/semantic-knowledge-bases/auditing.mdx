@@ -1,13 +1,13 @@
 ---
 title: Auditing semantic KB operations
 navTitle: Auditing
-description: Read the audit log of semantic knowledge base operations, see which operations are recorded, and control how long records are kept.
+description: Read the audit log of semantic knowledge base operations, see which operations AIDB records, and control how long it keeps records.
 deepToC: true
 ---
 
 AIDB records semantic knowledge base (semantic KB) operations in a durable audit log. The log helps an operator identify who performed an operation, which semantic KB and object it affected, which function ran, and the relevant operation details.
 
-The log is stored in an extension-private table. You read it only through [`aidb.semantic_kb_audit()`](../reference/semantic-knowledge-bases#aidbsemantic_kb_audit).
+AIDB stores the log in an extension-private table. You read it only through [`aidb.semantic_kb_audit()`](../reference/semantic-knowledge-bases#aidbsemantic_kb_audit).
 
 The log records completed operations only. It doesn't record failed attempts, denied calls, or rolled-back transactions.
 
@@ -15,7 +15,7 @@ The log records completed operations only. It doesn't record failed attempts, de
 
 Use the audit log to answer questions such as:
 
-- **Who changed a description?** Filter on `op => 'annotate'`, and read `actor_name`, `login_name`, and `ts`. For a change that used `force`, `detail` also holds the wording that was discarded.
+- **Who changed a description?** Filter on `op => 'annotate'`, and read `actor_name`, `login_name`, and `ts`. For a change that used `force`, `detail` also holds the wording that the change discarded.
 - **Which objects do searches return, and how often?** Filter on `op => 'retrieve'`. Each record has the search options, the number of results, and the objects returned. It doesn't have the search text.
 - **Which semantic aliases are being run?** Filter on `op => 'execute'`, and group by `object_ref`.
 
@@ -33,19 +33,28 @@ ORDER BY ts DESC;
 
 ## What's recorded
 
-AIDB records these operations:
+AIDB records the operations in the following table. The `op` and `func` columns of the audit log hold the values shown. The `func` value is the function AIDB recorded, which doesn't always match the name of the SQL function you called. For the functions themselves, see [Descriptions and curation](curation), [Relationships](relationships), and [Semantic aliases](semantic-aliases).
 
-| Operation                                                                                            | Category                       |
-|------------------------------------------------------------------------------------------------------|--------------------------------|
-| Searching a semantic KB with `aidb.semantic_kb_search()`                                             | `retrieve`                     |
-| Executing a [semantic alias](semantic-aliases)                                                       | `execute`                      |
-| Adding or removing an object description                                                             | `annotate`                     |
-| Proposing, approving, or rejecting an object description. See [Descriptions and curation](curation). | `propose`, `approve`, `reject` |
-| Adding or deleting a [relationship](relationships)                                                   | `write`                        |
-| Importing query history, and accepting a relationship candidate                                      | `write`, `approve`             |
-| Creating a semantic KB, including any context you set, and updating a semantic KB's context          | `admin`                        |
-| Processing context into reviewable proposals                                                         | `propose`                      |
-| Pruning audit records                                                                                | `admin`                        |
+| Function                                                                  | `op` value            | `func` value                          |
+|---------------------------------------------------------------------------|-----------------------|---------------------------------------|
+| `aidb.semantic_kb_search()`                                               | `retrieve`            | `semantic_kb_search`                  |
+| `aidb.execute_semantic_alias()`                                           | `execute`             | `execute_semantic_alias`              |
+| `aidb.add_comment_to_object()`                                            | `annotate`            | `add_comment_to_object`               |
+| `aidb.add_comment_to_object()`, when curation holds the change for review | `propose`             | `propose_comment`                     |
+| `aidb.remove_comment()`                                                   | `annotate`            | `remove_comment`                      |
+| `aidb.resolve_object_comment()`                                           | `approve` or `reject` | `approve_comment` or `reject_comment` |
+| `aidb.update_semantic_kb_curation()`                                      | `admin`               | `update_curation`                     |
+| `aidb.add_relationship()`                                                 | `write`               | `add_relationship`                    |
+| `aidb.delete_relationship()`                                              | `write`               | `delete_relationship`                 |
+| `aidb.import_query_history()`                                             | `write`               | `import_query_history`                |
+| `aidb.accept_relationship_candidates()`                                   | `approve`             | `accept_relationship_candidate`       |
+| `aidb.update_semantic_kb_history_filter()`                                | `admin`               | `update_history_filter`               |
+| `aidb.create_semantic_kb()`, including any context you set                | `admin`               | `create_semantic_kb`                  |
+| `aidb.update_semantic_kb_context()`                                       | `admin`               | `update_context`                      |
+| `aidb.process_semantic_kb_context()`                                      | `propose`             | `process_context`                     |
+| `aidb.semkb_audit_prune()`                                                | `admin`               | `semkb_audit_prune`                   |
+
+For example, an applied comment written with `aidb.add_comment_to_object()` is recorded with `op = 'annotate'` and `func = 'add_comment_to_object'`. A comment held for review under [curation](curation) is recorded with `op = 'propose'` until a reviewer approves or rejects it.
 
 AIDB doesn't record these operations:
 
@@ -54,9 +63,15 @@ AIDB doesn't record these operations:
 - Changing the auto-processing mode with `aidb.update_semantic_kb_auto_processing()`.
 - Searches that run through the `semkb_<name>_search` tool of a semantic KB's managed agent plugin. Searches through the native `semantic_kb_search` tool and the SQL function are recorded.
 
-Audit logging is part of the operation. An audit record commits or rolls back with the operation it describes.
-
 Every search and every alias execution writes a record. A semantic KB that's searched often can generate many records, so plan to [prune the log](#retention-and-pruning) regularly.
+
+## How AIDB writes audit records
+
+AIDB writes each audit record in the same transaction as the operation it describes. As a result:
+
+- If the operation rolls back, so does its record. A semantic alias execution that fails leaves no record.
+- If AIDB can't write the record, the operation fails instead of completing without it. This includes searches.
+- In a read-only transaction or on a hot standby, searches and alias executions run but AIDB doesn't record them. This means searches that run on a standby aren't audited.
 
 ## Reading the audit log
 
@@ -65,15 +80,7 @@ Use `aidb.semantic_kb_audit()` to read audit records. You can call it as a super
 The following example returns recent description changes for `analytics_kb`:
 
 ```sql
-SELECT
-    ts,
-    op,
-    func,
-    caller_kind,
-    actor_name,
-    login_name,
-    object_ref,
-    detail
+SELECT ts, actor_name, object_ref, detail
 FROM aidb.semantic_kb_audit(
     kb_name => 'analytics_kb',
     op => 'annotate',
@@ -84,6 +91,20 @@ FROM aidb.semantic_kb_audit(
 ORDER BY ts DESC;
 ```
 
+The query returns one row for each change:
+
+```text
+             ts             |  actor_name  |  object_ref  |                                           detail
+----------------------------+--------------+--------------+-------------------------------------------------------------------------------------------
+ 2026-11-03 10:42:17.318+00 | data_steward | sales.orders | {"mode": "edit", "forced": true, "discarded": "Customer orders.", "object_type": "table"}
+ 2026-11-02 15:05:41.902+00 | data_steward | sales.orders | {"mode": "add", "forced": false, "object_type": "table"}
+(2 rows)
+```
+
+The first row is an edit that used `force`, so `detail` also holds the wording that the edit discarded.
+
+The `detail` column holds JSON that's specific to each operation. AIDB doesn't store the text of a search or the values of alias arguments. For what each operation stores, see [The `detail` column](../reference/semantic-knowledge-bases#the-detail-column).
+
 All filters are optional:
 
 - `kb_name` limits results to one semantic KB. When it's `NULL`, the function returns records from all semantic KBs.
@@ -92,138 +113,53 @@ All filters are optional:
 - `since` returns records from the specified time onward.
 - `limit_rows` controls the maximum number of records returned. The default is 100.
 
-Results are ordered from newest to oldest. The function returns these columns:
-
-| Column        | Description                                                                                                      |
-|---------------|------------------------------------------------------------------------------------------------------------------|
-| `ts`          | When AIDB wrote the record.                                                                                      |
-| `kb_name`     | The semantic KB the record belongs to.                                                                           |
-| `op`          | The operation category. See [Operation categories and functions](#operation-categories-and-functions).         |
-| `func`        | The function that ran.                                                                                           |
-| `caller_kind` | How the operation arrived. See [Caller, actor, and login identities](#caller-actor-and-login-identities).      |
-| `actor_name`  | The effective role that invoked the operation.                                                                   |
-| `login_name`  | The role that authenticated the database session.                                                                |
-| `object_ref`  | What the operation named as its subject, such as an alias name or a table. Searches don't have an object reference. |
-| `detail`      | JSON that's specific to the operation. See [Operation details](#operation-details).                              |
-
-For all parameters and columns, see [`aidb.semantic_kb_audit`](../reference/semantic-knowledge-bases#aidbsemantic_kb_audit).
-
-## Operation categories and functions
-
-The `op` column groups related operations into categories. The `func` column records the function that ran. It isn't always the name of the SQL function you called, so filter on values you've seen in your own log.
-
-| Category   | Operations                                                                  | Function names                                                  |
-|------------|-----------------------------------------------------------------------------|-------------------------------------------------------------------------|
-| `retrieve` | Semantic KB searches.                                                       | `semantic_kb_search`                                                    |
-| `execute`  | Semantic alias execution.                                                   | `execute_semantic_alias`                                                |
-| `annotate` | Applied object-description changes.                                         | `add_comment_to_object`                                                 |
-| `write`    | Relationship and query-history changes.                                     | `add_relationship`, `delete_relationship`, `import_query_history`       |
-| `propose`  | Changes awaiting review, and context processing.                            | `propose_comment`, `process_context`                                    |
-| `approve`  | Review decisions that approve a change.                                     | `accept_relationship_candidate`                                         |
-| `reject`   | Review decisions that reject a change.                                      |                                                                         |
-| `admin`    | Configuration and maintenance operations.                                   | `create_semantic_kb`, `update_context`, `semkb_audit_prune`             |
-
-For example, an applied comment written with `aidb.add_comment_to_object()` is recorded with `op = 'annotate'` and `func = 'add_comment_to_object'`. A comment held for review under [curation](curation) is recorded with `op = 'propose'` until a reviewer approves or rejects it.
-
-## Caller, actor, and login identities
-
-Each record identifies who performed the operation:
-
-- `caller_kind` is how the operation arrived. In AIDB 7.9.0 it's always `direct`, including for operations that an agent or an MCP client runs.
-- `actor_name` is the effective role that invoked the operation.
-- `login_name` is the role that authenticated the database session.
-
-`actor_name` and `login_name` can differ when a session uses `SET ROLE`. AIDB stores the role's name as it was when AIDB wrote the record, so renaming a role later doesn't change existing records.
-
-Semantic alias execution can also run the alias query as a different role. That execution role is recorded in the `execute_role` field of `detail`. It's separate from both the actor and login identities.
-
-## Operation details
-
-The `detail` column contains JSON that's specific to the operation. AIDB never stores free text that a person typed.
-
-For a semantic KB search, `detail` contains:
-
-- The search options: `top_k`, `rrf_k`, `min_similarity`, `include_proposed`, `sources`, and `entity_types`.
-- The query length in characters, in `query_chars`.
-- The number of results, in `result_count`. This is always the true number of results.
-- `hits`, a list of the results. Each entry has `source_type`, `entity_type`, and `object_ref`. The list is limited to 100 entries and 16 KiB, and each `object_ref` is limited to 256 characters. When a limit shortens the list, `hits_truncated` is `true`.
-
-The natural-language search text isn't stored.
-
-For semantic alias execution, `detail` contains:
-
-- The execution role.
-- The names of the arguments you supplied and the number of bound parameters.
-- The result count.
-- The number of semantic KBs that own the alias.
-
-Argument values and query result rows aren't stored.
-
-For object-description changes, `detail` contains:
-
-- The object type.
-- Whether the change was an add or an edit.
-- Whether `force` was used.
-- The previous wording that a forced change discarded.
-
-For context processing, `detail` contains counts, the outcome, and the IDs of the relationships that attempt wrote. It never contains the context or the model's raw response.
-
-Audit detail is limited to 32 KiB. If the serialized detail is larger, AIDB replaces all of it with a marker that has `truncated` set to `true` and records the original size in bytes in `orig_bytes`.
+Results are ordered from newest to oldest. For the columns that the function returns, and for all parameters, see [`aidb.semantic_kb_audit`](../reference/semantic-knowledge-bases#aidbsemantic_kb_audit).
 
 ## Operations that affect multiple semantic KBs
 
 An object or semantic alias can belong to more than one semantic KB. AIDB writes one audit record for each affected semantic KB, so each KB has its own reviewable and independently prunable history.
 
+For example, if the alias `orders_by_customer` belongs to both `sales_kb` and `finance_kb`, running it writes one record for each semantic KB:
+
+```sql
+SELECT kb_name, op, object_ref
+FROM aidb.semantic_kb_audit(op => 'execute', since => now() - interval '1 hour')
+WHERE object_ref = 'orders_by_customer'
+ORDER BY kb_name;
+```
+
+```text
+  kb_name   |    op   |     object_ref
+------------+---------+--------------------
+ finance_kb | execute | orders_by_customer
+ sales_kb   | execute | orders_by_customer
+(2 rows)
+```
+
 A semantic alias that no semantic KB owns doesn't create an audit record when it runs.
 
 ## Retention and pruning
 
-Nothing deletes audit records automatically. There is no background worker for pruning. You prune records manually, or from a scheduler such as `pg_cron`.
+AIDB doesn't delete audit records automatically, so prune them routinely, either manually or from a scheduler such as `pg_cron`. Records also remain after you delete the semantic KB they describe, so you can still prune them by using the deleted KB's name.
 
-Audit records stay after you delete the semantic KB they describe. You can prune them afterward by using the deleted KB's name, as described in [Pruning audit records](#pruning-audit-records).
+To prune the audit log:
 
-### Setting the default prune age
+1. Optional. Set the default age that `aidb.semkb_audit_prune()` uses when you don't specify one. The default is `30 days`. Only a superuser can change it. Set it at the database level:
 
-The `aidb.semkb_audit_retention` parameter sets the default age that `aidb.semkb_audit_prune()` uses when you don't specify one. The default is `30 days`. Only a superuser can change it. Set it at the database level:
+   ```sql
+   ALTER DATABASE my_database
+       SET aidb.semkb_audit_retention = '90 days';
+   ```
 
-```sql
-ALTER DATABASE my_database
-    SET aidb.semkb_audit_retention = '90 days';
-```
+2. Run `aidb.semkb_audit_prune()` for each semantic KB. Specify an age explicitly, or omit it to use `aidb.semkb_audit_retention`:
 
-A zero interval makes `aidb.semkb_audit_prune()` delete nothing. A negative or invalid interval raises an error before any records are deleted. Changing this parameter doesn't schedule or run pruning. See [Configuring AIDB parameters](../install/configure#semantic-knowledge-base-audit-log).
+   ```sql
+   SELECT aidb.semkb_audit_prune('analytics_kb', interval '90 days');
+   SELECT aidb.semkb_audit_prune('analytics_kb');
+   ```
 
-### Pruning audit records
+A zero interval in `aidb.semkb_audit_retention` makes the function delete nothing. A negative or invalid interval raises an error before any records are deleted. Changing the setting doesn't schedule or run pruning. See [Configuring AIDB parameters](../install/configure#semantic-knowledge-base-audit-log).
 
-Use `aidb.semkb_audit_prune()` to delete expired records for one semantic KB.
-
-Specify an age explicitly:
-
-```sql
-SELECT aidb.semkb_audit_prune(
-    'analytics_kb',
-    interval '90 days'
-);
-```
-
-Omit the interval to use `aidb.semkb_audit_retention`:
-
-```sql
-SELECT aidb.semkb_audit_prune('analytics_kb');
-```
-
-The function works on one semantic KB at a time. To prune several semantic KBs, call it once for each, for example from a scheduled job.
-
-The function returns the number of deleted records, not counting the record it writes about itself. It deletes records in batches of 5,000 rows. It writes one `admin` audit record with the retention interval, the number of deleted records, and the number of batches. It writes that record even when it deletes nothing.
+The function works on one semantic KB at a time. It returns the number of deleted records, not counting the record it writes about itself. It deletes records in batches of 5,000 rows, and it writes one `admin` audit record with the retention interval, the number of deleted records, and the number of batches. It writes that record even when it deletes nothing.
 
 The caller must be a member of the semantic KB's owner role. `aidb.create_semantic_kb()` sets that role to the extension owner, so in practice only the extension owner, members of the extension owner's role, and superusers can prune. To prune the records of a semantic KB that no longer exists, you must be the extension owner or a superuser. A caller who isn't authorized gets an error with SQLSTATE `42501`.
-
-## Transactions and read-only sessions
-
-The audit record is written in the same transaction as the operation:
-
-- If the operation commits, the audit record commits with it.
-- If the operation rolls back, the audit record also rolls back. A semantic alias execution that fails leaves no audit record.
-- If writing the audit record fails, the operation fails instead of completing without its record. This includes searches.
-
-In a read-only transaction or on a hot standby, searches and alias executions continue but don't write an audit record. This means searches that run on a standby aren't audited.

@@ -1049,7 +1049,7 @@ Lists recorded semantic KB operations. A superuser, the extension owner, or a ro
 | ------------ | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. `NULL` returns records for all knowledge bases.                                  |
 | `op`         | TEXT        | `NULL`  | Only return this operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`. |
-| `func`       | TEXT        | `NULL`  | Only return records with this exact `func` value. It isn't always the name of the SQL function you called. See [Operation categories and functions](../semantic-knowledge-bases/auditing#operation-categories-and-functions).                                                                                |
+| `func`       | TEXT        | `NULL`  | Only return records with this exact `func` value. It isn't always the name of the SQL function you called. See [What's recorded](../semantic-knowledge-bases/auditing#whats-recorded).                                                                                |
 | `since`      | TIMESTAMPTZ | `NULL`  | Only return records from this time on.                                                                                        |
 | `limit_rows` | INTEGER     | `100`   | Maximum number of records to return.                                                                                          |
 
@@ -1057,7 +1057,54 @@ Lists recorded semantic KB operations. A superuser, the extension owner, or a ro
 
 `TABLE(ts TIMESTAMPTZ, kb_name TEXT, op TEXT, func TEXT, caller_kind TEXT, actor_name TEXT, login_name TEXT, object_ref TEXT, detail JSONB)`
 
-`caller_kind` is how the operation arrived. In AIDB 7.9.0 it's always `direct`. `actor_name` is the role the operation ran as; `login_name` is the session's login role. `object_ref` names the affected object. `detail` holds operation-specific data, for example `mode`, `forced`, and `discarded` for a description write. `detail` is limited to 32 KiB. If it's larger, AIDB replaces it with a marker that records the original size. Read operations in a read-only transaction or on a hot standby don't write a record.
+| Column        | Description                                                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ts`          | When AIDB wrote the record.                                                                                                                |
+| `kb_name`     | The semantic KB the record belongs to.                                                                                                     |
+| `op`          | The operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`.                            |
+| `func`        | The function that ran. It isn't always the name of the SQL function you called. See [What's recorded](../semantic-knowledge-bases/auditing#whats-recorded). |
+| `caller_kind` | How the operation arrived. In AIDB 7.9.0 it's always `direct`, including for operations that an agent or an MCP client runs.               |
+| `actor_name`  | The effective role that invoked the operation.                                                                                             |
+| `login_name`  | The role that authenticated the database session.                                                                                          |
+| `object_ref`  | What the operation named as its subject, such as an alias name or a table. Searches don't have an object reference.                        |
+| `detail`      | JSON that's specific to the operation. See [The `detail` column](#the-detail-column).                              |
+
+`actor_name` and `login_name` can differ when a session uses `SET ROLE`. AIDB stores role names as they were when it wrote the record, so renaming a role later doesn't change existing records. When an alias runs its query as a different role, `detail` records that role as `execute_role`. It's separate from the actor and login roles.
+
+Read operations in a read-only transaction or on a hot standby don't write a record.
+
+#### The `detail` column
+
+The `detail` column holds JSON that's specific to the operation. AIDB never stores free text that a person typed.
+
+For a semantic KB search (`retrieve`), `detail` contains:
+
+- The search options: `top_k`, `rrf_k`, `min_similarity`, `include_proposed`, `sources`, and `entity_types`.
+- The query length in characters, in `query_chars`.
+- The number of results, in `result_count`. This is always the true number of results.
+- `hits`, a list of the results. Each entry has `source_type`, `entity_type`, and `object_ref`. The list is limited to 100 entries and 16 KiB, and each `object_ref` is limited to 256 characters. When a limit shortens the list, `hits_truncated` is `true`.
+
+The natural-language search text isn't stored.
+
+For semantic alias execution (`execute`), `detail` contains:
+
+- The execution role, in `execute_role`.
+- The names of the arguments you supplied, and the number of bound parameters.
+- The result count.
+- The number of semantic KBs that own the alias.
+
+Argument values and query result rows aren't stored.
+
+For object-description changes (`annotate`), `detail` contains:
+
+- The object type.
+- Whether the change was an add or an edit, in `mode`.
+- Whether `force` was used, in `forced`.
+- The previous wording that a forced change discarded, in `discarded`.
+
+For context processing (`process_context`), `detail` contains counts, the outcome, and the IDs of the relationships that attempt wrote. It never contains the context or the model's raw response.
+
+`detail` is limited to 32 KiB. If the serialized detail is larger, AIDB replaces all of it with a marker that has `truncated` set to `true`, and records the original size in bytes in `orig_bytes`.
 
 #### Example
 
