@@ -64,15 +64,15 @@ DROP ROLE <agent_role>;                    -- after reassigning or dropping anyt
 
 See [Provisioning example](provisioning-example#revoking-an-agent) for this applied to a specific agent.
 
-## Which agents a role sees
+## Granting access to AIDB agents
 
-The endpoint lists AIDB agents as tools through `aidb.get_mcp_agents()`, which reads `aidb.agents` as the role. Membership in `aidb_users` grants `EXECUTE` on that function and `SELECT` on `aidb.agents`, so a member sees every agent. A role without that access gets no agents, and its catalog tools still list and run. The same holds when the installed extension predates `aidb.get_mcp_agents()`.
+To let a role list and call agents, grant it membership in `aidb_users`. The endpoint lists AIDB agents as tools through `aidb.get_mcp_agents()`, which reads `aidb.agents` as the role. The membership grants `EXECUTE` on that function and `SELECT` on `aidb.agents`, so a member can list every agent. A role without that access gets no agents, and its catalog tools still list and run. The same holds when the installed extension predates `aidb.get_mcp_agents()`.
 
 The endpoint lists an agent only when its name matches `[A-Za-z_][A-Za-z0-9_-]*`, so an agent named `Sales Bot` isn't exposed. A catalog tool or `execute_sql` with the same name as an agent hides the agent in both `tools/list` and `tools/call`, and the endpoint logs a warning.
 
 A role with `default_transaction_read_only` set to `on` runs agents in [read-only mode](../agents/conversing-with-agents#read-only-mode), so its agent calls return `"conversation_id": null`.
 
-See [Calling agents as tools](connecting-a-client#calling-agents-as-tools) for the arguments, the result, and the timeout.
+To call an agent, see [Calling agents as tools](connecting-a-client#calling-agents-as-tools) for the arguments, result, and timeout.
 
 ## Limiting concurrent AIDB agent calls
 
@@ -84,7 +84,7 @@ ALTER ROLE <agent_role> CONNECTION LIMIT 5;
 
 The limit counts every connection the role opens, including `tools/list` and other tool calls.
 
-## Read-only roles
+## Configuring read-only roles
 
 To guard an agent role against accidental writes through `execute_sql`, turn on `default_transaction_read_only` for the role, in every database or in one:
 
@@ -95,9 +95,11 @@ ALTER ROLE <agent_role> IN DATABASE <database> SET default_transaction_read_only
 
 Set it on the agent role itself, because a setting on a profile role doesn't reach its members. The endpoint reads the setting each time it opens a connection, so a change applies from the role's next call.
 
-### What the read-only block stops
+### Preventing writes with the read-only block
 
-When the setting resolves to `on`, whether it comes from the role, `ALTER DATABASE`, or the server configuration, the endpoint runs each `execute_sql` statement inside a `BEGIN READ ONLY` block and never commits it. Without the block, a top-level `DO` or `CALL` can commit the read-only transaction and write in the next one. Inside the block, these all fail and write nothing:
+When the setting resolves to `on`, whether it comes from the role, `ALTER DATABASE`, or the server configuration, the endpoint runs each `execute_sql` statement inside a `BEGIN READ ONLY` block and never commits it.
+
+Without the block, a top-level `DO` or `CALL` can commit the read-only transaction and write in the next one. Inside the block, these all fail and write nothing:
 
 - A `COMMIT` or `ROLLBACK` inside `DO` or `CALL`, which returns `invalid transaction termination`.
 - `SET transaction_read_only = off` inside a `DO` block.
@@ -106,23 +108,34 @@ When the setting resolves to `on`, whether it comes from the role, `ALTER DATABA
 
 A bare `COMMIT` ends the block without an error and writes nothing. The next call opens a new connection, so it's read-only again.
 
-Catalog tools, AIDB agent calls, and `tools/list` aren't wrapped. Each runs only `SELECT` statements, which the role's read-only default already covers.
+The endpoint doesn't run catalog tools, AIDB agent calls, or `tools/list` inside the block. Each runs only `SELECT` statements, which the role's read-only default already covers.
 
-### Commands that can't run
+### Handling commands that need a read-write role
 
-Read-only roles can't run commands that refuse to run inside a transaction block: `VACUUM`, `CREATE INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`, and procedures that commit. Run them as a read-write role instead. Read-write roles aren't wrapped, so these commands still work for them. A server-wide or `ALTER DATABASE` setting of `default_transaction_read_only = on` makes every role read-only, so no role can run them through `execute_sql`. A `NOTIFY` sent from a read-only role is discarded with the block.
+Read-only roles can't use commands that refuse to run inside a transaction block:
+
+- `VACUUM`
+- `CREATE INDEX CONCURRENTLY`
+- `REINDEX CONCURRENTLY`
+- Procedures that commit
+
+Use a read-write role for these commands. The endpoint doesn't use the block for read-write roles, so the commands still work for them. A server-wide or `ALTER DATABASE` setting of `default_transaction_read_only = on` makes every role read-only, so no role can use them through `execute_sql`.
+
+The block discards any `NOTIFY` that a read-only role sends.
+
+### Reading read-only role errors
 
 Every `execute_sql` error for a read-only role carries a `read-only role` context that names the `BEGIN READ ONLY` block. Errors that the block itself causes also tell you to run the command as a read-write role. Those are SQLSTATE `2D000`, from a `COMMIT` or `ROLLBACK` inside the block, and `25001`, from a command that can't run inside a transaction block.
 
-### Required grant
+### Granting access to `pg_export_snapshot()`
 
-The block calls `pg_export_snapshot()`, so the role needs `EXECUTE` on it. `PUBLIC` holds that grant by default. If someone revoked it, `execute_sql` refuses every read-only role, and the error names the grant to restore. Grant it back to `PUBLIC`, or to the agent role alone:
+Make sure the role has `EXECUTE` on `pg_catalog.pg_export_snapshot()`, because the block calls it. `PUBLIC` holds that grant by default. If you revoked it, `execute_sql` refuses every read-only role, and the error names the grant to restore. Grant it back to `PUBLIC`, or to the agent role alone:
 
 ```sql
 GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO PUBLIC;
 GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO <agent_role>;
 ```
 
-### Not a security boundary
+### Understanding the security limits
 
-The read-only setting isn't a security boundary. The role can clear its own setting from any read-write session outside the endpoint. Where `dblink` is installed and the role can run `dblink_exec`, it can open that session from inside `execute_sql`. A member of `pg_write_server_files` can still write a server file with `COPY TO`, since that writes no table. Treat the setting as a guard against accidental writes, and control what the role can change with grants. Grant a read-only role only read privileges, through a profile role as in [Granting the role what it needs](#granting-the-role-what-it-needs).
+The read-only setting guards against accidental writes, but the role can clear its own setting from any read-write session outside the endpoint, so the setting isn't a security boundary. Where `dblink` is installed and the role can run `dblink_exec`, the role can open that session from inside `execute_sql`. A member of `pg_write_server_files` can still write a server file with `COPY TO`, since that writes no table. Treat the setting as a guard against accidental writes, and control what the role can change with grants. Grant a read-only role only read privileges, through a profile role as in [Granting the role what it needs](#granting-the-role-what-it-needs).

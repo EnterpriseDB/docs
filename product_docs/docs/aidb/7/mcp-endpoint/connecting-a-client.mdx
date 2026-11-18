@@ -35,7 +35,7 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
      -d '{"jsonrpc": "2.0", "method": "notifications/initialized"}'
    ```
 
-1. List tools as a Postgres role. `tools/list` returns the built-in `execute_sql`, then every tool the catalog holds, then, for a member of `aidb_users`, every AIDB agent. See [Calling agents as tools](#calling-agents-as-tools).
+1. List tools as a Postgres role. `tools/list` returns the built-in `execute_sql`, then every tool the catalog holds, then, for a member of `aidb_users`, every AIDB agent. For the arguments and result of an agent call, see [Calling agents as tools](#calling-agents-as-tools).
 
    ```shell
    curl -sS http://<mcp-host>:8765/mcp \
@@ -82,7 +82,7 @@ The steps below show the wire protocol with curl. The endpoint answers in the se
           "params": {"name": "execute_sql", "arguments": {"sql": "SELECT 41 + 1 AS answer"}}}'
    ```
 
-   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Each `execute_sql` call runs as one statement in autocommit mode, or in a read-only transaction for a [read-only role](configuring-agent-roles#read-only-roles), so `BEGIN`/`COMMIT` across separate calls aren't supported. See [Result encoding for `execute_sql`](#result-encoding-for-execute_sql) for the full constraints.
+   The `data:` line carries a result whose `content[0].text` is the JSON string `[{"answer":42}]`. Each `execute_sql` call runs as one statement in autocommit mode, or in a read-only transaction for a [read-only role](configuring-agent-roles#configuring-read-only-roles), so `BEGIN`/`COMMIT` across separate calls aren't supported. See [Result encoding for `execute_sql`](#result-encoding-for-execute_sql) for the full constraints.
 
 ## What an agent can do once provisioned
 
@@ -92,7 +92,7 @@ After the handshake, an agent's calls behave according to its own grants, not an
 |--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
 | `tools/list`                        | Returns every tool in the catalog regardless of the caller's grants, plus, for a member of `aidb_users`, every AIDB agent. The [listing shows what exists, not what the caller may run](../mcp-endpoint#what-tools-the-endpoint-surfaces). |
 | `tools/call` on a catalog tool       | Succeeds if the role holds the privileges the tool's SQL needs. Otherwise Postgres returns `permission denied` and no rows are affected.      |
-| `tools/call` on an AIDB agent        | Runs the agent through `aidb.agent_converse()` as the role. See [Calling agents as tools](#calling-agents-as-tools).                         |
+| `tools/call` on an AIDB agent        | Runs the agent through `aidb.agent_converse()` as the role. For the arguments and result, see [Calling agents as tools](#calling-agents-as-tools).                         |
 | `tools/call` with a wrong password   | `isError` with `password authentication failed`.                                                                                             |
 
 Arguments are bound as query parameters, and arguments a tool didn't declare are rejected with `unknown argument '<name>'`, so an agent can't ask a tool to run as someone else.
@@ -114,9 +114,11 @@ curl -sS http://<mcp-host>:8765/mcp \
 
 ## Calling agents as tools
 
-For a member of `aidb_users`, every [AIDB agent](../agents) is also an MCP tool under its own name, listed after the catalog tools. Calling one runs [`aidb.agent_converse()`](../agents/conversing-with-agents) as the authenticated role, the same function you call from `psql`. The tool's description wraps the agent's instructions and its plugins' descriptions, so the client and its model can read them. See [Which agents a role sees](configuring-agent-roles#which-agents-a-role-sees) for which agents appear and how name collisions resolve.
+For a member of `aidb_users`, every [AIDB agent](../agents) is also an MCP tool under its own name, listed after the catalog tools. Calling one runs [`aidb.agent_converse()`](../agents/conversing-with-agents) as the authenticated role, the same function you call from `psql`. The tool's description includes the agent's instructions and its plugins' descriptions, so the client and its model can read them. To control which agents appear and how name collisions resolve, see [Granting access to AIDB agents](configuring-agent-roles#granting-access-to-aidb-agents). Each agent call holds one Postgres connection for its whole run. To cap how many agent calls run at once, see [Limiting concurrent AIDB agent calls](configuring-agent-roles#limiting-concurrent-aidb-agent-calls).
 
-An agent tool takes two arguments: `prompt`, a required string, and `conversation_id`, an optional string. The endpoint refuses any other argument and names it in the error.
+### Calling an agent
+
+Pass two arguments: `prompt`, a required string, and `conversation_id`, an optional string. The endpoint refuses any other argument and names it in the error.
 
 ```shell
 curl -sS http://<mcp-host>:8765/mcp \
@@ -128,11 +130,13 @@ curl -sS http://<mcp-host>:8765/mcp \
        "params": {"name": "db_helper", "arguments": {"prompt": "How many rows are in the orders table?"}}}'
 ```
 
-The `data:` line carries a result whose `content[0].text` is a JSON object with the agent's answer and the conversation's id:
+Read the result from the `data:` line. `content[0].text` is a JSON object with the agent's answer and the conversation's id:
 
 ```json
 {"answer":"The orders table has 4,213 rows.","conversation_id":"8f14e45f-ceea-467e-9575-a3d1a2c1a123"}
 ```
+
+### Continuing a conversation
 
 To continue the conversation, pass the `conversation_id` back on the next call:
 
@@ -149,21 +153,23 @@ curl -sS http://<mcp-host>:8765/mcp \
 
 A read-only role gets `"conversation_id": null`, and so does any call on a read replica, because a [read-only run](../agents/conversing-with-agents#read-only-mode) keeps no history to resume. When the agent fails, the result is `isError` and carries the error from `agent_converse`'s `error` column.
 
-An agent call runs under a longer limit than other calls:
+### Setting timeouts for agent calls
 
-- The connection's `statement_timeout` is the agent's `timeout_seconds` plus 10 seconds. The extra 10 seconds let the agent report its own timeout first. `timeout_seconds` is capped at 900 (15 minutes), and an agent with no timeout set uses the 300-second default.
+An agent call runs under a longer limit than other calls, which keep the endpoint's 30-second limit:
+
+- The connection's `statement_timeout` is the agent's `timeout_seconds` plus 10 seconds, so the agent can report its own timeout first.
+- `timeout_seconds` is capped at 900 (15 minutes). An agent with no timeout set uses the 300-second default.
 - If Postgres hasn't answered 10 seconds after `statement_timeout`, the endpoint closes the connection and returns an `isError` result. An agent call therefore lasts at most 920 seconds.
-- Every other call keeps the endpoint's 30-second limit.
 
 Errors from an agent call name the agent's timeout and the 15-minute ceiling, so you can tell when the ceiling cut a call off. Raise your MCP client's request timeout for long-running agents. The MCP TypeScript SDK, for example, gives up after 60 seconds by default.
 
-To cancel an agent call, send `notifications/cancelled` with the call's `id`, as shown above for a catalog tool. The endpoint sends Postgres a cancel request and also closes the connection, because a tool inside the agent's run can catch the cancel request and keep going.
+### Canceling an agent call
 
-Each agent call holds one Postgres connection for its whole run. See [Limiting concurrent AIDB agent calls](configuring-agent-roles#limiting-concurrent-aidb-agent-calls).
+To cancel an agent call, send `notifications/cancelled` with the call's `id`, as shown for a catalog tool in [What an agent can do once provisioned](#what-an-agent-can-do-once-provisioned). The endpoint sends Postgres a cancel request and also closes the connection, because a tool inside the agent's run can catch the cancel request and keep going.
 
 ## Result encoding for `execute_sql`
 
-Each `execute_sql` call is one statement in autocommit mode. For a role whose `default_transaction_read_only` is `on`, the statement instead runs inside a `BEGIN READ ONLY` block that's never committed. See [Read-only roles](configuring-agent-roles#read-only-roles). Transactions can't span calls, so `BEGIN` and `COMMIT` in separate calls aren't supported. Results are capped at 10000 rows and 10 MiB serialized, and a query over either cap returns an error with no rows. DML without `RETURNING` returns `{"rows_affected": N}`, and row-returning statements return a JSON array of objects keyed by column name.
+Each `execute_sql` call is one statement in autocommit mode. For a role whose `default_transaction_read_only` is `on`, the statement instead runs inside a `BEGIN READ ONLY` block that's never committed. To set up a read-only role, see [Configuring read-only roles](configuring-agent-roles#configuring-read-only-roles). Transactions can't span calls, so `BEGIN` and `COMMIT` in separate calls aren't supported. Results are capped at 10000 rows and 10 MiB serialized, and a query over either cap returns an error with no rows. DML without `RETURNING` returns `{"rows_affected": N}`, and row-returning statements return a JSON array of objects keyed by column name.
 
 The built-in `execute_sql` tool renders each column from its binary value, so the output doesn't depend on session settings such as `DateStyle`, `IntervalStyle`, or `bytea_output`. Unsupported column types are rejected before any row is returned, so `SELECT 1.00::money WHERE false` fails the same way as `SELECT 1.00::money`. User-defined enums, arrays, ranges, and domains over supported types work.
 

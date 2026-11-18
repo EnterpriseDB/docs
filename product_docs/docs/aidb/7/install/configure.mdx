@@ -1,6 +1,7 @@
 ---
 title: Configuring AIDB
 navTitle: Configuring
+description: Preload the AIDB library, create the extensions, manage user access, set proxy options, and tune the AIDB configuration parameters.
 ---
 
 To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, and manage user access. Then verify the installation. This page also covers proxy settings and the AIDB configuration parameters (GUCs) you can tune afterward.
@@ -141,7 +142,7 @@ GRANT aidb_admins TO <your_admin_role>;
 
 A role that doesn't inherit privileges from `aidb_admins`, because it's `NOINHERIT` or was granted the role `WITH INHERIT FALSE`, isn't treated as an admin.
 
-Members of `aidb_admins` can also disable or delete a pipeline whose owner role was renamed or dropped. See [Pipelines whose owner role is gone](../data-pipelines/orchestration/auto-processing#pipelines-whose-owner-role-is-gone).
+Members of `aidb_admins` can also disable or delete a pipeline whose owner role no longer exists. For the steps and the privileges you need, see [Recovering a pipeline with a renamed or dropped owner role](../data-pipelines/orchestration/auto-processing#recovering-a-pipeline-with-a-renamed-or-dropped-owner-role).
 
 For more information about credentials, see [Model credentials](../integrating-models/credentials).
 
@@ -213,19 +214,23 @@ If the limit is too small, AIDB reloads models on every call, which is slow. If 
 
 ### Encode memo
 
+The following parameter controls whether AIDB reuses the result of an encode function call within a statement.
+
 | Parameter          | Type    | Default | Description                                                                                                                                       |
 |--------------------|---------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------|
 | `aidb.encode_memo` | boolean | `on`    | Reuses the last result of `aidb.encode_text()`, `aidb.encode_text_query()`, or `aidb.encode_image()` at each place the call appears in a query. `USERSET`. |
 
 #### `aidb.encode_memo`
 
-The encode functions are `STABLE`, so Postgres evaluates a call with constant arguments once when it's an index scan key. Postgres doesn't cache `STABLE` results, though, so without the memo a sequential scan calls the model for every row.
+With `aidb.encode_memo` on, the default, each call site of `aidb.encode_text()`, `aidb.encode_text_query()`, or `aidb.encode_image()` keeps its last result for the rest of the statement. A call site is each place the call appears in a query. A query such as `ORDER BY embedding <=> aidb.encode_text_query('my_model', 'my query')` over a sequential scan, or a distance filter in `WHERE`, then calls the model once instead of once per row. The next statement calls the model again.
 
-With the memo on, each place `aidb.encode_text()`, `aidb.encode_text_query()`, or `aidb.encode_image()` appears in a query keeps its last result for the rest of the statement. The result is keyed by function, model, input, and effective user, so a `SET ROLE` or `SECURITY DEFINER` boundary doesn't reuse another role's result. A query such as `ORDER BY embedding <=> aidb.encode_text_query('my_model', 'my query')` over a sequential scan, or a distance filter in `WHERE`, calls the model once instead of once per row. The next statement calls the model again.
+The memo keys each result by function, model, input, and effective user, so a `SET ROLE` or `SECURITY DEFINER` boundary doesn't reuse another role's result.
+
+The memo is needed because the encode functions are `STABLE`. Postgres evaluates a `STABLE` call with constant arguments once only when the call is an index scan key, and doesn't cache the result otherwise. Without the memo, a sequential scan calls the model for every row.
 
 A call inside a SQL function that Postgres doesn't inline, such as a `SECURITY DEFINER` function, still calls the model for every row. The batch functions `aidb.encode_text_batch()` and `aidb.encode_text_query_batch()` don't use the memo.
 
-In PL/pgSQL, a call site keeps its last result until the transaction ends, across statements and loop iterations. A model or credential change made later in the transaction, or committed by another session in the meantime, isn't seen at that call site. If that matters for your code, turn the memo off to call the model on every evaluation:
+In PL/pgSQL, a call site keeps its last result until the transaction ends, across statements and loop iterations. The call site doesn't see a model or credential change made later in the transaction or committed by another session in the meantime. To call the model on every evaluation, turn the memo off:
 
 ```sql
 SET aidb.encode_memo = off;
@@ -236,6 +241,13 @@ To compute the query embedding once per execution with nothing reusing it, for e
 ```sql
 WITH q AS (SELECT aidb.encode_text_query('my_model', 'my query') AS v)
 SELECT id FROM my_docs ORDER BY embedding <=> (SELECT v FROM q) LIMIT 10;
+__OUTPUT__
+ id
+----
+ 42
+ 17
+ ...
+(10 rows)
 ```
 
 ### Model download
