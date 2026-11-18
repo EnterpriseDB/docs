@@ -12,6 +12,9 @@ Each pipeline has an error log table. When a record fails at any step, the log c
 - A single bad record doesn't block the pipeline. Other records in the batch continue through all remaining steps.
 - The error log table is created with the pipeline and dropped when the pipeline is deleted. Pipelines created before 7.2.0 get their table during the upgrade.
 - Writes happen inside the failing step's transaction, so a successful step never leaves orphan log rows and a failure never loses its record.
+- The log keeps one row per failing source record, part, step, and operation, and one row per step and operation for pipeline-level errors. When the same failure happens again, even from two executors at once, AIDB updates that row instead of adding one:
+  - `error_message`, `error_category`, and `last_seen_at` take the latest values.
+  - `failed_at`, `retry_count`, and `last_retry_at` reset only when the message or category changes, so they describe the current error.
 - Each logged error also emits a Postgres `WARNING`. Toggle with [`aidb.pipeline_error_warnings`](../reference#aidbpipeline_error_warnings); errors persist to the log regardless.
 - The query and summary functions return empty results for any pipeline whose error log table is missing.
 - Don't drop the error log table manually. As of 7.4.0, the source `DELETE` handlers and post-step cleanup raise an error if the table is missing.
@@ -34,11 +37,11 @@ Use `aidb.get_error_logs()` to inspect a pipeline's error log.
 SELECT * FROM aidb.get_error_logs('my_pipeline');
 
 __OUTPUT__
- id | source_id | part_ids | pipeline_step | step_operation | error_message                          | error_category    | failed_at                  | retry_count | last_retry_at
-----+-----------+----------+---------------+----------------+----------------------------------------+-------------------+----------------------------+-------------+---------------
-  3 | doc_99    | {0,2}    |             2 | ChunkText      | text segment exceeded maximum length   | RecordPermanent   | 2026-04-10 14:32:01.123+00 |           0 |
-  2 | doc_42    | {0}      |             1 | ParsePdf       | failed to extract text from page 0     | RecordPermanent   | 2026-04-10 14:31:58.456+00 |           0 |
-  1 | doc_7     |          |             1 | ParsePdf       | corrupt PDF header                     | RecordPermanent   | 2026-04-10 14:31:55.789+00 |           0 |
+ id | source_id | part_ids | pipeline_step | step_operation | error_message                          | error_category    | failed_at                  | retry_count | last_retry_at | last_seen_at
+----+-----------+----------+---------------+----------------+----------------------------------------+-------------------+----------------------------+-------------+---------------+----------------------------
+  3 | doc_99    | {0,2}    |             2 | ChunkText      | text segment exceeded maximum length   | RecordPermanent   | 2026-04-10 14:32:01.123+00 |           0 |               | 2026-04-10 14:32:01.123+00
+  2 | doc_42    | {0}      |             1 | ParsePdf       | failed to extract text from page 0     | RecordPermanent   | 2026-04-10 14:31:58.456+00 |           0 |               | 2026-04-10 14:31:58.456+00
+  1 | doc_7     |          |             1 | ParsePdf       | corrupt PDF header                     | RecordPermanent   | 2026-04-10 14:31:55.789+00 |           0 |               | 2026-04-10 14:31:55.789+00
 (3 rows)
 ```
 

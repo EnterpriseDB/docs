@@ -194,23 +194,29 @@ const Page = () => {
               </BannerCardLink>
 
               <BannerCardLink to="/clickhouse/latest/">
-                ClickHouse
+                ClickHouse®
               </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="Agentic AI"
-              to="/edb-postgres-ai/agentic-ai"
+              headingText="Agent Factory"
+              to="/edb-postgres-ai/agent-factory"
             >
-              <BannerCardLink to="/aidb/latest">
-                AI Database (AIDB)
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/search">
+                Search
               </BannerCardLink>
-              <BannerCardLink to="/pg_extensions/pgvector">
-                pgvector
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/context">
+                Context
               </BannerCardLink>
-              <BannerCardLink to="/agent-governance/latest">
-                Agent Governance
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/runtime">
+                Runtime
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/governance">
+                Governance
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/agent-factory/packages">
+                Packages
               </BannerCardLink>
             </BannerSubCard>
 
@@ -363,7 +369,7 @@ const Page = () => {
               toUrl="/edb-postgres-ai/platforms-and-tools/security/"
             />
 
-            <BannerWideLink to="/tde/latest">
+            <BannerWideLink to="/edb-postgres-ai/platforms-and-tools/security/tde/">
               Transparent Data Encryption
             </BannerWideLink>
             <BannerWideLink to="/pg_extensions/ldap_sync">

@@ -193,7 +193,6 @@ const iconNames = {
   C_SHARP: "logos/CSharp",
   C_SHARP_MONO: "logos/CSharpMono",
   CENTOS: "logos/Centos",
-  CLICKHOUSE: "logos/Clickhouse",
   CSG: "logos/Csg",
   DEBIAN: "logos/Debian",
   DELL_EMC: "logos/DellEmc",

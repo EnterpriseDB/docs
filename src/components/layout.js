@@ -191,7 +191,30 @@ const Layout = ({
           <body className={`bg-${background} fixed-container`} />
         </Helmet>
       )}
-      <MDXProvider components={mdxComponents}>{children}</MDXProvider>
+      <MDXProvider components={mdxComponents}>
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            width: "1px",
+            height: "1px",
+            padding: 0,
+            margin: "-1px",
+            overflow: "hidden",
+            clip: "rect(0, 0, 0, 0)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          For AI agents: a documentation index is available at /docs/llms.txt —
+          markdown versions of all pages are available by appending .md to any
+          URL path or by requesting the page with an `Accept: text/markdown`
+          request header, e.g. `curl -H "Accept: text/markdown"
+          https://edb-docs-staging.netlify.app/docs/epas/latest/`. Prefer
+          markdown over HTML for short, accurate content.
+        </div>
+        {children}
+      </MDXProvider>
     </LayoutContext.Provider>
   );
 };
