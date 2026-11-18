@@ -16,7 +16,7 @@ Use whpg-cjk to search Korean, Japanese, and Chinese text with the standard Ware
 
 ## Getting started
 
-Install and register whpg-cjk in a database with UTF8 encoding before you start. See [Installing whpg-cjk](installing.mdx).
+Install and register whpg-cjk in a database with UTF8 encoding before you start. See [Installing and upgrading whpg-cjk](installing.mdx).
 
 Then, identify the data that you want to search. Either create a table and load your data, or locate an existing table with a text column that contains Korean, Japanese, or Chinese text. The syntax in the following sections uses `<table_name>` and `<column_name>` as placeholders for your own table and column.
 
@@ -216,7 +216,7 @@ __OUTPUT__
 
 ### Highlighting matches
 
-Highlight matches with `ts_headline`, which marks fragments inside text that has no spaces between words:
+Highlight matches with `ts_headline`, which marks fragments inside text that has no spaces between words. It returns the original text of the document, not the normalized text, and doesn't highlight trailing punctuation:
 
 ```sql
 SELECT ts_headline('<config>', <column_name>, <tsquery>) FROM <table_name>;
@@ -363,7 +363,9 @@ Tailor segmentation to your domain, such as product names and jargon, by adding 
 | `whpg_cjk.japanese_user_dict` | CSV with `surface,part_of_speech,reading` on each line, or full 13-field IPADIC rows |
 | `whpg_cjk.chinese_user_dict` | jieba frequency dictionary with `word [frequency [part_of_speech]]` on each line |
 
-Relative file names resolve against the `tsearch_data` directory under the WarehousePG share directory, which is `/usr/edb/whpg7/share/postgresql/tsearch_data` for the EDB packages. Absolute paths are used as given. Assign a part of speech that whpg-cjk indexes, such as a noun. The noun tag is `NNG` for Korean, `名詞` for Japanese, and `n` for Chinese.
+A jieba frequency above 10^12 is rejected, and the dictionary fails to load with an error that names the file and line.
+
+Relative file names resolve against the `tsearch_data` directory under the WarehousePG share directory, which is `/usr/edb/whpg7/share/postgresql/tsearch_data` for the EDB packages. Absolute paths are used as given. A user dictionary file can start with a UTF-8 byte order mark (BOM). Assign a part of speech that whpg-cjk indexes, such as a noun. The noun tag is `NNG` for Korean, `名詞` for Japanese, and `n` for Chinese.
 
 ```sql
 SET whpg_cjk.<language>_user_dict = '<file_name>';
@@ -428,7 +430,7 @@ Pass a whpg-cjk configuration to any of these functions:
 | `jsonb_to_tsvector(<config>, <jsonb>, <filter>)` | Converts a `jsonb` document, indexing only the value types that you list. |
 | `to_tsquery`, `plainto_tsquery`, `phraseto_tsquery`, `websearch_to_tsquery` | Convert a query to a `tsquery`. All four segment the query the same way as the document side. |
 | `ts_rank`, `ts_rank_cd` | Rank matches, including the multiple granularities that whpg-cjk indexes. |
-| `ts_headline` | Highlights matches, including inside text that has no spaces between words. |
+| `ts_headline` | Highlights matches in the original text, including inside text that has no spaces between words. |
 | `setweight`, `tsvector_concat` | Combine weighted fields into one `tsvector`. |
 | `ts_debug`, `ts_lexize`, `ts_parse`, `ts_token_type` | Debug how text is parsed. These functions analyze the text on its own, without the surrounding sentence, so they show only the standalone reading of a word. |
 
@@ -439,8 +441,8 @@ You can also use the `@@` operator to match a `tsvector` against a `tsquery`.
 | Function | Purpose |
 | --- | --- |
 | `cjk_analyze([<language>,] <text>)` | Shows the morphological breakdown of the text, as indexing sees it. See [Inspecting segmentation](#inspecting-segmentation). |
-| `cjk_segment([<language>,] <text>)` | Returns every token with its type, part of speech, indexed lexemes, and its position in the original text. Use it for word clouds, analytics, or custom highlighting. |
-| `cjk_normalize(<text>)` | Returns the text after normalization, which converts fullwidth characters to halfwidth, among other changes. |
+| `cjk_segment([<language>,] <text>)` | Returns every token with its type, part of speech, indexed lexemes, and its position in the original text. It doesn't return whitespace tokens. Use it for word clouds, analytics, or custom highlighting. |
+| `cjk_normalize(<text>)` | Returns the text after normalization, which converts fullwidth characters to halfwidth and control characters other than tab, line feed, and carriage return to spaces, among other changes. Like the other functions, it raises an encoding error in a database that doesn't use UTF8. |
 | `cjk_dict_status()` | Reports the state of the [user dictionaries](#adding-user-dictionaries) for the current backend. |
 
 The `<language>` argument is `korean`, `japanese`, or `chinese`. If you omit it, the language comes from [`default_text_search_config`](#setting-a-default-language).
