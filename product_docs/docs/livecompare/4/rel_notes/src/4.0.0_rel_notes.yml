@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: LiveCompare
+version: 4.0.0
+date: 9 November 2026
+intro: |2
+
+  !!! Note Note on upgrading
+  LiveCompare 4.0.0 removes the `ignore_nullable` setting and changes how Oracle 11g connections work. Finish any sessions started with `ignore_nullable` before you upgrade, because you can't resume or recheck them afterward. Review the Changes section and update your configuration files.
+  !!!
+
+  LiveCompare 4.0.0 includes the following new features, enhancements, bug fixes, and other changes:
+relnotes:
+- relnote: |-
+    Fixed an issue whereby a `NULL` value in the comparison key could cause key paging and row lookups to silently skip rows, hide differences, or report false differences on identical data, on both PostgreSQL and Oracle. LiveCompare now orders `NULL` values last and matches `NULL` to `NULL`, and the generated fix DML uses `IS NULL` for `NULL` key columns, so the fix DML affects the intended rows. Tables whose key has no nullable column are unaffected. If you compared tables with a nullable comparison key column using an earlier version, rerun those comparisons and review the results.
+  jira: LIV-367
+  addresses: 53513, 65020
+  type: Bug Fix
+  impact: highest
+- relnote: |-
+    You can now set `oracle_thick_mode` in `[General Settings]` (default `off`) to connect to Oracle in python-oracledb thick mode through Oracle Instant Client. Thick mode is required to compare NCHAR, NVARCHAR2, or NCLOB columns when the database's `NLS_NCHAR_CHARACTERSET` isn't `AL16UTF16` (previously reported as error code DPY-3012) and to connect to Oracle 11g (previously reported as error code DPY-3010). The setting applies to every Oracle connection in the run. You must install Oracle Instant Client, which you download from Oracle. For requirements and setup steps, see [Oracle support](/livecompare/latest/oracle_support/#thick-mode-oracle-instant-client).
+  jira: LIV-357
+  addresses: 65424
+  type: Feature
+  impact: high
+- relnote: |-
+    LiveCompare now compares tables whose columns are in a different physical order on each connection, matching columns by name. Previously, such tables were aborted with a "columns do not match" error. With `column_intersection = on`, they were compared row by row instead of by block, which was far slower. In LiveCompare 3.2.0, every row was also reported as different. A `[Comparison Key]` that follows another connection's column order now gets the same performance warning as a primary key when no index serves its ordering with `data_fetch_mode = prepared_statements`. A primary key or unique index must still list its columns in the same order on every connection. For more information, see [`column_intersection`](/livecompare/latest/settings/general/#column_intersection).
+  jira: [LIV-372, LIV-373]
+  addresses: 66515
+  type: Enhancement
+  impact: high
+- relnote: |-
+    Removed the `ignore_nullable` setting. The setting's default behavior (on) is now unconditional: for a table without a primary key or unique index, nullable columns are left out of the comparison. A configuration file that still sets `ignore_nullable` now exits with `EX_CONFIG`, and you can't resume or recheck a session that was started with the setting. Before you upgrade, finish and recheck any in-progress sessions that used the setting, and delete the `ignore_nullable` line from your configuration files. If you relied on `ignore_nullable = off`, list the nullable columns in a `[Comparison Key]` section instead.
+  jira: LIV-367
+  addresses: null
+  type: Change
+  impact: highest
+- relnote: |-
+    Oracle 11g now requires `comparison_algorithm = full_row`, because the SHA-256 row hash is available on Oracle only from 12c. Without that setting, LiveCompare exits with `EX_CONFIG`. In thin mode, a connection to an Oracle database older than 12.1 now exits with `EX_CONFIG` and points to `oracle_thick_mode`, instead of being reported as unreachable. For Oracle 11g, set `comparison_algorithm = full_row` and `oracle_thick_mode = on`. The `DBMS_CRYPTO` grant is no longer used, so you can remove it if you granted it only for LiveCompare.
+  jira: LIV-357
+  addresses: null
+  type: Change
+  impact: high
+- relnote: |-
+    Fixed an issue whereby `row_hash` and `block_hash` comparisons reported false differences between Oracle NUMBER primary keys and PostgreSQL integer keys, because LiveCompare rendered the Oracle values in scientific notation, for example `1E+1` instead of `10`. LiveCompare now renders them as plain numbers. If an earlier version reported such differences, rerun the comparison.
+  jira: LIV-358
+  addresses: null
+  type: Bug Fix
+  impact: high
+- relnote: |-
+    LiveCompare now evaluates differences consistently across the `block_hash`, `row_hash`, and `full_row` algorithms and consensus, so some comparisons report differences that earlier versions didn't. Between two PostgreSQL databases, every algorithm now reports `NULL` and the empty string as different, and the hash algorithms detect values that shift across column separators. Every algorithm, including `full_row`, now reports an Oracle NUMBER(1) column and a PostgreSQL `boolean` column as different. Fix DML `UPDATE` statements now set only the columns whose values differ, and numbers in fix DML are exact plain values (for example, `10` instead of `1E+1`) without rounding. Expect the first comparison after you upgrade to report previously unnoticed differences, and review them before you apply any fix DML.
+  jira: LIV-358
+  addresses: null
+  type: Change
+  impact: high
+- relnote: |-
+    LiveCompare 4.0.0 supports only SLES 15 SP7 and no longer supports SLES 15 SP6. Before you upgrade, move LiveCompare to SLES 15 SP7 or another supported platform. For more information, see [Requirements](/livecompare/latest/requirements/#platform-requirements).
+  type: Change
+  impact: high
+- relnote: |-
+    Improved comparison performance with `data_fetch_mode = prepared_statements` by no longer forcing `COLLATE "C"` on key columns whose collation already sorts like C. The forced collation prevented the key's index from serving the ordering, so fetch time grew quadratically with table size. In testing, a 3-million-row table on a database that uses the C collation compared more than four times faster, with identical results. If a primary key or unique key still needs the forced collation, the table spans more than one buffer, and no index serves the ordering, LiveCompare logs a one-time performance warning for that table. To resolve the warning, create the index named in the warning or use a server-side cursor with [`data_fetch_mode`](/livecompare/latest/settings/general/#data_fetch_mode). Comparison results aren't affected.
+  jira: LIV-366
+  addresses: 62571
+  type: Enhancement
+  impact: medium
+- relnote: |-
+    Fixed an issue whereby a hash mismatch in a `block_hash` or `row_hash` comparison of an Oracle table larger than `buffer_size` could stop LiveCompare from reading the remaining Oracle rows. Every remaining PostgreSQL row then looked missing from Oracle, so the generated fix DML deleted them. Don't apply fix DML that an earlier version generated for such a comparison. Rerun the comparison with LiveCompare 4.0.0 and review the results first.
+  jira: LIV-364
+  addresses: 65020
+  type: Bug Fix
+  impact: highest
+- relnote: |-
+    Fixed an issue whereby a `[Comparison Key]` could fail to resolve for PostgreSQL columns with mixed-case names and Oracle columns with standard-case names. On PostgreSQL, the comparison then fell back to a key of all columns, ignored nullable columns, and could report no differences on divergent data. If you ran comparisons with a custom comparison key on such columns, rerun them.
+  jira: [LIV-368, LIV-362]
+  addresses: 65641, 65020
+  type: Bug Fix
+  impact: high
+- relnote: |-
+    Fixed an issue whereby, with `server_side_block_hash` enabled, a mismatched block containing keys present on only one connection made the comparison resume at the wrong key. Differences could be counted twice, missed, or invented, the repair script could delete correct rows, and some comparisons never finished. If you used `server_side_block_hash` in an earlier version, don't apply the fix DML it generated. Rerun the comparison with LiveCompare 4.0.0 and review the results first.
+  jira: LIV-393
+  addresses: null
+  type: Bug Fix
+  impact: high
+- relnote: Fixed an issue whereby, in Oracle and PostgreSQL comparisons, dates and timestamps could be rendered at different precisions, so equal values could hash differently depending on connection order. LiveCompare now renders every date and timestamp at microsecond precision on both sides, which also detects fractional-second differences that truncation could hide. Differences smaller than a microsecond, such as in an Oracle `TIMESTAMP(9)`, aren't detected. For more information, see [Known issues and limitations](/livecompare/latest/known_issues_and_limitations/#oracle-timestamp-precision).
+  jira: LIV-365
+  addresses: 65020
+  type: Bug Fix
+  impact: medium
+- relnote: |-
+    Fixed an issue whereby `server_side_block_hash` could fail on tables whose primary key has a data type with no `max()` aggregate on the database server, for example `uuid` or `bytea` on community PostgreSQL.
+  jira: LIV-369
+  addresses: 65965
+  type: Bug Fix
+  impact: medium
+- relnote: |-
+    Fixed an issue whereby `livecompare --version` and `livecompare -v` printed the usage text and exited with status 64, and `livecompare <file>.ini --version` printed the version and then ran a comparison. The option now prints the version and exits with status 0 from any position. The option's help text, which read "Prints the help site", is also corrected.
+  jira: LIV-334
+  addresses: null
+  type: Bug Fix
+  impact: low
+- relnote: |-
+    Fixed an issue whereby comparing PostgreSQL tables with column names that require double quotes in SQL, such as `my-col`, `1col`, `a.b`, or `col@b`, failed with an error such as `column "my" does not exist`, because LiveCompare didn't quote the names in the generated SQL. LiveCompare now quotes these names. In `[Column Filter]` and `[Comparison Key]`, write such a name in double quotes (`"my-col"`) and double each `%` (`"col%%b"`). Existing bare entries such as `my-col` keep working, and Oracle connections are unchanged. For more information, see [Column Filter](/livecompare/latest/settings/filters/#column-filter).
+  jira: LIV-370
+  addresses: null
+  type: Bug Fix
+  impact: medium
