@@ -1,0 +1,40 @@
+---
+title: Installing on hosts where the enterprisedb user is managed by AD or LDAP
+navTitle: AD- or LDAP-managed enterprisedb user
+description: "Steps to take before you install or upgrade EDB Postgres Advanced Server RPM packages on hosts where the enterprisedb operating system user is managed by Active Directory or LDAP."
+---
+
+If the `enterprisedb` operating system (OS) user on your host is managed by Active Directory (using sssd or winbind) or LDAP, you must prepare the host before you install or upgrade EDB Postgres Advanced Server RPM packages from version 17.11.0 onward. Otherwise, the service can fail to start after a reboot. This requirement applies to hosts running RHEL, Oracle Linux, Rocky Linux, AlmaLinux, or SLES. For the steps, see [Preparing the host](#preparing-the-host).
+
+If your hosts use a local `enterprisedb` user, you don't need to do anything.
+
+## Why the service can fail to start
+
+Starting with version 17.11.0, the RPM packages include a `systemd-sysusers` (`sysusers.d`) configuration file named `edb-as-17.conf`. At boot, `systemd-sysusers` creates the `enterprisedb` user locally if it doesn't exist.
+
+On a host where the `enterprisedb` user is managed by a directory service, the directory service might not be running yet when `systemd-sysusers` runs. In that case, a local `enterprisedb` user is created, and its UID differs from the directory user's UID. The data directory is owned by the directory user, so the service can fail to start.
+
+## Preparing the host
+
+1.  Confirm that the directory user resolves and that there's no local entry:
+
+    ```shell
+    getent passwd enterprisedb
+    grep '^enterprisedb:' /etc/passwd
+    ```
+
+    The `getent` command returns the AD or LDAP user. The `grep` command prints nothing.
+
+    If `getent` doesn't return the directory user, fix your sssd or winbind configuration before you continue.
+
+1.  Mask the packaged `sysusers.d` file so that `systemd-sysusers` doesn't create a local `enterprisedb` user at boot, and then verify the mask:
+
+    ```shell
+    sudo mkdir -p /etc/sysusers.d
+    sudo ln -sf /dev/null /etc/sysusers.d/edb-as-17.conf
+    ls -l /etc/sysusers.d/edb-as-17.conf
+    ```
+
+    The output shows the file linking to `/dev/null`.
+
+The mask lives in `/etc`, so package updates don't remove it. You can apply it before you install the package.

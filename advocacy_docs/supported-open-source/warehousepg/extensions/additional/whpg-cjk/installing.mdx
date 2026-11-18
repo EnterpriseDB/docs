@@ -1,0 +1,93 @@
+---
+title: Installing whpg-cjk
+navTitle: Installing
+description: Install, register, and preload the whpg-cjk extension for WarehousePG.
+---
+
+Install the whpg-cjk package on each host in your WarehousePG cluster, as it doesn't ship as part of the WarehousePG server package.
+
+## Supported platforms
+
+whpg-cjk is available for WarehousePG 7:
+
+| WarehousePG version | Architecture      | Operating systems |
+| ------------------- | ----------------- | ----------------- |
+| 7                   | x86_64, ppc64le   | RHEL 8, 9         |
+
+## Prerequisites
+
+The database where you register whpg-cjk must use UTF8 encoding.
+
+To check the encoding of your databases, run:
+
+```sql
+SELECT datname, pg_encoding_to_char(encoding) AS encoding FROM pg_database;
+```
+
+You can't change the encoding of an existing database. If your data is in a database that uses a different encoding, create a database with UTF8 encoding, and load the data into it:
+
+```sql
+CREATE DATABASE <database_name> ENCODING 'UTF8' TEMPLATE template0;
+```
+
+Where `<database_name>` is a name for the new database.
+
+## Installing the package
+
+Refer to [Downloading and installing an extension](/supported-open-source/warehousepg/extensions/additional/#downloading-and-installing-an-extension) for instructions on downloading the package and installing it on every host. The package name is `edb-whpg7-cjk`.
+
+## Registering whpg-cjk
+
+Create the extension in each database where you want to use it:
+
+```sql
+CREATE EXTENSION whpg_cjk;
+```
+
+The command adds the `korean`, `japanese`, and `chinese` text search configurations. See [Using whpg-cjk](using.mdx).
+
+## Verifying the installation
+
+Confirm that whpg-cjk is registered in the database:
+
+```sql
+\dx whpg_cjk
+```
+
+Confirm that the text search configurations exist. The query returns three rows:
+
+```sql
+SELECT cfgname FROM pg_ts_config WHERE cfgname IN ('korean', 'japanese', 'chinese');
+__OUTPUT__
+ cfgname
+----------
+ korean
+ japanese
+ chinese
+```
+
+## Preloading whpg-cjk
+
+Optionally, preload whpg-cjk to build the analyzers once at server start, instead of in each session. Without preloading, the first use of the Korean or Japanese analyzer in a session takes a few milliseconds, and the first use of the Chinese analyzer takes about 120 ms and uses about 50 MB of private memory per backend. To preload, load `whpg_cjk` as a shared library:
+
+1.  Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+1.  Use the output of the previous command to enable the extension, along with any other shared libraries:
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, whpg_cjk'
+    ```
+
+    Where `<other_libraries>` is the list of libraries from the previous step.
+
+1.  Restart WarehousePG:
+
+    ```bash
+    gpstop -ar
+    ```
+
+On restart, the server builds the analyzers for the languages listed in the `whpg_cjk.preload_languages` configuration parameter, which defaults to `korean, japanese, chinese`. Every backend on every segment inherits them, so the first-use delay and the per-backend memory copy disappear.

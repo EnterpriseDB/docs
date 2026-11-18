@@ -199,7 +199,7 @@ const products = {
   clickhouse: {
     name: "EDB Postgres AI for ClickHouse",
     shortName: "ClickHouse",
-    iconName: IconNames.CLICKHOUSE,
+    iconName: IconNames.IMPROVE,
   },
 };
 

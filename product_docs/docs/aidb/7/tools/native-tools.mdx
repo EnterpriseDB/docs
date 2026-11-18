@@ -16,7 +16,7 @@ A native tool call runs under a purpose's resolved role if the calling agent has
 
 | Tool | Read-only | Description |
 |------|-----------|--------------|
-| `run_sql_query` | Yes | Run a read-only SQL query against the database and return its rows as JSON. |
+| `run_sql_query` | Yes | Run a read-only SQL query against the database and return its rows as JSON. Refuses a query that reads user mappings, for example through `pg_user_mappings`. |
 | `explain_query` | Yes | Return the query plan for one `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `MERGE` statement as JSON. Pass `analyze => true` to run the statement and include real timing and row counts; this fails for a write statement. Without `analyze`, the statement isn't executed. |
 
 ## Catalog discovery
@@ -76,13 +76,13 @@ Schema-search knowledge bases to allow semantic search based discovery of tables
 | `suggest_joins` | Yes | List the relationships one hop from a given table, in both directions. |
 | `semantic_kb_subgraph` | Yes | Seed from a natural-language search and return the relationships around the matched entities. |
 | `relationship_candidates` | Yes | List relationship candidates derived from imported query history, not yet accepted. |
-| `list_query_history` | Yes | List normalized statements recorded by `import_query_history`, with their referenced objects and join predicates. |
+| `list_query_history` | Yes | List normalized statements recorded by `import_query_history`, with their referenced objects and join predicates. Callers see only the statements run by roles they're a member of, unless they hold `pg_read_all_stats`. |
 | `list_proposed_comments` | Yes | List object descriptions queued for review under [comment curation](../semantic-knowledge-bases/curation#reviewing-before-its-live). |
 | `relationship_drift` | Yes (see note) | Detect and mark stale any relationship added by hand whose columns were renamed or dropped. Note: flagged read-only in the catalog, but the function writes on every call — treat it as a write regardless of the flag. |
 | `add_relationship` | No | Record a relationship an agent has discovered. Always records `source = 'agent'`. Note: despite the shared name, this tool calls `aidb.add_relationship_as_agent()`, not the SQL function `aidb.add_relationship()` — the two aren't interchangeable. |
 | `delete_relationship` | No | Delete a relationship by ID, or by its endpoints and columns. |
-| `accept_relationship_candidates` | No | Accept one or more relationship candidates, making them routable. |
-| `import_query_history` | No | Read `pg_stat_statements` and derive relationship candidates from the joins it finds. |
+| `accept_relationship_candidates` | No | Accept one or more relationship candidates by ID, making them routable. Optional `cardinality` and `is_nullable` arguments override the proposed shape. |
+| `import_query_history` | No | Read `pg_stat_statements`, store the statements that join tables in the knowledge base's schemas, and derive relationship candidates from the joins it finds. Statements from [excluded roles](../semantic-knowledge-bases/query-history#excluding-an-applications-sql) are skipped. |
 | `add_comment_to_object` | No | Write or edit a table, view, column, or constraint description, reconciling every knowledge base that indexes it. |
 | `remove_comment` | No | Remove a table, view, column, or constraint description. |
 
@@ -92,20 +92,26 @@ The following functions are intentionally not native tools:
 |------|--------------------|
 | `aidb.add_relationship` | For a person to add by hand (`source => 'manual'`); the agent-facing equivalent is the `add_relationship` tool above, which calls `aidb.add_relationship_as_agent` instead. |
 | `aidb.resolve_object_comment` | Approves or rejects a proposed comment. Deliberately excluded: an agent holding it could approve its own proposal. |
+| `aidb.update_semantic_kb_history_filter` | Sets the roles whose statements [query history](../semantic-knowledge-bases/query-history#excluding-an-applications-sql) doesn't learn from. Deliberately excluded: an agent holding it could change the list that governs what it learns from. |
+| `aidb.classify_query_history_statement` | Explains why a statement would or wouldn't be kept by `import_query_history`. SQL-only, for a person debugging an import. |
 | `aidb.update_semantic_kb_curation` | Turns the comment review queue on or off. Deliberately excluded: an agent holding it could switch off the review that governs it. |
 | `aidb.semantic_kb_audit` | Reads the audit log of semantic KB operations; for a superuser or the extension owner. |
 | `aidb.semkb_audit_prune` | Deletes old audit records for one knowledge base; run by an operator or a scheduled job such as `pg_cron`. |
 
 ## Models
 
-See [Integrating models](../integrating-models).
+See [Integrating models](../integrating-models) and [Model credentials](../integrating-models/credentials). Assign the credential tools only to agents that manage credentials. The `create_credential` and `update_credential` tools take the secret as an argument, so the secret passes through the agent's model and is visible to it.
 
 | Tool | Read-only | Description |
 |------|-----------|--------------|
 | `list_models` | Yes | List all registered models. |
 | `get_model` | Yes | Get a registered model's configuration by name. |
-| `create_model` | No | Register a new model with a provider and configuration. |
+| `create_model` | No | Register a new model with a provider, configuration, and credential. |
 | `delete_model` | No | Delete a registered model by name. |
+| `list_credentials` | Yes | List model credentials. Never returns a secret. |
+| `create_credential` | No | Create a model credential. |
+| `update_credential` | No | Change a credential's secret, endpoint, or sharing. |
+| `delete_credential` | No | Delete a model credential. |
 | `sync_hcp_models` | No | Sync models available from the configured Hybrid Manager (HM) into the model registry. |
 | `list_hcp_models` | Yes | List models already synced from HM. |
 | `get_hcp_models` | Yes | List models available from HM, synced or not. |
@@ -136,7 +142,7 @@ See [SQL functions](../sql-functions).
 | `encode_image` | Yes | Compute an image embedding vector. |
 | `generate_text` | Yes | Generate text from a language model. |
 | `get_model_description` | Yes | Get a human-readable description of a model. |
-| `list_model_providers` | Yes | List the foreign-server-backed model providers available for registering models against. |
+| `list_model_providers` | Yes | List the model providers available for registering models. |
 | `rerank_text` | Yes | Rerank a list of candidate texts against a query using a reranker model. |
 | `get_adapter_embedding_dimensions` | Yes | Get a model's output embedding dimensionality for text or image input. |
 | `chunk_text` | Yes | Split text into chunks suitable for embedding. |

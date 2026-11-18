@@ -1,0 +1,99 @@
+---
+title: "Configuring AI features"
+navTitle: "Configuring AI features"
+description: "Enable and configure an LLM provider in PEM to use the AI-powered analysis reports, the AI Assistant chat agent, and AI Insights for EXPLAIN plans."
+---
+
+PEM includes a set of AI-assisted database management features, built on PEM's underlying pgAdmin 4 codebase:
+
+- **AI-powered analysis reports** — Generate a security, performance, or schema design report for a server, database, or schema.
+- **AI Assistant** — A chat agent in the Query tool that translates natural language into SQL, with awareness of your actual schema.
+- **AI Insights** — An analysis tab in the Explain panel that reviews an EXPLAIN plan and suggests specific fixes, including ready-to-run SQL.
+
+All of these features are disabled by default. An administrator must enable and configure an LLM provider before any user can see or use them.
+
+## Enabling AI features
+
+AI features are controlled by settings in PEM's configuration files. See [Managing configuration settings](managing_configuration_settings) for the file locations and load order (`config.py`, then `config_distro.py`, then `config_local.py`). Don't edit `config.py` directly &mdash; add your overrides to `config_local.py`.
+
+The master switch is `LLM_ENABLED`, which is `False` by default:
+
+```python
+LLM_ENABLED = False
+```
+
+Set it to `True`, then configure at least one LLM provider. PEM supports four:
+
+| Provider | Hosting | Settings |
+|----------|---------|----------|
+| Anthropic | Cloud | `ANTHROPIC_API_KEY_FILE`, `ANTHROPIC_API_MODEL` |
+| OpenAI | Cloud | `OPENAI_API_KEY_FILE`, `OPENAI_API_MODEL` |
+| Ollama | Local | `OLLAMA_API_URL`, `OLLAMA_API_MODEL` |
+| Docker Model Runner | Local (Docker Desktop 4.40+) | `DOCKER_API_URL`, `DOCKER_API_MODEL` |
+
+For Anthropic and OpenAI, the API key is read from a file on disk rather than stored directly in the configuration. The key file must contain nothing but the key itself. For Ollama and Docker Model Runner, provide the local service's API URL instead (typically `http://localhost:11434` for Ollama and `http://localhost:12434` for Docker Model Runner).
+
+Set `DEFAULT_LLM_PROVIDER` to the provider new users should default to (`'anthropic'`, `'openai'`, `'ollama'`, `'docker'`, or `''` to leave AI disabled until a user picks one themselves).
+
+Example `config_local.py` enabling Anthropic as the default provider:
+
+```python
+LLM_ENABLED = True
+DEFAULT_LLM_PROVIDER = 'anthropic'
+ANTHROPIC_API_KEY_FILE = '/etc/pem/.anthropic-api-key'
+ANTHROPIC_API_MODEL = 'claude-sonnet-5-5'
+```
+
+`MAX_LLM_TOOL_ITERATIONS` (default 20) limits how many tool-call rounds the AI Assistant and analysis reports can run in a single conversation or report. Users can override this in their own preferences, within the limits you allow.
+
+### Allowed LLM API URLs
+
+`ALLOWED_LLM_API_URLS` is a security allowlist that restricts which endpoints PEM's LLM integration is permitted to connect to. It guards against a user pointing a provider's API URL field at an internal service to trigger a server-side request forgery (SSRF) attack.
+
+The default already covers the common cases, so most deployments don't need to change it:
+
+```python
+ALLOWED_LLM_API_URLS = [
+    'https://api.anthropic.com:443',
+    'https://api.openai.com:443',
+    'http://localhost:*',
+    'http://127.0.0.1:*',
+    'http://[::1]:*',
+]
+```
+
+You only need to add an entry if you're pointing at a different provider, such as a self-hosted OpenAI-compatible endpoint, LiteLLM, or a corporate proxy. On a multi-user deployment, consider narrowing the loopback entries to the specific port you run (for example `http://localhost:11434`) rather than leaving every port on the server's own loopback interface open to any logged-in user.
+
+### User preferences
+
+Once AI features are enabled server-side, each user can set their own defaults under **Preferences > AI**: their preferred provider (or **None (Disabled)** to turn AI features off for their own account), the model to use, and `Max Tool Iterations`. A user's choice here only takes effect if `LLM_ENABLED` is `True` in the server configuration.
+
+## AI-powered analysis reports
+
+Right-click a server, database, or schema in the browser tree, and select a report from the **AI Analysis** submenu:
+
+- **Security report** &mdash; Authentication and access control, network security, encryption and SSL, object permissions, row-level security, security definer functions, audit and logging configuration, and installed extensions.
+- **Performance report** &mdash; Memory configuration, checkpoint and WAL settings, autovacuum, query planner settings, parallelism, connection management, cache efficiency, index usage, and (when available) slow and frequent queries from `pg_stat_statements`.
+- **Schema design report** &mdash; Table structure, primary keys, foreign key relationships, index strategy, constraints, normalization, naming conventions, and data type usage.
+
+Each report classifies its findings by severity and includes specific recommendations, with SQL commands where relevant. You can download a finished report as a Markdown file.
+
+!!! Note
+    When you use a cloud-hosted provider (Anthropic or OpenAI), the metadata and configuration data gathered for a report is sent to that provider's API. No table data is sent, only metadata, configuration settings, and statistics, but confirm this aligns with your organization's data handling policies before enabling a cloud provider. Use Ollama or Docker Model Runner if sending any data externally isn't acceptable.
+
+## AI Assistant
+
+The AI Assistant is a chat agent built into the [Query tool](pem_query_tool). It appears as a tab alongside **Query** and **Query History**, and is visible only when an LLM provider is configured.
+
+Type a question in plain language, and the assistant inspects your database's schema, tables, and relationships before generating SQL, along with an explanation of what the query does. Generated SQL can be copied, inserted at the cursor, or used to replace the editor's contents. The assistant can also generate `INSERT`, `UPDATE`, `DELETE`, and DDL statements, always including a `WHERE` clause on modification statements, but it never executes anything itself &mdash; you review and run the generated SQL yourself.
+
+!!! Note
+    The AI Assistant's read-only query execution has been the subject of two security fixes (CVE-2026-12045 and CVE-2026-17351) in earlier PEM 10.5.x releases, both closing gaps that let a crafted request bypass the read-only guard. Run a patched PEM release, and continue to review any generated SQL before executing it, particularly statements the assistant proposes for you to run directly.
+
+## AI Insights for EXPLAIN plans
+
+AI Insights is a tab in the Query tool's Explain panel, alongside **Graphical**, **Analysis**, and **Statistics**, and is visible only when an LLM provider is configured. Run **Explain** or **Explain Analyze** (see [Using the Query tool](pem_query_tool#explain-tab)), then open the **AI Insights** tab, or select **Analyze** to trigger it manually.
+
+The analysis produces a summary, a list of performance bottlenecks (each tagged High, Medium, or Low severity, naming the specific plan node involved), and prioritized recommendations, with ready-to-run SQL where applicable, such as a `CREATE INDEX` statement. Select **Insert into Editor** to place a suggested statement directly into the Query tool for review. You can download the full analysis as a Markdown report, or select **Regenerate** to get a fresh analysis of the same plan.
+
+As with any AI-generated suggestion, test a recommended index or configuration change against your own workload before applying it in production: an index that helps one query can slow down writes on the same table.

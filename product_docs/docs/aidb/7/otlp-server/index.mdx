@@ -1,0 +1,131 @@
+---
+title: OTLP/HTTP receiver
+navTitle: OTLP receiver
+description: Accept OpenTelemetry traces, logs, and metrics from agents outside AIDB and store them in the aidb_otel tables.
+redirects:
+  - /aidb/7/mcp-endpoint/otlp-receiver
+---
+
+The `edb-endpoints` server can also act as an OpenTelemetry Protocol over HTTP (OTLP/HTTP) receiver. Agents outside AIDB send their telemetry to it, and AIDB stores it in the same [`aidb_otel` tables](../reference/observability) as its own telemetry, so one audit trail covers both. The receiver is off by default.
+
+## Enabling the receiver
+
+1. In `postgresql.conf`, turn the receiver on:
+
+   ```ini
+   edb.endpoints_otlp_enabled = on
+   ```
+
+1. Grant the `aidb_otel_writer` role to every database role that is allowed to send telemetry:
+
+   ```sql
+   GRANT aidb_otel_writer TO agent_alice;
+   ```
+
+1. Reload Postgres. If neither the MCP server nor the receiver was on when Postgres started, restart Postgres instead, because the supervisor starts only if a server switch is on at startup.
+
+   ```sql
+   SELECT pg_reload_conf();
+   ```
+
+1. Check that the receiver is up by sending a test trace with the example under [Sending telemetry](#sending-telemetry). A `200` means the receiver stored it. A `401` or `403` means it's listening but rejected the credentials or the role. See [Responses](#responses).
+
+The receiver listens on `edb.endpoints_otlp_port` (default `8766`). It takes its host, TLS pair, and databases from the general `edb.endpoints_*` settings, never from the `edb.endpoints_mcp_*` ones. See [Configuring the endpoint](../edb-endpoints/configuring-the-endpoint). The supervisor starts the receiver for you. To launch `edb-endpoints` yourself, see [Launching `edb-endpoints` yourself](../edb-endpoints/operating-the-endpoint#launching-edb-endpoints-yourself).
+
+## Sending telemetry
+
+Send telemetry to the URL for your database and signal. Each database the endpoint serves has its own URL, with the signal at the end:
+
+```text
+POST http(s)://<host>:8766/otlp/<database>/v1/traces
+POST http(s)://<host>:8766/otlp/<database>/v1/logs
+POST http(s)://<host>:8766/otlp/<database>/v1/metrics
+```
+
+Point an OpenTelemetry SDK's OTLP/HTTP exporter at `http(s)://<host>:8766/otlp/<database>`, and it adds the `/v1/<signal>` part itself. There's no default database. A name that isn't in `edb.endpoints_database` gets a `404` with the body `unknown database`.
+
+For example, to send a trace from a shell:
+
+```shell
+curl -sS -u agent_alice:<password> \
+  -H 'Content-Type: application/json' \
+  -d @trace.json \
+  http://127.0.0.1:8766/otlp/postgres/v1/traces
+```
+
+Each request must meet these requirements:
+
+- **Formats:** `Content-Type: application/x-protobuf` or `application/json`, optionally with `Content-Encoding: gzip`. A body is at most 20 MiB, compressed or decompressed.
+- **Authentication:** HTTP Basic with a Postgres role's own credentials, or a bearer token when [OAuth](#authenticating-with-oauth) is on. Each request opens its own connection as that role, under the same `pg_hba.conf` rules as the MCP server.
+- **Authorization:** the role must be a member of `aidb_otel_writer`.
+
+The receiver then handles the request as follows:
+
+- **Storage:** the receiver calls the matching [`aidb_otel.ingest_*` function](../reference/observability#receiving-telemetry-from-external-agents), which stores one row per span or log record, labels the rows `external`, and records the role as `principal`. The receiver replies after the commit, so an exporter that retries doesn't create duplicates.
+- **Load:** at most 16 requests upload, decode, or hold a database connection at a time, separately from MCP. An upload that takes more than 30 seconds is cut off. Requests beyond the limit get a retryable `503` with `Retry-After`, so a burst of telemetry can't use up `max_connections` or slow down MCP.
+
+### Responses
+
+| Status | When                                                                                                                                     | What to do                                                                                                             |
+|--------|------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| 200    | Stored. The body is an empty `Export*ServiceResponse` in the request's format.                                                           | Nothing.                                                                                                               |
+| 400    | Invalid gzip or JSON, or a request AIDB can't decode. The error message names the failing element, such as `payloads[1]`.                | Fix the request body. Don't resend it unchanged.                                                                       |
+| 401    | Missing or wrong credentials, a refused bearer token, or a `pg_hba.conf` line that doesn't check the credential.                         | Check the password, or fetch a new token. Make sure the role's `pg_hba.conf` line checks a password or token.          |
+| 403    | The role isn't a member of `aidb_otel_writer`.                                                                                           | Run `GRANT aidb_otel_writer TO <role>;`.                                                                               |
+| 404    | Unlisted database, unknown signal, or a database without the current AIDB extension.                                                     | Use a database listed in `edb.endpoints_database`, a valid signal, and a database that has the current AIDB extension. |
+| 408    | The body didn't finish uploading within 30 seconds.                                                                                      | Resend over a faster connection, or send smaller batches.                                                              |
+| 413    | The body is larger than 20 MiB, compressed or decompressed.                                                                              | Send smaller batches.                                                                                                  |
+| 415    | Unsupported `Content-Type` or `Content-Encoding`.                                                                                        | Use `application/x-protobuf` or `application/json`, with `gzip` encoding or none.                                      |
+| 503    | Over the concurrency limit, or the database is unreachable, busy, restarting, or rolled the request back. Retryable, with `Retry-After`. | Retry after the interval in the `Retry-After` header.                                                                  |
+
+Error bodies are a `google.rpc.Status` in the request's format, as OTLP/HTTP specifies.
+
+## How AIDB stores received telemetry
+
+The receiver passes each request to an [`aidb_otel.ingest_*` function](../reference/observability#receiving-telemetry-from-external-agents). You can also call these functions directly. Only members of the `aidb_otel_writer` role can run them, and the role has no read access to the tables. Grant it to each role that's allowed to send telemetry:
+
+```sql
+GRANT aidb_otel_writer TO agent_alice;
+```
+
+Each array element is one complete OTLP request. The functions behave as follows:
+
+- A request is split into one row per span or log record. A metrics request stays one row.
+- Rows keep the format they arrived in: the JSON functions fill only `payload_json`, and the binary ones only `payload_binary`. `aidb.otel_client_storage_format` doesn't apply.
+- Rows are labeled `source = 'external'`, and `principal` is the role that called the function.
+- A span without a trace ID or span ID is skipped with a warning. A malformed, empty, or `NULL` element fails the whole call, and the error names it, such as `payloads[2] ...`.
+- A span repeated by the same writer is stored once, and isn't counted again.
+- Each function returns the number of rows it stored.
+
+Decision columns such as `decision_status` are stored as the sender reported them. To count only decisions AIDB enforced, filter on `source = 'internal'`.
+
+!!!note
+Rows stored before the 7.9.0 upgrade are labeled `internal` and have no `principal`, but AIDB can't prove that label. Earlier releases let any member of `aidb_users` write rows directly and recorded nothing that tells them apart.
+!!!
+
+## Serving remote senders
+
+To receive telemetry from other hosts, set `edb.endpoints_host` to a routable address, and give the endpoint a certificate and key with `edb.endpoints_tls_cert` and `edb.endpoints_tls_key`. Then reload with `SELECT pg_reload_conf();`. The receiver refuses plaintext HTTP off loopback (`127.0.0.1`, `::1`, or `localhost`).
+
+!!!note
+The receiver ignores the `edb.endpoints_mcp_*` host and TLS settings. A non-loopback MCP host with an MCP-only TLS pair therefore still needs the general pair before the receiver can listen off loopback.
+!!!
+
+## Authenticating with OAuth
+
+Besides HTTP Basic, the receiver accepts a bearer token that your identity provider issued. The receiver uses the general `edb.endpoints_oauth_*` settings and needs the issuer and the audience. For the requirements, the settings, and the `pg_hba.conf` lines, see [Authenticating with OAuth](../edb-endpoints/oauth).
+
+How the receiver handles a token:
+
+- A bearer token must be a JSON Web Token (JWT). The receiver checks its shape, role claim, expiry, and `aud`, then logs in to Postgres as the role the claim names. That role is the stored rows' `principal`, so it still needs `aidb_otel_writer`.
+- A request with no usable credentials gets a `401` that offers both `Basic realm="otlp"` and `Bearer`.
+- A token that fails the check, or that Postgres refuses, gets a `401` with `Bearer error="invalid_token"`, so the exporter knows to fetch a new token.
+- HTTP Basic keeps working alongside bearer tokens.
+
+The sender, not AIDB, obtains the token and attaches it to each request as an `Authorization: Bearer <token>` header. AIDB has no setting for this. To attach it, set the standard `OTEL_EXPORTER_OTLP_HEADERS` environment variable, which belongs to OpenTelemetry and which most SDKs read, or use your SDK's equivalent option. Set it in the environment of the agent process that sends the telemetry, not on the Postgres server:
+
+```shell
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <token>"
+```
+
+Some SDKs expect the value percent-encoded, such as `Authorization=Bearer%20<token>`. See your SDK's documentation for the exact format. Tokens expire, and an exporter that reads a static header doesn't refresh them, so your application has to update the header before the token expires. When it doesn't, the receiver returns `401` with `error="invalid_token"`.

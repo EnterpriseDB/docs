@@ -1,0 +1,466 @@
+---
+title: Using whpg-cjk
+navTitle: Using
+description: Index and search Korean, Japanese, and Chinese text in WarehousePG with the text search configurations that the whpg-cjk extension provides.
+---
+
+Use whpg-cjk to search Korean, Japanese, and Chinese text with the standard WarehousePG full text search features. With whpg-cjk, you can:
+
+-   [Index and search text](#indexing-and-searching-text) in all three languages.
+-   [Rank results, build a search box, search for phrases, and highlight matches](#querying-text).
+-   [Set a default language](#setting-a-default-language) to omit the configuration name from your queries.
+-   [Search JSON documents](#searching-json-documents).
+-   [Search in more than one language](#searching-in-multiple-languages) in the same database.
+-   [Inspect how text is segmented](#inspecting-segmentation) to find out why a search matches or doesn't.
+-   [Add your own words](#adding-user-dictionaries) to the dictionaries.
+
+## Getting started
+
+Install and register whpg-cjk in a database with UTF8 encoding before you start. See [Installing whpg-cjk](installing.mdx).
+
+Then, identify the data that you want to search. Either create a table and load your data, or locate an existing table with a text column that contains Korean, Japanese, or Chinese text. The syntax in the following sections uses `<table_name>` and `<column_name>` as placeholders for your own table and column.
+
+To follow along with sample data instead, create a small table of Korean book titles. In WarehousePG, include the `DISTRIBUTED BY` clause:
+
+```sql
+CREATE TABLE books (
+    id    int,
+    title text,
+    body  text
+) DISTRIBUTED BY (id);
+
+INSERT INTO books VALUES
+  (1, '무궁화 꽃이 피었습니다', '조정래 장편소설. 한반도의 운명을 다룬 이야기.'),
+  (2, '데이터베이스 개론',      '분산 데이터베이스 시스템의 원리와 실제를 다룬다'),
+  (3, '한국 현대 문학사',       '근대부터 현대까지 한국 문학의 흐름을 정리했다');
+```
+
+## Indexing and searching text
+
+Search a text column by creating an index on it, then querying it. Full text search converts text into a `tsvector`, a list of searchable terms that WarehousePG indexes and matches against. The index is a Generalized Inverted Index (GIN), and queries are matched against it using the `@@` operator. whpg-cjk works with the standard PostgreSQL full text search functions, such as `to_tsvector`, `to_tsquery`, and `ts_rank`. See the [Function reference](#function-reference) for the full list.
+
+To segment the text, specify a whpg-cjk text search configuration as the first argument of the text search functions, such as `to_tsvector` and `to_tsquery`, the same way you use a built-in configuration such as `english`. whpg-cjk provides one configuration for each language:
+
+| Configuration | Language | Dictionary |
+| --- | --- | --- |
+| `korean` | Korean | mecab-ko-dic |
+| `japanese` | Japanese | IPADIC |
+| `chinese` | Chinese, simplified | jieba |
+
+The dictionaries are embedded in the extension, so there are no dictionary files to deploy. The analyzers reduce words to their base forms. Korean drops particles and endings and keeps the stem, Japanese folds conjugated forms to the dictionary form, and Chinese indexes each word together with its sub-words, so a query for `文学` matches a document that contains `现代文学`. Documents and queries are segmented the same way.
+
+1.  Create the index. In the index expression, use the text search configuration that matches the language of your data, which is `korean`, `japanese`, or `chinese`:
+
+    ```sql
+    CREATE INDEX <index_name> ON <table_name>
+        USING gin (to_tsvector('<config>', <column_name>));
+    ```
+
+    Where `<index_name>` is a name for the index, `<table_name>` is your table, `<config>` is the text search configuration for the language of your data, either `korean`, `japanese`, or `chinese`, and `<column_name>` is the text column.
+
+    To index more than one column, concatenate the columns in the expression, for example `title || ' ' || body`.
+
+1.  Search the column. Use the same configuration as the index, and repeat the index expression in the query so that the query uses the index:
+
+    ```sql
+    SELECT <column1>, <column2> FROM <table_name>
+     WHERE to_tsvector('<config>', <column_name>)
+           @@ to_tsquery('<config>', '<search_term>');
+    ```
+
+    Where `<column1>` and `<column2>` are the columns to return and `<search_term>` is the word to search for.
+
+For example, to index and search the `books` table from [Getting started](#getting-started):
+
+```sql
+CREATE INDEX books_fts ON books
+    USING gin (to_tsvector('korean', title || ' ' || body));
+
+SELECT id, title FROM books
+ WHERE to_tsvector('korean', title || ' ' || body)
+       @@ to_tsquery('korean', '데이터베이스');
+```
+
+The query returns the one book that matches:
+
+```
+ id |       title
+----+-------------------
+  2 | 데이터베이스 개론
+```
+
+Any conjugation in the query matches. A query for `피겠다`, `피었습니다`, or `핀다` finds documents that contain any other form of the verb `피다`.
+
+### Indexing large tables
+
+Speed up queries on large tables, such as millions of rows with a high query rate, by storing the `tsvector` in a column instead of recomputing it on every query. The index in [Indexing and searching text](#indexing-and-searching-text) is an expression index, so WarehousePG computes the `tsvector` for each row when it builds the index, and each query repeats the same expression. Declare the column as a stored generated column, so that WarehousePG fills it for existing rows and keeps it current on every `INSERT` and `UPDATE`:
+
+```sql
+ALTER TABLE <table_name> ADD COLUMN <tsvector_column> tsvector
+    GENERATED ALWAYS AS (to_tsvector('<config>', <column_name>)) STORED;
+CREATE INDEX <index_name> ON <table_name> USING gin (<tsvector_column>);
+```
+
+Where `<tsvector_column>` is a name for the new column, and `<index_name>` is a name for the index. The other placeholders are the same as in [Indexing and searching text](#indexing-and-searching-text).
+
+Search the stored column directly, without repeating the `to_tsvector` expression:
+
+```sql
+SELECT <column1>, <column2> FROM <table_name>
+ WHERE <tsvector_column> @@ to_tsquery('<config>', '<search_term>');
+```
+
+Where `<column1>` and `<column2>` are the columns to return, and `<search_term>` is the word to search for.
+
+For example, to give title matches in the `books` table a higher weight than body matches, combine several `tsvector` values with `setweight`. A weight, from `A` (highest) to `D` (lowest), labels the part of the document that a term came from, and `ts_rank` scores a match on a higher weight above a match on a lower weight:
+
+```sql
+ALTER TABLE books ADD COLUMN fts tsvector
+    GENERATED ALWAYS AS (
+        setweight(to_tsvector('korean', title), 'A') ||
+        setweight(to_tsvector('korean', coalesce(body, '')), 'D')) STORED;
+CREATE INDEX books_fts_col ON books USING gin (fts);
+```
+
+Then search the weighted `fts` column:
+
+```sql
+SELECT id, title FROM books
+ WHERE fts @@ to_tsquery('korean', '문학');
+__OUTPUT__
+ id |      title
+----+------------------
+  3 | 한국 현대 문학사
+```
+
+!!!note
+
+Generalized Search Tree (GiST) indexes are also supported. They're smaller and faster to update than GIN indexes, but slower to query. Use GIN unless you have a specific reason to use GiST.
+!!!
+
+## Querying text
+
+Find the rows that match a search, order them by relevance, and highlight the matching terms. Pick the query function that fits how people enter their searches, from a single word to free text in a search box. Every query function segments the search text the same way as the indexed documents, so a query matches regardless of the inflection that you use.
+
+### Ranking results
+
+Rank results with `ts_rank`:
+
+```sql
+SELECT <column1>, <column2>, ts_rank(<tsvector>, <tsquery>) AS rank
+  FROM <table_name>
+ WHERE <tsvector> @@ <tsquery>
+ ORDER BY rank DESC;
+```
+
+Where `<column1>` and `<column2>` are the columns to return, `<tsvector>` is a `tsvector` column or a `to_tsvector('<config>', <column_name>)` expression that matches your index, and `<tsquery>` is a query such as `to_tsquery('<config>', '<search_term>')`.
+
+For example, to rank results with the weighted `fts` column from [Indexing large tables](#indexing-large-tables), so that matches in the title rank above matches in the body:
+
+```sql
+SELECT id, title, ts_rank(fts, q) AS rank
+  FROM books, to_tsquery('korean', '문학') q
+ WHERE fts @@ q
+ ORDER BY rank DESC;
+__OUTPUT__
+ id |      title       |    rank
+----+------------------+------------
+  3 | 한국 현대 문학사 | 0.06079271
+```
+
+### Building a search box
+
+Support an end-user search box with `websearch_to_tsquery`, which accepts quoted phrases, `-` to exclude a term, and `OR`:
+
+```sql
+SELECT <column1>, <column2> FROM <table_name>
+ WHERE <tsvector> @@ websearch_to_tsquery('<config>', '<search_text>');
+```
+
+Where `<search_text>` is the text that the user types in the search box.
+
+For example, to search with a quoted word and an excluded term:
+
+```sql
+SELECT id, title FROM books
+ WHERE to_tsvector('korean', title || ' ' || body)
+       @@ websearch_to_tsquery('korean', '"데이터베이스" -나비');
+__OUTPUT__
+ id |       title
+----+-------------------
+  2 | 데이터베이스 개론
+```
+
+### Searching for phrases
+
+Search for adjacent words with `phraseto_tsquery`:
+
+```sql
+SELECT <column1>, <column2> FROM <table_name>
+ WHERE <tsvector> @@ phraseto_tsquery('<config>', '<phrase>');
+```
+
+Where `<phrase>` is the phrase to search for.
+
+For example, to search for the adjacent words 무궁화 and 꽃:
+
+```sql
+SELECT id, title FROM books
+ WHERE to_tsvector('korean', title || ' ' || body)
+       @@ phraseto_tsquery('korean', '무궁화 꽃');
+__OUTPUT__
+ id |         title
+----+------------------------
+  1 | 무궁화 꽃이 피었습니다
+```
+
+### Highlighting matches
+
+Highlight matches with `ts_headline`, which marks fragments inside text that has no spaces between words:
+
+```sql
+SELECT ts_headline('<config>', <column_name>, <tsquery>) FROM <table_name>;
+```
+
+Where `<column_name>` is the text column to highlight, and `<tsquery>` is the query that defines the terms to mark.
+
+For example, to highlight matches in the body of one book. By default, `ts_headline` wraps each match in `<b>` and `</b>` tags, which an application can display as bold text:
+
+```sql
+SELECT ts_headline('korean', body, to_tsquery('korean', '문학'))
+  FROM books WHERE id = 3;
+__OUTPUT__
+                     ts_headline
+------------------------------------------------------
+ 근대부터 현대까지 한국 <b>문학</b>의 흐름을 정리했다
+```
+
+## Setting a default language
+
+Omit the configuration name from the text search functions in a single-language database by setting `default_text_search_config` at the session level or the database level:
+
+```sql
+-- For the current session
+SET default_text_search_config = <config>;
+
+-- For every new connection to one database
+ALTER DATABASE <database_name> SET default_text_search_config = <config>;
+```
+
+Where `<config>` is `korean`, `japanese`, or `chinese`, and `<database_name>` is the name of the database.
+
+Then call the functions without a configuration name:
+
+```sql
+SELECT to_tsvector('<text>');
+```
+
+Where `<text>` is the text to segment. For example:
+
+```sql
+SELECT to_tsvector('무궁화');
+```
+
+The index definition must keep the explicit configuration name. The short forms depend on the current setting, so WarehousePG rejects `CREATE INDEX ... (to_tsvector(body))`. Write `to_tsvector('korean', body)` in both the index and the matching `WHERE` clause.
+
+## Searching JSON documents
+
+Search JSON documents with `to_tsvector`, which extracts and segments every string value in a `json` or `jsonb` document:
+
+```sql
+SELECT to_tsvector('<config>', <json_column>) FROM <table_name>;
+```
+
+Where `<json_column>` is a `json` or `jsonb` column of the table. For example:
+
+```sql
+SELECT to_tsvector('korean',
+    '{"title":"무궁화꽃이 피었습니다","author":"김철수","tags":["소설","한국문학"]}'::jsonb);
+__OUTPUT__
+                           to_tsvector
+-----------------------------------------------------------------
+ '김철수':10 '꽃':7 '무궁화':6 '문학':4 '소설':1 '피':8 '한국':3
+```
+
+Index only certain value types with `jsonb_to_tsvector`, by listing the types in the third argument:
+
+```sql
+SELECT jsonb_to_tsvector('<config>', <jsonb_column>, '["<value_type>", ...]') FROM <table_name>;
+```
+
+Where `<jsonb_column>` is a `jsonb` column of the table, and `<value_type>` is a type of value to index, such as `string` or `numeric`.
+
+For example, to index only the string and numeric values:
+
+```sql
+SELECT jsonb_to_tsvector('japanese', '{"name":"寿司を食べた","count":5}'::jsonb,
+                         '["string","numeric"]');
+__OUTPUT__
+     jsonb_to_tsvector
+---------------------------
+ '5':4 '寿司':1 '食べる':2
+```
+
+## Searching in multiple languages
+
+Search in more than one language by using the three configurations in the same database. The configurations are independent, and each one segments text in its own language:
+
+```sql
+SELECT to_tsvector('korean', '<korean_text>') AS ko,
+       to_tsvector('japanese', '<japanese_text>') AS ja,
+       to_tsvector('chinese', '<chinese_text>') AS zh;
+```
+
+Where `<korean_text>`, `<japanese_text>`, and `<chinese_text>` are the text to segment in each language. For example:
+
+```sql
+SELECT to_tsvector('korean', '무궁화꽃이 피었습니다.') AS ko,
+       to_tsvector('japanese', '寿司を食べた') AS ja,
+       to_tsvector('chinese', '数据库的全文检索') AS zh;
+__OUTPUT__
+            ko            |         ja          |                             zh
+--------------------------+---------------------+-------------------------------------------------------------
+ '꽃':2 '무궁화':1 '피':3 | '寿司':1 '食べる':2 | '全文':2 '全文检索':2 '据库':1 '数据':1 '数据库':1 '检索':2
+```
+
+For tables with more than one language, keep one `tsvector` column for each language, or add a language column and use partial indexes.
+
+## Inspecting segmentation
+
+Inspect how the analyzer breaks down text, exactly as indexing sees it, with `cjk_analyze`. Use it when a search result surprises you:
+
+```sql
+SELECT * FROM cjk_analyze('<language>', '<text>');
+```
+
+Where `<language>` is `korean`, `japanese`, or `chinese`, and `<text>` is the text to analyze. For example:
+
+```sql
+SELECT * FROM cjk_analyze('korean', '무궁화꽃이 피었습니다.');
+__OUTPUT__
+ token  | tag | indexable | lexemes
+--------+-----+-----------+----------
+ 무궁화 | NNG | t         | {무궁화}
+ 꽃     | NNG | t         | {꽃}
+ 이     | JKS | f         |
+ 피     | VV  | t         | {피}
+ 었     | EP  | f         |
+ 습니다 | EF  | f         |
+ .      | SF  | f         |
+```
+
+The `tag` column is the part of speech from the underlying dictionary. Morphemes with `indexable` set to `f`, such as particles and endings, aren't indexed.
+
+Use `cjk_segment` to return the tokens with their offsets in the original text, and `cjk_normalize` to return the text after normalization. The standard `ts_debug`, `ts_lexize`, and `ts_parse` functions also work with the whpg-cjk configurations.
+
+## Adding user dictionaries
+
+Tailor segmentation to your domain, such as product names and jargon, by adding your own words to a file and pointing the configuration parameter for that language at it:
+
+| Configuration parameter | File format |
+| --- | --- |
+| `whpg_cjk.korean_user_dict` | CSV with `surface,part_of_speech,reading` on each line, or full 12-field mecab-ko-dic rows |
+| `whpg_cjk.japanese_user_dict` | CSV with `surface,part_of_speech,reading` on each line, or full 13-field IPADIC rows |
+| `whpg_cjk.chinese_user_dict` | jieba frequency dictionary with `word [frequency [part_of_speech]]` on each line |
+
+Relative file names resolve against the `tsearch_data` directory under the WarehousePG share directory, which is `/usr/edb/whpg7/share/postgresql/tsearch_data` for the EDB packages. Absolute paths are used as given. Assign a part of speech that whpg-cjk indexes, such as a noun. The noun tag is `NNG` for Korean, `名詞` for Japanese, and `n` for Chinese.
+
+```sql
+SET whpg_cjk.<language>_user_dict = '<file_name>';
+```
+
+Where `<language>` is `korean`, `japanese`, or `chinese`, and `<file_name>` is the name or absolute path of your dictionary file.
+
+For example, to add the word 워케이션 to the Korean dictionary:
+
+1.  Create a `my_ko.csv` file in the `tsearch_data` directory on every host in the cluster:
+
+    ```bash
+    echo '워케이션,NNG,워케이션' > /usr/edb/whpg7/share/postgresql/tsearch_data/my_ko.csv
+    ```
+
+1.  Start a new session. In `psql`, reconnect to your database:
+
+    ```sql
+    \c <database_name>
+    ```
+
+    Where `<database_name>` is the name of your database.
+
+1.  Set the parameter before the first query that uses the Korean analyzer:
+
+    ```sql
+    SET whpg_cjk.korean_user_dict = 'my_ko.csv';
+    ```
+
+1.  Run a query that contains the new word:
+
+    ```sql
+    SELECT to_tsvector('korean', '워케이션을 즐긴다');
+    __OUTPUT__
+          to_tsvector
+    -----------------------
+     '워케이션':1 '즐기':2
+    ```
+
+Without the user dictionary, the same text is split into `'워':1 '션':2`.
+
+The following rules apply:
+
+-   A backend loads the dictionary once, the first time it uses that language's analyzer, and then locks the setting for the session. Changing the setting afterward returns the error `user dictionary setting changed after the analyzer was initialized`, and you need to start a new session. If the load fails, for example because the file is missing, the setting stays unlocked so you can correct it and retry.
+-   Changing a dictionary changes the output of `to_tsvector`. After you edit the file or change the setting, run `REINDEX` on every index built with it, and rebuild any stored `tsvector` columns.
+-   The segments run the analyzer during `INSERT` and `CREATE INDEX`, so the file must exist on every host in the cluster, with identical content. Use `gpsync` to copy it. For production, set the parameter cluster-wide with `gpconfig`, for example `gpconfig -c whpg_cjk.korean_user_dict -v 'my_ko.csv'`, so that every session agrees.
+-   If you [preload whpg-cjk](installing.mdx#preloading-whpg-cjk), the server reads the user dictionary settings from `postgresql.conf` at start and fixes them for the server's lifetime. A session-level `SET` then returns the same error, so set the parameter with `gpconfig` and restart WarehousePG instead.
+
+To check which dictionary each backend loaded and whether the file content matches on every host, use the `cjk_dict_status` function.
+
+## Function reference
+
+whpg-cjk works with the standard PostgreSQL full text search functions, and adds a few functions of its own.
+
+### Standard functions
+
+Pass a whpg-cjk configuration to any of these functions:
+
+| Function | Purpose |
+| --- | --- |
+| `to_tsvector(<config>, <text>)` | Converts text to a `tsvector`. Also accepts `json` and `jsonb` documents, and extracts every string value. |
+| `jsonb_to_tsvector(<config>, <jsonb>, <filter>)` | Converts a `jsonb` document, indexing only the value types that you list. |
+| `to_tsquery`, `plainto_tsquery`, `phraseto_tsquery`, `websearch_to_tsquery` | Convert a query to a `tsquery`. All four segment the query the same way as the document side. |
+| `ts_rank`, `ts_rank_cd` | Rank matches, including the multiple granularities that whpg-cjk indexes. |
+| `ts_headline` | Highlights matches, including inside text that has no spaces between words. |
+| `setweight`, `tsvector_concat` | Combine weighted fields into one `tsvector`. |
+| `ts_debug`, `ts_lexize`, `ts_parse`, `ts_token_type` | Debug how text is parsed. These functions analyze the text on its own, without the surrounding sentence, so they show only the standalone reading of a word. |
+
+You can also use the `@@` operator to match a `tsvector` against a `tsquery`.
+
+### whpg-cjk functions
+
+| Function | Purpose |
+| --- | --- |
+| `cjk_analyze([<language>,] <text>)` | Shows the morphological breakdown of the text, as indexing sees it. See [Inspecting segmentation](#inspecting-segmentation). |
+| `cjk_segment([<language>,] <text>)` | Returns every token with its type, part of speech, indexed lexemes, and its position in the original text. Use it for word clouds, analytics, or custom highlighting. |
+| `cjk_normalize(<text>)` | Returns the text after normalization, which converts fullwidth characters to halfwidth, among other changes. |
+| `cjk_dict_status()` | Reports the state of the [user dictionaries](#adding-user-dictionaries) for the current backend. |
+
+The `<language>` argument is `korean`, `japanese`, or `chinese`. If you omit it, the language comes from [`default_text_search_config`](#setting-a-default-language).
+
+## Limitations
+
+Known limitations include:
+
+-   Traditional Chinese falls back to per-character indexing. Queries are segmented the same way, so retrieval works with reduced precision.
+-   Halfwidth katakana isn't unified with fullwidth katakana.
+-   In Japanese, katakana compounds such as `データベースシステム` are indexed as single words, so queries for their parts don't match. Long vowel variants, such as `サーバー` and `サーバ`, aren't unified.
+-   Sentences are analyzed as a whole, so a word can be segmented differently in a document than in a short query that carries less context. For a word that the dictionary doesn't contain, add it to a user dictionary.
+-   A `tsvector` can't exceed 1 MB. Chinese text produces about 1.5 to 2 times as many lexemes as words because of the multiple granularities, so keep the source text for each row under roughly 300 KB, or split large documents into sections.
+-   When the GPORCA optimizer is on, queries use a sequential scan instead of an index built on `to_tsvector(...)`. Results stay correct, but queries are slower. To use the index, turn the optimizer off:
+
+    ```sql
+    SET optimizer = off;
+    ALTER DATABASE <database_name> SET optimizer = off;
+    ```
+
+    Where `<database_name>` is the name of the database.
+
+-   The cluster's `LC_CTYPE` setting affects token boundaries for emoji, punctuation, and hyphenated ASCII words. After you restore a dump into a cluster with a different locale, run `REINDEX`.

@@ -1,0 +1,106 @@
+---
+title: OTel Collector configuration reference
+navTitle: OTel Collector configuration
+description: Reference for the OTel Collector configuration file that WEM generates on every WarehousePG node, including which values come from WEM parameters and which you can override.
+---
+
+WEM generates `/etc/edb/otelcol/config.yaml` on every WarehousePG (WHPG) cluster node. Don't edit this file directly, because WEM overwrites your changes. See [Changing OTel Collector settings](../configuring#changing-otel-collector-settings) for how to change a value.
+
+The abbreviated example shows the file on a coordinator node that sends to an external gateway. Comments mark the values that WEM sets and the values you can override. Segment and standby nodes have no `sqlquery/whpg` receiver, and gateway nodes also have `clickhouse` and `prometheus` exporters.
+
+```yaml
+# config.yaml - rendered by otel-helper. Do not edit manually.
+# Host: <hostname>  Role: coordinator
+
+extensions:
+  file_storage:
+    directory: /var/lib/edb/otelcol/checkpoint
+    # ...
+  health_check:
+    endpoint: "127.0.0.1:13133"
+
+receivers:
+  host_metrics:
+    collection_interval: 30s      # Set by WEM: OTEL_COLLECTION_INTERVAL
+    scrapers:
+      # ...
+
+  sqlquery/whpg:                  # Coordinator only
+    driver: postgres
+    # Set by WEM: WHPG_* connection parameters
+    datasource: "host=127.0.0.1 port=5432 user=gpadmin dbname=<database> sslmode=prefer password='<password>'"
+    collection_interval: 30s
+    queries: ${file:/etc/edb/otelcol/whpg_db_metrics.yaml}
+
+  file_log:
+    include:
+      - /data/coordinator/gpseg-1/log/gpdb-*.csv   # Set by WEM, discovered from the cluster
+    start_at: beginning           # Can override
+    storage: file_storage
+    # poll_interval is not set by default. Can override.
+    operators:
+      # Log parsing operators
+      # ...
+
+processors:
+  memory_limiter:
+    # ...
+  batch:
+    send_batch_size: 1024         # Can override
+    send_batch_max_size: 2048     # Can override
+    timeout: 10s                  # Can override
+  resource_detection:
+    # ...
+  attributes/whpg:
+    actions:
+      - key: whpg_host
+        value: "<hostname>"       # Set by WEM, discovered from the cluster
+        action: upsert
+      - key: cluster_identity
+        value: "<cluster identity>"   # Set by WEM: WEM_CLUSTER_NAME
+        action: upsert
+
+exporters:
+  otlp_grpc/gateway:
+    endpoint: "<gateway-host>:4317"   # Set by WEM: OTEL_GATEWAY_ENDPOINT
+    # ...
+
+service:
+  pipelines:
+    metrics:
+      receivers: [host_metrics, sqlquery/whpg]
+      processors: [memory_limiter, resource_detection, attributes/whpg, batch]
+      exporters: [otlp_grpc/gateway]
+    logs:
+      receivers: [file_log]
+      processors: [memory_limiter, transform/restore_newlines, resource_detection, attributes/whpg, batch]
+      exporters: [otlp_grpc/gateway]
+```
+
+## WEM-managed OTel settings
+
+WEM writes these parameters to the key shown in `/etc/edb/otelcol/config.yaml`, on the nodes listed. Change them in the WEM console or in `wem.conf`.
+
+| WEM parameter | Nodes | Key in `/etc/edb/otelcol/config.yaml` |
+|---|---|---|
+| [`OTEL_GATEWAY_ENDPOINT`](configuration#otel-collector) | All | `exporters.otlp_grpc/gateway.endpoint` |
+| [`OTEL_COLLECTION_INTERVAL`](configuration#otel-collector) | All | `receivers.host_metrics.collection_interval` |
+| [`OTEL_PROMETHEUS_SCRAPE_ENDPOINT`](configuration#otel-collector) | Gateway | `exporters.prometheus.endpoint` |
+| [`CLICKHOUSE_URL`](configuration#clickhouse) | Gateway | `exporters.clickhouse.endpoint` |
+| [`CLICKHOUSE_DB`](configuration#clickhouse) | Gateway | `exporters.clickhouse.database` |
+| [`WHPG_*`](configuration#target-cluster) | Coordinator | `receivers.sqlquery/whpg.datasource` |
+| [`WEM_CLUSTER_NAME`](configuration#cluster-identity) | All | `processors.attributes/whpg`, action `cluster_identity` |
+
+## Overridable OTel settings
+
+The host agent's template sets every other value in the file. You can change these values with an override file. See [Overriding other collector settings](../configuring#overriding-other-collector-settings).
+
+| Key | Default | Description |
+|---|---|---|
+| `processors.batch.send_batch_size` | `1024` | Number of items that triggers sending a batch. |
+| `processors.batch.send_batch_max_size` | `2048` | Maximum number of items in a batch. |
+| `processors.batch.timeout` | `10s` | Maximum time the collector waits before sending a batch. |
+| `receivers.file_log.start_at` | `beginning` | Where the collector starts reading WHPG log files. Set to `end` to skip log content that exists when the collector starts. |
+| `receivers.file_log.poll_interval` | Not set | How often the collector checks log files for new content. When unset, the collector uses its own default. |
+
+Larger batches can reduce CPU usage, but they can also need more memory, increase delivery latency, and lose more data if the collector crashes or restarts.
