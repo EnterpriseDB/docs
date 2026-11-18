@@ -19,6 +19,7 @@ The WarehousePG documentation describes the latest version of WarehousePG 7.
 
 | Version                               | Release date      |
 | ------------------------------------- | ----------------- |
+| [7.6.2-WHPG](#warehousepg-7-6-2-whpg) | 18 November 2026  |
 | [7.6.1-WHPG](#warehousepg-7-6-1-whpg) | 21 October 2026   |
 | [7.6.0-WHPG](#warehousepg-7-6-0-whpg) | 25 September 2026 |
 | [7.5.0-WHPG](#warehousepg-7-5-0-whpg) | 8 June 2026       |
@@ -29,6 +30,60 @@ The WarehousePG documentation describes the latest version of WarehousePG 7.
 | [7.3.0-WHPG](#warehousepg-7-3-0-whpg) | 14 November 2025  |
 | [7.2.2-WHPG](#warehousepg-7-2-2-whpg) | 17 November 2025  |
 | [7.2.1-WHPG](#warehousepg-7-2-1-whpg) | 15 May 2025       |
+
+## WarehousePG 7.6.2-WHPG
+
+Released: 18 November 2026
+
+WarehousePG 7.6.2-WHPG is a security and maintenance release. It includes the following enhancements, bug fixes, and other changes:
+
+:::: info Note
+WarehousePG 7.6.2 changes the privileges required for `CREATE STATISTICS`, for function `DESCRIBE` callbacks, and for some system views, and the paths that `orafce` `UTL_FILE` accepts. Review [Upgrading to 7.6.2: Behavior changes to review](../install_guide/minor_upgrade.mdx#replacing-binaries-and-restarting-whpg) before you upgrade.
+::::
+
+### Enhancements
+
+-   Added the [`blockdirectory`](../ref_guide/sql_commands/CREATE_TABLE.mdx#blockdirectory) storage option for append-optimized tables. A table created `WITH (blockdirectory=true)`, or altered with [`ALTER TABLE ... SET (blockdirectory=true)`](../ref_guide/sql_commands/ALTER_TABLE.mdx), gets its block directory without needing an index first. `ALTER TABLE ... SET` builds the directory in place, without rewriting the table. You can also set the option in [`gp_default_storage_options`](../ref_guide/config_params/guc-list.mdx#gp_default_storage_options).
+-   [`COPY`](../ref_guide/sql_commands/COPY.mdx#notes) now handles rows whose text or binary form is larger than 1 GB. `COPY TO` works for all tables. `COPY FROM` works only for `ao_column` tables. Heap and `ao_row` tables are still limited to 1 GB per row and now report `row is too big` instead of `invalid memory alloc request size`.
+-   Queries that scan many append-optimized partitions now release each partition's scan memory when that partition is finished, instead of holding it until the query ends. On multi-level partitioned tables planned with the Postgres planner, this change reduces executor memory per segment from hundreds of MB to a few MB.
+-   Dynamic shared memory segments now count against the vmem budget ([`gp_vmem_protect_limit`](../ref_guide/config_params/guc-list.mdx#gp_vmem_protect_limit)). A parallel index build that does not fit, such as a whpg-vector HNSW build, now fails like an ordinary out-of-memory error instead of exhausting `/dev/shm` or triggering the OOM killer.
+-   AO and AOCS scans no longer look up the `TABLESAMPLE` block size at the start of every scan. They now compute it only when a sample scan needs it.
+
+### Bug fixes
+
+-   Fixed index scans, bitmap scans, `TABLESAMPLE`, and `ANALYZE` sampling on `ao_column` tables that span several segment files. These operations could return errors such as `datum with row number N and col no M not found in block directory entry range`, or silently drop rows, for a column added with `ADD COLUMN ... DEFAULT` after more rows were appended.
+-   Fixed index, index-only, and bitmap scans and `TABLESAMPLE` returning no rows in a `REPEATABLE READ` or `SERIALIZABLE` transaction whose snapshot is older than the first `CREATE INDEX` on an append-optimized table.
+-   Fixed lossy index scans (hash, GiST, SP-GiST) on `ao_column` tables crashing the segment or returning wrong rows when the recheck column is not otherwise used by the query.
+-   Fixed `ALTER TABLE ... ADD COLUMN ..., SET (...)` on an `ao_column` table not applying the new storage options. Fixed a second `SET` in the same `ALTER TABLE` silently discarding the options of the first one.
+-   Fixed `ALTER TABLE <aoco> SET ACCESS METHOD ao_column WITH (compresstype=...)` not changing the compression of the existing columns.
+-   Fixed `ALTER TABLE ... ADD COLUMN ... DEFAULT <stable expression>` on a partitioned table storing a different default value on each segment.
+-   Fixed a multiply-referenced CTE that contains volatile functions, or that modifies data, being evaluated once per reference when `gp_cte_sharing` is off. Such CTEs are now always shared. If a CTE cannot be shared, a data-modifying CTE raises an error and a volatile CTE raises a warning.
+-   Fixed ORCA wrong results for a constant `HAVING` qual on an aggregate without `GROUP BY`. For example, `HAVING false` returned one row. Fixed ORCA dropping a volatile predicate on a joined aggregate derived table.
+-   Fixed ORCA failing with `failed to find index for partition` or `unexpected relkind in Dynamic Scan: f` when an index nested loop join reaches a partitioned table that has foreign partitions.
+-   Fixed the Postgres planner losing a correlated qual on a distributed partitioned table when it plans a partitionwise join or aggregate, which returned wrong results or failed with `ORDER/GROUP BY expression not found in targetlist`.
+-   Fixed `disable_xform()` and `enable_xform()` crashing a segment, or the coordinator through an entry-db process, when they were evaluated outside the dispatcher.
+-   Fixed `received unknown record type with typmod N` errors, typically from `ANALYZE`, after a parallel operation such as a whpg-vector parallel index build in the same session.
+-   Fixed parallel workers missing from the global deadlock detector's wait graph.
+-   Fixed a resource queue `duplicate portal id` error, and the leaked queue slot that followed, when planning evaluates a stable function that opens a cursor. For example, this happened with JDBC refcursor calls that set a fetch size.
+-   Fixed `ALTER ROLE ... SET role` and `ALTER DATABASE ... SET role` no longer taking effect at login.
+-   Fixed segments keeping a function's `SET role` after the function returns, which made a later `DROP ROLE` or `ALTER ROLE ... RENAME` fail on the segments.
+-   Fixed `gp_log_backend_memory_contexts()` truncating session IDs above 2^31-1 and leaking its memory context.
+-   Fixed databases restored from `pg_dumpall` or `pg_dump -C` coming back without `gp_toolkit`.
+-   Fixed a GIN index build or pending-list flush on large append-optimized segment files failing an assertion in assert-enabled builds.
+-   Fixed the gppylib PID lock: a forked child could remove its parent's lock, and a lock directory left without a PID file was treated as acquired. The bug affected `gpstop`, `gprecoverseg`, and `gpmovemirrors`.
+-   Fixed `gpmovemirrors` printing a spurious `NameError: name 'open' is not defined` traceback on exit after a successful run.
+-   Fixed `gprecoverseg -r` not passing `--hba-hostnames` to its inner recovery, which wrote IP-based replication entries to `pg_hba.conf` on clusters initialized with `HBA_HOSTNAMES=1`.
+
+### Security
+
+-   Required `CREATE` privilege on the schema for [`CREATE STATISTICS`](../ref_guide/sql_commands/CREATE_STATISTICS.mdx), for [CVE-2025-12817](https://www.cve.org/CVERecord?id=CVE-2025-12817).
+-   Fixed `ecpg` writing past a host variable when it receives invalid `bytea` data. Such data now raises the new error `ECPG_BYTEA_FORMAT` (-217). This change is for [CVE-2026-16241](https://www.cve.org/CVERecord?id=CVE-2026-16241).
+-   Invalidated cached plans after changes to role membership, role attributes, and database ownership, so row-level security policies are rechecked, for [CVE-2026-14666](https://www.cve.org/CVERecord?id=CVE-2026-14666).
+-   Restricted `DESCRIBE` callbacks of functions to superusers. Before this change, any role that could run `CREATE FUNCTION` could crash a backend.
+-   Made `gpfdist` reject requests whose segment ID or segment count is out of range, for [CVE-2026-122042](https://www.cve.org/CVERecord?id=CVE-2026-122042). Such a request could crash it.
+-   Made `gp_hyperloglog_in()` reject malformed input and out-of-range header fields. Such input could read past the allocated memory and crash the coordinator.
+-   Fixed `orafce` `UTL_FILE` path checks: named locations are now checked against `utl_file.utl_file_dir`, and paths with unresolved `..` components or paths longer than `MAXPGPATH` are rejected.
+-   The [`gp_config`](../ref_guide/system_catalogs/catalog_ref-views.mdx#gp_config), [`gp_file_settings`](../ref_guide/system_catalogs/catalog_ref-views.mdx#gp_file_settings), and [`gp_replication_origin_status`](../ref_guide/system_catalogs/catalog_ref-views.mdx#gp_replication_origin_status) views now have the same privileges as their `pg_` counterparts and are no longer readable by `PUBLIC`.
 
 ## WarehousePG 7.6.1-WHPG
 
