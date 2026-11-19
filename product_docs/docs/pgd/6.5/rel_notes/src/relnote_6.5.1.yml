@@ -445,6 +445,13 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Low
+- relnote: The `bdr.get_min_required_*()` functions now count every PGD process.
+  details: |
+    Nodes sized from these functions could run out of worker processes or replication origins during a join. The new [`bdr.get_min_required_settings()`](/pgd/current/reference/tables-views-functions/functions-internal/#bdrget_min_required_settings) function returns all minimums as `jsonb` keyed by setting name.
+  jira: BDR-8166
+  addresses: ""
+  type: Bug Fix
+  impact: Low
 - relnote: Fixed the PGD CLI's Raft leader lookup when some nodes don't answer.
   details: |
     The CLI took the Raft leader from the first row of `bdr.group_raft_details`, which is ordered by node name and has an empty row for each node that doesn't answer. When the first nodes by name were unreachable, for example with a whole region down, the CLI concluded that the group had no leader:
@@ -459,6 +466,13 @@ relnotes:
   addresses: "66386"
   type: Bug Fix
   impact: Medium
+- relnote: Fixed missing replication slots for witness nodes after concurrent joins.
+  details: |
+    Witnesses skipped join serialization, though they need slots in both directions. A witness joining concurrently with other nodes could end up without some slots, breaking later operations such as node parting. Witnesses are now serialized like data nodes.
+  jira: BDR-6628
+  addresses: ""
+  type: Bug Fix
+  impact: High
 - relnote: '`pgd_bench` now prepares statements without blocking its other clients.'
   details: |
     In `-M prepared` mode without a pipeline, `pgd_bench` prepared each client's script with synchronous calls, which blocked the other clients of the same thread until each `Parse` completed. Through a transaction-pooling Connection Manager with more clients than pooled server connections, this could deadlock: the blocked thread couldn't advance a client that held a pooled connection in the middle of a transaction. `pgd_bench` now prepares the statements asynchronously; the messages sent to the server are the same. A new option, `--compat=on|off` (default `off`), turns off the changes of `pgd_bench` from upstream pgbench: `--compat=on` restores the synchronous prepare.
@@ -476,6 +490,13 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: High
+- relnote: Fixed `update_recently_deleted` conflicts detected as `update_missing`.
+  details: |
+    An update to a recently deleted row could be classified as `update_missing`, so the default `insert_or_skip` resolver inserted the deleted row again. The conflict is now detected correctly.
+  jira: BDR-8794
+  addresses: ""
+  type: Bug Fix
+  impact: High
 - relnote: Fixed streamed transactions failing to apply with the WAL decoder enabled.
   details: |
     With the WAL decoder enabled and transaction streaming in use, two problems could break replication of large or catalog-only transactions:
@@ -483,6 +504,16 @@ relnotes:
     -   A streamed transaction whose changes were all filtered out, such as an autoanalyze that touches only catalogs, could make the receiving node fail an assertion or crash.
     -   If a node reconnected while a large transaction was still open, the WAL sender could stop with "encountered incomplete transaction", and the transaction reached the node only after another reconnect.
   jira: BDR-9490
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed subscriptions staying disabled after internal operations.
+  details: |
+    PGD temporarily disables subscriptions during some internal operations, and didn't enable them again when:
+
+    -   Several nodes went down together and the source node of their sync ran out of replication slots. The source now runs the syncs one at a time.
+    -   On a subscriber-only node, write leaders changed and changed back before topology reconfiguration finished.
+  jira: [BDR-9338, BDR-9340]
   addresses: ""
   type: Bug Fix
   impact: Medium
@@ -504,6 +535,13 @@ relnotes:
   addresses: ""
   type: Change
   impact: Medium
+- relnote: Fixed `monitor_use_https` and node eviction group options lost on nodes that receive a Raft snapshot.
+  details: |
+    Consensus snapshots didn't include `monitor_use_https`, `evict_node_lag_bytes`, and `evict_node_action`. Fixed once all nodes run PGD 6.5.1.
+  jira: BDR-9066
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
 - relnote: Removed password hashes and cached credentials from Connection Manager log messages.
   details: |
     When a connection to Connection Manager matched no HBA rule, the "no matching HBA rule found" error written to the server log included the role's stored password hash. It also included credentials cached from the role's earlier logins, such as the password itself after a login with the cleartext `password` method. The log messages now show only the role name, password type, and role memberships.
@@ -511,10 +549,54 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Medium
+- relnote: Connection Manager now applies renewed TLS certificates on reload.
+  details: |
+    -   A reload during certificate replacement no longer drops TLS or fails. The current certificate is kept and a `WARNING` logged.
+    -   The HTTP status port serves the reloaded certificate, and `use_https` changes apply on reload.
+    -   Server connection pools are rebuilt when the client certificate, key, or CA of the node DSNs changes.
+  jira: [BDR-9356, BDR-9357, BDR-9358]
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed commit scopes with `require_write_lead` not degrading in a [primary/DR deployment](/pgd/current/planning/deployment-patterns/primary-dr/).
+  details: |
+    Degrade permission was asked from the Raft of the node's own group instead of the group that routes it. With one primary node down, that Raft had no majority, so commits kept blocking instead of degrading.
+  jira: BDR-9339
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
 - relnote: Fixed a regression in 6.5.0 where row versioning couldn't be used with a commit scope.
   details: |
     If a transaction involved a change in any table that had row versioning and ran under any commit scope, including Synchronous Commit, Quorum Commit, Lag Control, and CAMO, it gave a `WARNING` and ran without the commit scope. The regression is fixed.
   jira: BDR-9521
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: PGD CLI no longer panics when its output pipe closes early.
+  details: |
+    Piping `pgd` output into a command such as `head` panicked with "Broken pipe". The CLI now exits quietly, so it works in scripts and pipelines.
+  jira: BDR-9354
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `leader_id` being reported as 0 on the Raft leader.
+  details: |
+    A node that granted a prevote request cleared its record of the current leader, even though a prevote doesn't change who leads the term. On the sitting leader, the node recorded its own `leader_id` as 0 and kept that value until the next leadership change. As a result, `bdr.get_raft_status()` reported a `leader_id` of 0 on the leader, and the PGD CLI clock-drift check failed. Granting a prevote no longer changes the known leader.
+  jira: BDR-8824
+  addresses: "65124"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a consensus worker crash when reconciling prepared transactions of a dropped node.
+  details: |
+    If a node was dropped, for example with `bdr.drop_node(force := true)`, while its request to reconcile prepared (two-phase commit) transactions was still waiting in the Raft log, the consensus worker crashed once the remaining nodes elected a leader and applied the request. The consensus worker now skips reconcile requests for nodes that no longer exist.
+  jira: null
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed PGD ignoring the `failover` option of logical replication slots on Postgres 17 and later.
+  details: |
+    On EDB Postgres Extended and EDB Postgres Advanced Server 17 and later, with `failover_slot_scope` set to `global`, PGD registered every new non-temporary logical replication slot as a failover slot, even if it was created with `failover` set to `false`, the Postgres default. These slots were created on every node, holding back WAL on each one, and creating them required Raft consensus. PGD now honors the `failover` option, as documented: create slots with `failover => true` to make them failover slots. Slots already listed in `bdr.failover_replication_slots` remain failover slots. To make one local, drop it and re-create it without the option.
+  jira: BDR-9487
   addresses: ""
   type: Bug Fix
   impact: Medium

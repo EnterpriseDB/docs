@@ -169,6 +169,14 @@ relnotes:
   addresses: "66386"
   type: Bug Fix
   impact: Medium
+- relnote: Fixed missing replication slots for witness nodes after concurrent joins.
+  component: BDR
+  details: |
+    Witnesses skipped join serialization, though they need slots in both directions. A witness joining concurrently with other nodes could end up without some slots, breaking later operations such as node parting. Witnesses are now serialized like data nodes.
+  jira: BDR-6628
+  addresses: ""
+  type: Bug Fix
+  impact: High
 - relnote: Fixed a hang when a writer restarts while a global lock is held.
   component: BDR
   details: |
@@ -213,6 +221,38 @@ relnotes:
   details: |
     When a connection to Connection Manager matched no HBA rule, the "no matching HBA rule found" error written to the server log included the role's stored password hash. It also included credentials cached from the role's earlier logins, such as the password itself after a login with the cleartext `password` method. The log messages now show only the role name, password type, and role memberships.
   jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `update_recently_deleted` conflicts detected as `update_missing`.
+  component: BDR
+  details: |
+    An update to a recently deleted row could be classified as `update_missing`, so the default `insert_or_skip` resolver inserted the deleted row again. The conflict is now detected correctly.
+  jira: BDR-8794
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed `leader_id` being reported as 0 on the Raft leader.
+  component: BDR
+  details: |
+    A node that granted a prevote request cleared its record of the current leader, even though a prevote doesn't change who leads the term. On the sitting leader, the node recorded its own `leader_id` as 0 and kept that value until the next leadership change. As a result, `bdr.get_raft_status()` reported a `leader_id` of 0 on the leader, and the PGD CLI clock-drift check failed. Granting a prevote no longer changes the known leader.
+  jira: BDR-8824
+  addresses: "65124"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed Raft catalog vacuum running at most once per hour regardless of `bdr.raft_vacuum_interval`.
+  details: |
+    Since PGD 5.9.1, an hourly throttle added to prevent `VACUUM FULL` from causing consensus request timeouts during node group creation made any [`bdr.raft_vacuum_interval`](/pgd/5.10/reference/pgd-settings/#bdrraft_vacuum_interval) shorter than one hour, including the 5-minute default, behave as one hour. `bdr.raft_vacuum_interval` now takes effect as configured. [`bdr.raft_vacuum_full_interval`](/pgd/5.10/reference/pgd-settings/#bdrraft_vacuum_full_interval) must be at least one hour, or `-1` to disable it, and the first `VACUUM FULL` runs no earlier than one hour after the consensus worker starts. `bdr.raft_vacuum_interval` must be less than `bdr.raft_vacuum_full_interval`. Setting a value that breaks these rules fails. If such a value is in the configuration file at server start, PGD logs a warning and uses the default.
+  jira: BDR-8660
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed PGD ignoring the `failover` option of logical replication slots on Postgres 17 and later.
+  component: BDR
+  details: |
+    On EDB Postgres Extended and EDB Postgres Advanced Server 17 and later, with `failover_slot_scope` set to `global`, PGD registered every new non-temporary logical replication slot as a failover slot, even if it was created with `failover` set to `false`, the Postgres default. These slots were created on every node, holding back WAL on each one, and creating them required Raft consensus. PGD now honors the `failover` option, as documented: create slots with `failover => true` to make them failover slots. Slots already listed in `bdr.failover_replication_slots` remain failover slots. To make one local, drop it and re-create it without the option.
+  jira: BDR-9488
   addresses: ""
   type: Bug Fix
   impact: Medium
