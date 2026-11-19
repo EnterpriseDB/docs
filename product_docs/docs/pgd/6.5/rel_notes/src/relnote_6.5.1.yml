@@ -3,10 +3,10 @@ product: EDB Postgres Distributed
 version: 6.5.1
 date: 19 November 2026
 intro: |
-  EDB Postgres Distributed (PGD) 6.5.1 includes enhancements and bug fixes focused on improving stability and reliability. For a list of known issues, see [Known issues and limitations](/pgd/current/overview/known_issues/). The numbers in the Addresses column are EDB support case numbers.
+  EDB Postgres Distributed (PGD) 6.5.1 includes enhancements and bug fixes focused on improving stability and reliability. For a list of known issues, see [Known issues and limitations](/pgd/current/overview/known_issues/).
 
 highlights: |
-  - [Progress-based write leader election](/pgd/current/geo-replication-dba/routing/#how-the-write-leader-is-chosen): the Raft leader now elects the write leader from each candidate's reported replication progress, removing edge cases in which a lagging node could be selected during failover. Elections honor `route_priority` and take effect once all nodes in the group run PGD 6.5.1.
+  - [Progress-based write leader election](/pgd/current/connection-manager/overview/#understanding-write-leader-failover): the Raft leader now elects the write leader from each candidate's reported replication progress, removing edge cases in which a lagging node could be selected during failover. Elections honor `route_priority` and take effect once all nodes in the group run PGD 6.5.1.
   - New group options: [`route_writer_election_timeout`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) sets how long the Raft leader waits for candidate bids (default 500ms, minimum 100ms). [`route_writer_election_quorum`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes), off by default, ensures the elected write leader holds every transaction acknowledged under a majority Quorum Commit.
   - [Smarter switchovers](/pgd/current/reference/tables-views-functions/functions/#bdrrouting_leadership_transfer): leadership transfers without a specified target, including `bdr.transfer_all_leaderships()`, now select the furthest-ahead candidate and honor `route_priority`.
 
@@ -25,28 +25,28 @@ relnotes:
   addresses: ""
   type: Enhancement
   impact: Medium
-- relnote: Nodes now send [progress bids](/pgd/current/geo-replication-dba/routing/#how-the-write-leader-is-chosen) to the Raft leader when the write leader is unset.
+- relnote: Nodes now send [progress bids](/pgd/current/connection-manager/overview/#understanding-write-leader-failover) to the Raft leader when the write leader is unset.
   details: |
     When the write leader is lost, every routable data node reports to the Raft leader how far it durably applied the previous leader's changes, instead of relying on advertised progress that can be a second old. Bids are resent on changes and while the leader stays unset, independent of `leader_progress_tracking_enable`.
   jira: BDR-8512
   addresses: ""
   type: Enhancement
   impact: Medium
-- relnote: The [write leader is now elected from the candidates' progress bids](/pgd/current/geo-replication-dba/routing/#how-the-write-leader-is-chosen).
+- relnote: The [write leader is now elected from the candidates' progress bids](/pgd/current/connection-manager/overview/#understanding-write-leader-failover).
   details: |
     The Raft leader elects once, after `route_writer_election_timeout`, ranking candidates by highest `route_priority`, then highest bid position, then a node that isn't the Raft leader, then lowest node ID. A previous leader that returns closes the round as soon as it bids, unless a candidate has a higher `route_priority`. Previously, a failover could elect a lagging node. The new election takes effect once all nodes in the group run PGD 6.5.1.
   jira: BDR-8512
   addresses: ""
   type: Enhancement
   impact: High
-- relnote: '[Switchover targets that PGD selects automatically](/pgd/current/geo-replication-dba/routing/#how-the-write-leader-is-chosen) are now elected from progress bids.'
+- relnote: '[Switchover targets that PGD selects automatically](/pgd/current/connection-manager/overview/#understanding-write-leader-failover) are now elected from progress bids.'
   details: |
     Leadership transfers without a target, including `bdr.transfer_all_leaderships()`, run an election round and pick the furthest-ahead candidate, so they now honor `route_priority`. The `strict` transfer method waits for the target to catch up, and the `fast` method switches at once.
   jira: BDR-8512
   addresses: ""
   type: Enhancement
   impact: Medium
-- relnote: '[Quorum Commit and CAMO transactions are now applied with `keep_retrying`](/pgd/current/recovering-from-failures/apply-error-policy/#quorum-commit-and-camo-transactions).'
+- relnote: '[Quorum Commit and CAMO transactions are now applied with `keep_retrying`](/pgd/current/commit-scopes/quorum-commit/how-quorum-commit-works/#apply-errors).'
   details: |
     Quorum Commit transactions on every applying node, and CAMO transactions on the CAMO partner, use `keep_retrying` regardless of `apply_error_policy`. Previously, another policy could skip or disable the subscription for a transaction whose outcome the origin decides from the votes of its peers. A `WARNING` is logged when the policy is overridden. Other transactions keep the configured policy.
   jira: BDR-9346
@@ -284,7 +284,7 @@ relnotes:
   impact: High
 - relnote: Connection Manager now raises its open-file limit at start.
   details: |
-    The Connection Manager worker inherited the postmaster's soft open-file limit (`RLIMIT_NOFILE`), 1024 with the systemd defaults, while it needs a file descriptor per client and one per pooled server connection. In transaction pooling it ran out of descriptors at a few hundred clients. Connection Manager now raises its soft limit to the hard limit at start and logs the result (`open file limit raised from N to M (hard limit)`). When the hard limit can't cover the configured client connections, it logs a `WARNING` at start and on reload (`open file limit N is below the M descriptors that ... client connections can need ...`). In that case, raise `LimitNOFILE` in the Postgres service unit.
+    The Connection Manager worker inherited the postmaster's soft open-file limit (`RLIMIT_NOFILE`), which is 1024 with the systemd defaults. Connection Manager needs one descriptor per client and one per pooled server connection, so in transaction pooling it ran out at a few hundred clients. It now raises the soft limit to the hard limit at start and logs the result. If the hard limit can't cover the configured client connections, it logs a `WARNING` at start and on reload. In that case, raise `LimitNOFILE` in the Postgres service unit.
   jira: BDR-8951
   addresses: ""
   type: Enhancement
@@ -385,6 +385,13 @@ relnotes:
   impact: Medium
 - relnote: Leader locks now report a node group they can't reach.
   details: |
+    A leader lock waited for the whole global lock timeout when no node of a node group with routing enabled was connected. It held its DDL epoch meanwhile, so every other DDL in the cluster queued behind it. Before it requests the lock, PGD now checks for such a group and reports it at the level set by [`bdr.predictive_checks`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrpredictive_checks). With `ERROR`, the lock fails with an error that names the group and its write leader. With the default, `WARNING`, PGD logs the same message and the lock waits until its timeout.
+  jira: BDR-9317
+  addresses: "63619"
+  type: Bug Fix
+  impact: Medium
+- relnote: Leader locks now report a node group they can't reach.
+  details: |
     When no node of a node group with routing enabled was connected, a leader lock waited for the whole global lock timeout and didn't say which group it waited for. It held its DDL epoch meanwhile, so every other DDL in the cluster queued behind it. Before it requests the lock, PGD now checks for such a group and reports it at the level of [`bdr.predictive_checks`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrpredictive_checks):
 
     - `ERROR`: the lock fails with an error that names the group and its write leader, also when the group becomes unreachable while the lock waits.
@@ -475,7 +482,7 @@ relnotes:
   impact: High
 - relnote: '`pgd_bench` now prepares statements without blocking its other clients.'
   details: |
-    In `-M prepared` mode without a pipeline, `pgd_bench` prepared each client's script with synchronous calls, which blocked the other clients of the same thread until each `Parse` completed. Through a transaction-pooling Connection Manager with more clients than pooled server connections, this could deadlock: the blocked thread couldn't advance a client that held a pooled connection in the middle of a transaction. `pgd_bench` now prepares the statements asynchronously; the messages sent to the server are the same. A new option, `--compat=on|off` (default `off`), turns off the changes of `pgd_bench` from upstream pgbench: `--compat=on` restores the synchronous prepare.
+    In `-M prepared` mode without a pipeline, [`pgd_bench`](/pgd/current/reference/tables-views-functions/testingandtuning/#pgd_bench) prepared each client's script with synchronous calls that blocked the other clients of the same thread. Through a transaction-pooling Connection Manager with more clients than pooled server connections, the benchmark could deadlock. `pgd_bench` now prepares the statements asynchronously. The new option `--compat=on` restores the synchronous prepare. The default is `--compat=off`.
   jira: BDR-8513
   addresses: ""
   type: Enhancement

@@ -8,6 +8,8 @@ redirects:
 
 In a geo-distributed PGD cluster, routing determines which node accepts writes at any given time. PGD 6 uses Connection Manager, which runs inside each Postgres instance, to handle this. Applications that need to write must connect to Connection Manager's read-write port, which routes the connection to the current write leader of the node group.
 
+## Local and global routing
+
 How write leadership is structured across locations depends on whether you configure local or global routing.
 
 - **Local routing:** Gives each location its own write leader. When an application connects to a node in location A, Connection Manager routes it to location A's write leader, keeping write latency low. All locations accept writes simultaneously, which means cross-location conflicts are possible.
@@ -30,6 +32,8 @@ In PGD, the cluster has a single top-level group spanning all nodes across all l
 Local routing is the default and requires no explicit configuration. For global routing, set `enable_routing=on` on the top-level group and `enable_routing=off` on each subgroup.
 
 Global routing is only available on the [three data groups, active-active-active](/pgd/current/planning/deployment-patterns/three-data-groups) pattern, the [multiple locations, data residency](/pgd/current/planning/deployment-patterns/data-residency) pattern, or the [two data groups](/pgd/current/planning/deployment-patterns/two-data-groups) pattern with a witness location. Without a witness, losing one location in a two data groups setup breaks Raft majority, making it impossible to elect or maintain a cluster-wide write leader.
+
+When a write leader fails, the Raft leader of the group that has `enable_routing` set to `on` elects a new one. See [Understanding write leader failover](/pgd/current/connection-manager/overview/#understanding-write-leader-failover) for how the election works.
 
 ## Configuration examples
 
@@ -62,31 +66,6 @@ SELECT bdr.alter_node_group_option('location_b', 'enable_routing', 'false');
 ```
 
 All writes are routed to the single cluster-wide write leader. Remote locations incur cross-location write latency but there are no cross-location conflicts.
-
-## How the write leader is chosen
-
-When the write leader is lost, every routable data node reports to the Raft leader how far it durably applied the failed leader's changes. The Raft leader waits for these answers, called progress bids, for up to `route_writer_election_timeout`, then elects a new write leader from them. Without this election, PGD could elect a node that lagged behind.
-
-The Raft leader ranks the candidates in this order:
-
-1. Highest `route_priority`. This overrides progress.
-1. Highest reported position.
-1. A node that isn't the Raft leader.
-1. Lowest node ID.
-
-A candidate whose answer doesn't arrive in time is ranked on its older progress recorded in the catalog. If the failed write leader comes back before the election ends, it's elected again as soon as it answers, unless a candidate has a higher `route_priority`.
-
-Leadership transfers without a target (`bdr.routing_leadership_transfer()` with `leader_name` set to `NULL`, and `bdr.transfer_all_leaderships()`) pick their target the same way, excluding the current leader, so they also honor `route_priority`.
-
-While the election runs, the group has no write leader. Connection Manager rejects new read-write connections with "no nodes available" for up to `route_writer_election_timeout`, which defaults to `500ms`. Applications should retry connections that fail during a failover. A failover takes at least this long, unless the failed leader returns.
-
-The election takes effect once all nodes in the group run PGD 6.5.1 or later. From then on, `leader_progress_tracking_enable` and `leader_progress_tracking_period` have no effect, and setting either raises a `NOTICE`. If you set `route_writer_max_lag` and all candidates lag by more than that value, the group stays without a write leader until one catches up.
-
-### Electing a node that holds every Quorum Commit transaction
-
-Set `route_writer_election_quorum` to `on` to make the election wait until the answers include a node that holds every transaction acknowledged under a majority Quorum Commit. Quorum Commit requires this option. See [`route_writer_election_quorum` notes](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes) for the requirements, the SQL, and the cost: while too few data nodes can answer, the group stays without a write leader.
-
-Both `route_writer_election_timeout` and `route_writer_election_quorum` require consensus protocol 6007, which needs all nodes to run PGD 6.5.1 or later. A group that doesn't set them uses its parent group's value.
 
 ## Tuning Connection Manager
 
