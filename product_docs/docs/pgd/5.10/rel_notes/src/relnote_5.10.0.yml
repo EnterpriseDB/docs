@@ -66,3 +66,103 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Medium
+- relnote: Fixed a misdirected signal from the writer that could restart an instance in a container.
+  component: BDR
+  details: |
+    After a flush, the writer woke the receiver with a `kill()` call whose two arguments were swapped. On a normal host the call failed, since receiver PIDs are larger than the highest signal number, and the receiver waited up to 1 s for the flush confirmation unless something else woke it. In a container or another fresh PID namespace, the call could hit a Postgres process: with a receiver at PID 24, the writer sent signal 24 (`SIGXCPU`) to the checkpointer at PID 10, and the postmaster restarted the instance. The writer now wakes the receiver with the arguments in order, and only after it has confirmed the flush.
+  jira: BDR-7360
+  addresses: "66414"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed the Raft term of exported consensus snapshots.
+  component: BDR
+  details: |
+    `bdr.consensus_snapshot_export()` labeled a snapshot with the node's current Raft term instead of the term of the last entry the snapshot includes. After an election the two differ. Nodes that imported such a snapshot then disagreed with the exporting node about that entry, and when the exporting node was elected leader again, the Raft group committed no entries until the next snapshot sync. Snapshots now carry the term of their last entry.
+  jira: BDR-9020
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed the loss of a committed Raft entry when the first node joins a Raft group.
+  component: BDR
+  details: |
+    A Raft leader treated a node added while it was leader as silent until the node's first response. When the first node to join a Raft group became a voter before the leader's first heartbeat, the leader stepped down without having sent a heartbeat. The joining nodes then elected a leader with an empty log while the old leader held a committed entry, and that entry was truncated. The leader now counts a node it adds as heard from, as it does for the nodes present at its election.
+  jira: BDR-9049
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed `pgd node upgrade` restoring replication origins at the wrong position.
+  component: PGD CLI
+  details: |
+    `pgd node upgrade` restores each replication origin at the highest progress of its writer origins, but its patterns for the writer origins didn't match their names:
+
+    - An origin whose ID contains a hex letter lost its writer origins and was restored behind them.
+    - An origin could take the progress of another origin's writers (origin `0x2` matched the writers of `0x21`). Its subscription then started ahead in the wrong peer's WAL and skipped transactions.
+    - A writer origin without recorded progress was taken as the furthest ahead.
+    - The origins of a database whose name starts with `writer` weren't restored at all.
+
+    The writer origins are now matched by their exact names.
+  jira: BDR-9079
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a corrupted slot name in `bdr.node_local_info` after concurrent joins.
+  component: BDR
+  details: |
+    In the promote step of a node join, PGD kept a pointer to a short-lived copy of the replication slot name, and a later update of `bdr.node_local_info` wrote whatever that memory held by then. After concurrent joins, a row could hold a truncated slot name followed by garbage bytes, and the replication slot checks then failed. PGD now keeps its own copy of the name.
+  jira: BDR-9002
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed switching between `bdr.raft_election_timeout` and `bdr.raft_global_election_timeout`.
+  component: BDR
+  details: |
+    `bdr.raft_election_timeout` is a deprecated alias of `bdr.raft_global_election_timeout`, and only one of the two can be set. Replacing one name by the other in the configuration file failed on every reload until a restart: the postmaster shut down, and in other processes the statement that processed the reload failed. Meanwhile the node ran with the default timeout. With both names in the configuration file, the server didn't start. Now:
+
+    - A conflicting line in the configuration file is logged and skipped, at startup and on reload. On a reload the name already in effect wins; at startup, `bdr.raft_global_election_timeout`.
+    - One reload applies an edit of the file that replaces one name by the other.
+    - `ALTER SYSTEM` still refuses to set the second name. `RESET` the first one and reload before you set it.
+    - Raft applies a new timeout at the next consensus restart, as before.
+  jira: BDR-9072
+  addresses: "66284"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `pgd group set-option` for the proxy fallback options.
+  component: PGD CLI
+  details: |
+    `pgd group set-option` with `proxy_fallback_node_groups` or `proxy_fallback_node_group_timeout` always failed with "unknown proxy configuration key", because the CLI passed names that `bdr.alter_proxy_option()` doesn't know. The CLI now passes the server's names, `fallback_groups` and `fallback_group_timeout`.
+  jira: BDR-9101
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Connection Manager now says which server closed a connection during the handshake.
+  component: BDR
+  details: |
+    When a Postgres server closed the connection before the startup handshake or the SCRAM exchange had completed, Connection Manager logged `connection failed: ProtocolError("")`. The `WARNING` now names the server address and the handshake phase, and shows the error as text (`protocol error: ...`) rather than in its internal form.
+  jira: BDR-8071
+  addresses: "60716"
+  type: Enhancement
+  impact: Low
+- relnote: Fixed walsender failures during an upgrade from PGD 4.4 with subscriber-only nodes.
+  component: BDR
+  details: |
+    While the extension was being upgraded from 4.4.x, a walsender started for a subscriber-only node's slot looked up `bdr.failover_replication_slots` before the upgrade script had created it, and `START_REPLICATION` failed. PGD now treats the missing catalog as no failover slot.
+  jira: BDR-9015
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed PGD worker processes missing a change to PGD's internal catalogs.
+  component: BDR
+  details: |
+    When a transaction changed PGD's internal catalogs, PGD notified the Connection Manager, router and manager worker processes at commit, before it had published the change to the catalog caches of those workers. A worker that checked its cache in that window kept the old contents. A worker that reads the catalogs once per notification stayed stale until an unrelated catalog change. PGD now publishes the change before it notifies any worker.
+  jira: BDR-9056
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the PGD CLI's Raft leader lookup when some nodes don't answer.
+  component: PGD CLI
+  details: |
+    The CLI took the Raft leader from the first row of `bdr.group_raft_details`, which is ordered by node name and has an empty row for each node that doesn't answer. When the first nodes by name were unreachable, for example with a whole region down, `pgd groups list --verbose` and the compatibility command `pgd show-groups` showed an empty Raft leader for the top-level group although it had one. The CLI now takes the leader known in the newest Raft term that any node reports.
+  jira: BDR-9071
+  addresses: "66386"
+  type: Bug Fix
+  impact: Medium
