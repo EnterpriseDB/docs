@@ -1,0 +1,101 @@
+---
+title: "Hybrid Manager 2026.10.1 release notes"
+navTitle: "Version 2026.10.1"
+description: "Release notes for version 2026.10.1 of Hybrid Manager."
+deepToC: true
+---
+
+
+!!!warning Every Postgres cluster restarts during this upgrade
+This release bumps the Barman Cloud Plugin, which restarts every Postgres cluster in your estate as part of applying the HM upgrade — not on your own database maintenance schedule. If you manage a large estate and rely on scheduling platform and Postgres upgrades independently, plan for this before you upgrade.
+!!!
+
+This Innovation Release includes features and enhancements.
+
+**Release date:** 15 Oct 2026
+
+!!!info Release cadence
+
+HM now follows a dual release strategy: LTS and Innovation Releases. For details on this model, see [Hybrid Manager (HM) dual release strategy](/edb-postgres-ai/current/hybrid-manager/release_notes/#hybrid-manager-dual-release-strategy).
+!!!
+
+## Component versions
+
+| Component name | Package name | Compatible version |
+| --- | --- | --- |
+| [Hybrid Manager (HM) Operator](/hm-operator/2/) | `edb-hcp-operator` | 2.2.0 |
+| [Hybrid Manager operand images](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/image-management/custom-operand-images/) | `operandSet` | 1.3.0 (timestamp 2609300812) |
+| [EDB Postgres AI agent](/tools/agent/) | `beacon-agent` | 1.407.12 |
+| EDB Postgres AI agent - Helm chart | `beacon-agent` (Helm chart) | 2.0.1 |
+| [DMS agent](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/cdcagent_compatibility/) | `cdcagent` | 2.3.3 |
+| [Hybrid Manager CLI](/edbctl/1/) | `edbctl` | 1.10.0 |
+| [AIDB](/aidb/7/) | AIDB | 7.6.0 |
+| [Postgres Analytics Accelerator](/pgaa/1.11/) | PGAA | 1.11.0 |
+| [Postgres File System](/pg_extensions/pgfs/) | PGFS | 3.2.1 |
+| [Distributed High Availability](/pgd/6/) | PGD | 6.5.0 |
+| [EDB Postgres AI for CloudNativePG Cluster](/postgres_for_kubernetes/latest/) (formerly EDB Postgres for Kubernetes) | PG4K | 1.30.0 |
+
+!!!note Postgres refers to all distributions supported by EDB
+
+-   PostgreSQL
+-   EDB Enterprise Postgres - formerly, EDB Postgres Extended Server (PGE)
+-   EDB Enterprise Postgres (Oracle Compatible) - formerly, EDB Postgres Advanced Server (EPAS)
+!!!
+
+## Release highlights
+
+-   **New ClickHouse-backed observability stack:** HM now ships with an embedded ClickHouse deployment, enabled automatically as part of the observability scenario, with no separate installation or configuration required. **Query Diagnostics** (**Query Stats**, **List Queries**, **Query Executed**, **Query Latency**, and **Wait States**) now reads from ClickHouse instead of Postgres, with the `pg_stat_ch` extension automatically enabled for supported PSR and PGD clusters and Kubernetes events now ingested into ClickHouse through the OpenTelemetry collector. The `edb_stat_monitor` extension is retained for now and continues to be used internally. However, it's scheduled for removal in a future release.
+
+-   **Barman Cloud Plugin update:** The Barman Cloud Plugin is updated to version 0.15.0, bringing significantly faster restore times for compressed backups. Because this version bump changes the plugin's sidecar image, upgrading to HM 2026.10 restarts every Postgres cluster in your estate.
+
+-   **AI DDL repair in Migration Portal:** Migration Portal in HM can now automatically suggest a fix for a DDL object that fails schema assessment. Review the suggestion and **Accept & Reassess**, **Edit**, **Regenerate**, or **Reject** it. Requires [AI Copilot](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/) to be enabled.
+
+!!!important HM 2026.10 ships operandSet 1.3.0
+HM 2026.10 ships operand images from [operandSet](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/image-management/custom-operand-images/) 1.3.0. If your `operandSetVersions` configuration is still pinned to an earlier operand set (for example, `1\.2\.[0-9]+` from IRs 2026.7-2026.9), add `1\.3\.[0-9]+` to the whitelist alongside it — don't replace it yet. Removing the `1\.2\.[0-9]+` pattern before every cluster has moved to a 1.3.x operand image makes those clusters' current images undiscoverable and breaks the Major/Minor upgrade dialog. Once every cluster in your estate is running a 1.3.x operand image, you can remove the old regex. See [Configure the beacon agent operand set](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/#configure-the-beacon-agent-operand-set) for details.
+!!!
+
+## Release details
+
+### Hybrid Manager (HM) platform
+
+| Type | Description |
+| ---- | ----------- |
+| Change | Updated the Barman Cloud Plugin to version 0.15.0, which includes significantly faster restore times for compressed backups. Upgrading to this version triggers a restart of your Postgres clusters. |
+| Bug fix | Fixed an issue whereby uninstalling Hybrid Manager could leave the `edb-observability` namespace and its associated persistent volume claims behind, which caused a subsequent reinstall on the same cluster to fail preflight checks with an orphaned PVC error. |
+| Bug fix | Fixed an issue whereby image discovery failed with a 404 error for registries whose configured URL included a namespace path, such as EDB's official artifact repo. Previously, the registry client built an incorrect API path for these registries, resulting in an empty image library and preventing provisioning and upgrades. The registry client now correctly scopes the catalog path under the registry's namespace, restoring discovery for both namespace-path and bare-host registries. |
+
+### Observability and monitoring
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Added support for automatically enabling the `pg_stat_ch` extension for PSR and PGD clusters when it's available in the Postgres image, allowing supported clusters to collect and stream additional query statistics to the new ClickHouse-backed observability stack. |
+| Enhancement | Query diagnostics, including wait state statistics, now run on a ClickHouse-backed data path for improved performance and scalability. This improvement enables richer wait-event sampling and more detailed query-diagnostics charts and drill-downs. |
+| Enhancement | Added support for ingesting Kubernetes events into ClickHouse through the OpenTelemetry collector. Log entries in `otel_logs` are now tagged with a `log_source` resource attribute (`k8s_event` or `k8s_pod`) so you can distinguish and query or alert on Kubernetes events separately from pod logs. |
+| Change | Migrated **Query Diagnostics** (**Query Stats**, **List Queries**, **Query Executed**, **Query Latency**, **Wait States**) to a new, embedded ClickHouse-backed pipeline that's deployed and managed automatically, with no separate installation or configuration required. Query and wait-state data now reach the platform through OTLP ingestion of `pg_stat_ch` and `edb_wait_states`. The stats-collector service and database are no longer deployed. `edb_stat_monitor` is retained and will be removed in a future release. |
+| Change | Configuration and security recommendations in the health report are now generated by an in-process daemon instead of periodic background jobs, improving reliability. This change doesn't affect how recommendations appear in the health report. |
+| Change | Alerting and recording rule management for metrics and logging is consolidated into a new `upm-ruler` component, replacing the separate Thanos Ruler and Loki Ruler. These components are disabled by default in the observability scenario; enable by setting the component's `enabled` parameter to `true`. |
+| Change | Removed the query latency chart from the **Monitoring** overview. Query latency data is still available in **Query Diagnostics**. |
+| Bug fix | Fixed an issue whereby the `InternalDBPrimaryServiceUnavailable` alert fired constantly because it referenced the removed `upm-api-stats-collector` component. Alert rules and references related to this component were removed from monitoring configuration. |
+| Bug fix | Fixed an issue whereby the `edb_wait_states` and query latency monitoring queries failed with a `function does not exist` error on CloudNativePG (CNPG) clusters that pin the database search path for security reasons, which caused repeated errors in database logs and loss of related metrics. |
+| Bug fix | Fixed an issue whereby `fluent-bit-federated` and `thanos-query-federated` pods could crash-loop on multi-data-center deployments when the SPIFFE SVID or mTLS certificate wasn't yet available at startup. Both workloads now wait for the certificate to be present before starting. |
+
+!!!note Query Diagnostics after this upgrade
+
+-   **Existing HM-managed clusters:** The new operand image ships with `pg_stat_ch` available, but moving an existing cluster to it doesn't automatically create the extension. Manually run `CREATE EXTENSION IF NOT EXISTS pg_stat_ch WITH SCHEMA edb_internals;` on every database you want to monitor.
+-   **Self-managed clusters** (external CloudNativePG or bare-metal installations): Require additional manual steps to install and enable `pg_stat_ch`. See [Installing and configuring pg_stat_ch](/clickhouse/latest/monitoring_postgres/#installing-and-configuring-pg_stat_ch).
+-   **Query table:** Temporarily shows query text capped at 2 KB, can't be filtered by table name, and no longer shows the `new` label for recently seen queries. These will be addressed in a future release.
+!!!
+
+### AI Factory
+
+| Type | Description |
+| ---- | ----------- |
+| Change | Removed the `ai` scenario and the components that depend on it — Langflow, **Visual Pipeline Builder** (AI Pipelines), KServe-based model serving (self-hosted models), and the HM chatbot — to address critical security vulnerabilities in Langflow. Langflow and Visual Pipeline Builder are permanently removed. The HM chatbot and support for external LLM endpoints are expected to return in a future Innovation Release and the next LTS release. |
+
+### Migrations
+
+| Type | Description |
+| ---- | ----------- |
+| Enhancement | Added **AI DDL repair** to Migration Portal in HM. When a DDL object fails schema assessment, Migration Portal can automatically suggest a fix that you can accept, edit, regenerate, or reject. Requires [AI Copilot](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/) to be enabled. See [AI DDL repair](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/#ai-ddl-repair) for details. |
+| Enhancement | Added a new repair handler, `ERH-3018`, which converts the Oracle keyword `JOIN` to the quoted lowercase name `"join"` when it's used unquoted as a name, for example, as a column, parameter type, table alias, or object type attribute. `JOIN` is a reserved keyword in EDB Postgres Advanced Server, so this DDL previously failed with a syntax error. |
+| Enhancement | Added a new repair handler, `ERH-3019`, which removes the Oracle `FM` (fill mode) modifier from the format string of a `TRUNC` date function, for example, `TRUNC(hire_date, 'fmmm')` becomes `TRUNC(hire_date, 'mm')`. Oracle ignores the `FM` modifier in `TRUNC` date format strings, but EDB Postgres Advanced Server rejects it with an `invalid format parameter` error. For a functional index, the error occurs on the first insert or index rebuild rather than when the index is created. |

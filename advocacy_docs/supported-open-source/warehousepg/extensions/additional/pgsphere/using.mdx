@@ -1,0 +1,84 @@
+---
+# Imported from the WHPG docs repo (https://github.com/warehouse-pg/whpg-docs)
+# Changes made here may be overwritten. Prefer making changes in the source repo instead.
+# See the originalFilePath value below for a link to the source of this file in the WHPG docs repo.
+#
+# To make changes that apply _only_ to EDB's documentation, try to cleanly separate those changes in the content
+# (e.g. separate lines or ideally paragraphs or even sections, with clear indications that the content is EDB-specific) and 
+# reach out to the docs team to discuss.
+
+title: Using whpg-pgsphere
+navTitle: Using
+originalFilePath: >-
+  https://github.com/warehouse-pg/whpg-docs/blob/main/docs/extensions/additional/pgsphere/using.md
+description: >-
+  Store, query, and index spherical data, such as astronomical coordinates, in
+  WarehousePG with whpg-pgsphere.
+editTarget: originalFilePath
+
+---
+
+Use whpg-pgsphere to store, query, and index spherical data in WarehousePG. Before you start, [install and register whpg-pgsphere](installing.mdx) in your database.
+
+## Storing spherical coordinates
+
+Store spherical coordinates using the `spoint` data type. whpg-pgsphere also provides other data types for representing objects on a sphere.
+
+1.  Create a table with a column of the spherical data type you want to use:
+
+    ```sql
+    CREATE TABLE <table_name> (
+        name  text,
+        coord <type>
+    )
+    DISTRIBUTED BY (name);
+    ```
+
+    Where `<type>` is one of the following:
+
+    | Data type  | Represents                                                     |
+    | ---------- | -------------------------------------------------------------- |
+    | `spoint`   | A point                                                        |
+    | `scircle`  | A circle, defined by a center point and radius                 |
+    | `sline`    | A great circle arc between two points                          |
+    | `sellipse` | An ellipse                                                     |
+    | `spoly`    | A polygon bounded by multiple arcs                             |
+    | `spath`    | A sequence of connected arcs                                   |
+    | `sbox`     | A bounding box                                                 |
+    | `strans`   | A Euler transformation, used to rotate other spherical objects |
+
+2.  Insert coordinates using the `spoint` data type. `spoint` accepts longitude and latitude in radians, decimal degrees (with a `d` suffix), or degrees-minutes-seconds (with `d`, `m`, and `s` suffixes). For example:
+
+    ```sql
+    INSERT INTO <table_name> (name, coord) VALUES
+        ('Star A', spoint '(10.1d, -90d)'),
+        ('Star B', spoint '(10.25d, 45.5d)');
+    ```
+
+## Querying spherical data
+
+Use the containment operator `@` to test whether one spherical object is contained by another. For example, to find points inside a `scircle`:
+
+```sql
+SELECT name FROM <table_name>
+WHERE coord @ scircle '<(10d, 45d), 2d>';
+```
+
+Use the distance operator `<->` to compute the angular distance between two objects, in radians. Convert the result to degrees by multiplying by `180 / pi()`:
+
+```sql
+SELECT name, 180 * (coord <-> spoint '(10.25d, 45.5d)') / pi() AS distance_degrees
+FROM <table_name>;
+```
+
+For the full list of operators and functions, including area, length, and coordinate-conversion functions, see the [pgSphere documentation](https://pgsphere.github.io/documentation.html).
+
+## Indexing spherical data
+
+Index spherical columns to speed up containment, overlap, and distance queries. whpg-pgsphere supports GiST indexes, implemented as an R-tree, and BRIN indexes for `spoint` and `sbox` columns:
+
+```sql
+CREATE INDEX ON <table_name> USING gist (coord);
+```
+
+The planner uses this index automatically for queries like the containment example in [Querying spherical data](#querying-spherical-data), without requiring any change to the query itself.

@@ -160,6 +160,23 @@ whpg-dr check my_cluster
 
 If the path is meant to be a shared NFS mount rather than local disk, mount the actual share on each segment host instead of creating a bare local directory, otherwise each segment archives to its own local disk rather than the shared repository. See [Setting up the storage repository](setting-up-primary/storage) for the full requirement.
 
+## Backup failures
+
+### Backup fails because the storage repository is full
+
+**Symptom:** `whpg-dr backup` fails with a `Cloud backup failed with error` message, and the Barman log on a segment host shows `XMinioStorageFull`. `whpg-dr list-backup` shows the failed backup as `[FAILED]`, and `whpg-dr check` reports `failed backups`.
+
+**Cause:** The S3-compatible storage backend has no free space left, so it rejects the upload. WAL archiving fails too, and WAL accumulates in `pg_wal` on every host until space is freed.
+
+**Resolution:** Free space in the storage backend, then delete each failed backup and run `whpg-dr check`. Before you take the next backup, confirm that the output shows `continuous_archiving: OK` again:
+
+```bash
+whpg-dr delete my_cluster --backup-name <failed_backup_name>
+whpg-dr check my_cluster
+```
+
+See [Deleting backups](setting-up-primary/backups#deleting-backups).
+
 ## Restore point failures
 
 If a `whpg-dr create-restore-point` command is interrupted, it may leave a lock file at:
@@ -205,3 +222,65 @@ Error: WAL replay failed: segments are not running and not in expected recovery 
     ```bash
     whpg-dr restore my_cluster --resume-failed
     ```
+
+### Stale FAILED mark on S3 storage
+
+1.1.0 and earlier releases with S3 storage could mark a good backup as `FAILED` in the bucket when a restore attempt checked it from the recovery site.
+
+**Symptom:**
+
+The restore fails at backup verification, even though the WAL files exist in the bucket:
+
+```
+Verifying backup 20260825T082845_base_backup integrity...
+Error: backup verification failed
+  ↳ check-backup completed with 4 errors:
+  - w9-2-seg0: ERROR: This backup has been marked as FAILED due to the following reason: At least one WAL file is missing. The first missing WAL file is 000000010000000F0000000E
+```
+
+Later attempts fail with:
+
+```
+ERROR: The validity of a failed backup cannot be checked
+```
+
+**Cause:** Earlier releases ran `barman check-backup` from the recovery site and recorded the result as `status=FAILED` in the `backup.info` file of each server in the bucket. The backup data is intact, but the mark stays until you clear it. Versions 1.1.1 and later verify backups with S3 reads only and never write a `FAILED` status from the recovery site. `whpg-dr restore` and `whpg-dr check-backup` report whether the mark is stale, meaning every WAL segment is archived, or real. Clear only a stale mark.
+
+**Resolution:**
+
+1. Upgrade `whpg-dr` on the recovery site to 1.1.1, as described in [Upgrading whpg-dr](configuring-dr#upgrading-whpg-dr).
+
+1. Clear the failed status depending on your situation:
+
+    **If the primary cluster is available:** run the integrity check on the primary cluster. The primary cluster still has the backup recorded as `DONE`, and the check uploads that status to the bucket:
+
+    ```bash
+    whpg-dr check-backup my_cluster --backup-name 20260825T082845_base_backup
+    ```
+
+    **If the primary cluster isn't available:** edit the status by hand. Only edit the status if the `error=` line in `backup.info` reads `At least one WAL file is missing`. Any other error means the backup actually failed, so don't change it.
+
+    For each server reported as failed:
+
+    1. Find the server's Barman backup ID, a timestamp such as `20260825T082846`. List `s3://<bucket>/<prefix>/<cluster>/basebackup/<server>/base/` and pick the directory whose `backup.info` has `backup_name=<backup name>`, where `<backup name>` is the name you pass to `whpg-dr check-backup` with the `--backup-name` option. The Barman ID has a different format from the backup name, and its timestamp can differ by a second. For example, the ID `20260825T082846` can belong to the backup named `20260825T082845_base_backup`.
+    1. Download `s3://<bucket>/<prefix>/<cluster>/basebackup/<server>/base/<backup_id>/backup.info` from the bucket.
+    1. In the file, change `status=FAILED` to `status=DONE` and change the `error=` line to `error=None`. Leave all other lines unchanged.
+    1. Upload the file back to the same location.
+
+    After you've updated all servers, run the integrity check on the DR coordinator to confirm the backup passes:
+
+    ```bash
+    whpg-dr check-backup my_cluster --backup-name 20260825T082845_base_backup
+    ```
+
+1. Run the restore again.
+
+### Stale FAILED mark on POSIX storage
+
+1.1.0 and earlier releases ran `barman check-backup` on the recovery site, which writes its verdict into the backup site's own `backup.info` file on POSIX storage. That check sometimes marked a good backup `FAILED`. Barman refuses to check a `FAILED` backup, so `whpg-dr check-backup` on the backup site can't clear the mark. If `whpg-dr restore` or `whpg-dr check-backup` on the recovery site reports that the mark is stale for a server, clear it by hand for that server only:
+
+1. Edit the `backup.info` file whose path is in the message. The path is `<storage.path>/<cluster_name>/<server>/meta/<backup_id>-backup.info`.
+
+1. Change `status=FAILED` to `status=DONE` and the `error=` line to `error=None`. Leave all other lines unchanged.
+
+1. Run `whpg-dr check-backup <cluster_name> --backup-name <backup_name>` on the recovery site. It must report success before you run `restore`.

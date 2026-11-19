@@ -68,7 +68,7 @@ In WarehousePG installations, Seafowl is managed as a systemd service rather tha
     ```
 
     !!!Note
-    If installing in an environment where systemd is not available (for example, Docker), you must daemonize the Seafowl worker through some other means, such as a supervisor process or an entrypoint script. The critical constraint is that exactly one Seafowl worker must be running per host. Running multiple workers on the same host, or failing to run one at all, will cause problems.
+    If installing in an environment where systemd isn't available (for example, Docker), you must daemonize the Seafowl worker through some other means, such as a supervisor process or an entrypoint script. The critical constraint is that exactly one Seafowl worker must be running per host. Running multiple workers on the same host, or failing to run one at all, will cause problems.
     !!!
 
     !!!Note
@@ -86,6 +86,10 @@ In WarehousePG installations, Seafowl is managed as a systemd service rather tha
 ## Upgrading the extension
 
 To upgrade an existing PGAA installation on WarehousePG to a newer version, complete the steps in this section instead of [Installing the extension](#installing-the-extension).
+
+!!!Note
+Update the extension before you preload the new PGAA library. If you preload the library first, the PGAA upgrade worker can restart the coordinator while it updates the extension.
+!!!
 
 1. On the coordinator, download the new package version:
 
@@ -108,9 +112,17 @@ To upgrade an existing PGAA installation on WarehousePG to a newer version, comp
     gpssh -f all_hosts -e 'sudo systemctl restart seafowl'
     ```
 
-1. Restart the WarehousePG cluster to load the new `pgaa` library:
+1. Remove PGAA and PGFS from the list of shared libraries, and restart the cluster. Keep any other libraries in the list.
 
     ```shell
+    gpconfig -c shared_preload_libraries -v '<other_libraries>'
+    gpstop -ra
+    ```
+
+    If `pgaa` and `pgfs` are the only libraries in the list, remove the setting instead:
+
+    ```shell
+    gpconfig -r shared_preload_libraries
     gpstop -ra
     ```
 
@@ -120,9 +132,24 @@ To upgrade an existing PGAA installation on WarehousePG to a newer version, comp
     ALTER EXTENSION pgaa UPDATE;
     ```
 
+1. Confirm that each database has the new version:
+
+    ```sql
+    SELECT extversion FROM pg_extension WHERE extname = 'pgaa';
+    ```
+
+1. Add PGAA and PGFS back to the list of shared libraries, and restart the cluster:
+
+    ```shell
+    gpconfig -c shared_preload_libraries -v '<other_libraries>,pgaa,pgfs'
+    gpstop -ra
+    ```
+
 !!!Note
-Upgrade the package on every host, coordinator and segments, and complete both restarts before running `ALTER EXTENSION`. Running it against a `pgaa` library that hasn't been upgraded yet fails with an error such as `could not find function "..._wrapper" in file ...`, because the SQL migration scripts expect functions that only exist in the newer library.
+Upgrade the package on every host, coordinator and segments, and restart Seafowl before running `ALTER EXTENSION`. If a host still has the older `pgaa` library, the update fails with an error such as `could not find function "..._wrapper" in file ...`, because the SQL migration scripts expect functions that only exist in the newer library.
 !!!
+
+If the coordinator is already restarting repeatedly because the new library was preloaded first, stop the cluster with `gpstop -a -M immediate`, and remove `pgaa` and `pgfs` from `shared_preload_libraries` in `postgresql.conf` on the coordinator and every segment host. Then start the cluster and continue at the step that updates the extension.
 
 ## Verifying the installation
 

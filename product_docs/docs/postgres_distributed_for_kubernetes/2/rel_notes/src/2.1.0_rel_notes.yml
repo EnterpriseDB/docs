@@ -9,6 +9,16 @@ intro: |
   - The operator no longer restarts a PGD node when the raft cannot spare a member. Both the parent raft and, for locally routed groups, the local subgroup raft must still reach quorum after losing one more member. Nodes that do not answer the raft or have not joined yet are not counted, and a held node does not block others in the same pass.
   - With the fix of [CVE-2026-55769](https://github.com/cloudnative-pg/cloudnative-pg/security/advisories/GHSA-x8c2-3p4r-v9r6) in CloudNativePG `1.28.4` or later, `search_path` is now pinned to `pg_catalog, public, pg_temp` on every operator-issued connection. The PGD operator's mutation reconciler now scopes `search_path` to `public` for the duration of each `PGDGroup` mutation transaction, so unqualified `CREATE` statements in user-authored mutations continue to land in the intended schema instead of failing with a permission error.
 
+  ## Upgrade notes
+
+  - PGD Essential is no longer supported. Image catalogs are generated for the expanded edition only, so no new `*-essential-ubi9` catalog is published and essential operand images are no longer tested. The operator does not reject an essential operand image, but a group running one is no longer on a supported configuration and should be moved to the matching expanded image.
+  - Data node pods are recreated once, node by node, during the upgrade: repointing the readiness probe at the connection manager changes the pod definition. The write leader is updated last, as for any other node configuration change. On a new group the repoint happens before the group is created and before any node joins it, and the group waits for every pending recreation to complete before joining a node, so no node is recreated while it is joining. A node added through a physical join is repointed while it is still hibernated and is not recreated at all.
+  - A data node pod reports `NotReady` while its connection manager has no route to serve — for example when the group loses raft consensus, or when the node is fenced with `route_fence`. Consequences:
+  - Node services are now created with `publishNotReadyAddresses=true` so the operator can reach a node whose connection manager is not ready. Existing node services are healed in place, keeping any externally assigned `LoadBalancer` IP. `publishNotReadyAddresses` is operator-managed on `nodeServiceTemplate`: any value supplied in the template is overridden with `true`.
+  - Pausing a `PGDGroup` waits for every data node to be ready, and readiness now observes the connection manager: the operator compares each CloudNativePG cluster's `ReadyInstances` against its `Spec.Instances`, so a fenced or route-less data node delays the pause of the group until it can serve again.
+  - A node is promoted to routable only once, and only a part demotes it automatically: a transient loss of the PGD status, or a routing switch between the local and the parent group, does not rewrite the pod definition. Disabling `enable_routing` on a group whose nodes are already routable therefore leaves their pods reporting `NotReady`, because the connection manager has no route to serve; see the [`disableConnMgrReadinessProbe` annotation](../labels_annotations/#predefined-annotations) to demote them back to the Postgres readiness probe.
+  - The `nodeRoutable` promotion label is applied to a data node pod together with the connection manager readiness probe, when the pod is created. A promoted node therefore never appears in the connection manager services one restart before it can serve them, so upgrading the operator does not empty their endpoints. A parted node is demoted on the running pod, without a restart.
+
   ## Supported versions
 
   - Kubernetes: 1.34, 1.35, and 1.36
@@ -46,7 +56,7 @@ relnotes:
     jira: 
     type: Bug Fix
     impact: High
-  - relnote: The physical join job now retries transient failures on its own, with a `BackoffLimit` of `3`, and is reported as `Failed` only once those retries are exhausted. See [Physical join](trouble_shooting/#physical-join) for what to do with a job that has failed.
+  - relnote: The physical join job now retries transient failures on its own, with a `BackoffLimit` of `3`, and is reported as `Failed` only once those retries are exhausted. See [Physical join](../trouble_shooting/#physical-join) for what to do with a job that has failed.
     jira: 
     type: Bug Fix
     impact: High
