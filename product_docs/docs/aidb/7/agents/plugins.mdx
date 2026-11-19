@@ -1,0 +1,232 @@
+---
+title: Agent plugins
+navTitle: Agent plugins
+description: Package reusable guidance and tools as an agent plugin, and attach it to one or more AIDB agents.
+---
+
+An agent plugin packages reusable guidance and tool access so that you can attach the same capability to one or more [agents](../agents). A plugin can add domain instructions, reference material, a set of existing [tools](../tools), or both. When an agent runs, AIDB adds the plugin's content to the agent's system prompt and adds the plugin's tools to the tools available to that agent.
+
+Use a plugin when several agents need the same context or tool set, or when you want to manage that context separately from each agent's main instructions.
+
+!!!note
+
+Agent plugins are available in AIDB 7.9.0 and later.
+!!!
+
+Plugins are eager: AIDB loads every attached plugin on every run of the agent. There's no on-demand loading, so keep plugin content focused.
+
+!!!warning
+
+Anyone who can read a plugin can read its content. Don't store credentials, secrets, or confidential policy text in `prompt_content`.
+!!!
+
+## What a plugin contains
+
+A plugin has four fields:
+
+| Field            | Required | Description                                                                                                                                              |
+|------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`           | Yes      | Unique plugin name. It must start with a letter or underscore and can contain letters, numbers, underscores, and hyphens.                                 |
+| `description`    | Yes      | Short, human-readable summary of what the plugin adds. It can't be empty and can contain up to 1,024 characters.                                           |
+| `prompt_content` | Yes      | Guidance that AIDB adds to the agent's system prompt on every run. It can't be empty and can contain up to 16,000 characters.                              |
+| `tools`          | No       | Names of existing tools from `aidb.tools` that the plugin adds to every agent it's attached to. Default: `NULL` (no tools). A tool can appear only once.  |
+
+A plugin doesn't create tools. Every tool that a plugin lists must already exist in [`aidb.tools`](../tools) as a native tool, a [custom SQL tool](../tools/custom-sql-tools), or an imported [MCP tool](../tools/mcp-tools). AIDB checks this when you create or update the plugin, and again each time an agent that uses the plugin runs.
+
+## Creating a plugin
+
+Create a plugin with `aidb.create_agent_plugin()`:
+
+```sql
+SELECT error
+FROM aidb.create_agent_plugin(
+    name           => 'billing_sql',
+    description    => 'Answer billing questions with SQL',
+    prompt_content => $plugin$
+Use run_sql_query for billing questions.
+Amounts in billing tables are stored in cents.
+Rows with deleted_at set are inactive.
+$plugin$,
+    tools          => ARRAY['run_sql_query']
+);
+```
+
+On success, `create_agent_plugin()` returns no rows. On failure, such as a name that's already taken, it returns a single row with the `error` column set instead of raising an error, so the surrounding transaction isn't aborted:
+
+```sql
+SELECT error FROM aidb.create_agent_plugin('billing_sql', 'Answer billing questions with SQL', 'Use run_sql_query.');
+__OUTPUT__
+                 error
+------------------------------------------
+ plugin 'billing_sql' already exists
+(1 row)
+```
+
+## Listing plugins
+
+Query the `aidb.agent_plugins` view to see the stored plugins:
+
+```sql
+SELECT name, description, tools, created_at, updated_at
+FROM aidb.agent_plugins
+ORDER BY name;
+```
+
+The view is read-only. Create, change, and remove plugins with the plugin functions on this page.
+
+## Attaching plugins to an agent
+
+Attach plugins with the `plugins` argument when you create an agent:
+
+```sql
+SELECT error
+FROM aidb.create_agent(
+    name         => 'billing_agent',
+    instructions => 'Answer questions about billing data.',
+    model        => 'my_gpt',
+    plugins      => ARRAY['billing_sql']
+);
+```
+
+To replace an agent's plugin list, use [`aidb.update_agent()`](creating-agents#updating-and-deleting-agents):
+
+```sql
+SELECT error
+FROM aidb.update_agent(
+    name    => 'billing_agent',
+    plugins => ARRAY['billing_sql', 'policy_notes']
+);
+```
+
+An agent can't list the same plugin twice, and each plugin must exist when you attach it.
+
+### How AIDB combines plugins with an agent
+
+When the agent runs, AIDB resolves the attached plugins in the order they're listed on the agent.
+
+- **Tools:** The agent's own `tools` come first. AIDB then appends each plugin's tools in plugin order and removes duplicates, keeping the first occurrence. Plugin tools follow the same rules as tools you configure directly on the agent: read-only mode, the model's tool-count limit, [governance](../governance), and privilege checks all apply. Plugin tools aren't written into the prompt text. They reach the model through the same tool list as any other tool.
+
+- **Prompt:** AIDB adds each plugin's name, description, and `prompt_content` after the agent's own instructions, under an "Additional capabilities" heading. That heading tells the model to follow a plugin's guidance when the task calls for it, and that plugin text can't override the agent's instructions.
+
+- **Prompt size:** Plugin text counts toward the model's prompt size. Long plugin content makes conversation history compact sooner.
+
+- **Delegates:** When another agent [delegates](delegation) to this agent, the delegate's description includes the names and descriptions of its plugins. A parent agent can use them to choose a delegate by the capabilities its plugins provide.
+
+## Updating a plugin
+
+Change one or more fields with `aidb.update_agent_plugin()`. Only the fields you pass change. A field passed as `NULL`, or left out, keeps its current value. To remove every tool from a plugin, pass an empty array:
+
+```sql
+SELECT error
+FROM aidb.update_agent_plugin(
+    name           => 'billing_sql',
+    prompt_content => $plugin$
+Use run_sql_query for billing questions.
+Amounts in billing and payments tables are stored in cents.
+Rows with deleted_at set are inactive.
+$plugin$
+);
+
+SELECT error
+FROM aidb.update_agent_plugin(
+    name  => 'billing_sql',
+    tools => ARRAY[]::text[]
+);
+```
+
+Agents pick up plugin changes on their next run.
+
+If a change to a plugin's `tools` would give an attached agent a tool with the same name as one of that agent's [delegates](delegation), AIDB rejects the update so that the agent isn't broken.
+
+## Deleting a plugin
+
+AIDB refuses to delete a plugin that's still attached to an agent, and the error names the agents. Either detach the plugin first by updating each agent's `plugins` list, or pass `force => true` to detach it from every agent and delete it in one step:
+
+```sql
+SELECT error FROM aidb.delete_agent_plugin('billing_sql');
+
+SELECT error FROM aidb.delete_agent_plugin('billing_sql', force => true);
+```
+
+With `force => true`, AIDB detaches the plugin from every agent that lists it, including agents that belong to other roles. If the delete fails, the detach is rolled back.
+
+## Semantic knowledge base plugins
+
+Each [semantic knowledge base](../semantic-knowledge-bases) publishes a managed plugin named `semkb_<kb_name>`. The plugin contains the knowledge base's optional user-defined context and three read-only SQL tools that are already bound to that knowledge base:
+
+| Tool                            | Purpose                                      |
+|---------------------------------|----------------------------------------------|
+| `semkb_<kb_name>_search`        | Search the knowledge base's schema metadata. |
+| `semkb_<kb_name>_join_path`     | Find how two tables join.                    |
+| `semkb_<kb_name>_suggest_joins` | Suggest joins for a table.                   |
+
+Attach a managed plugin to an agent like any other plugin:
+
+```sql
+SELECT error
+FROM aidb.create_agent(
+    name         => 'analytics_agent',
+    instructions => 'Answer questions using the analytics schema.',
+    model        => 'my_gpt',
+    plugins      => ARRAY['semkb_analytics_kb']
+);
+```
+
+To check that a knowledge base has published its plugin, look at the `plugin_name` column of [`aidb.list_semantic_kbs()`](../reference/semantic-knowledge-bases#aidblist_semantic_kbs). It's `NULL` until the plugin and all three tools are published.
+
+### Managing a semantic KB plugin
+
+You can't update or delete a managed plugin, or its generated SQL tools, with the ordinary plugin and tool functions. AIDB returns an error that names the knowledge base that manages the plugin. Manage the plugin through the knowledge base instead:
+
+| To                                    | Use                                                                           |
+|---------------------------------------|-------------------------------------------------------------------------------|
+| Change the plugin's context           | `aidb.update_semantic_kb_context()`                                           |
+| Republish the plugin and its tools    | [`aidb.refresh_semantic_kb()`](../reference/semantic-knowledge-bases#aidbrefresh_semantic_kb) |
+| Remove the plugin and its tools       | [`aidb.delete_semantic_kb()`](../reference/semantic-knowledge-bases#aidbdelete_semantic_kb)   |
+
+AIDB also republishes the plugin when you create the knowledge base, and when a tracked schema rename occurs. Deleting a knowledge base detaches its plugin from every agent. A knowledge base that has auto-processing disabled, or that bypasses triggers, needs an explicit `aidb.refresh_semantic_kb()` after a schema rename.
+
+!!!note
+Anyone who can call `aidb.list_semantic_kbs()` or the `get_semantic_kb` tool can read the knowledge base's context, which becomes the plugin's content. Don't put confidential information in a knowledge base's context.
+!!!
+
+If a plugin or SQL tool that you created already uses one of the generated names, AIDB never overwrites it. Creating or updating the knowledge base still succeeds, but AIDB skips publishing the managed plugin and returns a warning that names each conflict. Rename or remove your plugin or tool, then run `aidb.refresh_semantic_kb()` to publish the managed plugin.
+
+## Things to know
+
+- **Stale tools:** If you delete a tool that a plugin lists, the plugin becomes stale. AIDB checks the plugin's tools each time an agent that uses it runs, and when you newly attach it, and reports the missing tool against the plugin, for example `plugin 'billing_sql': agent references unknown tool 'run_sql_query'`. Update the plugin to remove or replace the tool. A stale plugin that's already attached doesn't block unrelated changes to the agent with `aidb.update_agent()`.
+
+- **Deleting a plugin that's being attached:** AIDB doesn't lock plugins while it attaches or deletes them. If one session deletes a plugin while another attaches it, the agent's runs fail with an unknown plugin error until you fix its `plugins` list with `aidb.update_agent()`.
+
+- **Name collisions with delegates:** A plugin's tools join the tools of every agent that uses it. Tool names can't match an agent's delegate names. AIDB checks this when you attach a plugin and when you update its tools.
+
+- **Prompt size:** Every attached plugin is added in full on every run, so a few large plugins can use much of the model's context window.
+
+- **Plugins can't create or edit plugins:** The plugin functions aren't [native tools](../tools/native-tools), so an agent can't create, change, or delete plugins. Only the `plugins` argument of the agent management tools is available to agents.
+
+## Common errors
+
+Plugin functions don't raise errors. They return an `error` value, which is `NULL` on success. These are the messages that you're most likely to see:
+
+| Message                                                                            | Cause                                                                                           |
+|------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `plugin '<name>' already exists`                                                   | A plugin with that name exists.                                                                 |
+| `plugin '<name>' not found`                                                        | You tried to update or delete a plugin that doesn't exist.                                      |
+| `plugin name '<name>' is not valid ...`                                            | The name doesn't start with a letter or underscore, or contains characters that aren't allowed. |
+| `plugin description must not be empty`                                             | The description is empty or only whitespace.                                                    |
+| `plugin prompt_content must not be empty`                                          | The content is empty or only whitespace.                                                        |
+| `plugin description must be at most 1024 characters, got <n>`                      | The description is too long.                                                                    |
+| `plugin prompt_content must be at most 16000 characters, got <n>`                  | The content is too long.                                                                        |
+| `plugin '<name>': agent references unknown tool '<tool>'`                          | A listed tool doesn't exist in `aidb.tools`.                                                    |
+| `duplicate tool '<tool>' in plugin tools`                                          | A tool is listed more than once.                                                                |
+| `agent references unknown plugin '<name>'`                                         | An agent lists a plugin that doesn't exist.                                                     |
+| `duplicate plugin '<name>'`                                                        | An agent lists the same plugin more than once.                                                  |
+| `plugin '<name>' is attached to agent(s) '<agent>' ...`                            | You deleted a plugin that's attached to an agent without `force => true`.                       |
+| `plugin '<name>' is managed by semantic_kb:<kb_name> ...`                          | You tried to update or delete a managed semantic KB plugin directly.                            |
+
+## Next steps
+
+- Learn how to configure the agents that use plugins in [Managing agents](creating-agents).
+- See how plugin tools are combined with delegates in [Delegation](delegation).
+- Look up every function's parameters and return types in the [agents reference](../reference/agents#agent-plugin-functions).
+- Learn how knowledge bases index your schema in [Semantic knowledge bases](../semantic-knowledge-bases).

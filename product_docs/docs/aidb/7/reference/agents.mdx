@@ -21,6 +21,7 @@ Agent configuration. There's no dedicated "list agents" function — query this 
 | `purpose`              | text                    | Named [purpose](/aidb/current/governance/purposes/) the agent's tool calls run under, if configured. References `aidb.purpose_registry`. |
 | `delegates`            | text[]                  | Names of agents this agent may delegate to.                                 |
 | `tools`                | text[]                  | Names of tools this agent may call.                                         |
+| `plugins`              | text[]                  | Names of [agent plugins](../agents/plugins) attached to this agent, in order. Added in AIDB 7.9.0. |
 | `output_type`          | jsonb                   | Structured output schema, built with `aidb.output_type()`.                  |
 | `input_token_budget`   | integer                 | Input token budget per call.                                                |
 | `output_token_budget`  | integer                 | Output token budget per call.                                               |
@@ -30,6 +31,22 @@ Agent configuration. There's no dedicated "list agents" function — query this 
 | `preset`               | text                    | Stored, but not currently resolved to any behavior.                         |
 | `created_at`           | timestamptz             | Creation time.                                                              |
 | `updated_at`           | timestamptz             | Last update time.                                                           |
+
+### `aidb.agent_plugins`
+
+[Agent plugins](../agents/plugins) and their content. Read-only: create, change, and delete plugins with the [agent plugin functions](#agent-plugin-functions). The view reads from the `aidb.agent_plugins_registry` table. Added in AIDB 7.9.0.
+
+| Column           | Type        | Description                                                                                                              |
+|------------------|-------------|--------------------------------------------------------------------------------------------------------------------------|
+| `id`             | bigint      | Internal identifier.                                                                                                     |
+| `name`           | text        | Unique plugin name.                                                                                                      |
+| `description`    | text        | Short summary of what the plugin adds.                                                                                   |
+| `prompt_content` | text        | Guidance that AIDB adds to the system prompt of every agent that uses the plugin.                                        |
+| `tools`          | text[]      | Names of existing tools (from `aidb.tools`) that the plugin adds to every agent it's attached to.                         |
+| `created_at`     | timestamptz | Creation time.                                                                                                           |
+| `updated_at`     | timestamptz | Last update time.                                                                                                        |
+
+For plugins that a [semantic knowledge base](../semantic-knowledge-bases) publishes, the view lists the managed `semkb_<kb_name>` plugin like any other.
 
 ### `aidb.purpose_registry`
 
@@ -118,6 +135,7 @@ Registers a new agent.
 | `timeout`             | INTEGER | NULL (300 applied at runtime) | Maximum wall-clock seconds per call.                                                                                                                                                                                                                   |
 | `budget_strategy`     | TEXT    | `'attempt_complete'`          | One of `'ignore'`, `'error'`, `'summarize'`, `'attempt_complete'`. See [Budgets and limits](../agents/conversing-with-agents#budgets-and-limits).                                                                                                      |
 | `preset`              | TEXT    | NULL                          | Stored, but not currently resolved to any behavior.                                                                                                                                                                                                    |
+| `plugins`             | TEXT[]  | NULL                          | Names of [agent plugins](../agents/plugins) to attach, in order. Each must exist, and a name can appear only once. Added in AIDB 7.9.0.                                                                                                              |
 
 #### Returns
 
@@ -139,7 +157,8 @@ SELECT aidb.create_agent(
     max_iterations       => NULL,                    -- optional; reasoning-round cap per call. Default: NULL (a hard ceiling of 25 always applies)
     timeout              => NULL,                    -- optional; wall-clock seconds cap per call. Default: NULL (300 seconds applied at runtime)
     budget_strategy      => 'attempt_complete',      -- optional; behavior when a budget is exceeded. Default: 'attempt_complete'
-    preset               => NULL                     -- optional; reserved for future use, has no effect today. Default: NULL
+    preset               => NULL,                    -- optional; reserved for future use, has no effect today. Default: NULL
+    plugins              => NULL                     -- optional; names of agent plugins to attach. Default: NULL (no plugins)
 );
 ```
 
@@ -184,6 +203,94 @@ Deletes an agent by name.
 
 ```sql
 SELECT aidb.delete_agent('db_helper', force => true);
+```
+
+---
+
+## Agent plugin functions
+
+Manage [agent plugins](../agents/plugins). All three functions return `TABLE(error TEXT)`: no rows on success, and a single row with `error` set on failure. They don't raise for a validation failure. They were added in AIDB 7.9.0.
+
+You can't change or delete the managed plugin that a semantic knowledge base publishes with these functions. See [Managing a semantic KB plugin](../agents/plugins#managing-a-semantic-kb-plugin).
+
+### `aidb.create_agent_plugin`
+
+Registers a new plugin.
+
+#### Parameters
+
+| Parameter        | Type   | Default  | Description                                                                                                                                        |
+|------------------|--------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`           | TEXT   | Required | Unique plugin name. It must start with a letter or underscore and can contain letters, numbers, underscores, and hyphens.                          |
+| `description`    | TEXT   | Required | Short summary of what the plugin adds. It can't be empty and can contain up to 1,024 characters.                                                   |
+| `prompt_content` | TEXT   | Required | Guidance that AIDB adds to the system prompt of every attached agent on every run. It can't be empty and can contain up to 16,000 characters.     |
+| `tools`          | TEXT[] | NULL     | Names of existing tools from `aidb.tools`. A tool can appear only once. `NULL` means no tools.                                                     |
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure (for example, the name is taken, a field is invalid, or a listed tool doesn't exist).
+
+#### Example
+
+```sql
+SELECT error
+FROM aidb.create_agent_plugin(
+    name           => 'billing_sql',
+    description    => 'Answer billing questions with SQL',
+    prompt_content => 'Use run_sql_query for billing questions. Amounts are stored in cents.',
+    tools          => ARRAY['run_sql_query']
+);
+```
+
+---
+
+### `aidb.update_agent_plugin`
+
+Updates an existing plugin. Every parameter except `name` is optional and defaults to `NULL`, meaning "leave unchanged". Agents pick up the change on their next run.
+
+#### Parameters
+
+| Parameter        | Type   | Default | Description                                                                                                          |
+|------------------|--------|---------|----------------------------------------------------------------------------------------------------------------------|
+| `name`           | TEXT   | Required | Name of the plugin to update.                                                                                        |
+| `description`    | TEXT   | NULL    | New description, subject to the same rules as `create_agent_plugin`.                                                 |
+| `prompt_content` | TEXT   | NULL    | New content, subject to the same rules as `create_agent_plugin`.                                                     |
+| `tools`          | TEXT[] | NULL    | New list of tools. Replaces the current list. Pass `ARRAY[]::text[]` to remove every tool.                           |
+
+AIDB rejects a new `tools` list if one of its tools would collide with a delegate of an agent that uses the plugin.
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure (plugin not found, invalid field value, or a managed plugin).
+
+#### Example
+
+```sql
+SELECT error
+FROM aidb.update_agent_plugin('billing_sql', prompt_content => 'Amounts are stored in cents. Ignore rows with deleted_at set.');
+```
+
+---
+
+### `aidb.delete_agent_plugin`
+
+Deletes a plugin by name.
+
+#### Parameters
+
+| Parameter | Type    | Default  | Description                                                                                                                                  |
+|-----------|---------|----------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`    | TEXT    | Required | Name of the plugin to delete.                                                                                                                |
+| `force`   | BOOLEAN | `NULL`   | Delete the plugin even when agents use it. AIDB detaches it from every agent that lists it, then deletes it. `NULL` is treated as `false`.    |
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure. Without `force`, deleting a plugin that's attached to an agent fails, and the error names the agents.
+
+#### Example
+
+```sql
+SELECT error FROM aidb.delete_agent_plugin('billing_sql', force => true);
 ```
 
 ---
