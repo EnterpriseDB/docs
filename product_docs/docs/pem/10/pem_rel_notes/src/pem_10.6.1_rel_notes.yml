@@ -6,9 +6,9 @@ intro: |
   Bug fixes, and security fixes in Postgres Enterprise Manager 10.6.1 include the following:
 relnotes:
 - relnote: |
-    Fixed an issue whereby members of the `pem_agent` role could read and write server files through sslutils functions without holding `pg_read_server_files` or `pg_write_server_files`.
+    Fixed [CVE-2026-132658](/security/advisories/cve2026132658), an issue whereby the `pem_agent` role could read and write files on the PEM server.
   details: |
-    The sslutils functions access files directly, so they bypassed the file-access roles that PostgreSQL 11 and later use to control server file access. The functions now respect those roles.
+    The PEM schema granted the `pg_read_server_files` and `pg_write_server_files` roles to `pem_agent`. The upgrade now revokes both roles from `pem_agent`. The agent's certificate-handling functions in sslutils are given the access they need without these roles, so sslutils 1.4.2 or later is required on the PEM server host.
   type: Security
   jira: PEM-6056
   impact: medium
@@ -38,9 +38,9 @@ relnotes:
   impact: low
 
 - relnote: |
-    Fixed an issue whereby alert scripts configured to run on the PEM server did not run, and no error was logged.
+    Fixed an issue whereby no error was logged when an alert script configured to run on the PEM server could not be run.
   details: |
-    This happened when the PEM server was registered before its server information had been discovered, so no PEM server was marked as the leader and no job was created. Alert scripts configured with **Execute script on: PEM Server** now run as expected.
+    This happened when no agent could be found to run the script, for example when the PEM server had been registered before its server information was discovered. A warning is now written to the PEM database server log.
   type: Bug Fix
   jira: PEM-6302
   impact: low
@@ -206,49 +206,49 @@ relnotes:
   impact: low
 
 - relnote: |
-    Fixed an issue whereby a user could deploy a job template to servers, server groups, or agents belonging to teams they were not a member of.
+    Fixed [CVE-2026-132665](/security/advisories/cve2026132665), an issue whereby a user could deploy a job template to servers, server groups, or agents belonging to teams they were not a member of.
   details: |
-    `pem.deploy_job_template()` now checks that every newly supplied target is accessible to the calling user, and the `add_targets` API reports a clear error for an inaccessible target. Redeployments that reuse stored targets are not affected.
+    `pem.deploy_job_template()` ignored team boundaries. Job template deploys and target actions now check that the user's team has access to each target server and agent, and the `add_targets` API reports a clear error for an inaccessible target. Redeployments that reuse stored targets are not affected.
   type: Security
   jira: PEM-6439
   impact: medium
 
 - relnote: |
-    Fixed an issue whereby multi-factor authentication (MFA) was not enforced on PEM routes, and failed-login lockout did not apply to `pem_internal` users.
+    Fixed [CVE-2026-132661](/security/advisories/cve2026132661), an issue whereby multi-factor authentication (MFA) was not enforced on all PEM routes.
   details: |
-    A session that had passed only the password step could call PEM routes directly without completing MFA. PEM routes now require a completed MFA step when MFA is enabled and the user has a registered method. Failed logins for `pem_internal` users are now counted against `MAX_LOGIN_ATTEMPTS`, so the account is locked as expected.
+    A session that had passed only the password step could call PEM routes directly without completing MFA. MFA is now enforced on every PEM route and Socket.IO event, and a user must complete MFA before managing their MFA factors. Emailed MFA codes now expire after a configurable timeout (default 5 minutes), and an account is locked temporarily after 5 wrong MFA codes. You can also enable an optional temporary lock for `pem_internal` accounts after repeated failed logins by setting `PEM_FAILED_LOGIN_LOCK_ATTEMPTS`; it is off by default.
   type: Security
   jira: PEM-6440
   impact: medium
 
 - relnote: |
-    Fixed an issue whereby any `pem_user` could read the password stored in `pem.agent_server_binding`.
+    Fixed [CVE-2026-132664](/security/advisories/cve2026132664), an issue whereby any PEM login could read the encrypted password column of `pem.agent_server_binding`.
   details: |
-    The `password` column is no longer readable by `pem_user`. Agent registration and the console features that use the table continue to work.
+    Members of `pem_user` can no longer read the `password` column. The `pem_agent`, `pem_admin`, and `pem_database_server_registration` roles can still read it, so agent registration and the console features that use the table continue to work.
   type: Security
   jira: PEM-6449
   impact: medium
 
 - relnote: |
-    Fixed a path traversal issue in the SQL Profiler save and load file functions.
+    Fixed [CVE-2026-132662](/security/advisories/cve2026132662), a path traversal issue in the SQL Profiler trace filter save and load functions.
   details: |
-    A filename containing `..`, or resolving outside the user's storage directory, is now rejected. Previously a user with the `pem_comp_sqlprofiler` role could read and overwrite files outside their own storage directory.
+    Previously a user with the `pem_comp_sqlprofiler` role could read and overwrite files outside their own storage directory. Trace filter files are now confined to the user's storage directory and are created with restrictive permissions. The unused Query Tool `load_file` and `save_file` routes, which had the same weakness, are removed.
   type: Security
   jira: PEM-6450
   impact: medium
 
 - relnote: |
-    Fixed an issue whereby webhook URLs were not validated, which allowed `file://` URLs.
+    Fixed [CVE-2026-132663](/security/advisories/cve2026132663), an issue whereby webhook URLs could use `file://` to read local files.
   details: |
-    The agent now restricts webhook calls to HTTP and HTTPS, and non-HTTP(S) URLs are rejected when a webhook is saved or tested. Stored error text in `pem.webhook_spool.error` is now truncated. Webhooks that use HTTP or HTTPS, including those that use mTLS or OAuth, are unchanged.
+    Webhook URLs and OAuth token URLs must now use `http://` or `https://`. This is enforced in the PEM web interface, in the database, and in the agent. The upgrade disables any existing webhook that uses another URL scheme and logs a warning that names it; to use it again, correct its URL and re-enable it. The upgrade also clears stored delivery error text that might contain file contents, and delivery error text is now truncated to 1 KB. Webhooks that use HTTP or HTTPS, including those that use mTLS or OAuth, are unchanged.
   type: Security
   jira: PEM-6451
   impact: medium
 
 - relnote: |
-    Fixed an issue whereby any PEM user could run `pem.send_webhook()` and queue webhook payloads.
+    Fixed [CVE-2026-132668](/security/advisories/cve2026132668), an issue whereby any PEM login could call `pem.send_webhook()` to queue payloads to any configured webhook.
   details: |
-    Execute permission on the function is now limited to `pem_agent`. Alert-driven webhooks continue to fire.
+    Execute permission on `pem.send_webhook()` is revoked from `PUBLIC`, `pem_user`, `pem_admin`, and `pem_agent`. Alert-driven webhooks continue to fire.
   type: Security
   jira: PEM-6454
   impact: medium
@@ -262,17 +262,17 @@ relnotes:
   impact: low
 
 - relnote: |
-    Fixed an issue whereby the credentials of one agent could be used to schedule jobs on other agents.
+    Fixed [CVE-2026-132659](/security/advisories/cve2026132659), an issue whereby the credentials of one agent could be used to schedule jobs on every other agent.
   details: |
-    All agent logins share the `pem_agent` role, and the row-level security policies for jobs and job steps did not restrict that role to its own agent. An agent login can now insert and modify jobs and job steps only for its own agent ID.
+    All agent logins share the `pem_agent` role, which held broad write access to the PEM schema. The role is now restricted so that one agent's credentials can no longer create jobs, or change alerts, servers, agents, or notifications, for other agents. Upgrade the agent on the PEM server host together with the server: an older agent on that host can no longer run its CA certificate expiry check. Stop agents while you upgrade the PEM server.
   type: Security
   jira: PEM-6458
   impact: medium
 
 - relnote: |
-    Fixed an issue whereby `SECURITY DEFINER` functions in the `pem` schema could be made to run code supplied by a non-superuser.
+    Fixed [CVE-2026-132660](/security/advisories/cve2026132660), an issue whereby a function planted in a writable schema could run with the rights of the function owner, up to superuser, through a `SECURITY DEFINER` function.
   details: |
-    Many `pem` functions did not set a fixed `search_path`, so a caller who could create objects in a reachable schema could place a function ahead of the built-in one and run it with the privileges of the repository owner. The affected functions now set `search_path` and schema-qualify built-in functions.
+    Many `SECURITY DEFINER` functions in the `pem` schema did not set a fixed `search_path`, so a caller who could create objects in a schema on the path could place a function ahead of the intended one. The `search_path` of these functions is now pinned to `pg_catalog, pg_temp`.
   type: Security
   jira: PEM-6459
   impact: medium
