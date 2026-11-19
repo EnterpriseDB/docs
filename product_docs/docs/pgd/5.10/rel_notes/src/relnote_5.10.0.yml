@@ -9,6 +9,9 @@ components:
   "PGD CLI": 5.10.0
   "PGD Proxy": 5.10.0
   "Utilities": 5.10.0
+highlights: |
+  - [Raft PreVote](/pgd/5.10/routing/raft/04_raft_elections_in_depth/#raft-leader-elections-and-prevote): PreVote, introduced in PGD 6, is now backported to PGD 5. A node isolated by an unstable network link no longer forces a Raft leader election when it reconnects, so a healthy leader isn't displaced and clusters recover from network flapping without disruption. No configuration is required. PreVote takes effect once all nodes run PGD 5.10 and applies to the top-level group.
+
 relnotes:
 - relnote: 'Backported Raft [PreVote](/pgd/5.10/routing/raft/04_raft_elections_in_depth/#raft-leader-elections-and-prevote) from PGD 6 to prevent unnecessary Raft leader elections.'
   component: BDR
@@ -164,5 +167,52 @@ relnotes:
     The CLI took the Raft leader from the first row of `bdr.group_raft_details`, which is ordered by node name and has an empty row for each node that doesn't answer. When the first nodes by name were unreachable, for example with a whole region down, `pgd groups list --verbose` and the compatibility command `pgd show-groups` showed an empty Raft leader for the top-level group although it had one. The CLI now takes the leader known in the newest Raft term that any node reports.
   jira: BDR-9071
   addresses: "66386"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a hang when a writer restarts while a global lock is held.
+  component: BDR
+  details: |
+    If a writer or a node restarted after a global lock was acquired (after `ACQUIRE` or `ACQUIRE FINISH`, or after DDL had committed or prepared but before the lock was released), the manager or the writer doing DDL could hang forever. Locks recovered after a restart are now rebuilt without re-acquiring them, writers for the lock's origin are let through, and `FINISH` and `RELEASE` are routed to the same writer.
+  jira: BDR-8700
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed streamed transactions failing to apply with the WAL decoder enabled.
+  component: BDR
+  details: |
+    With the WAL decoder enabled and transaction streaming in use, two problems could break replication of large or catalog-only transactions:
+
+    -   A streamed transaction whose changes were all filtered out, such as an autoanalyze that touches only catalogs, could make the receiving node fail an assertion or crash.
+    -   If a node reconnected while a large transaction was still open, the WAL sender could stop with "encountered incomplete transaction", and the transaction reached the node only after another reconnect.
+  jira: BDR-9490
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed [client certificate checks](/pgd/5.10/connection-manager/authentication/#tls-and-client-certificates) in Connection Manager.
+  component: BDR
+  details: |
+    Connection Manager now checks client certificates the way Postgres does. Before, it accepted a client certificate without checking who issued it. The problem affected only `cert` rules in the Connection Manager HBA configuration, on nodes where the Postgres server uses `trust` authentication for connections from Connection Manager. Other related changes:
+
+    -   Client certificates are checked against `ssl_ca_file`, `ssl_crl_file`, and `ssl_crl_dir`, and the `clientcert` HBA option is applied. Without `ssl_ca_file`, `cert` authentication fails, as in Postgres.
+    -   If a CRL can't be parsed, for example a version 1 CRL, client certificates are refused and a `WARNING` is logged. Other authentication methods keep working.
+    -   The HTTPS status port (`use_https`) no longer asks for a client certificate. If the certificate or key file is missing, it serves plain HTTP and logs a `WARNING`.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Connection Manager now follows the [`ssl` setting](/pgd/5.10/connection-manager/authentication/#tls-and-client-certificates) for client connections.
+  component: BDR
+  details: |
+    Connection Manager now offers TLS to clients only when `ssl` is on, as Postgres does. Before, it offered TLS whenever `ssl_cert_file` and `ssl_key_file` pointed to existing files, whatever `ssl` was set to. With `ssl` on, both files must be set. If clients connect to Connection Manager over TLS, set `ssl = on` before upgrading. The HTTPS status port (`use_https`) isn't affected and keeps using `ssl_cert_file` and `ssl_key_file` whatever `ssl` is set to.
+  jira: BDR-9482
+  addresses: ""
+  type: Change
+  impact: Medium
+- relnote: Removed password hashes and cached credentials from Connection Manager log messages.
+  component: BDR
+  details: |
+    When a connection to Connection Manager matched no HBA rule, the "no matching HBA rule found" error written to the server log included the role's stored password hash. It also included credentials cached from the role's earlier logins, such as the password itself after a login with the cleartext `password` method. The log messages now show only the role name, password type, and role memberships.
+  jira: BDR-9482
+  addresses: ""
   type: Bug Fix
   impact: Medium

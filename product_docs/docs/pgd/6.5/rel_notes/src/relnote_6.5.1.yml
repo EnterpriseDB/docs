@@ -5,6 +5,11 @@ date: 19 November 2026
 intro: |
   EDB Postgres Distributed (PGD) 6.5.1 includes enhancements and bug fixes focused on improving stability and reliability. For a list of known issues, see [Known issues and limitations](/pgd/current/overview/known_issues/). The numbers in the Addresses column are EDB support case numbers.
 
+highlights: |
+  - [Progress-based write leader election](/pgd/current/geo-replication-dba/routing/#how-the-write-leader-is-chosen): the Raft leader now elects the write leader from each candidate's reported replication progress, removing edge cases in which a lagging node could be selected during failover. Elections honor `route_priority` and take effect once all nodes in the group run PGD 6.5.1.
+  - [New group options](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option): `route_writer_election_timeout` sets how long the Raft leader waits for candidate bids (default 500ms, minimum 100ms). [`route_writer_election_quorum`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes), off by default, ensures the elected write leader holds every transaction acknowledged under a majority Quorum Commit.
+  - [Smarter switchovers](/pgd/current/reference/tables-views-functions/functions/#bdrrouting_leadership_transfer): leadership transfers without a specified target, including `bdr.transfer_all_leaderships()`, now select the furthest-ahead candidate and honor `route_priority`.
+
 relnotes:
 - relnote: Added the [`route_writer_election_quorum`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes) group option.
   details: |
@@ -471,3 +476,45 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: High
+- relnote: Fixed streamed transactions failing to apply with the WAL decoder enabled.
+  details: |
+    With the WAL decoder enabled and transaction streaming in use, two problems could break replication of large or catalog-only transactions:
+
+    -   A streamed transaction whose changes were all filtered out, such as an autoanalyze that touches only catalogs, could make the receiving node fail an assertion or crash.
+    -   If a node reconnected while a large transaction was still open, the WAL sender could stop with "encountered incomplete transaction", and the transaction reached the node only after another reconnect.
+  jira: BDR-9490
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed [client certificate checks](/pgd/6.5/connection-manager/authentication/#using-client-certificate-authentication) in Connection Manager.
+  details: |
+    Connection Manager now checks client certificates the way Postgres does. Before, it accepted a client certificate without checking who issued it. The problem affected only `cert` rules in the Connection Manager HBA configuration, on nodes where the Postgres server uses `trust` authentication for connections from Connection Manager. Other related changes:
+
+    -   Client certificates are checked against `ssl_ca_file`, `ssl_crl_file`, and `ssl_crl_dir`, and the `clientcert` HBA option is applied. Without `ssl_ca_file`, `cert` authentication fails, as in Postgres.
+    -   If a CRL can't be parsed, for example a version 1 CRL, client certificates are refused and a `WARNING` is logged. Other authentication methods keep working.
+    -   The HTTPS status port (`use_https`) no longer asks for a client certificate. If the certificate or key file is missing, it serves plain HTTP and logs a `WARNING`.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Connection Manager now follows the [`ssl` setting](/pgd/6.5/ensuring-security/access-controls/client-connections/#enabling-ssl) for client connections.
+  details: |
+    Connection Manager now offers TLS to clients only when `ssl` is on, as Postgres does. Before, it offered TLS whenever `ssl_cert_file` and `ssl_key_file` pointed to existing files, whatever `ssl` was set to. With `ssl` on, both files must be set. If clients connect to Connection Manager over TLS, set `ssl = on` before upgrading. The HTTPS status port (`use_https`) isn't affected and keeps using `ssl_cert_file` and `ssl_key_file` whatever `ssl` is set to.
+  jira: BDR-9482
+  addresses: ""
+  type: Change
+  impact: Medium
+- relnote: Removed password hashes and cached credentials from Connection Manager log messages.
+  details: |
+    When a connection to Connection Manager matched no HBA rule, the "no matching HBA rule found" error written to the server log included the role's stored password hash. It also included credentials cached from the role's earlier logins, such as the password itself after a login with the cleartext `password` method. The log messages now show only the role name, password type, and role memberships.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a regression in 6.5.0 where row versioning couldn't be used with a commit scope.
+  details: |
+    If a transaction involved a change in any table that had row versioning and ran under any commit scope, including Synchronous Commit, Quorum Commit, Lag Control, and CAMO, it gave a `WARNING` and ran without the commit scope. The regression is fixed.
+  jira: BDR-9521
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
