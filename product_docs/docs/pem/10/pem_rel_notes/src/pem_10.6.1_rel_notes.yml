@@ -1,0 +1,321 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: Postgres Enterprise Manager
+version: 10.6.1
+date: 19 November 2026
+intro: |
+  New features, enhancements, bug fixes, and other changes in Postgres Enterprise Manager 10.6.1 include the following:
+highlights: |
+  - Security hardening across the PEM schema, REST API, web application, and agent, including fixes for privilege escalation and access-control gaps.
+  - pgAdmin 4 9.19 security fixes and hardening are included.
+  - The agent now refreshes its long-lived PEM server connections on a configurable schedule (`agent_connection_lifetime`).
+  - `configure-pem-server.sh` now stops with a clear message when a step fails and no longer continues after errors.
+relnotes:
+- relnote: |
+    Fixed an issue whereby members of the `pem_agent` role could read and write server files through sslutils functions without holding `pg_read_server_files` or `pg_write_server_files`.
+  details: |
+    The sslutils functions access files directly, so they bypassed the file-access roles that PostgreSQL 11 and later use to control server file access. The functions now respect those roles.
+  type: Security
+  jira: PEM-6056
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby a server or agent could appear in more than one server group after its group was changed.
+  details: |
+    The object tree was not refreshed after the group change. The tree is now refetched, so the server appears only under its new group.
+  type: Bug Fix
+  jira: PEM-6125
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the New Probe and Create Alert dialogs could intermittently fail with "Something went wrong".
+  details: |
+    The failure occurred when a dialog containing a grid opened while another grid was already displayed, for example when opening New Probe from Manage Probes, or Create Alert from the Alert tab of a new profile. The error reported was "Cannot have two HTML5 backends at the same time". All grids now share one drag-and-drop backend.
+  type: Bug Fix
+  jira: PEM-6256
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby form validation errors were not visible in the high contrast theme.
+  details: |
+    The field label, error icon, input border, and required-field asterisk were drawn in the same colour as the dialog background. They now use the error accent colour and meet WCAG AA contrast.
+  type: Bug Fix
+  jira: PEM-6257
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby alert scripts configured to run on the PEM server did not run, and no error was logged.
+  details: |
+    This happened when the PEM server was registered before its server information had been discovered, so no PEM server was marked as the leader and no job was created. Alert scripts configured with **Execute script on: PEM Server** now run as expected.
+  type: Bug Fix
+  jira: PEM-6302
+  impact: low
+  addresses: 65269
+
+- relnote: |
+    Fixed an issue whereby the timestamp in alert email bodies showed the wrong UTC offset during daylight saving time.
+  details: |
+    For example, a time in CEST (+02) was shown with the CET offset (+01), so the body of the email disagreed with the email header by one hour.
+  type: Bug Fix
+  jira: PEM-6306
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the error dialog shown when adding a duplicate alert to a profile had no title.
+  type: Bug Fix
+  jira: PEM-6357
+  impact: low
+
+- relnote: |
+    Auto Discovery can now register a discovered server under a cluster as well as under a server group.
+  details: |
+    The **Server group** field in the Auto Discovery dialog previously listed only server groups. It now has separate **Server Groups** and **Clusters** sections, matching the Add Server dialog.
+  type: Enhancement
+  jira: PEM-6364
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby hovering over a row in the per-target table on the Probe Diagnostics detail page made the row text unreadable in the high contrast theme.
+  type: Bug Fix
+  jira: PEM-6366
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby historical data for a dropped database was never purged from the `pemhistory` tables.
+  details: |
+    The probe-object combination for a dropped database was deleted on the next run of the "Update the probe-objects combination" job instead of after its grace period. The purge job then had nothing to process for that database, so its history stayed in `pemhistory` after the retention period had passed. The combination is now deleted only after the grace period.
+  type: Bug Fix
+  jira: PEM-6368
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby Probe Diagnostics charts drew a continuous line across an interval in which the probe was disabled or had no data.
+  details: |
+    The Executions & failures and Time breakdown charts now show a gap for intervals with no data.
+  type: Bug Fix
+  jira: PEM-6371
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the time axis of Probe Diagnostics charts was spaced by the intervals that contained data rather than by equal time ranges.
+  details: |
+    The x-axis now shows evenly spaced time ranges across the selected window.
+  type: Bug Fix
+  jira: PEM-6372
+  impact: low
+
+- relnote: |
+    `configure-pem-server.sh` now stops with a clear message when a step fails, and writes the reason to the log.
+  details: |
+    Previously the script could continue after a failed step, or stop with a message that did not give the cause. The script now checks the steps that can fail, including the schema upgrade, server registration, web `setup-db`, and certificate steps. A failed `psql` query is no longer reported as a success. Failed `systemctl` commands show the reason.
+
+    The following behaviour also changes:
+
+    - Schema upgrade files in `share/upgrades` run in numeric order, and the schema version is checked after each file. A database that is newer than the package gets a warning and is left alone.
+    - The sslutils upgrade is skipped, with a log message, if the extension is not available on the server.
+    - Certificates and keys are written to temporary files and moved into place only when every step succeeds.
+    - The backup of old certificates now covers `*.crt`, `*.key`, and `*.crl` files at the top of the data directory. Previously only `*.crt` files were backed up.
+  type: Enhancement
+  jira: PEM-6384
+  impact: low
+
+- relnote: |
+    Fixed several issues in `configure-pem-server.sh` where the script took the wrong action even though no command failed.
+  details: |
+    The fixes include:
+
+    - The `-au` option is now accepted.
+    - A saved web port is no longer replaced by 8443 on every run.
+    - The uninstall option now removes `pem.wsgi`.
+    - A typed password no longer loses its backslashes.
+    - A rerun after a failed fresh installation now registers the server again, instead of treating the installation as an upgrade.
+    - A saved configuration without a `USE_NGINX` line is treated as httpd by uninstall and `switch-web-server.sh`.
+    - `-ps`, `-dbi`, `-ds`, and `-nhc` can now be changed on a later run, and the new value is saved.
+    - An upgrade of a host installed with `-kdc` or `-utd` no longer requires those options to be repeated.
+    - FIPS settings are kept on web-only upgrades from versions before 10.3.
+    - An upgrade now logs the options it ignores, such as `-au`, `-uac`, `-uak`, `-arp`, `-aro`, `-srp`, and `--replication-solution`.
+    - The script no longer creates a stray `venv/lib/lib` link on upgrade, and no longer writes `0/32` into `pg_hba.conf` for a route without a gateway.
+  type: Bug Fix
+  jira: PEM-6385
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby topology discovery failed with a duplicate key error when several PGD clusters with the same name, or several active servers with the same description, were registered in PEM.
+  type: Bug Fix
+  jira: PEM-6391
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby transactions per second (TPS) shown on the dashboard was incorrect when the refresh interval was not one second.
+  details: |
+    The dashboard did not divide the change in the transaction counters by the refresh interval. This fix is taken from pgAdmin upstream.
+  type: Bug Fix
+  jira: PEM-6404
+  impact: low
+
+- relnote: |
+    Added missing indexes on the `pem.alert` table.
+  details: |
+    The indexes reduce the time taken to fetch chart data that depends on the table.
+  type: Enhancement
+  jira: PEM-6407
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the PEM agent telemetry flush held an additional connection to the PEM server.
+  details: |
+    The probe telemetry thread opened its own connection and did not close it when finished. It now shares one of the agent's existing PEM connections.
+  type: Bug Fix
+  jira: PEM-6410
+  impact: low
+
+- relnote: |
+    Included the security fixes and hardening changes from pgAdmin 4 9.19.
+  details: |
+    The related areas of PEM have also been hardened. See the other Security entries in these release notes for changes specific to PEM.
+  type: Security
+  jira: PEM-6430
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby Performance Diagnostic could wait indefinitely for a database connection when the monitored server was down.
+  details: |
+    Previously the request, and the web server thread handling it, waited without limit. A pool that cannot connect is now closed after its timeout (`PEM_PD_DB_POOL_TIMEOUT` plus the connect timeout), and a pool whose connections are all in use is waited for up to `PEM_PD_DB_POOL_BUSY_WAIT` (new setting, default 30 seconds). The reason a pooled connection could not be made is logged in the PEM server log.
+  type: Bug Fix
+  jira: PEM-6434
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the `setup.py` commands that manage users, servers, and preferences failed with a traceback.
+  details: |
+    PEM keeps users, servers, and preferences in the PEM database, so these commands cannot work on the web server's local configuration database. The commands `add-user`, `add-external-user`, `update-user`, `update-external-user`, `load-users`, `get-users`, `delete-user`, `dump-servers`, `load-servers`, `get-prefs`, and `set-prefs` now report that PEM does not support them and exit with status 1. `setup-db` and `cleanup-session-files` are unchanged.
+  type: Change
+  jira: PEM-6435
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the REST API `/token/` endpoint accepted an empty password.
+  details: |
+    Where `pg_hba.conf` on the PEM database accepts the web server's connection without a password, a request with an empty password could obtain a token for any role holding `pem_rest_api`. The endpoint now refuses a request with a missing body, or an empty or non-string username or password, with a 401 response.
+  type: Security
+  jira: PEM-6436
+  impact: medium
+
+- relnote: |
+    The agent now refreshes its long-lived PEM server connections by age, and never while a connection is busy or in a transaction.
+  details: |
+    Previously only the main connection was refreshed, and the refresh was driven by a loop count. The alert threads, the spooler threads, and the heartbeat connection were replaced only after they failed. Every long-lived PEM connection is now refreshed after a minimum lifetime, plus a random jitter so that connections do not refresh together.
+
+    The lifetime is set by the new `agent_connection_lifetime` setting, in seconds, in `agent.cfg` (`AgentConnectionLifetime` in the Windows registry). It can also be set with a `--register-agent` option. The default is 3600, the minimum is 600, and the maximum is 86400. A value that is out of range or not a number uses the default and logs a warning. If a refresh fails, the agent keeps using its existing connection and tries again.
+  type: Enhancement
+  jira: PEM-6438
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby a user could deploy a job template to servers, server groups, or agents belonging to teams they were not a member of.
+  details: |
+    `pem.deploy_job_template()` now checks that every newly supplied target is accessible to the calling user, and the `add_targets` API reports a clear error for an inaccessible target. Redeployments that reuse stored targets are not affected.
+  type: Security
+  jira: PEM-6439
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby multi-factor authentication (MFA) was not enforced on PEM routes, and failed-login lockout did not apply to `pem_internal` users.
+  details: |
+    A session that had passed only the password step could call PEM routes directly without completing MFA. PEM routes now require a completed MFA step when MFA is enabled and the user has a registered method. Failed logins for `pem_internal` users are now counted against `MAX_LOGIN_ATTEMPTS`, so the account is locked as expected.
+  type: Security
+  jira: PEM-6440
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby any `pem_user` could read the password stored in `pem.agent_server_binding`.
+  details: |
+    The `password` column is no longer readable by `pem_user`. Agent registration and the console features that use the table continue to work.
+  type: Security
+  jira: PEM-6449
+  impact: medium
+
+- relnote: |
+    Fixed a path traversal issue in the SQL Profiler save and load file functions.
+  details: |
+    A filename containing `..`, or resolving outside the user's storage directory, is now rejected. Previously a user with the `pem_comp_sqlprofiler` role could read and overwrite files outside their own storage directory.
+  type: Security
+  jira: PEM-6450
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby webhook URLs were not validated, which allowed `file://` URLs.
+  details: |
+    The agent now restricts webhook calls to HTTP and HTTPS, and non-HTTP(S) URLs are rejected when a webhook is saved or tested. Stored error text in `pem.webhook_spool.error` is now truncated. Webhooks that use HTTP or HTTPS, including those that use mTLS or OAuth, are unchanged.
+  type: Security
+  jira: PEM-6451
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby any PEM user could run `pem.send_webhook()` and queue webhook payloads.
+  details: |
+    Execute permission on the function is now limited to `pem_agent`. Alert-driven webhooks continue to fire.
+  type: Security
+  jira: PEM-6454
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby `configure-pem-server.sh` did not make the database present the generated `server.crt` on Debian-family EPAS clusters.
+  details: |
+    On clusters created with `epas_createcluster`, `ssl_cert_file` and `ssl_key_file` are already set to the `ssl-cert-snakeoil` files, and the script only replaced commented-out lines. The script now sets both parameters whether or not they are commented out, so the database presents the generated certificate.
+  type: Bug Fix
+  jira: PEM-6455
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the credentials of one agent could be used to schedule jobs on other agents.
+  details: |
+    All agent logins share the `pem_agent` role, and the row-level security policies for jobs and job steps did not restrict that role to its own agent. An agent login can now insert and modify jobs and job steps only for its own agent ID.
+  type: Security
+  jira: PEM-6458
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby `SECURITY DEFINER` functions in the `pem` schema could be made to run code supplied by a non-superuser.
+  details: |
+    Many `pem` functions did not set a fixed `search_path`, so a caller who could create objects in a reachable schema could place a function ahead of the built-in one and run it with the privileges of the repository owner. The affected functions now set `search_path` and schema-qualify built-in functions.
+  type: Security
+  jira: PEM-6459
+  impact: medium
+
+- relnote: |
+    Updated Brotli to 1.2.1 to fix CVE-2026-111497.
+  type: Security
+  jira: PEM-6462
+  impact: medium
+
+- relnote: |
+    Fixed an issue whereby a login with the `pem_database_server_registration` role but not `pem_admin` could not register a server or bind an agent.
+  details: |
+    The insert failed with "permission denied for table alert_queue". The trigger that synchronises the alert queue now runs with the privileges needed to write to the table.
+  type: Bug Fix
+  jira: PEM-6469
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby the Manage Probes grid showed a blank gap and skipped the first rows after switching tabs.
+  details: |
+    This happened when all rows fit on screen, so the grid could not scroll. All rows of the current page are now drawn from the top of the grid.
+  type: Bug Fix
+  jira: PEM-6475
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby a fresh installation that uses a PostgreSQL configuration database failed during migration setup.
+  details: |
+    A migration revision ID was longer than the 32-character limit of the Alembic `version_num` column, which PostgreSQL enforces. Installations that use the default SQLite configuration database were not affected.
+  type: Bug Fix
+  jira: PEM-6476
+  impact: low
+
+- relnote: |
+    Fixed an issue whereby remotely monitored servers were shown without their agent in the breadcrumb menu, so new custom dashboards were saved at the wrong level.
+  details: |
+    Each remotely monitored server is now listed under the agent that monitors it, in a **REMOTE SERVERS** section. The dashboard level is read from the page context, so custom dashboards created on a remote server appear on that server.
+  type: Bug Fix
+  jira: PEM-6479
+  impact: low
