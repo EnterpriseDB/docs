@@ -11,6 +11,9 @@ WEM and the host agent are each configured through a dedicated configuration fil
 
 Configure these parameters in `/etc/edb/wem/wem.conf` on the WEM host. Restart WEM with `sudo systemctl restart wem` for changes to take effect. See [Configuring WEM](../configuring).
 
+!!! Note
+    From WEM 1.6, the parameters for the [runtime settings](#runtime-settings) aren't in `wem.conf`. You manage them in **Management** > **Settings**.
+
 ### Target cluster
 
 | Parameter | Default | Required | Description |
@@ -36,12 +39,11 @@ WEM queries ClickHouse for all historical metrics and log data. See [Installing 
 
 ### OTel Collector
 
-WEM generates `/etc/edb/otelcol/config.yaml` on every cluster node from these parameters, the [ClickHouse](#clickhouse) and [target cluster](#target-cluster) parameters, and [`WEM_CLUSTER_NAME`](#cluster-identity). See the [OTel Collector configuration reference](otel-collector-config) for where each one appears in the file.
+WEM generates `/etc/edb/otelcol/config.yaml` on every cluster node from these parameters, the [ClickHouse](#clickhouse) and [target cluster](#target-cluster) parameters, and the [**Cluster Name** runtime setting](#runtime-settings). See the [OTel Collector configuration reference](otel-collector-config) for where each one appears in the file.
 
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `OTEL_GATEWAY_ENDPOINT` | — | No | External gateway collector endpoint. When empty, WEM runs the gateway on the standby coordinator, with the coordinator as failover. See [Installing the gateway collector](../installing/collector). |
-| `OTEL_COLLECTION_INTERVAL` | `30s` | No | Frequency at which each node's OTel Collector gathers host metrics. |
 | `OTEL_PROMETHEUS_SCRAPE_ENDPOINT` | `0.0.0.0:8889` | No | Host and port where the gateway collector exposes metrics in Prometheus scrape format. By default, WEM runs the gateway collector on the standby coordinator, so the endpoint is `<standby-host>:8889`. Restrict access with a firewall. See [Metrics reference](../reference/metrics#whpg-cluster-and-host-metrics). |
 
 
@@ -69,8 +71,6 @@ WEM stores its internal state in its own dedicated `wem` database rather than re
 | Parameter | Default | Required | Description |
 |---|---|---|---|
 | `HIGH_LOAD_MODE` | `false` | No | Extends WEM's internal timeouts for large clusters. Equivalent to passing the `--high-load` flag. |
-| `LONG_RUNNING_THRESHOLD` | `10` | No | Duration, in minutes, after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. Accepts a plain integer, not a duration string. Can also be set from the WEM interface. |
-| `LOG_MIN_DURATION_STATEMENT` | — | No | Sets WHPG's `log_min_duration_statement` configuration parameter, in milliseconds. Use `-1` to disable statement logging or `0` to log every statement. Leave unset to leave WHPG's own setting unchanged. |
 
 ### Connection pooling
 
@@ -131,12 +131,23 @@ These parameters configure client-certificate TLS for WEM's two Postgres connect
 | `WEM_SSLKEY` | — | No | Client private key for the WEM application state database connection. |
 | `WEM_SSLROOTCERT` | — | No | Root CA bundle used to verify the WEM application state database server. |
 
-### Cluster identity
+### Runtime settings
 
-| Parameter | Default | Required | Description |
+Runtime settings take effect as soon as you save them in **Management** > **Settings**, with no restart. WEM stores them in its own database, and doesn't read them from `wem.conf` or the environment. See [Configuring WEM](../configuring).
+
+Before WEM 1.6, you set these as parameters in `wem.conf`. When you upgrade, WEM imports the value it finds for each parameter once, unless you already saved a value in the console. After that, the parameter has no effect.
+
+| Setting | Former parameter | Default | Description |
 |---|---|---|---|
-| `WEM_CLUSTER_NAME` | — | No | Display name for this cluster, shown in the WEM interface. Also included as a resource tag on the metrics and logs WEM exports through the OTel pipeline, so it's useful for telling clusters apart when several send data to the same ClickHouse instance. |
-| `WEM_CLUSTER_ENVIRONMENT` | — | No | Environment label shown in the WEM interface and used to gate confirmation prompts for cluster management actions. Valid values are `dev`, `uat`, and `prod`. |
+| **Cluster Name** | `WEM_CLUSTER_NAME` | — | Display name for this cluster, shown in the WEM header. When blank, the header shows the coordinator host. Also included as a resource tag on the metrics and logs WEM exports through the OTel pipeline, so it's useful for telling clusters apart when several send data to the same ClickHouse instance. |
+| **Environment** | `WEM_CLUSTER_ENVIRONMENT` | — | Environment label shown in the WEM header and used to gate confirmation prompts for cluster management actions. Valid values are `dev`, `uat`, and `prod`. Leave blank for no label. |
+| **Slow Query Logging** | `LOG_MIN_DURATION_STATEMENT` | — | Sets WHPG's `log_min_duration_statement` configuration parameter, in milliseconds. Use `-1` to disable statement logging or `0` to log every statement. Leave blank to leave WHPG's own setting unchanged. |
+| **Long-Running Threshold** | `LONG_RUNNING_THRESHOLD` | `10` | Duration, in minutes, after which a query is flagged as long-running, for example in the **Connection & Query Metrics** section on the **System Metrics** page. |
+| **Collection Interval** | `OTEL_COLLECTION_INTERVAL` | `30s` | Frequency at which each node's OTel Collector gathers host metrics, for example `30s`, `5m`, or `1h`. Sets `receivers.host_metrics.collection_interval` in the [OTel Collector configuration](otel-collector-config). |
+| **FlowServer Address** | `FLOWSERVER_ADDRESS` | `localhost:6060` | The `host:port` where FlowServer listens, as seen from the coordinator. See [Managing FlowServer jobs](../flowserver-jobs). |
+| **Activity Retention** | `FLOWSERVER_ACTIVITY_RETENTION_HOURS` | `168` | How long, in hours, WEM keeps finished FlowServer actions in the **Activities** tab. |
+| **Anthropic API Key** | `ANTHROPIC_API_KEY` | — | API key for the integrated AI Assistant. Requires an active Anthropic account. The assistant is disabled when no key is saved. Leave the field blank to keep the saved key, or select **Remove Key** to delete it. |
+| **Model** | `ANTHROPIC_MODEL` | WEM's default model | Claude model used for AI-powered query plan explanations. Leave blank to use the default. |
 
 ### Job retention
 
@@ -173,13 +184,6 @@ WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertma
 !!! Note
 `QUERY_SCAN_INTERVAL` replaces `LOG_SCAN_INTERVAL` and `LOG_SCAN_ENABLED` from earlier versions. To disable the scan, set `QUERY_SCAN_INTERVAL=0`.
 !!!
-
-### AI Assistant
-
-| Parameter | Default | Required | Description |
-|---|---|---|---|
-| `ANTHROPIC_API_KEY` | — | No | API key for the integrated AI Assistant. Requires an active Anthropic account. The assistant is disabled when this parameter is unset. |
-| `ANTHROPIC_MODEL` | `claude-sonnet-5` | No | Claude model used for AI-powered query plan explanations. |
 
 ### PXF
 

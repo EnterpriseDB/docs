@@ -1,30 +1,49 @@
 ---
 title: Configuring WarehousePG Enterprise Manager
 navTitle: Configuring WEM
-description: Configure WEM settings after installation using the WEM settings tab or configuration file.
+description: Configure WEM settings after installation using the Settings tab for runtime settings and the configuration file for startup settings.
 ---
 
 After the initial installation of WarehousePG Enterprise Manager (WEM), use these configuration methods to fine-tune your settings or enable optional observability features. 
 
-### Modifying settings using the WEM console
+### Understanding startup and runtime settings
 
-Administrators can modify operational parameters directly through the web interface. It's the most convenient way to change settings without editing files on the WEM host.
+WEM has two kinds of settings, and the **Management** > **Settings** tab shows them in separate sections.
 
-1. Navigate to **Management** > **Settings** and select **Edit Settings**.
-1. Update the required fields, such as **ClickHouse URL** or **OTel collector metrics collection interval**.
-1. Select **Save** to apply the changes.
-1. Restart WEM for the changes to take effect:
+- **Startup settings** are read when WEM starts. You manage them in `/etc/edb/wem/wem.conf`, and the **Settings** tab shows them read-only. Changing one requires a restart of WEM.
+- **Runtime settings** take effect as soon as you save them, with no restart. You manage them in the WEM console. WEM stores them in its own database and doesn't read them from `wem.conf` or the environment.
 
-    ```bash
-    systemctl restart wem
-    ```
+| Kind | Group | Settings |
+|------|-------|----------|
+| Startup | WHPG Connection | Host, port, database, user, password, and monitoring database for the WHPG cluster. |
+| Startup | ClickHouse | ClickHouse URL (the password is masked) and database name. |
+| Startup | OpenTelemetry Collector | External gateway endpoint. An empty value means WEM manages the gateway collector. |
+| Startup | Application | High-load mode. |
+| Startup | WEM Database | Connection to WEM's own state database. |
+| Runtime | Cluster Identity | **Cluster Name** and **Environment**. |
+| Runtime | Query Monitoring | **Slow Query Logging** and **Long-Running Threshold**. |
+| Runtime | OpenTelemetry Collector | **Collection Interval**. |
+| Runtime | FlowServer | **FlowServer Address** and **Activity Retention**. |
+| Runtime | AI Assistant | **Anthropic API Key** and **Model**. |
+
+See the [Configuration parameters](reference/configuration) reference for what each setting does.
+
+### Modifying runtime settings using the WEM console
+
+Administrators can change runtime settings directly in the web interface. It's the most convenient way to change settings without editing files on the WEM host.
+
+1. Navigate to **Management** > **Settings**.
+1. In **Runtime Settings**, update the fields you need. WEM validates each field as you type, for example that a duration such as `30s` or `5m` is valid.
+1. Select **Save Changes** to apply the changes, or **Discard** to reset the fields. The panel shows how many unsaved changes you have. Changes apply as soon as you save, with no restart.
+
+To turn off the AI Assistant, select **Remove Key** next to the **Anthropic API Key** and confirm. To keep the saved key when you save other changes, leave the field blank.
 
 !!! Note
-    Some system parameters are only accessible via the configuration file.
+    Users who don't have permission to change settings can view them but not edit them.
 
-### Modifying settings manually
+### Modifying startup settings manually
 
-Edit the configuration file directly on the WEM host to edit parameters not exposed in the browser.
+Edit the configuration file directly on the WEM host to change startup settings. The **Settings** tab shows their current values read-only, with a link back to these instructions.
 
 1. Open `/etc/edb/wem/wem.conf` and update the required parameters. See the [Configuration parameters](reference/configuration#wem-parameters) reference for a full list of supported parameters.
 1. Restart the WEM service for the changes to take effect:
@@ -33,13 +52,8 @@ Edit the configuration file directly on the WEM host to edit parameters not expo
     systemctl restart wem
     ```
 
-
-
-!!! Note "Configuration precedence and overrides"
-    WEM prioritizes settings defined in the host environment over those in the WEM console.
-
-    If you define a parameter in the `wem.conf` file, that value takes precedence. Changes made in the WEM console don't override values set in the configuration file. 
-    If a change you made through the WEM console does not take effect, check the host configuration file for an existing entry.
+!!! Note "Where runtime settings come from after an upgrade"
+    When you upgrade to WEM 1.6, WEM imports the values it finds for the runtime settings in `wem.conf` or the environment once, unless you already saved a value in the console. After that, changing these parameters in `wem.conf` or the environment has no effect, and the 1.6 `wem.conf` no longer lists them. Change them in **Settings** instead. The parameters are `LONG_RUNNING_THRESHOLD`, `LOG_MIN_DURATION_STATEMENT`, `OTEL_COLLECTION_INTERVAL`, `WEM_CLUSTER_NAME`, `WEM_CLUSTER_ENVIRONMENT`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `FLOWSERVER_ADDRESS`, and `FLOWSERVER_ACTIVITY_RETENTION_HOURS`.
 
 ### Changing OTel Collector settings
 
@@ -49,9 +63,9 @@ Some values in `/etc/edb/otelcol/config.yaml` come from WEM settings, and you ch
 
 #### Changing settings that WEM manages
 
-Use this method for the values that WEM sets. For example, `OTEL_COLLECTION_INTERVAL` sets `receivers.host_metrics.collection_interval`.
+Use this method for the values that WEM sets. For example, the **Collection Interval** runtime setting sets `receivers.host_metrics.collection_interval`.
 
-1. Update the setting in the WEM console or in `/etc/edb/wem/wem.conf`.
+1. Update the setting. Change runtime settings, such as the **Collection Interval**, in the WEM console. Change startup settings, such as `OTEL_GATEWAY_ENDPOINT`, in `/etc/edb/wem/wem.conf`.
 1. If you edited `wem.conf`, restart WEM:
 
     ```bash

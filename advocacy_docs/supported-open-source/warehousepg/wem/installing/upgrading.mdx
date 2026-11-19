@@ -7,10 +7,62 @@ deepToC: true
 
 Upgrade to the latest WEM version from any earlier 1.x release. The steps depend on the version you're upgrading from.
 
+- **Upgrading from 1.5:** Upgrade the WEM package, then review the old file paths and the runtime settings. See [Upgrading from 1.5](#upgrading-from-15).
 - **Upgrading from 1.4:** Upgrade the WEM package only. See [Upgrading from 1.4](#upgrading-from-14).
 - **Upgrading from 1.3 or earlier:** WEM 1.4 replaced Prometheus and Loki with ClickHouse as the metrics and log pipeline, and requires `acp-host-agent` 1.1.0 or later on every cluster node. Install ClickHouse, upgrade WEM, and upgrade the host agent, ideally reaching a ClickHouse-based 1.4 environment before you move to 1.5. See [Upgrading from 1.3 or earlier](#upgrading-from-13-or-earlier).
 
 See the [release notes](../release_notes) for the full list of changes in each version.
+
+## Upgrading from 1.5
+
+Host agent 1.2.0 is released with WEM 1.6, and you install it separately from WEM. It includes fixes and FlowServer support. To manage FlowServer jobs from WEM, the host agent on the coordinator must be 1.2.0 or later. See [Upgrading the host agent](#upgrading-the-host-agent) and the [1.6 release notes](../release_notes/1.6_rel_notes#host-agent-120). You don't need to install or change ClickHouse. Run the following on the host where WEM is installed:
+
+1. Configure the EDB repository:
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    ```
+
+1. Upgrade the WEM package:
+
+    ```bash
+    sudo dnf upgrade whpg-enterprise-manager
+    ```
+
+1. Verify the installed version:
+
+    ```bash
+    rpm -q whpg-enterprise-manager
+    ```
+
+1. Check the upgrade output for `[WARN]` lines. The upgrade removes the compatibility links that WEM 1.5 kept, and prints one warning for each link it removes. It then names every systemd unit override or drop-in, cron file, and `wem.conf` that still uses an old path. It only reads these files, so you must update them yourself. See [Removed compatibility links](#removed-compatibility-links).
+
+1. Review your runtime settings in **Management** > **Settings**. See [Runtime settings after the upgrade](#runtime-settings-after-the-upgrade).
+
+### Removed compatibility links
+
+WEM 1.5 moved WEM to the EDB installation layout and kept compatibility links and a configuration fallback for one release. WEM 1.6 removes them. If your scripts, cron jobs, monitoring, or log tools still use an old path, switch to the new one:
+
+| Item | Old path | New path |
+|------|----------|----------|
+| Binary | `/usr/local/greenplum-db/wem/wem` or `/usr/edb/wem/wem` | `/usr/edb/wem/bin/wem` |
+| Log file | `/var/log/wem/wem.log` | `/var/log/edb/wem/wem.log` |
+| Configuration file | `/etc/wem/wem.conf` | `/etc/edb/wem/wem.conf` |
+
+- WEM no longer creates or keeps the `/usr/local/greenplum-db/wem` link or the `/var/log/wem` link. The upgrade removes a link only when it's WEM's own, and never changes anything under a WarehousePG installation.
+- WEM no longer reads `/etc/wem/wem.conf` when `/etc/edb/wem/wem.conf` is missing.
+- If a `wem.conf` copied from 1.4 or earlier contains `/etc/wem/` paths, the upgrade rewrites them to `/etc/edb/wem/` where the file exists there. It never edits a `wem.conf` that already exists in `/etc/edb/wem/`.
+
+### Runtime settings after the upgrade
+
+WEM 1.6 manages the runtime settings in the WEM console instead of in `wem.conf`. The upgrade imports the values it finds in `wem.conf` or the environment once, unless you already saved a value in the console. After the upgrade:
+
+- Verify the values in **Management** > **Settings** > **Runtime Settings**.
+- Change them in the console. Changing `LONG_RUNNING_THRESHOLD`, `LOG_MIN_DURATION_STATEMENT`, `OTEL_COLLECTION_INTERVAL`, `WEM_CLUSTER_NAME`, `WEM_CLUSTER_ENVIRONMENT`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `FLOWSERVER_ADDRESS`, or `FLOWSERVER_ACTIVITY_RETENTION_HOURS` in `wem.conf` or the environment has no effect.
+
+See [Configuring WEM](../configuring).
 
 ## Upgrading from 1.4
 
@@ -48,7 +100,7 @@ Version 1.5 renamed `LOG_SCAN_INTERVAL` to `QUERY_SCAN_INTERVAL`, removed `LOG_S
 The upgrade moves your existing configuration to `/etc/edb/wem/wem.conf`, keeps the previous file as `/etc/wem/wem.conf.rpmsave`, and creates `/etc/edb/wem/wem.conf.rpmnew` with the 1.5 defaults. Compare `wem.conf.rpmnew` with your `wem.conf` to find parameters you need to change.
 
 !!! Note
-    For this release only, WEM keeps compatibility links from the previous locations and reads `/etc/wem/wem.conf` with a warning if `/etc/edb/wem/wem.conf` doesn't exist. On hosts where WEM runs alongside WarehousePG, WEM creates no link in `/usr/local/greenplum-db` and prints a warning instead. WEM will remove the compatibility measures in 1.6.0, so update any scripts, monitoring, or tooling that use the previous paths. See the [1.5 release notes](../release_notes/1.5_rel_notes) for the full list of changes.
+    WEM 1.5 kept compatibility links from the previous locations. WEM 1.6 removes them, so when you upgrade to 1.6, update any scripts, monitoring, or tooling that use the previous paths. See [Removed compatibility links](#removed-compatibility-links) and the [1.5 release notes](../release_notes/1.5_rel_notes) for the full list of changes.
 
 ## Upgrading from 1.3 or earlier
 
