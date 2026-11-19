@@ -31,8 +31,8 @@ Bug fixes, and security fixes in Postgres Enterprise Manager 10.6.1 include the 
 ## Security Fixes
 
 <table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
-<tr><td><details><summary>Fixed an issue whereby members of the <code>pem_agent</code> role could read and write server files through sslutils functions without holding <code>pg_read_server_files</code> or <code>pg_write_server_files</code>.
-</summary><p>The sslutils functions access files directly, so they bypassed the file-access roles that PostgreSQL 11 and later use to control server file access. The functions now respect those roles.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132658">CVE-2026-132658</a>, an issue whereby the <code>pem_agent</code> role could read and write files on the PEM server.
+</summary><p>The PEM schema granted the <code>pg_read_server_files</code> and <code>pg_write_server_files</code> roles to <code>pem_agent</code>. The upgrade now revokes both roles from <code>pem_agent</code>. The agent's certificate-handling functions in sslutils are given the access they need without these roles, so sslutils 1.4.2 or later is required on the PEM server host.</p>
 </details></td></tr>
 <tr><td><details><summary>Included the security fixes and hardening changes from pgAdmin 4 9.19.
 </summary><p>The related areas of PEM have also been hardened. See the other Security entries in these release notes for changes specific to PEM.</p>
@@ -40,29 +40,29 @@ Bug fixes, and security fixes in Postgres Enterprise Manager 10.6.1 include the 
 <tr><td><details><summary>Fixed an issue whereby the REST API <code>/token/</code> endpoint accepted an empty password.
 </summary><p>Where <code>pg_hba.conf</code> on the PEM database accepts the web server's connection without a password, a request with an empty password could obtain a token for any role holding <code>pem_rest_api</code>. The endpoint now refuses a request with a missing body, or an empty or non-string username or password, with a 401 response.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed an issue whereby a user could deploy a job template to servers, server groups, or agents belonging to teams they were not a member of.
-</summary><p><code>pem.deploy_job_template()</code> now checks that every newly supplied target is accessible to the calling user, and the <code>add_targets</code> API reports a clear error for an inaccessible target. Redeployments that reuse stored targets are not affected.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132665">CVE-2026-132665</a>, an issue whereby a user could deploy a job template to servers, server groups, or agents belonging to teams they were not a member of.
+</summary><p><code>pem.deploy_job_template()</code> ignored team boundaries. Job template deploys and target actions now check that the user's team has access to each target server and agent, and the <code>add_targets</code> API reports a clear error for an inaccessible target. Redeployments that reuse stored targets are not affected.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed an issue whereby multi-factor authentication (MFA) was not enforced on PEM routes, and failed-login lockout did not apply to <code>pem_internal</code> users.
-</summary><p>A session that had passed only the password step could call PEM routes directly without completing MFA. PEM routes now require a completed MFA step when MFA is enabled and the user has a registered method. Failed logins for <code>pem_internal</code> users are now counted against <code>MAX_LOGIN_ATTEMPTS</code>, so the account is locked as expected.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132661">CVE-2026-132661</a>, an issue whereby multi-factor authentication (MFA) was not enforced on all PEM routes.
+</summary><p>A session that had passed only the password step could call PEM routes directly without completing MFA. MFA is now enforced on every PEM route and Socket.IO event, and a user must complete MFA before managing their MFA factors. Emailed MFA codes now expire after a configurable timeout (default 5 minutes), and an account is locked temporarily after 5 wrong MFA codes. You can also enable an optional temporary lock for <code>pem_internal</code> accounts after repeated failed logins by setting <code>PEM_FAILED_LOGIN_LOCK_ATTEMPTS</code>; it is off by default.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed an issue whereby any <code>pem_user</code> could read the password stored in <code>pem.agent_server_binding</code>.
-</summary><p>The <code>password</code> column is no longer readable by <code>pem_user</code>. Agent registration and the console features that use the table continue to work.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132664">CVE-2026-132664</a>, an issue whereby any PEM login could read the encrypted password column of <code>pem.agent_server_binding</code>.
+</summary><p>Members of <code>pem_user</code> can no longer read the <code>password</code> column. The <code>pem_agent</code>, <code>pem_admin</code>, and <code>pem_database_server_registration</code> roles can still read it, so agent registration and the console features that use the table continue to work.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed a path traversal issue in the SQL Profiler save and load file functions.
-</summary><p>A filename containing <code>..</code>, or resolving outside the user's storage directory, is now rejected. Previously a user with the <code>pem_comp_sqlprofiler</code> role could read and overwrite files outside their own storage directory.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132662">CVE-2026-132662</a>, a path traversal issue in the SQL Profiler trace filter save and load functions.
+</summary><p>Previously a user with the <code>pem_comp_sqlprofiler</code> role could read and overwrite files outside their own storage directory. Trace filter files are now confined to the user's storage directory and are created with restrictive permissions. The unused Query Tool <code>load_file</code> and <code>save_file</code> routes, which had the same weakness, are removed.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed an issue whereby webhook URLs were not validated, which allowed <code>file://</code> URLs.
-</summary><p>The agent now restricts webhook calls to HTTP and HTTPS, and non-HTTP(S) URLs are rejected when a webhook is saved or tested. Stored error text in <code>pem.webhook_spool.error</code> is now truncated. Webhooks that use HTTP or HTTPS, including those that use mTLS or OAuth, are unchanged.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132663">CVE-2026-132663</a>, an issue whereby webhook URLs could use <code>file://</code> to read local files.
+</summary><p>Webhook URLs and OAuth token URLs must now use <code>http://</code> or <code>https://</code>. This is enforced in the PEM web interface, in the database, and in the agent. The upgrade disables any existing webhook that uses another URL scheme and logs a warning that names it; to use it again, correct its URL and re-enable it. The upgrade also clears stored delivery error text that might contain file contents, and delivery error text is now truncated to 1 KB. Webhooks that use HTTP or HTTPS, including those that use mTLS or OAuth, are unchanged.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed an issue whereby any PEM user could run <code>pem.send_webhook()</code> and queue webhook payloads.
-</summary><p>Execute permission on the function is now limited to <code>pem_agent</code>. Alert-driven webhooks continue to fire.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132668">CVE-2026-132668</a>, an issue whereby any PEM login could call <code>pem.send_webhook()</code> to queue payloads to any configured webhook.
+</summary><p>Execute permission on <code>pem.send_webhook()</code> is revoked from <code>PUBLIC</code>, <code>pem_user</code>, <code>pem_admin</code>, and <code>pem_agent</code>. Alert-driven webhooks continue to fire.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed an issue whereby the credentials of one agent could be used to schedule jobs on other agents.
-</summary><p>All agent logins share the <code>pem_agent</code> role, and the row-level security policies for jobs and job steps did not restrict that role to its own agent. An agent login can now insert and modify jobs and job steps only for its own agent ID.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132659">CVE-2026-132659</a>, an issue whereby the credentials of one agent could be used to schedule jobs on every other agent.
+</summary><p>All agent logins share the <code>pem_agent</code> role, which held broad write access to the PEM schema. The role is now restricted so that one agent's credentials can no longer create jobs, or change alerts, servers, agents, or notifications, for other agents. Upgrade the agent on the PEM server host together with the server: an older agent on that host can no longer run its CA certificate expiry check. Stop agents while you upgrade the PEM server.</p>
 </details></td></tr>
-<tr><td><details><summary>Fixed an issue whereby <code>SECURITY DEFINER</code> functions in the <code>pem</code> schema could be made to run code supplied by a non-superuser.
-</summary><p>Many <code>pem</code> functions did not set a fixed <code>search_path</code>, so a caller who could create objects in a reachable schema could place a function ahead of the built-in one and run it with the privileges of the repository owner. The affected functions now set <code>search_path</code> and schema-qualify built-in functions.</p>
+<tr><td><details><summary>Fixed <a href="/security/advisories/cve2026132660">CVE-2026-132660</a>, an issue whereby a function planted in a writable schema could run with the rights of the function owner, up to superuser, through a <code>SECURITY DEFINER</code> function.
+</summary><p>Many <code>SECURITY DEFINER</code> functions in the <code>pem</code> schema did not set a fixed <code>search_path</code>, so a caller who could create objects in a schema on the path could place a function ahead of the intended one. The <code>search_path</code> of these functions is now pinned to <code>pg_catalog, pg_temp</code>.</p>
 </details></td></tr>
 <tr><td>Updated Brotli to 1.2.1 to fix CVE-2026-111497.</td></tr>
 </tbody></table>
@@ -89,8 +89,8 @@ Bug fixes, and security fixes in Postgres Enterprise Manager 10.6.1 include the 
 <tr><td><details><summary>Fixed an issue whereby form validation errors were not visible in the high contrast theme.
 </summary><p>The field label, error icon, input border, and required-field asterisk were drawn in the same colour as the dialog background. They now use the error accent colour and meet WCAG AA contrast.</p>
 </details></td><td></td></tr>
-<tr><td><details><summary>Fixed an issue whereby alert scripts configured to run on the PEM server did not run, and no error was logged.
-</summary><p>This happened when the PEM server was registered before its server information had been discovered, so no PEM server was marked as the leader and no job was created. Alert scripts configured with <strong>Execute script on: PEM Server</strong> now run as expected.</p>
+<tr><td><details><summary>Fixed an issue whereby no error was logged when an alert script configured to run on the PEM server could not be run.
+</summary><p>This happened when no agent could be found to run the script, for example when the PEM server had been registered before its server information was discovered. A warning is now written to the PEM database server log.</p>
 </details></td><td>65269</td></tr>
 <tr><td><details><summary>Fixed an issue whereby the timestamp in alert email bodies showed the wrong UTC offset during daylight saving time.
 </summary><p>For example, a time in CEST (+02) was shown with the CET offset (+01), so the body of the email disagreed with the email header by one hour.</p>
