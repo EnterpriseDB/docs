@@ -234,9 +234,6 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/analytics/">
                 Analytics
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/ai-factory/">
-                Sovereign AI
-              </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration">
                 Migrations
               </BannerCardLink>
