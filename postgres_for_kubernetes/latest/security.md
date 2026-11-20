@@ -1,0 +1,929 @@
+---
+title: Security
+product: EDB Postgres® AI for CloudNativePG™ Cluster
+version: 1.30.2
+url: https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/security/
+lastModified: 2026-11-19T16:43:34Z
+---
+
+# Security
+
+EDB Postgres® AI for CloudNativePG™ Cluster is designed to be secure by default, following the "Least Privilege"
+principle across all layers of the stack. This document outlines our security
+governance, supply chain integrity, and the technical controls analyzed at three
+distinct layers: Code, Container, and Cluster.
+
+> **Warning**
+>
+> The information contained in this page must not exonerate you from
+> performing regular InfoSec duties on your Kubernetes cluster. Please
+> familiarize yourself with the ["Overview of Cloud Native Security"](https://kubernetes.io/docs/concepts/security/overview/)
+> page from the Kubernetes documentation.
+
+> **Note: About the 4C's Security Model**
+>
+> Please refer to ["The 4C’s Security Model in Kubernetes"](https://www.enterprisedb.com/blog/4cs-security-model-kubernetes)
+> blog article to get a better understanding and context of the approach EDB
+> has taken with security in EDB Postgres® AI for CloudNativePG™ Cluster.
+
+## Code
+
+EDB Postgres® AI for CloudNativePG™ Cluster' source code undergoes systematic static analysis, including
+checks for security vulnerabilities, using the popular open-source linter for
+Go, [GolangCI-Lint](https://github.com/golangci/golangci-lint), directly
+integrated into the CI/CD pipeline. GolangCI-Lint can run multiple linters on
+the same source code.
+
+The following tools are used to identify security issues:
+
+- **[Golang Security Checker](https://github.com/securego/gosec) (`gosec`):** A
+  linter that scans the abstract syntax tree of the source code against a set
+  of rules designed to detect known vulnerabilities, threats, and weaknesses,
+  such as hard-coded credentials, integer overflows, and SQL injections.
+  GolangCI-Lint runs `gosec` as part of its suite.
+
+- **[govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck):** This
+  tool runs in the CI/CD pipeline and reports known vulnerabilities affecting
+  Go code or the compiler. If the operator is built with a version of the Go
+  compiler containing a known vulnerability, `govulncheck` will detect it.
+
+- **[CodeQL](https://codeql.github.com/):** Provided by GitHub, this tool scans
+  for security issues and blocks any pull request with detected
+  vulnerabilities. CodeQL is configured to review only Go code, excluding other
+  languages in the repository such as Python or Bash.
+
+- **[Snyk](https://snyk.io/):** Conducts nightly code scans in a scheduled job
+  and generates weekly reports highlighting any new findings related to code
+  security and licensing issues.
+
+The CloudNativePG repository has the _"Private vulnerability reporting"_ option
+enabled in the [Security section](https://github.com/cloudnative-pg/cloudnative-pg/security).
+This feature allows users to safely report security issues that require careful
+handling before being publicly disclosed. If you discover any security bug,
+please use this medium to report it.
+
+> **Note: Important**
+>
+> A failure in the static code analysis phase of the CI/CD pipeline will
+> block the entire delivery process of EDB Postgres® AI for CloudNativePG™ Cluster. Every commit must pass all
+> the linters defined by GolangCI-Lint.
+
+## Container
+
+Operator images for EDB Postgres® AI for CloudNativePG™ Cluster are built and [published](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/private_edb_registries/) as part of our release process.
+See [Release Notes](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/rel_notes/) for information on the latest available operator versions.
+
+Operand images are built and published monthly for each supported PostgreSQL version
+(including [EDB Postgres Extended](https://www.enterprisedb.com/docs/pge/latest/) and [EDB Postgres Advanced](https://www.enterprisedb.com/docs/epas/latest/)).
+
+Images undergo scanning with the following tools:
+
+- **[Dockle](https://github.com/goodwithtech/dockle):** Ensures best practices
+  in the container build process.
+- **[Black Duck](https://www.blackduck.com/):** Checks for vulnerabilities in Open Source
+  components, validates license consistency.
+
+> **Important**
+>
+> All operand images are automatically rebuilt monthly by our pipelines to incorporate the latest security updates at both the base image and package levels, providing **patch-level updates** for the container images distributed to EDB download sites.
+
+> **Warning**
+>
+> Running outdated images can expose your environment to security risks and performance issues. We highly recommend that you update to the latest image version and keep your images up to date. This will ensure that you take advantage of the latest updates and patches available.
+
+### Guidelines and Frameworks for Container Security
+
+The following guidelines and frameworks have been considered for ensuring
+container-level security:
+
+- **["Container Image Creation and Deployment Guide"](https://dl.dod.cyber.mil/wp-content/uploads/devsecops/pdf/DevSecOps_Enterprise_Container_Image_Creation_and_Deployment_Guide_2.6-Public-Release.pdf):**
+  Developed by the Defense Information Systems Agency (DISA) of the United States
+  Department of Defense (DoD).
+- **["CIS Benchmark for Docker"](https://www.cisecurity.org/benchmark/docker/):**
+  Developed by the Center for Internet Security (CIS).
+
+> **Note: About Container-Level Security**
+>
+> For more information on the approach that EDB has taken regarding security
+> at the container level in EDB Postgres® AI for CloudNativePG™ Cluster, please refer to the blog article
+> ["Security and Containers in EDB Postgres® AI for CloudNativePG™ Cluster"](https://www.enterprisedb.com/blog/security-and-containers-cloud-native-postgresql).
+
+## Cluster
+
+Security at the cluster level takes into account all Kubernetes components that
+form both the control plane and the nodes, as well as the applications that run in
+the cluster (PostgreSQL included). We start by defining the trust model and the
+security boundaries that frame the rest of this section.
+
+### Trust Model and Security Boundaries
+
+EDB Postgres® AI for CloudNativePG™ Cluster follows a clear separation of responsibilities between the
+operator and the Kubernetes platform for enforcing security policies. The
+subsections below describe who is trusted to influence the PostgreSQL Pods,
+where the enforcement boundary actually lies, how the operator confines the
+resources it manages, and how access to all of this is governed by RBAC.
+
+#### Trusted Cluster Resource Writers
+
+Any user with create or update permissions on the `Cluster` custom resource is
+trusted to define the full specification of the PostgreSQL Pods that the
+operator manages. This includes security-sensitive fields such as
+`spec.securityContext`, `spec.podSecurityContext`, and
+`spec.serviceAccountName`. The operator applies these settings as instructed.
+When a Cluster writer does not override them, the operator applies a hardened
+default Pod and container security context (see
+[Pod and Container Security Contexts](#pod-and-container-security-contexts)).
+
+This is consistent with how all Kubernetes operators work: the operator acts as
+a privileged agent that translates high-level intent into low-level Kubernetes
+resources. Granting someone write access to a Cluster resource is equivalent
+to granting them control over the resulting Pods, Services, PVCs, and other
+managed resources.
+
+The same principle applies to [CNPG-I plugins](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/cnpg_i/). A plugin hooks into
+the Pod lifecycle and can modify any field of the Pod specification before the
+Pod is created. Installing a plugin is therefore an explicit trust decision
+made by the cluster administrator, on par with granting write access to a
+Cluster resource.
+
+The same authority extends into the database itself: because the operator
+reconciles PostgreSQL as the superuser, a Cluster writer gains superuser-level
+influence over the resulting cluster through documented, intended fields,
+including:
+
+- the bootstrap SQL hooks `postInitSQL`, `postInitApplicationSQL`, and
+  `postInitTemplateSQL`, executed as the `postgres` superuser at initialization
+  (see [Executing Queries After Initialization](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/bootstrap/#executing-queries-after-initialization));
+- [inline managed roles](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/declarative_role_management/#inline-managed-roles)
+  (`spec.managed.roles`), which may set `superuser: true` or grant membership of
+  existing roles, and can use PostgreSQL features such as `COPY ... FROM PROGRAM`
+  to run commands inside the operand Pod;
+- custom PostgreSQL configuration, including
+  [`pg_hba`](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/postgresql_conf/#the-pg_hba-section) rules (for example `trust`
+  authentication) and parameters that shape the cluster's security posture and
+  durability, such as `password_encryption`, `fsync`, and memory-related
+  settings.
+
+This is the intended trust model, not a privilege escalation.
+
+Code running in the operand Pod also runs under its mounted `ServiceAccount`,
+which can read the Secrets associated with its own cluster (see
+[Calls to the API server made by the instance manager](#calls-to-the-api-server-made-by-the-instance-manager)
+and ["Secrets"](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/applications/#secrets)). A Cluster writer can therefore read
+those Secrets, confined by [Namespace Isolation](#namespace-isolation) to the
+Cluster's own namespace.
+
+> **Note**
+>
+> These trust boundaries are also covered in the project's
+> [self security assessment](https://github.com/cloudnative-pg/cloudnative-pg/blob/main/.github/threat-catalog.yaml).
+
+#### Kubernetes Admission Control
+
+The operator creates Pods through the standard Kubernetes API, meaning every
+Pod goes through the full admission control chain configured on the cluster.
+This includes
+[Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
+(PSA), the built-in Kubernetes mechanism that enforces
+[Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+at the namespace level, as well as any third-party policy engine in use. If a
+namespace enforces the PSA `restricted` or `baseline` profile, the Kubernetes
+API server rejects any Pod that violates the policy, including Pods created by
+the operator.
+
+Because the trusted Cluster writers described above can set any Pod field, this
+admission control chain (not the operator) is the boundary that enforces Pod
+security policies in your environment.
+
+#### Namespace Isolation
+
+The operator confines all managed resources to the namespace of their parent
+Cluster. Instance Pods are always created in the same namespace as their
+Cluster, set explicitly and deterministically rather than inferred from any
+other relationship. Because Kubernetes owner references are confined to a
+single namespace, the operator also cannot establish ownership of resources in
+any other namespace.
+
+#### RBAC on Custom Resources
+
+Access to EDB Postgres® AI for CloudNativePG™ Cluster custom resources is governed by standard Kubernetes
+RBAC. Since write access to a Cluster resource implies control over the
+resulting Pods, annotations like `k8s.enterprisedb.io/podPatch` (which applies a
+user-supplied patch to the managed Pods), `k8s.enterprisedb.io/validation`, and
+`k8s.enterprisedb.io/reconciliationLoop` are subject to the same RBAC rules as the
+Cluster resource itself.
+
+In particular, setting `k8s.enterprisedb.io/validation` to `disabled` bypasses the
+operator's own validating admission webhook for that Cluster, including the
+syntactic and applicability checks performed on `k8s.enterprisedb.io/podPatch`.
+EDB Postgres® AI for CloudNativePG™ Cluster' webhook validation is therefore advisory: it can be turned off
+by the same actor who can write the Cluster, so it is not a security boundary.
+Kubernetes admission control still applies to the resulting Pods regardless of
+this annotation.
+
+The same reasoning applies to the `DatabaseRole` resource: its specification
+allows `superuser: true` and membership of any existing role through
+`inRoles`, including the `postgres` role itself. Write access to
+`DatabaseRole` objects in a namespace is therefore equivalent to superuser
+access on the PostgreSQL clusters in that namespace, and deserves the same
+care as write access to the `Cluster` resource.
+
+A similar consideration applies to the `Pooler` resource: its `authQuery`
+field accepts arbitrary SQL that PgBouncer runs against the `postgres`
+database to authenticate client connections, and the `auth_user` parameter (see
+[Connection Pooling](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/connection_pooling/#pgbouncer-configuration-options))
+selects the role that query runs as. Write access to a `Pooler` therefore
+already implies the ability to run arbitrary SQL as any role for which
+PostgreSQL authentication succeeds, and deserves the same care as write
+access to the `Cluster` resource.
+
+Treat write access to these resources as a high-privilege grant: for
+multi-tenant deployments, isolate tenants in separate namespaces and scope it
+per namespace with Kubernetes RBAC, relying on
+[Namespace Isolation](#namespace-isolation) to bound the impact.
+
+The RBAC discussed here governs access to EDB Postgres® AI for CloudNativePG™ Cluster' own custom resources.
+The next section covers the complementary side: the RBAC that the operator
+itself relies on to manage Kubernetes resources on your behalf.
+
+### Role Based Access Control (RBAC)
+
+This section covers the operator's _own_ RBAC (the service account and roles it
+uses to manage Kubernetes resources on your behalf), as opposed to the user
+access to custom resources discussed in
+[RBAC on Custom Resources](#rbac-on-custom-resources) above.
+
+The operator interacts with the Kubernetes API server using a dedicated service
+account named `postgresql-operator-manager`. This service account is typically installed in
+the operator namespace, commonly `postgresql-operator-system`. However, the namespace may vary
+based on the deployment method (see the subsection below).
+
+In the same namespace, there is a binding between the `postgresql-operator-manager` service
+account and a role. The specific name and type of this role (either `Role` or
+`ClusterRole`) also depend on the deployment method. This role defines the
+necessary permissions required by the operator to function correctly. To learn
+more about these roles, you can use the `kubectl describe clusterrole` or
+`kubectl describe role` commands, depending on the deployment method.
+For OpenShift specificities on this matter, please consult the
+["Red Hat OpenShift" section](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/openshift/#predefined-rbac-objects), in particular
+["Pre-defined RBAC objects" section](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/openshift/#predefined-rbac-objects).
+
+> **Note: Important**
+>
+> The above permissions are exclusively reserved for the operator's service
+> account to interact with the Kubernetes API server.  They are not directly
+> accessible by the users of the operator that interact only with `Cluster`,
+> `Pooler`, `Backup`, `ScheduledBackup`, `Database`, `Publication`,
+> `Subscription`, `ImageCatalog` and `ClusterImageCatalog` resources.
+
+Below we provide some examples and, most importantly, the reasons why
+EDB Postgres® AI for CloudNativePG™ Cluster requires full or partial management of standard Kubernetes
+namespaced or non-namespaced resources.
+
+- **`configmaps`**
+
+  The operator needs to create and manage default config maps for
+  the Prometheus exporter monitoring metrics.
+- **`deployments`**
+
+  The operator needs to manage a PgBouncer connection pooler
+  using a standard Kubernetes `Deployment` resource.
+- **`jobs`**
+
+  The operator needs to handle jobs to manage different `Cluster`'s phases.
+- **`persistentvolumeclaims`**
+
+  The volume where the `PGDATA` resides is the
+  central element of a PostgreSQL `Cluster` resource; the operator needs
+  to interact with the selected storage class to dynamically provision
+  the requested volumes, based on the defined scheduling policies.
+- **`pods`**
+
+  The operator needs to manage `Cluster`'s instances.
+- **`secrets`**
+
+  Unless you provide certificates and passwords to your `Cluster`
+  objects, the operator adopts the "convention over configuration" paradigm by
+  self-provisioning random generated passwords and TLS certificates, and by
+  storing them in secrets.
+- **`serviceaccounts`**
+
+  The operator needs to create a service account that
+  enables the instance manager (which is the _PID 1_ process of the container
+  that controls the PostgreSQL server) to safely communicate with the
+  Kubernetes API server to coordinate actions and continuously provide
+  a reliable status of the `Cluster`.
+- **`services`**
+
+  The operator needs to control network access to the PostgreSQL cluster
+  (or the connection pooler) from applications, and properly manage
+  failover/switchover operations in an automated way (by assigning, for example,
+  the correct end-point of a service to the proper primary PostgreSQL instance).
+- **`validatingwebhookconfigurations` and `mutatingwebhookconfigurations`**
+
+  The operator injects its self-signed webhook CA into both webhook
+  configurations, which are needed to validate and mutate all the resources it
+  manages. For more details, please see the
+  [Kubernetes documentation](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/).
+- **`volumesnapshots`**
+
+  The operator needs to generate `VolumeSnapshots` objects in order to take
+  backups of a PostgreSQL server. VolumeSnapshots are read too in order to
+  validate them before starting the restore process.
+- **`nodes`**
+
+  The operator needs to get the labels for Affinity and AntiAffinity so it can
+  decide in which nodes a pod can be scheduled. This is useful, for example, to
+  prevent the replicas from being scheduled in the same node - especially
+  important if nodes are in different availability zones. This
+  permission is also used to determine whether a node is scheduled, preventing
+  the creation of pods on unscheduled nodes, or triggering a switchover if
+  the primary lives in an unscheduled node.
+
+#### Deployments and `ClusterRole` Resources
+
+As mentioned above, each deployment method may have variations in the namespace
+location of the service account, as well as the names and types of role
+bindings and respective roles.
+
+##### Via Kubernetes Manifest
+
+When installing EDB Postgres® AI for CloudNativePG™ Cluster using the Kubernetes manifest, permissions are
+set to `ClusterRoleBinding` by default. You can inspect the permissions
+required by the operator by running:
+
+```sh
+kubectl describe clusterrole postgresql-operator-manager
+```
+
+##### Via OLM
+
+From a security perspective, the Operator Lifecycle Manager (OLM) provides a
+more flexible deployment method. It allows you to configure the operator to
+watch either all namespaces or specific namespaces, enabling more granular
+permission management.
+
+> **Note: Info**
+>
+> OLM allows you to deploy the operator in its own namespace and configure it
+> to watch specific namespaces used for EDB Postgres® AI for CloudNativePG™ Cluster clusters. This setup helps
+> to contain permissions and restrict access more effectively.
+
+#### Why Are ClusterRole Permissions Needed?
+
+The operator currently requires `ClusterRole` permissions to read `nodes` and
+`ClusterImageCatalog` objects. All other permissions can be namespace-scoped (i.e., `Role`) or
+cluster-wide (i.e., `ClusterRole`).
+
+If you remove the `ClusterRoles` permissions,
+the operator will crash unless you explicitly set the experimental `--no-cluster-roles=true`
+command-line argument by editing the operator's `Deployment` definition.
+Note that enabling this flag will disable the operator's ability
+to work with `ClusterImageCatalog` objects and respond to changes in `Node` status.
+This also affects Pooler resources: any Pooler referencing a `ClusterImageCatalog`
+for its PgBouncer image will not react to catalog updates.
+
+Even with these permissions, if someone gains access to the `ServiceAccount`,
+they will only have `get`, `list`, and `watch` permissions, which are limited
+to viewing resources. However, if an unauthorized user gains access to the
+`ServiceAccount`, it indicates a more significant security issue.
+
+Therefore, it's crucial to prevent users from accessing the operator's
+`ServiceAccount` and any other `ServiceAccount` with elevated permissions.
+
+### Calls to the API server made by the instance manager
+
+The instance manager, which is the entry point of the operand container, needs
+to make some calls to the Kubernetes API server to ensure that the status of
+some resources is correctly updated and to access the config maps and secrets
+that are associated with that Postgres cluster. Such calls are performed through
+a dedicated `ServiceAccount` created by the operator that shares the same
+PostgreSQL `Cluster` resource name.
+
+> **Note: Important**
+>
+> The operand can only access a specific and limited subset of resources
+> through the API server. A service account is the
+> [recommended way to access the API server from within a Pod](https://kubernetes.io/docs/tasks/run-application/access-api-from-pod/).
+
+#### Using a shared ServiceAccount
+
+By default, EDB Postgres® AI for CloudNativePG™ Cluster creates a dedicated `ServiceAccount` for each cluster,
+named after the cluster itself. However, in cloud environments using IAM roles
+(such as AWS IRSA, GCP Workload Identity, or Azure Workload Identity), each
+cluster creating its own `ServiceAccount` requires individual IAM configuration
+for every new cluster, making it difficult to scale when managing multiple
+clusters.
+
+EDB Postgres® AI for CloudNativePG™ Cluster allows multiple clusters to share a single `ServiceAccount` by
+specifying the `serviceAccountName` field in the cluster specification. This
+enables one-time IAM configuration that works across all clusters using that
+`ServiceAccount`.
+
+> **Important**
+>
+> When using a shared `ServiceAccount`, you are responsible for creating and
+> managing the `ServiceAccount` yourself. The operator will validate that the
+> specified `ServiceAccount` exists but will not create or modify it.
+
+Here's an example of using a shared `ServiceAccount`:
+
+```yaml
+# Create the shared ServiceAccount once
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-cloud-sa
+  annotations:
+    # AWS IRSA annotation
+    eks.amazonaws.com/role-arn: arn:aws:iam:us-east-1:123456789012:role/PostgresRole
+---
+# Reference it from multiple clusters
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-prod
+spec:
+  serviceAccountName: postgres-cloud-sa
+  instances: 3
+  storage:
+    size: 100Gi
+```
+
+> **Note**
+>
+> The `serviceAccountName` field is mutually exclusive with
+> `serviceAccountTemplate`. You can either let the operator manage the
+> `ServiceAccount` (optionally customizing it with `serviceAccountTemplate`)
+> or reference an existing one with `serviceAccountName`, but not both.
+
+> **Warning**
+>
+> The `serviceAccountName` field is immutable once set. If you need to change
+> the `ServiceAccount`, you must recreate the cluster.
+
+> **Note**
+>
+> When multiple clusters share a `ServiceAccount`, the operator creates
+> a separate `Role` and `RoleBinding` for each cluster. The shared
+> `ServiceAccount` accumulates the Kubernetes RBAC permissions of all
+> clusters using it. Each `Role` is narrowly scoped to the specific
+> cluster's resources, so this does not constitute a privilege escalation.
+
+#### Using a shared ServiceAccount with Poolers
+
+The same shared `ServiceAccount` feature is available for `Pooler` resources.
+When deploying PgBouncer poolers in cloud environments with IAM integration,
+you can specify the `serviceAccountName` field in the Pooler spec to reference
+an existing `ServiceAccount` instead of having the operator create one per pooler.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Pooler
+metadata:
+  name: pooler-prod
+spec:
+  cluster:
+    name: cluster-prod
+  serviceAccountName: pgbouncer-cloud-sa
+  instances: 3
+  pgbouncer:
+    poolMode: session
+```
+
+> **Warning**
+>
+> As with clusters, the `serviceAccountName` field on poolers is immutable
+> once set. If you need to change the `ServiceAccount`, you must recreate
+> the pooler.
+
+For transparency, the permissions associated with the service account are defined in the
+[roles.go](https://github.com/cloudnative-pg/cloudnative-pg/blob/main/pkg/specs/roles.go)
+file. For example, to retrieve the permissions of a generic `mypg` cluster in the
+`myns` namespace, you can type the following command:
+
+```bash
+kubectl get role -n myns mypg -o yaml
+```
+
+Then verify that the role is bound to the service account:
+
+```bash
+kubectl get rolebinding -n myns mypg -o yaml
+```
+
+> **Note: Important**
+>
+> Remember that **roles are limited to a given namespace**.
+
+Below we provide a quick summary of the permissions associated with the service
+account for generic Kubernetes resources.
+
+- **`configmaps`**
+
+  The instance manager can only read config maps that are related to the same
+  cluster, such as custom monitoring queries
+- **`secrets`**
+
+  The instance manager can only read secrets that are related to the same
+  cluster, namely: streaming replication user, application user, super user,
+  LDAP authentication user, client CA, server CA, server certificate, backup
+  credentials, custom monitoring queries
+- **`events`**
+
+  The instance manager can create an event for the cluster, informing the
+  API server about a particular aspect of the PostgreSQL instance lifecycle
+
+Here instead, we provide the same summary for resources specific to
+EDB Postgres® AI for CloudNativePG™ Cluster.
+
+- **`clusters`**
+
+  The instance manager requires read-only permissions, namely `get`, `list` and
+  `watch`, just for its own `Cluster` resource
+- **`clusters/status`**
+
+  The instance manager requires to `update` and `patch` the status of just its
+  own `Cluster` resource
+- **`backups`**
+
+  The instance manager requires `get` and `list` permissions to read any
+  `Backup` resource in the namespace. Additionally, it requires the `delete`
+  permission to clean up the Kubernetes cluster by removing the `Backup` objects
+  that do not have a counterpart in the object store - typically because of
+  retention policies
+- **`backups/status`**
+
+  The instance manager requires to `update` and `patch` the status of any
+  `Backup` resource in the namespace
+
+### Pod and Container Security Contexts
+
+A [Security Context](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/)
+defines privilege and access control settings for a pod or container.
+
+EDB Postgres® AI for CloudNativePG™ Cluster does not require _privileged_ mode for container execution.
+The PostgreSQL containers run as the `postgres` system user. No component
+whatsoever requires running as `root`.
+
+Likewise, Volume access does not require _privileged_ mode nor `root`
+privileges. Proper permissions must be assigned by the Kubernetes platform
+and/or administrators. The PostgreSQL containers run with a read-only root
+filesystem (i.e. no writable layer).
+
+The operator manages the setting of security contexts for all pods and
+containers of a PostgreSQL cluster. The [Seccomp Profile](https://kubernetes.io/docs/tutorials/security/seccomp/)
+to be used for the PostgreSQL containers can be configured with the
+`spec.seccompProfile` section of the `Cluster` resource. If this section is left
+blank, the containers will use a seccompProfile `Type` of `RuntimeDefault`, that
+is, the container runtime default.
+
+The security context of PostgreSQL containers using the default `seccompProfile`
+will look like this:
+
+```
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+```
+
+#### Customizing Security Contexts
+
+EDB Postgres® AI for CloudNativePG™ Cluster provides fine-grained control over security contexts for both
+pods and containers through the `spec.podSecurityContext` and
+`spec.securityContext` fields respectively.
+
+> **Note: Important**
+>
+> Changing security contexts can significantly affect the security posture
+> of your PostgreSQL clusters and may prevent pods from starting or
+> operating correctly. Before making changes, review which fields you will
+> override and how they merge with the operator defaults, test changes
+> in a non-production environment, and apply the minimal, well-documented
+> modifications necessary.
+
+**Pod Security Context** (`spec.podSecurityContext`):
+This allows you to override the default `PodSecurityContext` applied to all
+PostgreSQL cluster pods. When specified, it will merge with the operator's
+default settings, with your values taking precedence for explicitly set fields.
+
+Example:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+  podSecurityContext:
+    runAsUser: 26
+    runAsGroup: 26
+    fsGroup: 26
+    supplementalGroups: [2000, 3000]
+    fsGroupChangePolicy: "OnRootMismatch"
+```
+
+**Container Security Context** (`spec.securityContext`):
+This allows you to override the default `SecurityContext` applied to all
+containers within the PostgreSQL cluster pods. Like `podSecurityContext`, it
+merges with the operator's defaults.
+
+Example:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+  securityContext:
+    allowPrivilegeEscalation: false
+    # Note: capabilities are not merged with operator defaults.
+    # If specified, they fully replace any defaults.
+    capabilities:
+      drop:
+      - ALL
+      add:
+      - NET_BIND_SERVICE
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+```
+
+> **Note: Important**
+>
+> For any fields you don't explicitly set, the operator will apply its
+> secure defaults. This ensures that even partial configurations maintain
+> security best practices.
+
+> **Note**
+>
+> These fields are particularly useful when working with the
+> [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+> `restricted` profile, which has strict requirements for pod and container
+> security contexts. As described in
+> [Kubernetes Admission Control](#kubernetes-admission-control), it is this
+> admission chain (not the operator) that enforces such profiles on the
+> resulting Pods.
+
+#### Security Context Constraints
+
+When running in an environment that is utilizing
+[Security Context Constraints (SCC)](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html)
+the operator does not explicitly set the security context of the PostgreSQL
+cluster pods, but rather allows the pods to inherit the restricted Security
+Context Constraints that are already defined.
+
+On Red Hat OpenShift, Cloud Native PostgreSQL runs in `restricted` security context constraint,
+the most restrictive one. The goal is to limit the execution of a pod to a namespace allocated UID
+and SELinux context.
+
+> **Note: Security Context Constraints in OpenShift**
+>
+> For further information on Security Context Constraints (SCC) in
+> OpenShift, please refer to the
+> ["Managing SCC in OpenShift"](https://www.openshift.com/blog/managing-sccs-in-openshift)
+> article.
+
+> **Warning: Security Context Constraints and namespaces**
+>
+> As stated by [Openshift documentation](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html#role-based-access-to-ssc_configuring-internal-oauth)
+> SCCs are not applied in the default namespaces (`default`, `kube-system`,
+> `kube-public`, `openshift-node`, `openshift-infra`, `openshift`) and those
+> should not be used to run pods. CNP clusters deployed in those namespaces
+> will be unable to start due to missing SCCs.
+
+### Restricting Pod access using AppArmor
+
+You can assign an
+[AppArmor](https://kubernetes.io/docs/tutorials/security/apparmor/) profile to
+the `postgres`, `initdb`, `join`, `full-recovery` and `bootstrap-controller` containers inside every `Cluster` pod through the
+`container.apparmor.security.beta.kubernetes.io` annotation.
+For example:
+
+```yaml
+kind: Cluster
+metadata:
+  name: cluster-apparmor
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/postgres: runtime/default
+    container.apparmor.security.beta.kubernetes.io/initdb: runtime/default
+    container.apparmor.security.beta.kubernetes.io/join: runtime/default
+```
+
+> **Warning**
+>
+> Using this kind of annotations can result in your cluster to stop working.
+> If this is the case, the annotation can be safely removed from the `Cluster`.
+
+The AppArmor configuration must be at Kubernetes node level, meaning that the
+underlying operating system must have this option enable and properly
+configured.
+
+In case this is not the situation, and the annotations were added at the
+`Cluster` creation time, pods will not be created. On the other hand, if you
+add the annotations after the `Cluster` was created the pods in the cluster will
+be unable to start and you will get an error like this:
+
+```
+metadata.annotations[container.apparmor.security.beta.kubernetes.io/postgres]: Forbidden: may not add AppArmor annotations]
+```
+
+In such cases, please refer to your Kubernetes administrators and ask for the proper AppArmor profile to use.
+
+> **Warning: AppArmor and OpenShift**
+>
+> AppArmor is currently available only on Debian distributions like Ubuntu,
+> hence this is not (and will not be) available in OpenShift
+
+### Network Policies
+
+The pods created by the `Cluster` resource can be controlled by Kubernetes
+[network policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+to enable/disable inbound and outbound network access at IP and TCP level.
+You can find more information in the [networking document](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/networking/).
+
+> **Note: Important**
+>
+> The operator needs to communicate to each instance on TCP port 8000
+> to get information about the status of the PostgreSQL server. Please
+> make sure you keep this in mind in case you add any network policy,
+> and refer to the "Exposed Ports" section below for a list of ports used by
+> EDB Postgres® AI for CloudNativePG™ Cluster for finer control.
+
+Network policies are beyond the scope of this document.
+Please refer to the ["Network policies"](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+section of the Kubernetes documentation for further information.
+
+#### Exposed Ports
+
+EDB Postgres® AI for CloudNativePG™ Cluster exposes ports at operator, instance manager and operand
+levels, as listed in the table below:
+
+| System           | Port number | Exposing            | Name             | TLS      | Authentication |
+| :--------------- | :---------- | :------------------ | :--------------- | :------- | :------------- |
+| operator         | 9443        | webhook server      | `webhook-server` | Yes      | Yes            |
+| operator         | 8080        | metrics             | `metrics`        | No       | No             |
+| instance manager | 9187        | metrics             | `metrics`        | Optional | No             |
+| instance manager | 8000        | status              | `status`         | Yes      | Partial (1)    |
+| operand          | 5432        | PostgreSQL instance | `postgresql`     | Optional | Yes            |
+
+(1) Status, health, and probe endpoints are unauthenticated. Sensitive
+endpoints (backup, `pg_controldata`, partial WAL archive, and instance-manager
+upgrade) require the operator's client certificate, as described in
+[Operator-to-instance authentication](#operator-to-instance-authentication)
+below.
+
+#### Operator-to-instance authentication
+
+The operator generates a self-signed ECDSA client certificate in memory at
+startup and publishes its SHA-256 public-key fingerprint in the cluster's
+`.status.operatorCertificateFingerprint`. The instance manager pins that
+fingerprint and rejects any call to its sensitive endpoints (backup,
+`pg_controldata`, partial WAL archive, and instance-manager upgrade) that does
+not present a matching certificate. Status, health, and probe endpoints remain
+unauthenticated.
+
+The certificate is never written to disk and is regenerated on every operator
+restart, so trust derives from fingerprint pinning rather than CA validation.
+
+This protection has a hard requirement: the status port **must** be served over
+TLS, which has been the default since v1.24. A client certificate can only be
+presented over a TLS connection, so the protected endpoints are reachable by the
+operator only when the status port uses TLS.
+
+> **Warning**
+>
+> If the status port is not served over TLS, the instance manager cannot
+> authenticate the operator and **permanently** rejects every call to its
+> protected endpoints (backup, `pg_controldata`, partial WAL archive, and
+> instance-manager upgrade) with `401 Unauthorized`. This is not a transient
+> condition and will not resolve on its own. It can affect instances created by an
+> operator older than v1.24 (whose status port serves plain HTTP) once their
+> instance manager is upgraded to a version that enforces this authentication: such
+> instances must be rolled out so their Pods are recreated with a TLS-enabled status
+> port. Newly created instances always enable TLS on the status port and are
+> unaffected.
+
+### PostgreSQL
+
+The current implementation of EDB Postgres® AI for CloudNativePG™ Cluster automatically creates
+passwords and `.pgpass` files for the database owner and, only
+if requested by setting `enableSuperuserAccess` to `true`, for the
+`postgres` superuser.
+
+> **Warning**
+>
+> `enableSuperuserAccess` is set to `false` by default to improve the
+> security-by-default posture of the operator, fostering a microservice approach
+> where changes to PostgreSQL are performed in a declarative way through the
+> `spec` of the `Cluster` resource, while providing developers with full powers
+> inside the database through the database owner user.
+
+As far as password encryption is concerned, EDB Postgres® AI for CloudNativePG™ Cluster follows
+the default behavior of PostgreSQL: starting from PostgreSQL 14,
+`password_encryption` is by default set to `scram-sha-256`, while on earlier
+versions it is set to `md5`.
+
+> **Note: Important**
+>
+> Please refer to the ["Password authentication"](https://www.postgresql.org/docs/current/auth-password.html)
+> section in the PostgreSQL documentation for details.
+
+> **Note**
+>
+> The operator supports toggling the `enableSuperuserAccess` option. When you
+> disable it on a running cluster, the operator will ignore the content of the secret,
+> remove it (if previously generated by the operator) and set the password of the
+> `postgres` user to `NULL` (de facto disabling remote access through password authentication).
+
+> **Note: Important**
+>
+> PostgreSQL may include cleartext role passwords in its logs for some role
+> operations, as mentioned in the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-createrole.html).
+> EDB Postgres® AI for CloudNativePG™ Cluster ensures that `postgres` logging (both statement logging and
+> error statement logging) is temporarily suppressed for CREATE/ALTER ROLE
+> operations with passwords, thus preventing any password leakage.
+
+See the ["Secrets" section in the "Connecting from an application" page](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/applications/#secrets) for more information.
+
+You can use those files to configure application access to the database.
+
+By default, every replica is automatically configured to connect in **physical
+async streaming replication** with the current primary instance, with a special
+user called `streaming_replica`. The connection between nodes is **encrypted**
+and authentication is via **TLS client certificates** (please refer to the
+["Client TLS/SSL Connections"](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/ssl_connections/) page
+for details). By default, the operator requires TLS v1.3 connections.
+
+Currently, the operator allows administrators to add `pg_hba.conf` lines directly in the manifest
+as part of the `pg_hba` section of the `postgresql` configuration. The lines defined in the
+manifest are added to a default `pg_hba.conf`.
+
+For further detail on how `pg_hba.conf` is managed by the operator, see the
+["PostgreSQL Configuration" page](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/postgresql_conf/#the-pg_hba-section) of the documentation.
+
+The administrator can also customize the content of the `pg_ident.conf` file that by default
+only maps the local postgres user to the postgres user in the database.
+
+For further detail on how `pg_ident.conf` is managed by the operator, see the
+["PostgreSQL Configuration" page](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/postgresql_conf/#the-pg_ident-section) of the documentation.
+
+> **Note: Important**
+>
+> Examples assume that the Kubernetes cluster runs in a private and secure network.
+
+#### Schema resolution and `search_path` hardening
+
+A user with privileges on a database can plant objects (functions,
+operators, tables, or types) in a writable schema such as `public` and
+change the database- or role-level `search_path` (for example with
+`ALTER DATABASE ... SET search_path` or `ALTER ROLE ... SET
+search_path`). A privileged session that later connects to that database
+inherits the tenant-controlled `search_path`, so an unqualified
+reference in one of its queries could resolve to the planted object
+instead of the intended one. This is a privilege-escalation vector
+analogous to
+[CWE-426 (Untrusted Search Path)](https://cwe.mitre.org/data/definitions/426.html),
+and the same class of issue as the well-known
+[CVE-2018-1058](https://www.postgresql.org/support/security/CVE-2018-1058/).
+
+To prevent this, EDB Postgres® AI for CloudNativePG™ Cluster pins the `search_path` on every
+connection it opens to PostgreSQL to a fixed value of
+`pg_catalog, public, pg_temp`, regardless of any `search_path`
+configured on the database or the connecting role:
+
+- `pg_catalog` is searched first, so a built-in object always takes
+  precedence over a same-named object planted in another schema;
+- `pg_temp` (the session-private temporary schema) is searched last
+  rather than first, so it cannot shadow relations or data types.
+
+In addition, the `SECURITY DEFINER` lookup function used by the
+PgBouncer integration is created with its own pinned `search_path`, and
+the monitoring queries run inside a transaction whose `search_path` is
+pinned as described in the ["Monitoring" page](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/monitoring/).
+
+> **Note**
+>
+> User-authored SQL — `postInitSQL`/`postInitApplicationSQL`/`postInitTemplateSQL`
+> during bootstrap, and the post-import queries of a logical import — runs
+> with the standard `"$user", public` resolution so that it keeps behaving
+> as it would in a plain PostgreSQL session. Schema-qualify object
+> references in those scripts if you need them to be independent of the
+> `search_path`.
+
+### Storage
+
+EDB Postgres® AI for CloudNativePG™ Cluster delegates encryption at rest to the underlying storage class. For
+data protection in production environments, we highly recommend that you choose
+a storage class that supports encryption at rest.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

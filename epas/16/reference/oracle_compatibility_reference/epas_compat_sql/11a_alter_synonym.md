@@ -1,0 +1,68 @@
+---
+title: ALTER SYNONYM
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/oracle_compatibility_reference/epas_compat_sql/11a_alter_synonym/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# ALTER SYNONYM
+
+## Name
+
+`ALTER SYNONYM` — Change ownership of a synonym object.
+
+## Synopsis
+
+```text
+ALTER SYNONYM <syn_name> OWNER TO <new_owner>
+```
+
+## Description
+
+The `ALTER SYNONYM` command changes the owner of the synonym.
+
+## Examples
+
+```text
+-- create user t1 and t2
+edb=# create user t1;
+CREATE ROLE
+edb=# create user t2;
+CREATE ROLE
+
+-- grant all the privileges to user t1 and t2 on public schema
+edb=# GRANT ALL PRIVILEGES ON SCHEMA public TO GROUP t1;
+GRANT
+edb=# GRANT ALL PRIVILEGES ON SCHEMA public TO GROUP t2;
+GRANT
+
+-- connect to the database as user t1 and create the table
+edb=# \c - t1
+You are now connected to database "edb" as user "t1".
+edb=> create table t(n int); 
+CREATE TABLE
+
+-- create a synonym for table t
+edb=> create public synonym x for  t;
+CREATE SYNONYM
+
+-- check the owner of the synonym x is t1
+edb=# select * from all_synonyms;
+ owner | schema_name | objid | synonym_name | table_owner | table_schema_name | table_name | db_link 
+-------+-------------+-------+--------------+-------------+-------------------+------------+---------
+ T1    | PUBLIC      | 16390 | X            | T1          | PUBLIC            | T          | 
+
+-- connect the database as user edb and change the owner of the synonym x to user t2
+edb=> \c - edb
+You are now connected to database "edb" as user "edb".
+edb=# alter synonym x owner to t2;
+
+-- check the owner of the synonym x is changed to t2
+edb=# select * from all_synonyms;
+ owner | schema_name | objid | synonym_name | table_owner | table_schema_name | table_name | db_link 
+-------+-------------+-------+--------------+-------------+-------------------+------------+---------
+ T2    | PUBLIC      | 16390 | X            | T1          | PUBLIC            | T          |          
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

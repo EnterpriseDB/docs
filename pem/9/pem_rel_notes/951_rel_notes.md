@@ -1,0 +1,19 @@
+---
+title: Postgres Enterprise Manager 9.5.1 release notes
+product: Postgres Enterprise Manager
+version: "9"
+url: https://www.enterprisedb.com/docs/pem/9/pem_rel_notes/951_rel_notes/
+lastModified: 2024-03-01T12:57:16+05:30
+---
+
+# Postgres Enterprise Manager 9.5.1 release notes
+
+Released: 04 Mar 2024
+
+New features, enhancements, bug fixes, and other changes in PEM 9.5.1 include:
+
+| Type         | Description                                                                                                                                         |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Security fix | This is a security fix for [CVE-2023-50782](https://nvd.nist.gov/vuln/detail/CVE-2023-50782). Upgraded bundled Python cryptography package to 42.x. |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

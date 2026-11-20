@@ -1,0 +1,45 @@
+---
+title: COMPARE
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/06_dbms_lob/02_compare/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# COMPARE
+
+The `COMPARE` procedure performs an exact byte-by-byte comparison of two large objects for a given length at given offsets. The large objects being compared must be the same data type.
+
+```sql
+<status> INTEGER COMPARE(<lob_1> { BLOB | CLOB },
+   <lob_2> { BLOB | CLOB }
+   [, <amount> INTEGER [, <offset_1> INTEGER [, <offset_2> INTEGER ]]])
+```
+
+## Parameters
+
+`lob_1`
+
+Large object locator of the first large object to compare. Must be the same data type as `lob_2`.
+
+`lob_2`
+
+Large object locator of the second large object to compare. Must be the same data type as `lob_1`.
+
+`amount`
+
+If the data type of the large objects is `BLOB`, then the comparison is made for `amount` bytes. If the data type of the large objects is `CLOB`, then the comparison is made for `amount` characters. The default is the maximum size of a large object.
+
+`offset_1`
+
+Position in the first large object to begin the comparison. The first byte/character is offset 1. The default is 1.
+
+`offset_2`
+
+Position in the second large object to begin the comparison. The first byte/character is offset 1. The default is 1.
+
+`status`
+
+Zero if both large objects are exactly the same for the specified length for the specified offsets. Nonzero if the objects aren't the same. `NULL` if `amount`, `offset_1`, or `offset_2` are less than zero.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

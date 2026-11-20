@@ -1,0 +1,29 @@
+---
+title: Reviewing or modifying agent properties
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/modifying_agent_properties/
+lastModified: 2026-01-21T12:37:38+01:00
+---
+
+# Reviewing or modifying agent properties
+
+Use the PEM Agent Properties dialog box to get information about a selected PEM agent. Right-click an agent name in the PEM client tree and select **Properties** from the context menu. You can then review or modify information about the PEM agent:
+
+- Use the **Description** field to view or edit the description of the PEM agent, which appears in the tree of the PEM client.
+
+- You can use groups to organize your servers and agents in the PEM client tree. Use the **Group** list to select the group in which the agent is displayed.
+
+- Use the **Team** field to specify the name of the group role that can access servers monitored by the agent. The servers monitored by this agent are visible in the PEM client tree to connected team members. This is a convenience feature. The **Team** field doesn't provide true isolation. Don't use it for security purposes.
+
+- Use the **Heartbeat Tolerance** fields to view or edit how late a heartbeat can be before it is considered missed. Use the selectors next to the **Minutes** or **Seconds** fields to modify the value.
+
+- Use the **Job Notifications** tab to configure the email notification settings on agent level. See [Managing Job Notifications](https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/managing_job_notifications/).
+
+- The **Agent Configurations** tab displays all the current configurations and capabilities of an agent.
+
+  - The **Parameter** column displays a list of parameters.
+  - The **Value** column displays the current value of the corresponding parameter.
+  - The **Category** column displays the category (configuration or capability) of the corresponding parameter.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

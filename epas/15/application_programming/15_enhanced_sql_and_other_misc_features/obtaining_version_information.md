@@ -1,0 +1,52 @@
+---
+title: Obtaining version information
+description: Describes how to display the product name, version, and the host system on which it was installed.
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/application_programming/15_enhanced_sql_and_other_misc_features/obtaining_version_information/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# Obtaining version information
+
+The text string output of the `version()` function displays the name of the product, its version, and the host system on which it was installed.
+
+For EDB Postgres Advanced Server, the `version()` output is in a format similar to the PostgreSQL community version. The first text word is _PostgreSQL_ instead of _EnterpriseDB_ as in EDB Postgres Advanced Server version 10 and earlier.
+
+The general format of the `version()` output is:
+
+```text
+PostgreSQL $PG_VERSION_EXT (EnterpriseDB EDB Postgres Advanced Server $PG_VERSION) on $host
+```
+
+So for the current EDB Postgres Advanced Server, the version string appears as follows:
+
+```sql
+edb@45032=#select version();
+```
+
+```output title="Output"
+version
+-----------------------------------------------------------------------------------------------
+------------------------------------------------
+PostgreSQL 14.0 (EnterpriseDB EDB Postgres Advanced Server 14.0.0) on x86_64-pc-linux-gnu, compiled by gcc 
+(GCC) 4.8.5 20150623 (Red Hat 4.8.5-11), 64-bit
+(1 row)
+```
+
+In contrast, for EDB Postgres Advanced Server 10, the version string was the following:
+
+```sql
+edb=# select version();
+```
+
+```output title="Output"
+                                                version
+------------------------------------------------------------------------------------------
+-------------------
+EnterpriseDB 10.4.9 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 4.4.7 20120313 (Red Hat 
+4.4.7-18), 64-bit
+(1 row)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,91 @@
+---
+title: Default optimization modes
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/application_programming/optimizing_code/05_optimizer_hints/01_default_optimization_modes/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# Default optimization modes
+
+<div id="default_optimization_modes" class="registered_link"></div>
+
+You can choose an optimization mode as the default setting for an EDB Postgres Advanced Server database cluster. You can also change this setting on a per-session basis by using the `ALTER SESSION` command as well as in individual `DELETE`, `SELECT`, and `UPDATE` commands in an optimizer hint. The configuration parameter that controls these default modes is `OPTIMIZER_MODE`.
+
+The table shows the possible values.
+
+| Hint              | Description                                                                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALL_ROWS`        | Optimizes for retrieving all rows of the result set.                                                                                                                                                                |
+| `CHOOSE`          | Does no default optimization based on assumed number of rows to retrieve from the result set. This is the default.                                                                                                  |
+| `FIRST_ROWS`      | Optimizes for retrieving only the first row of the result set.                                                                                                                                                      |
+| `FIRST_ROWS_10`   | Optimizes for retrieving the first 10 rows of the results set.                                                                                                                                                      |
+| `FIRST_ROWS_100`  | Optimizes for retrieving the first 100 rows of the result set.                                                                                                                                                      |
+| `FIRST_ROWS_1000` | Optimizes for retrieving the first 1000 rows of the result set.                                                                                                                                                     |
+| `FIRST_ROWS(n)`   | Optimizes for retrieving the first _n_ rows of the result set. You can't use this form as the object of the `ALTER SESSION SET OPTIMIZER_MODE` command. You can use it only in the form of a hint in a SQL command. |
+
+These optimization modes are based on the assumption that the client submitting the SQL command is interested in viewing only the first _n_ rows of the result set and not the remainder of the result set. Resources allocated to the query are adjusted as such.
+
+## Example: Specifying the number of rows to retrieve in the result set
+
+Alter the current session to optimize for retrieval of the first 10 rows of the result set:
+
+```sql
+ALTER SESSION SET OPTIMIZER_MODE = FIRST_ROWS_10;
+```
+
+## Example: Showing the current value of the OPTIMIZER\_MODE parameter
+
+You can show the current value of the `OPTIMIZER_MODE` parameter by using the `SHOW` command. This command depends on the utility. In PSQL, use the `SHOW` command as follows:
+
+```sql
+SHOW OPTIMIZER_MODE;
+```
+
+```output title="Output"
+optimizer_mode
+-----------------
+ first_rows_10
+(1 row)
+```
+
+The `SHOW` command compatible with Oracle databases has the following syntax:
+
+```sql
+SHOW PARAMETER OPTIMIZER_MODE;
+
+NAME
+--------------------------------------------------
+VALUE
+--------------------------------------------------
+optimizer_mode
+first_rows_10
+```
+
+This example shows an optimization mode used in a `SELECT` command as a hint:
+
+```sql
+SELECT /*+ FIRST_ROWS(7) */ * FROM emp;
+```
+
+```output title="Output"
+empno| ename |  job     | mgr  |      hiredate      | sal     | comm  | deptno
+-----+-------+----------+------+--------------------+---------+-------+-------
+7369 | SMITH | CLERK    | 7902 | 17-DEC-80 00:00:00 | 800.00  |       | 20
+7499 | ALLEN | SALESMAN | 7698 | 20-FEB-81 00:00:00 | 1600.00 | 300.00| 30
+7521 | WARD  | SALESMAN | 7698 | 22-FEB-81 00:00:00 | 1250.00 | 500.00| 30
+7566 | JONES | MANAGER  | 7839 | 02-APR-81 00:00:00 | 2975.00 |       | 20
+7654 | MARTIN| SALESMAN | 7698 | 28-SEP-81 00:00:00 | 1250.00 |1400.00| 30
+7698 | BLAKE | MANAGER  | 7839 | 01-MAY-81 00:00:00 | 2850.00 |       | 30
+7782 | CLARK | MANAGER  | 7839 | 09-JUN-81 00:00:00 | 2450.00 |       | 10
+7788 | SCOTT | ANALYST  | 7566 | 19-APR-87 00:00:00 | 3000.00 |       | 20
+7839 | KING  | PRESIDENT|      | 17-NOV-81 00:00:00 | 5000.00 |       | 10
+7844 | TURNER| SALESMAN | 7698 | 08-SEP-81 00:00:00 | 1500.00 | 0.00  | 30
+7876 | ADAMS | CLERK    | 7788 | 23-MAY-87 00:00:00 | 1100.00 |       | 20
+7900 | JAMES | CLERK    | 7698 | 03-DEC-81 00:00:00 |  950.00 |       | 30
+7902 | FORD  | ANALYST  | 7566 | 03-DEC-81 00:00:00 | 3000.00 |       | 20
+7934 | MILLER| CLERK    | 7782 | 23-JAN-82 00:00:00 | 1300.00 |       | 10
+(14 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

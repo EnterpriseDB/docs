@@ -1,0 +1,60 @@
+---
+title: Printing the conflict resolution strategy (printconfresolutionstrategy)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/23_print_conflict_resolution_strategy/
+lastModified: 2025-04-03T18:05:51+02:00
+---
+
+# Printing the conflict resolution strategy (printconfresolutionstrategy)
+
+<div id="print_conflict_resolution_strategy" class="registered_link"></div>
+
+**For MMR only:** The `printconfresolutionstrategy` command displays the conflict resolution strategy and the standby conflict resolution strategy of the specified table.
+
+## Synopsis
+
+```shell
+-printconfresolutionstrategy pubname
+  -repsvrfile pubsvrfile
+  -table schema_t.table_name
+```
+
+See [Conflict resolution](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/#conflict_resolution) for more information.
+
+> **Note**
+>
+> The schema name and table or view name that you supply as values for the table parameter are case sensitive. Unless quoted identifiers were used to build the database objects, you must enter Oracle names using uppercase letters (for example, `EDB.DEPT`) and EDB Postgres Advanced Server names in lowercase letters (for example `edb.dept`). See [Quoted identifiers and default case translation](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/03_miscellaneous_xdb_processing_topics/05_quoted_identifiers/#quoted_identifiers) for more information.
+
+## Parameters
+
+`pubname`
+
+The name of the publication containing the table whose conflict resolution strategy you want to display.
+
+`pubsvrfile`
+
+The file containing the publication server login information.
+
+`schema_t`
+
+The name of the schema containing `table_name`. This value is case sensitive.
+
+`table_name`
+
+The name of the table whose conflict resolution strategy you want to display. This value is case sensitive.
+
+## Examples
+
+This example displays the conflict resolution strategy on the EDB Postgres Advanced Server table edb.emp in the publication `emp_pub`.
+
+```shell
+$ java -jar edb-repcli.jar -printconfresolutionstrategy emp_pub \
+>   -repsvrfile ~/pubsvrfile.prop \
+>   -table edb.emp
+Primary/Standby Conflict Resolution Strategy...
+Conflict Resolution Option:[ Earliest Timestamp ]
+Standby Conflict Resolution Option:[ Manual ]
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

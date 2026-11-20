@@ -1,0 +1,197 @@
+---
+title: Migrations
+description: Learn about viewing migration details when performing database migrations to Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/
+lastModified: 2026-09-10T07:38:14-07:00
+---
+
+# Migrations
+
+Migrations are processes you can start in a project of the Hybrid Manager (HM) to move data from one database to another. These processes include migrating an external Oracle database to an HM-managed cluster and to an externally managed Postgres instance, among others.
+
+## Viewing existing migrations
+
+After creating one or several migrations, this view displays all the migrations in the project in a table format. The table contains the columns:
+
+- **Name** — Name you assigned to a migration.
+
+- **Source** — Name of the source, configured through the **Sources** page.
+
+- **Destination** — Name of the destination, either a database in an HM-managed cluster or a destination configured through the **Destinations** page.
+
+- **Snapshot Type** — The replication mode configured for each migration:
+  - **Snapshot** — The migration runs a snapshot only. Any subsequent changes to the source aren't replicated to the destination.
+  - **Snapshot + Streaming** — The migration runs an initial snapshot, then continues streaming ongoing changes from the source database.
+  - **Streaming** — The migration skips the snapshot and streams only changes that occur on the source after the migration starts. See [Streaming migration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/terminology/#streaming-migration).
+
+- **Migration Progress** — This column summarizes how far a migration has progressed. It displays three metrics for each of the migrations:
+  - **Total number of tables** — The total number of tables included in this migration.
+  - **Snapshot tables completed** — The number of tables that have finished the snapshot stage. Not applicable to **Streaming** migrations, since these skip the snapshot phase.
+  - **Migrated rows** — The cumulative number of rows that have been migrated across all tables in this migration.
+
+- **Status** — Current status of the migration. The values can be one of the following: `Creating`, `Starting`, `Running`, `Pausing`, `Paused`, `Error`, `Completed`, `Failed`, `Deleting`, or `Deleted`.
+
+- **Delete** — At the end of each row, the trash can icon allows you to delete a migration.
+
+At the top right of the page, you can use the **Sort** dropdown to sort the list of migrations by **Creation date**. By default, the list is sorted by newest to oldest created date.
+
+You can use **Create Migration** to create a new migration. See [Creating a migration](#creating-a-migration) for more details.
+
+### Status
+
+HM can display the following statuses for a migration.
+
+| Status    | Description                                                                                                                                                                   |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Creating  | HM is creating resources required to perform a migration (for example, Kafka nodes).                                                                                          |
+| Starting  | The initial phase of execution started, where the EDB DMS Agent connects to the source and/or destination databases.                                                          |
+| Running   | The migration is active and data is being transferred.                                                                                                                        |
+| Pausing   | The migration is being temporarily stopped.                                                                                                                                   |
+| Paused    | The migration was temporarily stopped and can be resumed.                                                                                                                     |
+| Error     | Unspecified problem. Under **Migrations**, select the name of the migration to open the details page. Look at the **Error log** section for more information about the cause. |
+| Completed | The migration finished successfully.                                                                                                                                          |
+| Failed    | The migration encountered an error and could not be completed. Investigate HM Console logs to understand the specific cause.                                                  |
+| Deleting  | The migration is being terminated.                                                                                                                                            |
+| Deleted   | The migration was successfully terminated and removed.                                                                                                                        |
+
+> **Note**
+>
+> You can't use a source or destination that's part of an active migration (in any state, including running or paused) for another migration. The existing migration must be completed or deleted before you can reuse the source or destination.
+
+### Migration details page
+
+For each migration that appears on this page, you can open a more detailed view by selecting the name of the migration.
+
+**Mark as Completed option**: If you selected the [**Snapshot + Streaming**](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration) or [**Streaming**](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/terminology/#streaming-migration) option when [creating a migration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/migrating_data/#creating-a-migration), you can use **Mark as Completed** to stop the streaming procedure.
+
+#### Overview tab
+
+The **Overview** tab contains additional information on the status of the migration, type of migration, source and destination database information, and error logs that can help you troubleshoot.
+
+#### Tables tab
+
+The **Tables** tab provides detailed information about the progress of individual tables within the migration.
+
+1. **Migration summary**
+
+   At the top of the tab, a summary section displays key metrics for the migration, including:
+
+   - **Total schemas** — The total number of schemas included in this migration.
+   - **Total tables** — The total number of tables included in this migration.
+   - **Snapshot completed** — The number of tables that have finished the snapshot stage and are ready for streaming (if applicable).
+
+2. **Search and filtering bar**
+
+   The filtering bar allows you to narrow down the table list to focus on specific datasets or troubleshoot migration bottlenecks.
+
+   - **Global search** — Use the search bar to find specific tables by entering keywords or phrases contained in the schema or table names.
+   - **Snapshot status filter** — Use the status filter dropdown to view tables based on their migration status, such as **Pending**, **In Progress**, **Completed**, or **Failed**.
+
+3. **Sorting dropdown**
+
+   The sorting dropdown adjusts the display order of the table list as per the selected order. By default, the tables are sorted alphabetically by schema and table name. You can change the sorting order based on different criteria, such as:
+
+   - **Table name** — Sort tables alphabetically by their names.
+   - **Snapshot status** — Sort tables based on their current snapshot status.
+   - **Migrated rows** — Sort tables by the number of rows that have been migrated.
+
+4. **Tables detail view**
+
+This section provides row-level granularity for every table in the migration.
+
+For each table, you can view the source and destination schema and table names, the snapshot status, the number of mapped columns and migrated rows, as well as the migration rate for ongoing migrations. The snapshot status reflects the overall migration state for snapshot-only jobs, or the snapshot phase status for snapshot + streaming jobs.  Each row is expandable, allowing you to view the detailed column-level mapping from the source to the destination.
+
+#### Metrics tab
+
+During any running migration (**Snapshot**, **Snapshot + Streaming**, or **Streaming**), selecting the **Metrics** tab link opens a Grafana dashboard prefiltered to this migration, with a default time range of the last hour. You can change the time range and other filters directly in Grafana. The dashboard refreshes continuously while the migration is running.
+
+The dashboard groups its panels into these categories:
+
+- **Throughput** — Rows, bytes, and messages processed per second, reported separately for the read side (reading changes from the source) and the write side (applying changes to the destination).
+- **Batch latency** — Time spent processing each batch of changes, plus the gap between successive batches.
+- **Commit latency** — Time per commit on the write side, plus how long a completed batch waited before its commit.
+- **Batch sizing** — Rows and bytes per batch on both sides, useful for comparing many small batches against fewer large ones.
+- **Staged data transfer** — Upload and download response times for snapshot data moved through object storage during the snapshot phase.
+- **Per-operation breakdown** — Most write-side panels can be filtered by SQL operation (`insert`, `update`, `delete`, `upsert`, or `copy`).
+
+Use the selectors at the top of the dashboard to filter by stage (**Snapshot** or **Streaming**) or operation type. The `migration_id` selector is prefilled by the link from HM.
+
+You can select any time range in the Grafana dashboard's time picker, but how far back useful data goes depends on your HM deployment's Prometheus retention setting. To check the configured retention:
+
+```shell
+kubectl get prometheus -n edb-observability -o yaml | grep retention
+```
+
+##### Troubleshooting an empty or loading dashboard
+
+If the **Metrics** tab shows no data or doesn't finish loading:
+
+1. Confirm `METRICS_TASK_ENABLED` is set to `true` for the relevant DMS agent. See [METRICS\_TASK\_ENABLED](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/#metrics_task_enabled).
+
+2. If metrics reporting is enabled but the dashboard is still empty, confirm that the project's metrics collector is running. The collector is provisioned dynamically and requires at least one running migration in the project. Its namespace is `r-w-metrics-<project-id>` (with any underscores in the project ID converted to hyphens). Check the pod status and logs:
+
+   ```shell
+   kubectl get po -n r-w-metrics-<project-id>
+   kubectl logs <pod-name> -n r-w-metrics-<project-id>
+   ```
+
+#### Error history tab
+
+The **Error history** tab displays a list of all the errors the DMS has logged during this migration. For each error, you can view a summarized error message, the error source (DMS agent in reader or writer mode, Kafka, etc.), whether the error is active or not, and the error timestamp. To obtain more details for the error, select the information icon to open a view with the full error log. To help you isolate specific issues, the **Error history** tab includes advanced filtering and time-range selection capabilities.
+
+- **Global search** — Use the search bar to find specific errors by entering keywords or phrases contained in the error messages.
+
+- **Flexible time ranges** — Use the time-range selector to filter errors based on predefined intervals (last 7 days, last 30 days, last 90 days) or specify a custom date and time range.
+
+- **Advanced filtering** — Use the filter bar to refine the list based on error attributes. You can filter using:
+
+  - **Error source** — View only errors originating from specific components, such as the DMS agent in reader or writer mode, Kafka, etc.
+  - **Active** — Status toggles to quickly filter between active and resolved errors.
+
+## Creating a migration
+
+Select **Create Migration** to create migrations. For a step-by-step example, see [Creating a migration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/migrating_data/#creating-a-migration) in the self-managed Postgres to HM guide, or the equivalent section in your migration guide.
+
+## Mapping schema, tables and columns during a migration
+
+When you create a migration with the **Data Only** scope, the Data Migration Service (DMS) allows you to map your source schema, table, and column names to different destination schemas, tables, and columns. This method is particularly useful for restructuring your database during a migration, enabling you to align table names with new naming conventions or improve clarity.
+
+Column mapping isn't available for the **Schema and Data** or **Schema Only** scopes. In those scopes, HM drives the schema migration automatically using the Migration Portal project created from your source database. Because HM creates the destination objects itself, it controls their names — any column renaming you configure is preserved in the migration definition but won't take effect unless you switch the scope to **Data Only**.
+
+### Prerequisites
+
+The DMS requires that all destination objects already exist in the destination database before the data migration begins. If you plan to restructure data by mapping a source object (schema, table, or column) to a different name in the destination (for example, source table `loc` to destination table `location`), you must ensure the destination object (`location`) has been manually created or renamed in the destination database prior to initiating data migration.
+
+- **Schema migration tools** — If you use a utility like Migration Toolkit or pg\_dump/pg\_restore for schema import, the objects are created with the same name as the source. You must then manually rename the objects in the destination to match your desired mapping. For example, you can use Migration Toolkit's offline option or pg\_dump to generate an SQL script, edit the object names directly in the script, and then apply the modified script to the destination.
+
+- **Manual/alternate creation** — If you create the destination objects manually, ensure the objects are defined with compatible data types for all mapped columns. While DMS can migrate data to differently named objects, the structure of the destination object must match the source data.
+
+### Object mapping
+
+1. Open the **Create Migration** window from **Migrate** > **Migrations** > **Create Migration** in the HM Console. See [Creating migration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/migrating_data/#creating-a-migration) for more details.
+
+2. Navigate to the **Tables** tab for your migration.
+
+3. To map a schema to a renamed destination schema:
+
+   1. Find a table within the list (`<schema>.<table>`) whose schema you want to rename.
+   2. Select the pen icon next to the `<schema>.<table>` name.
+   3. Enter the new name for the schema.
+
+4. To map a table to a renamed destination table:
+
+   1. Find table within the list (`<schema>.<table>`) whose table you want to rename.
+   2. Select the pen icon next to the `<schema>.<table>` name.
+   3. Enter the new name for the table.
+
+5. To map a column to a renamed destination column:
+
+   1. Expand one of the items from the list (`<schema>.<table>`) with the dropdown arrow.
+   2. Find the column you wish to rename in the **Source Column** list.
+   3. Enter the new name for the column in the **Destination Column**.
+
+This process allows you to map schemas, tables and columns as part of your migration definition.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

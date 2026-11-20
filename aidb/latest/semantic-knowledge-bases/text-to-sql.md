@@ -1,0 +1,86 @@
+---
+title: Text-to-SQL
+description: How an AIDB agent uses a semantic knowledge base's search functions as tools to discover schema and answer questions with SQL.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/text-to-sql/
+lastModified: 2026-09-30T22:23:49+05:30
+---
+
+# Text-to-SQL
+
+Text-to-SQL turns a natural-language question, such as "Which customers spent the most last quarter?", into a correct query against your own schema. A semantic KB makes this reliable. Instead of guessing at table and column names, the question is first grounded in the schema the KB indexed. Once the right tables are found, it's grounded in how they [join](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/) too, so generated SQL doesn't have to guess at that either. See [Semantic knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/) for what a semantic KB indexes, and [Getting started](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/#getting-started) to create one first.
+
+Two complementary paths build on the [search functions](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/):
+
+- Agent-driven: an [AIDB agent](https://www.enterprisedb.com/docs/aidb/latest/agents/) calls the KB's search functions as tools to discover the relevant schema, then generates and runs SQL. Best for open-ended, conversational analytics.
+- Application-driven: your application calls [`aidb.search_semantic_aliases()`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/#finding-an-alias) and [`aidb.execute_semantic_alias()`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/#running-an-alias) to resolve a question to a reviewed, parameterized query. Best for recurring questions that need deterministic, governed answers.
+
+## The workflow
+
+```
+   "Which customers        ┌───────────────────────┐
+    spent the most   ─────▶│  agent (pg_agent)     │
+    last quarter?"         └───────────┬───────────┘
+                                       │ 1. discover schema
+                                       ▼
+                           ┌───────────────────────┐
+                           │  semantic_kb_search   │  schema entities
+                           │  (+ get_metadata, …)  │  + matching aliases
+                           └───────────┬───────────┘
+                                       │ 2. generate SQL grounded in the results
+                                       ▼
+                           ┌───────────────────────┐
+                           │  run_sql_query        │  execute read-only SQL
+                           └───────────┬───────────┘
+                                       ▼
+                                   answer rows
+```
+
+1. Discover: the agent calls `semantic_kb_search` (and the narrower functions as needed) to retrieve the exact tables, columns, and comments the question maps to, plus any [semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/) that already match, which appear in the results with `source_type = 'alias'`.
+
+2. Find the join: when the discovered tables don't share a direct foreign key, the agent still needs a route between them. [Relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/) records that route — how tables join, in which direction, and with what confidence — so the agent can find it instead of guessing at it.
+
+3. Generate, grounded: the agent writes SQL against the retrieved definitions and join routes. Generating against real schema context (actual column names, types, comments, and join paths) is far more accurate than generating against table names alone.
+
+4. Run: the agent executes the SQL with `run_sql_query` and returns the rows.
+
+To build such an agent, give it the semantic KB tools when you create it. See [Creating agents](https://www.enterprisedb.com/docs/aidb/latest/agents/creating-agents/) and the [tool catalog](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/#semantic-knowledge-bases).
+
+## Agents as the text-to-SQL engine
+
+The semantic KB search functions are registered as native [agent tools](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/#semantic-knowledge-bases). An agent given these tools can, on its own, find the tables and columns a question maps to and then write SQL grounded in them. The tools it draws on:
+
+| Tool                                                                                                                                                                                                                                                                                                                                                                                                                             | Role in text-to-SQL                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [`semantic_kb_search`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-everything-at-once)                                                                                                                                                                                                                                                                                           | One ranked list of the schema entities, relationships, and any matching aliases relevant to the question. |
+| [`get_metadata`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-all-schema-metadata) / [`get_entity_definitions`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-tables-and-views-only) / [`get_column_definitions`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-for-lean-definitions) | Narrower schema lookups when the agent needs only tables, only columns, or lean definitions.              |
+| [`search_by_comment`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-your-documentation)                                                                                                                                                                                                                                                                                            | Finds entities through the intent captured in `COMMENT ON` text.                                          |
+| [`list_relationships`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#verifying-what-the-crawl-found)                                                                                                                                                                                                                                                                                     | Lists the known joins for a table, with cardinality and nullability.                                      |
+| [`find_join_path`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#finding-a-join-route) / [`suggest_joins`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#finding-a-join-route)                                                                                                                                                                   | Finds a route between two tables that don't share a direct foreign key.                                   |
+| [`semantic_kb_subgraph`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#finding-the-joins-around-a-search)                                                                                                                                                                                                                                                                                    | Returns the join neighborhood around a search's hits in one call.                                         |
+| `run_sql_query`                                                                                                                                                                                                                                                                                                                                                                                                                  | Runs the read-only SQL the agent generates and returns the rows.                                          |
+
+All of these tools are read-only, so an agent can explore schema and join structure freely without any risk of a write.
+
+## When to reach for aliases instead
+
+Aliases are the deterministic counterpart to agent generation. A [semantic alias](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/) is a reviewed, parameterized `SELECT`, so it returns dependable results with no per-request generation to verify. Use aliases when:
+
+- The same question recurs and deserves one canonical query.
+- You need governed execution, where an alias runs as a single read-only `SELECT` and can run under a least-privilege role via `execute_role`.
+
+Aliases surface inside `semantic_kb_search` results, so an agent can see that a curated query exists for a question. Executing an alias, though, is done directly through `aidb.execute_semantic_alias()`. The alias functions are intentionally not agent tools.
+
+## How this compares to raw generation
+
+- Grounded, not guessed: the model sees the actual definitions and comments of the relevant relations, so it references columns that exist, with the right types.
+- Trusted answers accrue: every question you capture as an alias is one that no longer needs generation, shrinking the surface where a model might generate wrong SQL.
+- Read-only by construction: schema-search tools and aliases are all read-only, so the discovery and answer paths can't mutate data.
+
+## Next steps
+
+- Walk through the whole flow on a sample schema in the [example](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/example/).
+- Review the search functions in [Searching a semantic KB](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/), how tables join in [Relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/), and the alias functions in [Semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

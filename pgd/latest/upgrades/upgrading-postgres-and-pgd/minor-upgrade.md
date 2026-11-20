@@ -1,0 +1,227 @@
+---
+title: Performing a combined minor upgrade
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-postgres-and-pgd/minor-upgrade/
+lastModified: 2026-10-12T15:37:06+01:00
+---
+
+# Performing a combined minor upgrade
+
+Move both Postgres and PGD to a new minor version at the same time, using one of three approaches:
+[full downtime](#upgrading-with-full-downtime), a [rolling upgrade in
+place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
+nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes). Moving both Postgres and PGD to a new minor version at
+the same time means upgrading each node [in
+place](https://www.enterprisedb.com/docs/pgd/latest/upgrades/planning_upgrade/#upgrading-nodes-in-place) rather than replacing it:
+installing the new PGD packages built for your Postgres version also picks up the latest available Postgres
+minor version for it, so a single package install and restart covers both. No new data directory,
+`pg_upgrade`, or node join is needed, since neither a PGD nor a Postgres minor version upgrade changes the
+on-disk format.
+
+> **Warning**
+>
+> PGD 6.5.0 requires EDB Postgres Extended or EDB Postgres Advanced Server 14.24, 15.19, 16.15,
+> 17.11, or 18.6. This requirement doesn't apply to community Postgres. See [PGD
+> compatibility](https://www.enterprisedb.com/docs/pgd/latest/overview/compatibility/#pgd-compatibility-with-postgres-versions) for
+> version requirements.
+
+> **Warning**
+>
+> If you're upgrading community Postgres to 14.24, 15.19, 16.15, 17.11, or 18.6, add `bdr` to the
+> `output_plugin_libraries` parameter before you start Postgres on the new version, or PGD's
+> replication slots stop working. EDB Postgres Extended and EDB Postgres Advanced Server already
+> include `bdr` by default starting with the matching minor version, so no action is needed there.
+> This step isn't needed for the [replace-nodes
+> approach](#upgrading-with-a-rolling-upgrade-by-replacing-nodes), since [`pgd node
+> setup`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) adds `bdr` automatically.
+
+## Upgrading with full downtime
+
+Choose this approach when a maintenance window is acceptable and finishing quickly matters more than
+staying online. See [Choosing between a rolling and full-downtime
+upgrade](https://www.enterprisedb.com/docs/pgd/latest/upgrades/planning_upgrade/#choosing-between-a-rolling-and-full-downtime-upgrade) for
+the trade-offs against the two rolling approaches described below.
+
+1. Stop Postgres on every node:
+
+   ```shell
+   sudo systemctl stop postgres
+   ```
+
+   You can run this step one node at a time, but you must wait for each node to shut down cleanly before
+   moving to the next. Monitor progress with `sudo journalctl -u postgres -f`.
+
+2. If you're upgrading to a Postgres minor version that introduces the `output_plugin_libraries`
+   parameter (14.24, 15.19, 16.15, 17.11, or 18.6), add `bdr` to it in `postgresql.conf` on every
+   node now, while Postgres is stopped:
+
+   ```
+   output_plugin_libraries = 'pgoutput, test_decoding, bdr'
+   ```
+
+   Don't start Postgres again until after the next step, since the old version fails to start with
+   an unrecognized parameter.
+
+3. Install the new combined PGD and Postgres packages for your Postgres version on every node, for
+   example:
+
+   ### Debian/Ubuntu
+
+   ```shell
+   sudo apt update
+   sudo apt install --only-upgrade edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### CentOS/RHEL
+
+   ```shell
+   sudo dnf upgrade -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### SLES
+
+   ```shell
+   sudo zypper refresh
+   sudo zypper -n update edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   Replace `<distribution>` with `pg` for community Postgres, `pgextended` for EDB Postgres Extended, or
+   `epas` for EDB Postgres Advanced Server. For example, the package for EDB Postgres Advanced Server 17 is
+   `edb-pgd6-expanded-epas17`. For details on package naming, see [Installing the database and
+   PGD](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/03-installing-database-and-pgd/).
+
+4. Start Postgres on every node:
+
+   ```shell
+   systemctl start postgres
+   ```
+
+   Both PGD and Postgres upgrade to the new version on start.
+
+5. Confirm the new versions took effect on every node:
+
+   ```sql
+   SELECT bdr.bdr_version();
+   SHOW server_version;
+   ```
+
+6. Check `pgd nodes list` for overall cluster health.
+
+## Upgrading with a rolling upgrade, in place
+
+For each node, one at a time:
+
+1. Fence the node, so it can't become the write leader until the upgrade is complete:
+
+   ```shell
+   pgd node <node_name> set-option route_fence true
+   ```
+
+2. Stop Postgres:
+
+   ```shell
+   sudo systemctl stop postgres
+   ```
+
+   Monitor progress with `sudo journalctl -u postgres -f`.
+
+3. If you're upgrading to a Postgres minor version that introduces the `output_plugin_libraries`
+   parameter (14.24, 15.19, 16.15, 17.11, or 18.6), add `bdr` to it in `postgresql.conf` now,
+   while Postgres is stopped:
+
+   ```
+   output_plugin_libraries = 'pgoutput, test_decoding, bdr'
+   ```
+
+   Don't start Postgres again until after the next step, since the old version fails to start with
+   an unrecognized parameter.
+
+4. Install the new combined PGD and Postgres packages for your Postgres version, for example:
+
+   ### Debian/Ubuntu
+
+   ```shell
+   sudo apt update
+   sudo apt install --only-upgrade edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### CentOS/RHEL
+
+   ```shell
+   sudo dnf upgrade -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### SLES
+
+   ```shell
+   sudo zypper refresh
+   sudo zypper -n update edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+5. Start Postgres. Both PGD and Postgres upgrade to the new version on start:
+
+   ```shell
+   systemctl start postgres
+   ```
+
+6. Unfence the node, then confirm it's healthy before moving to the next one:
+
+   ```shell
+   pgd node <node_name> set-option route_fence false
+   ```
+
+7. Confirm the new versions took effect on the node:
+
+   ```sql
+   SELECT bdr.bdr_version();
+   SHOW server_version;
+   ```
+
+Check your [monitoring](https://www.enterprisedb.com/docs/pgd/latest/lifecycle/monitoring/) as usual after upgrading a node.
+
+> **Note**
+>
+> Sometimes more steps, like reindexing, are recommended for specific minor version upgrades. Refer to the
+> [release notes](https://www.postgresql.org/docs/current/release.html) of the version of Postgres you're
+> upgrading to.
+
+## Upgrading with a rolling upgrade, by replacing nodes
+
+Instead of upgrading a node in place, join a new node that already has the new combined PGD and Postgres
+minor versions installed, then part and drop one of the existing nodes. Use this approach if you're also
+replacing hardware or a base image at the same time as the minor version bump.
+
+1. [Provision a new node](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/03-installing-database-and-pgd/) with the
+   new combined PGD and Postgres minor version packages already installed.
+
+2. Join the new node to the cluster using a logical join:
+
+   ```shell
+   pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
+   ```
+
+   Don't use `bdr_init_physical`, it requires the source and joining node to run the same PGD version, so
+   it can't be used across a version change. See the [`pgd node
+   setup`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of
+   options.
+
+3. Wait for the new node to catch up with the cluster before routing traffic to it, then confirm it's
+   healthy:
+
+   ```shell
+   pgd nodes list
+   ```
+
+4. Update your application's connection configuration to include the new node once it's ready to take
+   traffic.
+
+5. Part one of the existing nodes, then decommission it:
+
+   ```shell
+   pgd node <node_name> part
+   ```
+
+6. Repeat for each remaining node, one at a time, until the whole cluster is on the new version.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

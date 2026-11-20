@@ -1,0 +1,171 @@
+---
+title: Installing EDB Postgres Advanced Server on RHEL 9 or OL 9 x86_64
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/installing/linux_x86_64/epas_rhel_9/
+lastModified: 2026-11-06T11:51:37+01:00
+---
+
+# Installing EDB Postgres Advanced Server on RHEL 9 or OL 9 x86\_64
+
+## Prerequisites
+
+Before you begin the installation process:
+
+- Set up the EDB repository.
+
+  Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+  To determine if your repository exists, enter:
+
+  `dnf repolist | grep enterprisedb`
+
+  If no output is generated, the repository is installed.
+
+  To set up the EDB repository:
+
+  1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+
+  2. Select the button that provides access to the EDB repository.
+
+  3. Select the platform and software that you want to download.
+
+  4. Follow the instructions for setting up the EDB repository.
+
+- Install the EPEL repository:
+
+  ```shell
+  sudo dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+  ```
+
+- If you are also installing PostGIS, enable additional repositories to resolve dependencies:
+
+  ```shell
+  ARCH=$( /bin/arch ); subscription-manager repos --enable "codeready-builder-for-rhel-9-${ARCH}-rpms"
+  ```
+
+  > **Note**
+  >
+  > If you are using a public cloud RHEL image, `subscription manager` may not be enabled and enabling it may incur unnecessary charges. Equivalent packages may be available under a different name such as `codeready-builder-for-rhel-9-rhui-rpms`. Consult the documentation for the RHEL image you are using to determine how to install `codeready-builder`.
+
+- Before you install or upgrade, if the `enterprisedb` OS user on this host is managed by Active Directory (sssd or winbind) or LDAP, see [Installing on hosts where the enterprisedb user is managed by AD or LDAP](https://www.enterprisedb.com/docs/epas/17/installing/sysusers_ad_ldap/).
+
+## Install the package
+
+```shell
+sudo dnf -y install edb-as<xx>-server
+```
+
+Where `<xx>` is the version of the EDB Postgres Advanced Server you're installing. For example, if you're installing version 17, the package name is `edb-as17-server`.
+
+To install an individual component:
+
+```shell
+sudo dnf -y install <package_name>
+```
+
+Where `package_name` can be any of the available packages from the [available package list](https://www.enterprisedb.com/docs/epas/17/installing/linux_install_details/rpm_packages/).
+
+See [excluding/including the packages](https://www.enterprisedb.com/docs/epas/17/installing/linux_install_details/managing_an_advanced_server_installation/exclude_include_packages/) to exclude or include an individual package while installing the EDB Postgres Advanced Server.
+
+Installing the server package creates an operating system user named enterprisedb. The user is assigned a user ID (UID) and a group ID (GID). The user has no default password. Use the `passwd` command to assign a password for the user. The default shell for the user is `bash`, and the user's home directory is `/var/lib/edb/as17`.
+
+## Initial configuration
+
+Getting started with your cluster involves logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password.
+
+First, you need to initialize and start the database cluster. The `edb-as-17-setup` script creates a cluster in Oracle-compatible mode with the `edb` sample database in the cluster. To create a cluster in Postgres mode, see [Initializing the cluster in Postgres mode](https://www.enterprisedb.com/docs/epas/17/installing/linux_install_details/managing_an_advanced_server_installation/specifying_cluster_options/#initializing-the-cluster-in-postgres-mode).
+
+```shell
+sudo PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as17/bin/edb-as-17-setup initdb
+
+sudo systemctl start edb-as-17
+```
+
+To work in your cluster, log in as the enterprisedb user. Connect to the database server using the psql command-line client. Alternatively, you can use a client of your choice with the appropriate connection string.
+
+```shell
+sudo su - enterprisedb
+
+psql edb
+```
+
+The server runs with the `peer` or `ident` permission by default. You can change the authentication method by modifying the `pg_hba.conf` file.
+
+Before changing the authentication method, assign a password to the database superuser, enterprisedb. For more information on changing the authentication, see [Modifying the pg\_hba.conf file](https://www.enterprisedb.com/docs/epas/17/database_administration/01_configuration_parameters/01_setting_new_parameters/#modifying-the-pg_hbaconf-file).
+
+```sql
+ALTER ROLE enterprisedb IDENTIFIED BY password;
+```
+
+## Experiment
+
+Now you're ready to create and connect to a database, create a table, insert data in a table, and view the data from the table.
+
+First, use psql to create a database named `hr` to hold human resource information.
+
+```sql
+# running in psql
+CREATE DATABASE hr;
+```
+
+```output title="Output"
+CREATE DATABASE
+```
+
+Connect to the `hr` database inside psql:
+
+```
+\c hr
+```
+
+```output title="Output"
+psql (17.0.0, server 17.0.0)
+You are now connected to database "hr" as user "enterprisedb".
+```
+
+Create columns to hold department numbers, unique department names, and locations:
+
+```
+CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk
+PRIMARY KEY, dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc
+varchar(13));
+```
+
+```output title="Output"
+CREATE TABLE
+```
+
+Insert values into the `dept` table:
+
+```
+INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
+```
+
+```output title="Output"
+INSERT 0 1
+```
+
+```
+INSERT into dept VALUES (20,'RESEARCH','DALLAS');
+```
+
+```output title="Output"
+INSERT 0 1
+```
+
+View the table data by selecting the values from the table:
+
+```
+SELECT * FROM dept;
+```
+
+```output title="Output"
+deptno  |   dname    |   loc
+--------+------------+----------
+10      | ACCOUNTING | NEW YORK
+20      | RESEARCH   | DALLAS
+(2 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

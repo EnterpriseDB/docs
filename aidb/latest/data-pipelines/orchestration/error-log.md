@@ -1,0 +1,286 @@
+---
+title: Pipeline error log
+description: Inspect, clear, and retry failed pipeline records using the per-pipeline error log in EDB Postgres AI.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/error-log/
+lastModified: 2026-11-02T12:47:22+05:30
+---
+
+# Pipeline error log
+
+Each pipeline has an error log table. When a record fails at any step, the log captures the source record ID, which step failed, the operation type, and the error message. The rest of the batch keeps processing.
+
+## How it works
+
+- When a record fails, it's logged to `{source_schema}.pipeline_{pipeline_name}_errors` with the source ID, failing step number, operation type, and error message.
+- A single bad record doesn't block the pipeline. Other records in the batch continue through all remaining steps.
+- The error log table is created with the pipeline and dropped when the pipeline is deleted. Pipelines created before 7.2.0 get their table during the upgrade.
+- Writes happen inside the failing step's transaction, so a successful step never leaves orphan log rows and a failure never loses its record.
+- The log keeps one row per failing source record, part, step, and operation, and one row per step and operation for pipeline-level errors. When the same failure happens again, even from two executors at once, AIDB updates that row instead of adding one:
+  - `error_message`, `error_category`, and `last_seen_at` take the latest values.
+  - `failed_at`, `retry_count`, and `last_retry_at` reset only when the message or category changes, so they describe the current error.
+- Each logged error also emits a Postgres `WARNING`. Toggle with [`aidb.pipeline_error_warnings`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbpipeline_error_warnings); errors persist to the log regardless.
+- The query and summary functions return empty results for any pipeline whose error log table is missing.
+- Don't drop the error log table manually. As of 7.4.0, the source `DELETE` handlers and post-step cleanup raise an error if the table is missing.
+- Errors get one of four `error_category` values (see [`aidb.ErrorBlocking`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidberrorblocking)):
+
+| Category            | Scope    | Blocks pipeline? | Description                                                                                           |
+| ------------------- | -------- | ---------------- | ----------------------------------------------------------------------------------------------------- |
+| `RecordTemporary`   | Record   | No               | Transient failure for a single record. May succeed on retry.                                          |
+| `RecordPermanent`   | Record   | No               | Permanent failure for a single record (for example, corrupt data).                                    |
+| `PipelineTemporary` | Pipeline | Yes              | Transient failure that stopped the entire step (for example, a service outage). May resolve on retry. |
+| `PipelinePermanent` | Pipeline | Yes              | Permanent failure that stopped the entire step (for example, invalid model config).                   |
+
+Record-level errors don't block the pipeline; other records keep processing. Pipeline-level errors block the entire step. Temporary errors may resolve on retry; permanent errors point to bad data or misconfiguration. Specifically: `RecordTemporary` currently fires only for model rate-limit errors, `RecordPermanent` covers bad input data (for example, corrupt PDF, malformed HTML, invalid UTF-8), `PipelineTemporary` covers transient external faults (for example, object store outage, model service timeout), and `PipelinePermanent` is the general case for misconfiguration (for example, deleted model, invalid step config).
+
+## Querying errors
+
+Use `aidb.get_error_logs()` to inspect a pipeline's error log.
+
+```sql
+SELECT * FROM aidb.get_error_logs('my_pipeline');
+
+```
+
+```output title="Output"
+ id | source_id | part_ids | pipeline_step | step_operation | error_message                          | error_category    | failed_at                  | retry_count | last_retry_at | last_seen_at
+----+-----------+----------+---------------+----------------+----------------------------------------+-------------------+----------------------------+-------------+---------------+----------------------------
+  3 | doc_99    | {0,2}    |             2 | ChunkText      | text segment exceeded maximum length   | RecordPermanent   | 2026-04-10 14:32:01.123+00 |           0 |               | 2026-04-10 14:32:01.123+00
+  2 | doc_42    | {0}      |             1 | ParsePdf       | failed to extract text from page 0     | RecordPermanent   | 2026-04-10 14:31:58.456+00 |           0 |               | 2026-04-10 14:31:58.456+00
+  1 | doc_7     |          |             1 | ParsePdf       | corrupt PDF header                     | RecordPermanent   | 2026-04-10 14:31:55.789+00 |           0 |               | 2026-04-10 14:31:55.789+00
+(3 rows)
+```
+
+Filter by source record, step number, or error category:
+
+```sql
+SELECT * FROM aidb.get_error_logs(
+    'my_pipeline',
+    p_source_id => 'doc_42'
+);
+```
+
+```sql
+SELECT * FROM aidb.get_error_logs(
+    'my_pipeline',
+    p_pipeline_step  => 1::SMALLINT,
+    p_error_category => 'RecordPermanent'
+);
+```
+
+Paginate with `p_limit` and `p_offset`:
+
+```sql
+SELECT * FROM aidb.get_error_logs('my_pipeline', p_limit => 20, p_offset => 40);
+```
+
+See the [Operations reference](https://www.enterprisedb.com/docs/aidb/latest/reference/operations/#aidbget_error_logs) for full parameter and return type details.
+
+## Error summaries
+
+Get error counts grouped by step, operation, and category for one pipeline:
+
+```sql
+SELECT * FROM aidb.get_error_log_summary('my_pipeline');
+
+```
+
+```output title="Output"
+ pipeline_step | step_operation | error_category    | error_count | latest_failed_at
+---------------+----------------+-------------------+-------------+----------------------------
+             1 | ParsePdf       | RecordPermanent   |           2 | 2026-04-10 14:31:58.456+00
+             2 | ChunkText      | RecordPermanent   |           1 | 2026-04-10 14:32:01.123+00
+(2 rows)
+```
+
+Or get the same rollup across all pipelines at once:
+
+```sql
+SELECT * FROM aidb.get_all_error_summaries();
+
+```
+
+```output title="Output"
+ pipeline_name | pipeline_step | step_operation | error_category    | error_count | latest_failed_at
+---------------+---------------+----------------+-------------------+-------------+----------------------------
+ my_pipeline   |             1 | ParsePdf       | RecordPermanent   |           2 | 2026-04-10 14:31:58.456+00
+ my_pipeline   |             2 | ChunkText      | RecordPermanent   |           1 | 2026-04-10 14:32:01.123+00
+ pdf_ingester  |             1 | ParsePdf       | PipelinePermanent |           1 | 2026-04-10 15:00:12.000+00
+(3 rows)
+```
+
+See the [Operations reference](https://www.enterprisedb.com/docs/aidb/latest/reference/operations/#aidbget_error_log_summary) and [`aidb.get_all_error_summaries`](https://www.enterprisedb.com/docs/aidb/latest/reference/operations/#aidbget_all_error_summaries) for full parameter and return type details.
+
+## Requeuing failed records
+
+New in 7.5.0. `aidb.requeue_pipeline_errors()` deletes the targeted record-level error rows and marks their source records dirty on the pipeline's state surface. The next normal run re-processes them; the call itself does no processing.
+
+```sql
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[1, 2, 99]);
+
+```
+
+```output title="Output"
+ error_id | action
+----------+------------------------
+        1 | requeued
+        2 | requeued
+       99 | not_found
+(3 rows)
+```
+
+Results are ordered by ascending `error_id`. Each row reports one of three actions:
+
+- `requeued`: record-level row deleted and source marked dirty. Table sources enqueue a state event; volume sources set a one-shot `retry_requested_at` marker on the state row.
+- `skipped_pipeline_level`: the entry has a NULL `source_id` (see below) and is left in place.
+- `not_found`: the id was absent from the error log, or the pipeline has no error log table (legacy pipelines or `Empty` sources like Semantic KB).
+
+Background pipelines drain requeued rows automatically on the next worker tick. Disabled or Live pipelines need a follow-up `aidb.run_pipeline('my_pipeline')` to actually re-process.
+
+Requeue is a deferred mark-dirty operation, not a synchronous retry. The call itself does no processing, so per-record success or failure only surfaces after the follow-up run. To confirm what happened after re-processing, re-query `aidb.get_error_logs`.
+
+Concurrent requeues on overlapping ids serialize on per-row `FOR UPDATE` locks. Non-overlapping id sets proceed in parallel. Requeue doesn't block `aidb.run_pipeline` or the background worker.
+
+### Pipeline-level errors
+
+Pipeline-level errors (NULL `source_id`) record batch failures that aren't tied to a specific record. They can't be requeued per record, so `aidb.requeue_pipeline_errors` returns `action='skipped_pipeline_level'` and leaves the entry in the log:
+
+```sql
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[7]);
+```
+
+```output title="Output"
+ error_id |         action
+----------+------------------------
+        7 | skipped_pipeline_level
+(1 row)
+```
+
+Fix the underlying issue (for example, model availability, config, deleted model) and re-run the pipeline. The NULL row clears automatically once the step next executes without any errors. To dismiss it without re-running, use `aidb.clear_error_logs`.
+
+### Disabled-mode volume caveat
+
+On a Disabled-mode pipeline with a volume source, `aidb.requeue_pipeline_errors` sets the `retry_requested_at` marker on the marked files but can't schedule a drain, so it emits a `NOTICE` pointing at `aidb.run_pipeline`. Manual `aidb.run_pipeline` re-reads the whole volume rather than only the marked files, which costs a full-volume scan on large volumes.
+
+For large Disabled-mode volumes, switch the pipeline to Background mode, call `aidb.requeue_pipeline_errors`, let the worker drain the marked files, then switch the pipeline back to Disabled.
+
+See the [Operations reference](https://www.enterprisedb.com/docs/aidb/latest/reference/operations/#aidbrequeue_pipeline_errors) for full parameter and return type details.
+
+## Clearing errors
+
+Delete specific error log entries by ID:
+
+```sql
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 3]);
+
+```
+
+```output title="Output"
+ clear_error_logs
+------------------
+                2
+(1 row)
+```
+
+Returns the number of deleted rows. Clearing is ID-based; review entries with `get_error_logs()` before removing them.
+
+See the [Operations reference](https://www.enterprisedb.com/docs/aidb/latest/reference/operations/#aidbclear_error_logs) for full parameter and return type details.
+
+## Automatic cleanup
+
+Error log entries clear without `aidb.clear_error_logs` or `aidb.requeue_pipeline_errors` in three cases:
+
+- Source record deleted. The live `DELETE` trigger, background worker `DELETE` processing, and volume stale-state cleanup all remove matching error log entries alongside their destination rows.
+- Source envelope reaches the destination on a later run. The pipeline executor clears entries scoped by `(source_id, part_ids)` so part-granular successes don't wipe sibling errors.
+- Pipeline-level rows (NULL `source_id`) for a step clear after that step next runs cleanly. Errors written by a concurrent failing executor during that run are preserved.
+
+Pipeline deletion drops the entire error log table.
+
+## Pipeline status integration
+
+Error counts also appear in the [`aidb.pipeline_metrics`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbpipeline_metrics) view. The pipeline status reflects error severity:
+
+- `PartialErrors`: some records failed; the rest processed normally.
+- `BlockingErrors`: a pipeline-level error stopped the step entirely.
+
+See [Observability](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/observability/) for more on monitoring pipeline health.
+
+## End-to-end example
+
+A short walkthrough using a three-document source where one row has a corrupt PDF, one parses but produces an oversized chunk, and a third hits a model rate limit on the embedding step.
+
+Run the pipeline. None of the three failures abort the batch. Then inspect the resulting errors:
+
+```sql
+SELECT aidb.run_pipeline('my_pipeline');
+
+SELECT id, source_id, error_category
+FROM aidb.get_error_logs('my_pipeline');
+```
+
+```output title="Output"
+ id | source_id | error_category
+----+-----------+-----------------
+  3 | doc_200   | RecordTemporary
+  2 | doc_42    | RecordPermanent
+  1 | doc_7     | RecordPermanent
+(3 rows)
+```
+
+The pipeline now reports `PartialErrors` and surfaces the counts:
+
+```sql
+SELECT pipeline, "Status", "count(record errors)", "count(blocking errors)"
+FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
+```
+
+```output title="Output"
+   pipeline   |    Status     | count(record errors) | count(blocking errors)
+--------------+---------------+----------------------+------------------------
+ my_pipeline  | PartialErrors |                    3 |                      0
+(1 row)
+```
+
+After fixing the upstream rate-limit issue, requeue the rate-limited row. This marks the source dirty; it doesn't re-process on its own:
+
+```sql
+SELECT * FROM aidb.requeue_pipeline_errors('my_pipeline', ARRAY[3]);
+```
+
+```output title="Output"
+ error_id |  action
+----------+----------
+        3 | requeued
+(1 row)
+```
+
+Drain the requeued row — a Background pipeline picks this up automatically; Disabled or Live pipelines need an explicit call — then dismiss the two permanent failures after triage:
+
+```sql
+SELECT aidb.run_pipeline('my_pipeline');
+
+SELECT aidb.clear_error_logs('my_pipeline', ARRAY[1, 2]);
+```
+
+```output title="Output"
+ clear_error_logs
+------------------
+                2
+(1 row)
+```
+
+The status returns to `UpToDate`:
+
+```sql
+SELECT pipeline, "Status" FROM aidb.pipeline_metrics WHERE pipeline = 'my_pipeline';
+```
+
+```output title="Output"
+   pipeline   |  Status
+--------------+----------
+ my_pipeline  | UpToDate
+(1 row)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

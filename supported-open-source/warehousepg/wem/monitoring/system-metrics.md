@@ -1,0 +1,60 @@
+---
+title: Visualizing hardware performance
+description: Track physical host metrics, identifying resource bottlenecks, and correlating hardware spikes with database activity.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/monitoring/system-metrics/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Visualizing hardware performance
+
+Maintain peak system health and identify resource saturation by monitoring hardware and database telemetry across the WarehousePG (WHPG) cluster. Use the **System Metrics** panel on the left sidebar to diagnose performance degradation, evaluate host health, and perform long-term capacity planning.
+
+> **Note**
+>
+> Most charts on this page read from ClickHouse, populated by each node's OTel Collector. See [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/) if it isn't set up yet. The live **Connection & Query Metrics** snapshot and **Database Statistics** table query WEM's WHPG connection directly instead, so they still work even when ClickHouse isn't configured. If the ClickHouse-backed charts are empty, see [WEM is unable to connect to the configured ClickHouse instance](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/troubleshooting/#issue-wem-is-unable-to-connect-to-the-configured-clickhouse-instance).
+
+### Selecting a time range
+
+Use the date-range picker at the top of the **System Metrics** page to control the time window displayed across all charts and tables. Select a preset (such as Last one hour or Last seven days) or enter a custom start and end date. All charts update simultaneously when you apply a new range.
+
+### Identifying and resolving real-time hardware bottlenecks
+
+Detect immediate hardware saturation that may be impacting query response times with the **System Metrics** tab.
+
+Use the filter at the top of the tab to isolate CPU, memory, and disk metrics for a specific host. The filter is useful when a cluster-wide chart shows elevated resource use but you need to pinpoint which node is responsible.
+
+- Check the **CPU Usage % Over Time (Per Host)** chart to identify if specific nodes are hitting 100% utilization. If one node is consistently higher than others, investigate the data distribution for skew issues that are overloading a single segment host.
+- Compare the **Available Memory** and **Cached Memory** metrics. If the available memory is low and cached is also shrinking, the OS is under pressure and might be swapping. Reduce concurrent workloads or increase memory allocation to prevent significant performance degradation.
+- Review the **Disk I/O** and **Network Traffic** graphs. High disk read rates during unexpected times often indicate inefficient queries that are forcing full table scans instead of using indexes.
+- Observe the 1m, 5m, and 15m load averages. If the 15-minute load consistently exceeds the number of available CPU cores, the host is over-provisioned. Reschedule non-critical tasks to lower the OS-level queue.
+
+### Analyzing historical utilization and capacity trends
+
+Identify long-term patterns and prepare for cluster expansion by using the **Historical Trends** tab.
+
+- Compare average and peak usage for CPU and memory over the selected time range (from 1 hour up to 30 days). If your peak usage is steadily climbing toward your total capacity, plan for node expansion to maintain stability.
+- Review the **Per-Host Statistics** table. Use the **Std Dev** column to identify nodes that behave differently from the rest of the cluster. These metrics often indicate failing hardware or localized configuration issues that require manual intervention.
+- Use the **Combined I/O Activity** graph to determine if spikes in network traffic coincide with disk writes. This pattern usually points to massive data redistributions or heavy background maintenance tasks that must be scheduled during off-peak hours.
+- Track how individual database sizes change over time with the **Database Size Growth** chart. Use this chart to identify databases with unexpected growth rates and plan archiving or expansion accordingly.
+
+### Correlating database activity with physical resource load
+
+Use the **Database Metrics** tab to bridge the gap between SQL execution and physical resource consumption.
+
+- The **Connection & Query Metrics (Real-time)** section shows a live snapshot of cluster-wide session states: **Connections**, **Active**, **Idle**, **Blocked**, **Idle in Txn**, **Waiting**, **Long Running**, and **Total Queries**. These figures reflect the current state, not totals for the selected time period.
+- The **Long Running** count flags queries exceeding a configurable threshold (default 10 minutes). To adjust the threshold, use the control in the **Connection & Query Metrics** section or set the `LONG_RUNNING_THRESHOLD` environment variable.
+- Check the **Cache Hit %** column in the **Database Statistics** table for each database. If this number drops significantly below 90%, the data working set is too large for the current memory allocation. Increase memory or optimize queries to reduce reliance on slow disk reads.
+- Monitor the **Rollbacks** and **Deadlocks** columns in the **Database Statistics** table. A sudden spike in rollbacks often indicates application-level errors or network instability that requires coordination with your development team.
+- Review the **Database Sizes** table to compare current database sizes across the cluster, and use the **Query Activity Trend** chart to correlate query volume with resource consumption.
+
+### Responding to hardware-driven storage alerts
+
+If disk utilization metrics or historical trends indicate that storage is running low, perform these steps to restore headroom:
+
+- Navigate to the [**Database Objects**](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/performance/data-analysis/) panel to identify which specific tables are consuming the most space. Focus on those with the highest growth rates.
+- Investigate if tables or indexes have accumulated excessive bloat and run `VACUUM` against these tables to reclaim space.
+- Move older, less frequently accessed data to cold storage or an archival schema to free up primary disk space.
+- Consult your administrator to discuss hardware expansion or volume resizing if the current data growth is consistent and can't be mitigated by archiving or cleaning.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,61 @@
+---
+title: Upgrading with the graphical installer
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/installing/upgrading_replication_server/upgrading_with_gui_installer/
+lastModified: 2024-05-24T16:29:37+02:00
+---
+
+# Upgrading with the graphical installer
+
+<div id="upgrading_with_gui_installer" class="registered_link"></div>
+
+You can upgrade to Replication Server 7 using the graphical installer.
+
+1. Before starting the upgrade process, replicate any pending backlog of transactions on the publication tables.
+
+2. After all pending transactions are replicated to their target databases, stop the Replication Server 6.2.x publication server and subscription server. See [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) and [Registering a subscription server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/01_registering_subscription_server/#registering_subscription_server).
+
+3. Ensure the installation user has administrative permissions on the `XDB_HOME/xdata` folder. On Windows, you can do this by opening the Replication Server installation directory in Windows Explorer and selecting the xdata folder. When prompted, select **Continue** to enable the required permission.
+
+4. Install Replication Server 7. See [Installation and uninstallation](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/01_registering_subscription_server/#registering_subscription_server) for instructions on installing Replication Server, but note the differences described in the following steps.
+
+5. Following the acceptance of the license agreement, the Select Components screen appears but with the entries disabled. The old Replication Server components are replaced with the new ones in the old Replication Server’s directory location. Select **Next**.
+
+6. The Existing Installation screen confirms that an existing Replication Server installation was found. To proceed with the upgrade, select **Next**.
+
+7. On the Ready to Install screen, select **Next**.
+
+   The remaining screens that appear confirm completion of the installation process and allow you to exit from StackBuilder Plus.
+
+8. After installation completes, the publication server of the new Replication Server product is running, connected to the controller database used by Replication Server 6.2. The subscription server might be running at this point, which is an expected outcome of this process.
+
+9. Complete the publication server and subscription server configuration file setup.
+
+   In the `XDB_HOME/etc` directory, a new set of configuration files for Replication Server version 7 are created. These files are named `xdb_pubserver.conf.new` and `xdb_subserver.conf.new`. The new configuration files contain any new configuration options added for Replication Server 7.
+
+   The old configuration files used by Replication Server version 6.2.x remain unchanged as `xdb_pubserver.conf` and `xdb_subserver.conf`.
+
+   Merge the old and new configuration files so that the resulting active configuration files contain any new Replication Server 7 configuration options as well as any nondefault settings you used with the Replication Server 6.2.x and want to continue to use with Replication Server 7. The final set of active configuration files must be named `xdb_pubserver.conf` and `xdb_subserver.conf`.
+
+   In the `XDB_HOME/etc/sysconfig` directory, make sure the Replication Server startup configuration file `xdbReplicationServer-62.config` contains the parameter settings you want to use with Replication Server 7. See [Replication Server startup configuration file](https://www.enterprisedb.com/docs/eprs/latest/02_overview/03_replication_server_components_and_architecture/01_physical_components/#xdb_startup_conf_file) for more information.
+
+10. Restart the publication server and the subscription server. See [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) and [Registering a subscription server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/01_registering_subscription_server/#registering_subscription_server)).
+
+11. Check the publication server and subscription server log files to verify that no errors occurred (see [Publication and subscription server startup failures](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/02_resolving_problems/02_where_to_look_for_errors/#publication-and-subscription-server-startup-failures)).
+
+12. If necessary, adjust the publication server and subscription server port numbers.
+
+    The Replication Server 7 publication and subscription servers are installed to use the default port numbers `9051` and `9052`, respectively. If the Replication Server 6.2.x replication systems used port numbers other than `9051` and `9052`, then make the changes to correct this inconsistency as described in [Updating the publication and subscription server ports](https://www.enterprisedb.com/docs/eprs/latest/installing/upgrading_replication_server/updating_sub_and_pub_ports/).
+
+    If you don't need to adjust the port numbers, register the publication server and subscription server with the Replication Server console as described in [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) and [Registering a subscription server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/01_registering_subscription_server/#registering_subscription_server). The existing replication systems appear in the replication tree of the Replication Server Console.
+
+After upgrading and before using Replication Server, you need to download a JDBC driver and create a symlink to it (for Linux) or rename the driver (for Windows). See [Installing a JDBC driver](https://www.enterprisedb.com/docs/eprs/latest/installing/installing_jdbc_driver/) for more information.
+
+You're now ready to use Replication Server 7 to create new replication systems and manage existing ones.
+
+> **Note**
+>
+> **For Windows:** If you give a new admin password during an upgrade, it's ignored. After the upgrade, Replication Server picks the old admin user name and password, which is saved in `edb-replconf`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

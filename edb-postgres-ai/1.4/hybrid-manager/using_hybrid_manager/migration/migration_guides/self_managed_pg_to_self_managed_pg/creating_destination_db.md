@@ -1,0 +1,126 @@
+---
+title: Preparing your self-managed destination database
+description: Create a self-managed Postgres database and configure it with SSL and a CDC migration role to serve as the destination for your migration.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/creating_destination_db/
+lastModified: 2026-11-03T11:47:58+01:00
+---
+
+# Preparing your self-managed destination database
+
+Prepare your self-managed Postgres database to serve as the destination for your migration.
+
+If you already have a self-managed database you want to use as the destination, you can skip to [Configuring SSL](#configuring-ssl). Before proceeding, ensure that the tables you migrate and the load generated during migration won't interfere with existing workloads on the server.
+
+## Creating the destination database
+
+If you don't have a destination database yet, create one. This example assumes you have installed the Postgres database distribution of your choice and initialized the server.
+
+1. Connect to the destination Postgres server:
+
+   ```shell
+   psql -p <PG_PORT> -U <PG_USERNAME>
+   ```
+
+2. Create an empty database to use as the migration destination. In this example the destination database is `tr_target`:
+
+   ```sql
+   CREATE DATABASE tr_target;
+   ```
+
+## Configuring SSL
+
+Configure your destination Postgres server to accept SSL connections so the EDB DMS agent in writer mode can connect to it securely. To enable SSL, create a server certificate and a server private key (for example, with OpenSSL).
+
+The following example creates a self-signed certificate and key with OpenSSL for a PostgreSQL 17 server on Ubuntu. The bin and data directories may vary depending on your OS, [Postgres distribution](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/postgres_distributions/), and version.
+
+1. Generate an SSL certificate and key:
+
+   ```shell
+   openssl req -new -x509 -days 365 -nodes -out server.crt -keyout server.key
+   ```
+
+   Follow the terminal prompts to create the files.
+
+2. Move the created files to the Postgres data directory:
+
+   ```shell
+   sudo cp server.crt server.key /var/lib/postgresql/17/<data_directory>
+   ```
+
+3. Set the required permissions:
+
+   ```shell
+   sudo chmod 600 /var/lib/postgresql/17/<data_directory>/server.key
+   sudo chmod 600 /var/lib/postgresql/17/<data_directory>/server.crt
+   sudo chown postgres:postgres /var/lib/postgresql/17/<data_directory>/server.crt /var/lib/postgresql/17/<data_directory>/server.key
+   ```
+
+4. Enable SSL in `postgresql.conf`:
+
+   ```
+   ssl = on
+   ssl_cert_file = 'server.crt'
+   ssl_key_file = 'server.key'
+   ```
+
+5. Allow local SSL connections in `pg_hba.conf`:
+
+   ```
+   hostssl all             all             0.0.0.0/0               md5
+   ```
+
+6. Restart your server to apply the changes:
+
+   ```shell
+   /usr/lib/postgresql/17/bin/pg_ctl -D /var/lib/postgresql/17/<data_directory> restart
+   ```
+
+## Creating a migration role
+
+The EDB DMS agent in writer mode requires write access to the destination database. You can use an existing superuser or create a dedicated migration role. If you plan to enable [role, ownership, and privilege migration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migrating_roles_and_privileges/), use a superuser — creating roles on the destination cluster requires superuser privileges. Otherwise, a dedicated migration role is enough. This example creates a dedicated role:
+
+1. Create a role with login access:
+
+   ```sql
+   CREATE ROLE <MIGRATION_ROLE_WRITER> WITH LOGIN PASSWORD '<ROLE_PASSWORD>';
+   ```
+
+   Where `<MIGRATION_ROLE_WRITER>` is the name of the role to use for destination database access.
+
+2. Grant control over replication sessions:
+
+   ```sql
+   GRANT SET ON PARAMETER session_replication_role TO <MIGRATION_ROLE_WRITER>;
+   ```
+
+   > **Note**
+   >
+   > Granting control over replication sessions is supported only on Postgres 15 and later. If your destination database is on Postgres 14 or earlier, use a superuser instead.
+
+Supply this role to the DMS writer agent via the `DBCONFIG_DATABASES_0__USERNAME` and `DBCONFIG_DATABASES_0__PASSWORD` values when you configure it in the next steps.
+
+## Preparing for large object (LO) migration
+
+If you're migrating Postgres large objects (`LO_SNAPSHOT_ENABLED=true`), the destination needs a role matching each role that owns a large object on the source, so the migration can preserve ownership.
+
+1. On the source database, find which roles own large objects:
+
+   ```sql
+   SELECT DISTINCT lomowner::regrole FROM pg_largeobject_metadata;
+   ```
+
+2. On the destination database, create a role with the same name for each one returned:
+
+   ```sql
+   CREATE ROLE <role_name>;
+   ```
+
+   This role doesn't need `LOGIN` privileges or any grants — it only needs to exist so the writer can assign large object ownership.
+
+## Next step
+
+[Migrate schemas](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/migrating_schema/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

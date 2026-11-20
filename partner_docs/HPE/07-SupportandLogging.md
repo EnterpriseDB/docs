@@ -1,0 +1,45 @@
+---
+title: Support and logging details
+description: Details of the support process and logging information
+product: Partner Docs
+url: https://www.enterprisedb.com/docs/partner_docs/HPE/07-SupportandLogging/
+lastModified: 2023-08-01T11:47:42-04:00
+---
+
+# Support and logging details
+
+## Support
+
+Both EDB and HPE provide technical support for the use of these products. To get support, you must have a support contract in place at both EDB and HPE. You can open a support ticket with either vendor to start the process. If the support ticket shows that resources from the other vendor are required, open a support ticket with that vendor through normal support channels. This approach allows both companies to work together to help you as needed.
+
+## Logging
+
+The following log files are available.
+
+### EDB Postgres Advanced Server logs
+
+Navigate to the `Data` directory in your chosen EDB Postgres Advanced Server instance. From there, you can navigate to `log` or `current_logfiles`. Or, you can navigate to the `postgresql.conf` file, which you can use to customize logging options or enable `edb_audit` logs.
+
+An example of the full path to view EDB Postgres Advanced Server logs is `/var/lib/edb/as15/data/log`.
+
+### EDB Postgres Extended Server logs
+
+Navigate to the `Data` directory in your chosen EDB Postgres Extended Server instance. From there, you can navigate to `log`. Or, you can navigate to the `postgresql.conf` file, which you can use to customize logging options.
+
+An example of the full path to view EDB Postgres Extended logs is `/var/lib/edb-pge/15/data/log`.
+
+### PostgreSQL Server logs
+
+The default log directories for PostgreSQL logs depend on the operating system:
+
+- Debian-based system: `/var/log/postgresql/postgresql-x.x.main.log. X.x.`
+
+- Red Hat-based system: `/var/lib/pgsql/data/pg_log`
+
+- Windows: `C:\Program Files\PostgreSQL\9.3\data\pg_log`
+
+### HPE logs
+
+For HPE logging and support, contact the HPE Support team.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

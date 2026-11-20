@@ -1,0 +1,181 @@
+---
+title: Building local mirrors of the EDB repositories
+description: How to build local mirrors of the EDB repositories for local installations
+product: EDB repositories and downloading
+url: https://www.enterprisedb.com/docs/repos/working_with_repos/building_local_mirrors/
+lastModified: 2026-08-24T10:19:20+02:00
+---
+
+# Building local mirrors of the EDB repositories
+
+These instructions are for yum-based systems, such as RHEL, AlmaLinux, Rocky Linux, and other RPM packaged systems.
+
+## Create the local yum repository
+
+Install the packages `yum-utils` and `createrepo`:
+
+```
+dnf install yum-utils createrepo
+```
+
+Set up the enterprisedb repository on the server using the instructions in [Getting started using repositories with the CLI](https://www.enterprisedb.com/docs/repos/getting_started/with_cli/).
+
+Once the repository is configured, you can check the existence of the repository using `dnf repolist`.
+
+The output looks similar to:
+
+```bash
+[~]$ dnf repolist
+repo id repo name
+enterprisedb-enterprise enterprisedb-enterprise
+enterprisedb-enterprise-noarch enterprisedb-enterprise-noarch
+enterprisedb-enterprise-source enterprisedb-enterprise-source
+```
+
+After the successful setup of the repository that you want to mirror, you can use `dnf reposync` to copy the repository to a local directory. You can pass a number of useful options to `dnf reposync`:
+
+- **`--repoid`** — The repository id that can be found in the `dnf repolist` output.
+- **`--download-metadata`** — Bypass the step of having to run `createrepo`.
+- **`--arch`** — Filter the downloads to one or more specified architectures. Repeat this option to include more than one architecture in the same run.
+- **`--remote-time`** — Attempt to maintain the timestamp on the packages.
+- **`--newest-only`** — Download only the newest versions of the packages in the repository.
+- **`--download-path`** — Specify the path to download the files to.
+
+This example shows the use of `dnf reposync`. This example serves the repository `usign` on the apache server (`httpd`). It uses the download path of `/var/www/html/repos/<repoid>`, where `<repoid>` matches the repository id you're cloning.
+
+```
+sudo dnf reposync --repoid=enterprisedb-enterprise --download-metadata --arch=x86_64 --arch=noarch --remote-time --newest-only --download-path=/var/www/html/repos/
+```
+
+> **Note**
+>
+> You can pass `--arch` more than once in a single `reposync` run. Include `--arch=noarch` alongside your target architecture — some packages, such as architecture-independent Java-based packages, are published only as `noarch`, and omitting it silently leaves them out of your mirror.
+>
+> Alternatively, to mirror `noarch` packages on their own, sync the dedicated `enterprisedb-enterprise-noarch` repository ID separately (omit `--arch`, since `noarch` isn't tied to a CPU architecture):
+>
+> ```
+> sudo dnf reposync --repoid=enterprisedb-enterprise-noarch --download-metadata --remote-time --newest-only --download-path=/var/www/html/repos/
+> ```
+>
+> **Mirroring only specific packages instead of a whole repository?** Use `dnf repoquery --info <package-name>` to look up which repository ID a given package belongs to (including whether it's `noarch`) before you build your `reposync` command or package list. You can also browse and search a repository's package list directly from [EDB repositories](https://www.enterprisedb.com/repos-downloads) — see [Browsing/downloading repositories](https://www.enterprisedb.com/docs/repos/working_with_repos/directly/).
+
+After the command completes successfully, there are files in `/var/www/html/repos/enterprisedb-enterprise` (and `/var/www/html/repos/enterprisedb-enterprise-noarch`, if you synced it separately). By default, SELinux blocks access to these files. To enable httpd to access these files, you can either run `httpd` in permissive mode or change the SELinux context of the files.
+
+To change the SELinux context of the files:
+
+```bash
+chcon -R -t httpd_sys_content_t /var/www/html/repos/
+```
+
+To set httpd to permissive mode:
+
+```bash
+sudo systemctl stop httpd
+sudo chcon -t bin_t /usr/sbin/httpd
+sudo systemctl start httpd
+```
+
+You can now use a browser to view the directory. Using the terminal browser `lynx` (`dnf install lynx`), you can run:
+
+```bash
+lynx http://localhost/repos/enterprisedb-enterprise
+```
+
+The contents of the directory appear in the browser.
+
+### Viewing the web server from another system
+
+To view the web server from another system, you might need to open port 80 on the firewall.
+
+To do so, first check that the firewall is running:
+
+```bash
+sudo firewall-cmd --state
+```
+
+```output title="Output"
+running
+```
+
+Then open the port:
+
+```bash
+sudo firewall-cmd --permanent --add-port=80/tcp
+```
+
+```output title="Output"
+success
+```
+
+To apply the changes, reload the firewall:
+
+```bash
+sudo firewall-cmd --reload
+```
+
+```output title="Output"
+success
+```
+
+You can now access the web server from other systems, enabling its use as a mirror.
+
+## Using the locally managed yum repository
+
+To enable another host to install from the local mirror, you need to create a yum repository file in `/etc/yum.repos.d/edb_local.repo`. The contents can be as simple as this example:
+
+```
+[gpc-enterprisedb-enterprise]
+name=gpc-enterprisedb-enterprise
+baseurl=http://gpc/repos/enterprisedb-enterprise/
+repo_gpgcheck=0
+enabled=1
+gpgcheck=0
+sslverify=0
+pkg_gpgcheck=0
+autorefresh=1
+type=rpm-md
+```
+
+> **Note**
+>
+> If you also mirrored the `enterprisedb-enterprise-noarch` repository, add a second entry pointing to it so that hosts installing from your local mirror can see those packages too:
+>
+> ```
+> [gpc-enterprisedb-enterprise-noarch]
+> name=gpc-enterprisedb-enterprise-noarch
+> baseurl=http://gpc/repos/enterprisedb-enterprise-noarch/
+> repo_gpgcheck=0
+> enabled=1
+> gpgcheck=0
+> sslverify=0
+> pkg_gpgcheck=0
+> autorefresh=1
+> type=rpm-md
+> ```
+
+To test that the packages are available from the local server, use `dnf repo-pkgs {repoid} list`:
+
+```bash
+dnf repo-pkgs gpc-enterprisedb-enterprise list
+```
+
+```output title="Output"
+Last metadata expiration check: 0:01:12 ago on Thu Jul  4 12:43:56 2024.
+Available Packages
+SFCGAL.x86_64                                                 1.4.1-11.rhel9      gpc-enterprisedb-enterprise
+SFCGAL-devel.x86_64                                           1.4.1-11.rhel9      gpc-enterprisedb-enterprise
+SFCGAL-libs.x86_64                                            1.4.1-11.rhel9      gpc-enterprisedb-enterprise
+beacon-agent.x86_64                                           1.59.0-1            gpc-enterprisedb-enterprise
+edb-as12-advanced-storage-pack.x86_64                         1.0.3-1.el9         gpc-enterprisedb-enterprise
+edb-as12-advanced-storage-pack-debuginfo.x86_64               1.0.3-1.el9         gpc-enterprisedb-enterprise
+edb-as12-hdfs_fdw.x86_64                                      2.3.1-1.el9         gpc-enterprisedb-enterprise
+...
+```
+
+As you can see, the packages available are the ones available from the locally managed yum repository. You can use this repository like any other yum repository.
+
+## Maintaining the locally managed repository
+
+The locally managed repository needs relatively light maintenance. However, we recommend that you configure some mechanism to keep the locally managed yum repository up to date. The easiest option is to create a cron job that reruns your `reposync` command on a schedule — plus a second scheduled command for `enterprisedb-enterprise-noarch` (or any other repository ID) if you chose to mirror it separately.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

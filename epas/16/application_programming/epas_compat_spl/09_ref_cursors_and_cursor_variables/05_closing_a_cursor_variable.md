@@ -1,0 +1,58 @@
+---
+title: Closing a cursor variable
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/application_programming/epas_compat_spl/09_ref_cursors_and_cursor_variables/05_closing_a_cursor_variable/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# Closing a cursor variable
+
+<div id="closing_a_cursor_variable" class="registered_link"></div>
+
+Use the `CLOSE` statement described in [Closing a cursor](https://www.enterprisedb.com/docs/epas/16/application_programming/epas_compat_spl/08_static_cursors/04_closing_a_cursor/#closing_a_cursor) to release the result set.
+
+> **Note**
+>
+> Unlike static cursors, you don't have to close a cursor variable before you can reopen it. When you reopen it, the result set from the previous open is lost.
+
+This example includes the `CLOSE` statement:
+
+```sql
+CREATE OR REPLACE PROCEDURE emp_by_dept (
+    p_deptno        emp.deptno%TYPE
+)
+IS
+    emp_refcur      SYS_REFCURSOR;
+    v_empno         emp.empno%TYPE;
+    v_ename         emp.ename%TYPE;
+BEGIN
+    OPEN emp_refcur FOR SELECT empno, ename FROM emp WHERE deptno = p_deptno;
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    LOOP
+        FETCH emp_refcur INTO v_empno, v_ename;
+        EXIT WHEN emp_refcur%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE(v_empno || '     ' || v_ename);
+    END LOOP;
+    CLOSE emp_refcur;
+END;
+```
+
+The following is the output from this procedure:
+
+```sql
+EXEC emp_by_dept(20)
+```
+
+```output title="Output"
+EMPNO    ENAME
+-----    -------
+7369     SMITH
+7566     JONES
+7788     SCOTT
+7876     ADAMS
+7902     FORD
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

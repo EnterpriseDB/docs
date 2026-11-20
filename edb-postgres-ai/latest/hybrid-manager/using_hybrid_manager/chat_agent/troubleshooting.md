@@ -1,0 +1,136 @@
+---
+title: Troubleshooting the Chat Agent
+description: Common issues with the Hybrid Manager Chat Agent and how to resolve them — from a missing sparkle icon to permission errors and stalled responses.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/troubleshooting/
+lastModified: 2026-11-02T16:15:32+01:00
+---
+
+# Troubleshooting the Chat Agent
+
+Use these fixes to resolve common Hybrid Manager (HM) Chat Agent issues for users and administrators. If you don't see your issue here, contact EDB Support with the request-tracing ID shown in the HM console.
+
+## The sparkle icon doesn't appear
+
+Problem: the rainbow sparkle icon is missing from the HM header.
+
+Cause: the `chatbot` scenario isn't installed. Chat Agent is part of the `chatbot` scenario.
+
+Fix: check with your HM administrator that the `chatbot` scenario was selected at install or upgrade time. See [HM installation scenarios](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/#choosing-an-installation-scenario).
+
+## The sparkle icon is disabled with a tooltip
+
+Problem: the icon is visible but grayed out. Hovering shows a tooltip such as _The administrator needs to configure an available model to enable the Chat Agent_ — or another reason.
+
+**Cause 1:** no model is configured for Chat Agent. This happens when the `chatbot-model-creds` secret doesn't exist or contains no models.
+
+**Fix 1:** the administrator must create the `chatbot-model-creds` secret with at least one model. See [Configuring the models](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/configure/#configuring-the-models). To replace the models on an existing installation, see [Changing the models later](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/customizing_secrets/chatbot_secrets/#changing-the-models-later).
+
+**Cause 2:** the administrator created the `chatbot-model-creds` secret after Chat Agent had already started. HM restarts Chat Agent when the model settings in an existing secret change, but not when the secret is first created.
+
+**Fix 2:** the administrator can restart Chat Agent so that it reads the secret:
+
+```shell
+kubectl rollout restart deployment/upm-agent-proxy -n upm-agent-proxy
+```
+
+**Cause 3:** the Chat Agent service is unavailable.
+
+**Fix 3:** the tooltip includes a reason. Wait a moment and try again, or check with your administrator that the supporting HM workloads are healthy.
+
+## Generation stalls or fails
+
+Problem: the **Waiting…** placeholder bubble stays for a long time, or the response ends with `Request failed, please try again!`
+
+**Cause 1:** the configured model is unreachable or has reached a usage limit.
+
+**Fix 1:** try a different model from the model selector if more than one is configured. Otherwise, check the model provider's status, and confirm the endpoint URL and API key with your administrator.
+
+**Cause 2:** the prompt is too long. Each user message is capped at 10,240 characters.
+
+**Fix 2:** trim the prompt and retry.
+
+**Cause 3:** network egress is blocked.
+
+**Fix 3:** confirm that the HM cluster has outbound access to the model endpoint, including third-party provider APIs.
+
+**Cause 4:** the model rejects the configured default thinking level. Not every reasoning model accepts a per-request thinking-level setting, so the turn fails when one is passed.
+
+**Fix 4:** ask the administrator to remove the thinking-level settings for that model, or switch to a model that documents support for per-request thinking-level configuration. See [Setting model capabilities](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/configure/#setting-model-capabilities).
+
+## Chat Agent doesn't answer my question
+
+Problem: Chat Agent says it can only help with HM topics.
+
+Cause: Chat Agent answers only HM-related questions. Off-topic questions — general knowledge, math, creative writing, and other products — are out of scope.
+
+Fix: rephrase your question to be about your HM estate, an HM feature, or HM documentation.
+
+## Chat Agent says it can't perform an action
+
+Problem: Chat Agent reports a `403` or `not authorized` error and stops, or says you don't have permission to perform the action.
+
+Cause: Chat Agent runs as your user account. If you don't have the role to perform the action in the HM console, Chat Agent gets the same answer.
+
+Fix:
+
+- Confirm with an administrator that you hold the right organization or project role.
+- Check that you are a member of the project the action targets.
+- For action types that require approval workflow (such as some automation tasks), wait for an administrator to approve.
+
+See [Authorization model](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/security_and_data/#authorization-model).
+
+## Chat Agent doesn't see my cluster or project
+
+Problem: Chat Agent says it cannot find a project or cluster you know exists.
+
+**Cause 1:** you aren't a member of the project that owns the resource. Chat Agent only sees resources within projects you can access.
+
+**Fix 1:** ask an administrator to add you to the project.
+
+**Cause 2:** you misspelled the resource name. Resource names are unique within a project. Chat Agent resolves a name to an ID by listing the resources first, and a typo causes it to find no match.
+
+**Fix 2:** copy the resource name from the HM console and retry.
+
+## Chat Agent says a topic post-dates its knowledge
+
+Problem: Chat Agent says the topic you asked about is newer than its bundled documentation snapshot.
+
+Cause: each HM release ships with a snapshot of the official HM documentation, with a stamped knowledge cutoff date. Chat Agent reports when the documentation snapshot does not contain an answer.
+
+Fix: refer to the official EDB Hybrid Manager documentation site for newer information. To benefit from a fresher in-product snapshot, upgrade HM to a more recent release.
+
+## Chat Agent keeps asking follow-up questions
+
+Problem: Chat Agent keeps asking for more information before completing your request.
+
+Cause: some Chat Agent flows follow a predefined sequence of inputs to complete a specific task — Postgres Cluster lifecycle management is one example. When Chat Agent doesn't have all the required parameters, it keeps asking until it does, rather than guessing or proceeding with incomplete data.
+
+Fix: fill in the requested information to continue, or cancel the form or type an unrelated message in chat — the question clears.
+
+## Charts don't render in the response
+
+Problem: the response shows raw chart syntax or a malformed placeholder instead of a rendered chart.
+
+Cause: chart generation requires the model to emit precise structured output. Smaller models often struggle with the syntax and produce charts the renderer can't display.
+
+Fix: switch to a Large or Extra Large model from the model picker if your administrator configured more than one. Otherwise, ask the administrator to add a stronger model. See [Model strength tiers](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/configure/#model-strength-tiers).
+
+## Reduced capability
+
+Problem: Chat Agent doesn't offer cluster creation, doesn't ask structured follow-up questions, or doesn't start the full interactive flow you've seen before.
+
+Cause: Chat Agent capability scales with the strength of the configured model. A Small or Medium model handles fewer flows than a frontier model, and structured follow-up forms are only used when the model supports them.
+
+Fix: select a stronger model from the model picker if your administrator configured more than one, or ask the administrator to add a stronger model. See [Model strength tiers](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/configure/#model-strength-tiers).
+
+## Contacting support
+
+If the issue persists, capture these details before contacting [EDB Support](https://support.enterprisedb.com):
+
+- HM troubleshooting information — open **About** from the HM console footer and select **Copy troubleshooting information** to capture the version, build, scenarios, organization, session, and platform details.
+- The model and model provider in use, if known.
+- A copy of the prompt you sent and the response you received.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

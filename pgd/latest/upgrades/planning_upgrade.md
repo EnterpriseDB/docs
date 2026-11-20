@@ -1,0 +1,147 @@
+---
+title: Planning your upgrade
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/upgrades/planning_upgrade/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Planning your upgrade
+
+Plan your upgrade before you start, whether you're upgrading PGD, Postgres, or both together, and however
+your cluster is deployed.
+
+## Choosing between a rolling and full-downtime upgrade
+
+Upgrade your cluster with almost zero downtime using a rolling upgrade, where nodes are upgraded one by one and application connections are switched over to already-upgraded nodes. Applications stay up throughout, but the overall process takes longer, since each node needs fencing, upgrading, verifying, and unfencing before the next one starts, and the cluster runs mixed versions for the duration.
+
+Alternatively, stop every node, upgrade them all, and restart the cluster, the same approach you'd use with a [single-node Postgres setup](https://www.postgresql.org/docs/current/upgrading.html). Stopping everything at once avoids running with mixed versions, skips the per-node fencing and health checks a rolling upgrade needs, and often completes in less wall-clock time as a result, but the whole cluster is unavailable until every node comes back up.
+
+Pick a full-downtime upgrade when a maintenance window is acceptable and finishing quickly matters more than staying online, and a rolling upgrade when applications need continuous availability, even though the upgrade itself takes longer to complete.
+
+## Deciding how to upgrade each node during a rolling upgrade
+
+Upgrade each node in one of two ways during a rolling upgrade, whether you're upgrading PGD, Postgres, or
+both together.
+
+### Upgrading nodes in place
+
+Install the new software version directly on the existing node. No new data transfer is needed, but the node
+is briefly unavailable during the upgrade. During the upgrade, switch the application over to a node that
+isn't currently being upgraded to keep the database continuously available.
+
+### Replacing nodes
+
+Join a new node that already has the new version installed, then drop one of the existing nodes, instead of
+upgrading it in place. This approach leaves the existing node's software unchanged, at the cost of a
+full data transfer to the new node.
+
+## Preparing for a rolling upgrade
+
+Prepare for your cluster running mixed versions while the upgrade is in progress.
+
+### Handling mixed-version behavior
+
+A rolling upgrade upgrades nodes one at a time, so the cluster runs two versions of the software at once
+until every node reaches the newer release. During this time, replication and group management use the
+protocol and features of the oldest version present, so new features that need a protocol change stay
+disabled until every node is upgraded. The mixed-version state also affects the [WAL
+decoder](https://www.enterprisedb.com/docs/pgd/latest/advanced-functionality/decoding_worker/#enabling), if you use it: nodes on the newer
+version stop producing logical change records until every node reaches the same PGD version.
+
+Some features stay disabled until every node runs the newer version. For example, the write leader election from progress bids and the `route_writer_election_timeout` and `route_writer_election_quorum` options need all nodes on PGD 6.5.1 or later, because they require consensus protocol 6007. If you use Quorum Commit, enable [`route_writer_election_quorum`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes) as soon as the upgrade completes.
+
+Don't run more than two versions of the software at once. If you're planning back-to-back upgrades, for
+example a PGD major upgrade followed by a Postgres major upgrade, let the first one fully complete, with
+every node upgraded, before starting the next. You can use a rolling upgrade for a major version upgrade of
+the software, but not to change the Postgres variant, since mixing PostgreSQL, EDB Postgres Extended, and EDB
+Postgres Advanced Server within one cluster isn't supported.
+
+## Reducing risk during a rolling upgrade
+
+> **Warning**
+>
+> Downgrades aren't supported. They require you to manually rebuild the cluster.
+
+Back up the cluster before you start, so you have a way to recover if the upgrade fails.
+
+Minimize how long the cluster runs mixed versions. The longer a cluster runs mixed versions, the more likely
+you are to encounter issues, and the harder those issues are to diagnose and resolve. Upgrade during off-peak
+hours, over as short a period as you can.
+
+Monitor the cluster as you go, not just before you start. Rerun the checks in [Confirming your cluster is
+ready to upgrade](#confirming-your-cluster-is-ready-to-upgrade) after each node completes, so you catch
+problems before moving to the next node.
+
+Rehearse the upgrade in a separate test environment first, especially where additional caution is warranted
+to reduce business risk, and allow extra time for the upgrade.
+
+## Reviewing changes before you upgrade
+
+Each major release can include changes that affect compatibility with earlier releases, including changes to
+Postgres configuration, deployment scripts, and applications using PGD. Review [Compatibility
+changes](https://www.enterprisedb.com/docs/pgd/latest/overview/compatibility/) and the [release notes](https://www.enterprisedb.com/docs/pgd/latest/rel_notes/) for your target version, and make
+any needed adjustments before you upgrade.
+
+In particular, if clients connect to Connection Manager over TLS, set `ssl = on` in `postgresql.conf` on each node before you upgrade to PGD 6.5.1 or later. Earlier releases offered TLS to clients whenever `ssl_cert_file` and `ssl_key_file` pointed to existing files, whatever `ssl` was set to. See [Enabling SSL](https://www.enterprisedb.com/docs/pgd/latest/ensuring-security/access-controls/client-connections/#enabling-ssl).
+
+## Confirming your cluster is ready to upgrade
+
+Before starting any upgrade, confirm the cluster is currently healthy. Working through a rolling upgrade on
+top of an already-unhealthy cluster makes it much harder to tell which issues are new.
+
+1. Confirm `pgd-cli` is on the latest version:
+
+   ```shell
+   pgd -V
+   ```
+
+2. Confirm the cluster is healthy:
+
+   ```shell
+   pgd cluster show --health
+   ```
+
+3. Confirm every node is running a supported starting version for your target release. See [Upgrade
+   paths](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrade_paths/), then check the versions in your cluster:
+
+   ```shell
+   pgd nodes list --versions
+   ```
+
+4. Confirm every node is `ACTIVE`:
+
+   ```shell
+   pgd nodes list
+   ```
+
+5. Confirm Raft consensus is working correctly:
+
+   ```shell
+   pgd raft show
+   ```
+
+6. Confirm replication slots are active:
+
+   ```shell
+   pgd replication show --slots
+   ```
+
+7. Confirm subscriptions aren't lagging:
+
+   ```shell
+   pgd replication show --subscriptions
+   ```
+
+## Next steps
+
+Follow the procedure for what you're upgrading:
+
+- [Upgrading PGD](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-pgd/) — move to a new PGD version without changing your
+  Postgres version.
+- [Upgrading Postgres](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-postgres/) — move to a new Postgres version without
+  changing your PGD version.
+- [Upgrading Postgres and PGD together](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-postgres-and-pgd/) — move both to
+  a new major version at the same time.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,35 @@
+---
+title: Disabling native user login
+description: After configuring an external IdP, disable native user login.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/managing_users/native_users/disable_native_user/
+lastModified: 2026-01-21T15:43:46+01:00
+---
+
+# Disabling native user login
+
+Before disabling native user login, confirm that at least one other IdP user has the organization owner role. Assign a new organization owner if you haven't done that yet.
+
+## Assign a new organization owner
+
+1. Log in at least once to the Hybrid Manager (HM) console as the IdP user that will become the organization owner. This ensures the HM console indexes the new user. Then, log out.
+
+2. Log in as the current native owner of HM (for example, `owner@mycompany.com`).
+
+3. From the top-right profile menu, select **User management**. Verify the user that will become the new owner is in the list.
+
+4. Edit the user and assign them the owner role.
+
+## Disable native users
+
+1. To disable native user login, unset the `staticPasswords` configuration by setting `portal.authentication.staticPasswords` to `[]`:
+
+   ```
+   portal:
+     authentication:
+       staticPasswords: []
+   ```
+2. The dex service will restart automatically to apply the changes after saving them.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

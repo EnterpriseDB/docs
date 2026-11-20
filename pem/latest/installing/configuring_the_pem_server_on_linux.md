@@ -1,0 +1,143 @@
+---
+title: Configuring the PEM server on Linux
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/installing/configuring_the_pem_server_on_linux/
+lastModified: 2026-09-29T19:38:32+05:30
+---
+
+# Configuring the PEM server on Linux
+
+## Configuring the PEM Server
+
+The PEM server package includes a script (`configure-pem-server.sh`) to help automate the configuration process for Linux platform installations.
+The script is installed in the `/usr/edb/pem/bin` directory. To invoke the script, run the following command as root:
+
+```shell
+/usr/edb/pem/bin/configure-pem-server.sh
+```
+
+> **Note**
+>
+> If you're providing SSL certificates, make sure that all the certificates are in the data directory of the backend database server. If the certificates aren't in the data directory, then the PEM server's configure script might fail because it looks into the data directory while configuring the PEM server.
+
+> **Note**
+>
+> If you want PEM to encrypt ASB passwords with a custom encryption key instead of the built-in key, set the `PEM_ENC_FILE` or `PEM_ENC_SCRIPT` environment variable before running this script. See [Using a custom encryption key for ASB passwords](https://www.enterprisedb.com/docs/pem/latest/custom_encryption_keys/).
+
+When invoking the script, you can include command line options to specify configuration properties. The script prompts you for values that you omit on the command line. The accepted options are:
+
+| Short Option | Long Option                         | Description                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-acp`       | `--pemagent-certificate-path`       | Defines PEM agent certificate path. The default is `/root/.pem`.                                                                                                                                                                                                                                                                                                                |
+| `-arp`       | `--agent-register-param`            | Additional parameters to pass to `pemworker --register-agent`, for example `--enable-smtp=true` or `--display-name=xxx`. Multiple options must be separated by commas.                                                                                                                                                                                                          |
+| `-aro`       | `--agent-register-overrider`        | Override default agent configuration values, for example `agent_id=1` or `max_connections=3`. Multiple options must be separated by commas.                                                                                                                                                                                                                                     |
+| `-au`        | `--use-agent-user`                  | PEM agent user name. Use this parameter to override the default behavior of generating individual, numbered agent users (e.g., agent1, agent2).                                                                                                                                                                                                                                 |
+| `-bhn`       | `--asb-host-name`                   | Specifies the IP address or fully qualified domain name of the monitored server. If not specified, it takes the value of the `--host` parameter.                                                                                                                                                                                                                                |
+| `-ci`        | `--cidr-address`                    | CIDR-formatted network address range that agents connect to the server from, to be added to the server's `pg_hba.conf` file, for example, `192.168.1.0/24`. The default is `0.0.0.0/0`.                                                                                                                                                                                         |
+| `-dbi`       | `--db-install-path`                 | Directory for the database server installation, for example, `/usr/edb/as17` for EDB Postgres Advanced Server or `/usr/pgsql-17` for PostgreSQL.                                                                                                                                                                                                                                |
+| `-ds`        | `--db-unitfile`                     | Unit file name of the PEM database server. For EDB Postgres Advanced Server, the default file name is `edb-as-17`. For PostgreSQL, it's `postgresql-17`.                                                                                                                                                                                                                        |
+| `-h`         | `--help`                            | Lists all the available options while configuring the PEM server.                                                                                                                                                                                                                                                                                                               |
+| `-ho`        | `--host`                            | Host address of the PEM database server. This can be a comma-separated list of IPs or hostnames if you are using an [HA PEM topology](https://www.enterprisedb.com/docs/pem/latest/considerations/ha_pem/). See the [libpq documentation](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-MULTIPLE-HOSTS) for more details on the syntax.                      |
+| `-kdc`       | `--skip-db-certificate`             | Doesn't create or configure database SSL certificates. Use this when you have already configured SSL on the database server and want to provide your own certificates.                                                                                                                                                                                                          |
+| `-kwc`       | `--skip-web-certificate`            | Doesn't create web server certificates. Use this when you want to provide your own web server SSL certificates.                                                                                                                                                                                                                                                                 |
+| `-nhc`       | `--no-hba-change`                   | Skips the changes to `pg_hba.conf` and `postgresql.conf` files.                                                                                                                                                                                                                                                                                                                 |
+| `-p`         | `--port`                            | Port number of the PEM database server. This can be a comma-separated list of ports if you are using an [HA PEM topology](https://www.enterprisedb.com/docs/pem/latest/considerations/ha_pem/). See the [libpq documentation](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-MULTIPLE-HOSTS) for more details on the syntax.                                  |
+| `-ps`        | `--pemagent-servicename`            | Service name of the pemagent. The default value is `pemagent`.                                                                                                                                                                                                                                                                                                                  |
+| `-scs`       | `--server-certificate-subject`      | Provides the custom web server certificate subject. The format is `/C=CountryCode/ST=State/L=City/O=Company/CN=Hostname/emailAddress=user@company.com`. Provide the `C=CountryCode` as `Alpha-2` code.                                                                                                                                                                          |
+| `-sp`        | `--superpassword`                   | Superuser password of the PEM database server. This value is required.                                                                                                                                                                                                                                                                                                          |
+| `-srp`       | `--server-register-param`           | Additional parameters to pass to `pemworker --register-server`, for example `--efm-cluster-name=xxx` or `--config-dir=path`.                                                                                                                                                                                                                                                    |
+| `-su`        | `--superuser`                       | Superuser name of the PEM database server.                                                                                                                                                                                                                                                                                                                                      |
+| `-t`         | `--type`                            | Installation type: Specify `1` if the configuration is for web services and backend database, `2` if you're configuring web services, or `3` if you're configuring the backend database. If you specify `3`, the database must reside on the local host.                                                                                                                        |
+| `-uac`       | `--use-agent-sslcert`               | Path to an existing agent SSL certificate file to use instead of generating one.                                                                                                                                                                                                                                                                                                |
+| `-uak`       | `--use-agent-sslkey`                | Path to an existing agent SSL key file to use instead of generating one.                                                                                                                                                                                                                                                                                                        |
+| `-ues`       | `--use-existing-sslutils`           | Use pre-existing sslutils to generate agent certificates. Only has an effect when used with `--skip-db-certificate` or `--use-trusted-ssl-db-certificates`.                                                                                                                                                                                                                     |
+| `-un`        | `--uninstall-pem-server`            | Uninstalls the PEM server.                                                                                                                                                                                                                                                                                                                                                      |
+| `-utd`       | `--use-trusted-ssl-db-certificates` | An enterprise-level flag that enables `--skip-db-certificate` and `--no-hba-change` options.                                                                                                                                                                                                                                                                                    |
+|              | `--replication-solution`            | Specifies the replication solution for HA deployments. Valid values are `patroni` or `efm`. When this is set, you must also use the `--server-register-param` option to set the required options for your selected replication solution, see [Installing Postgres Enterprise Manager in HA Patterns](https://www.enterprisedb.com/docs/pem/latest/installing/ha/) for examples. |
+|              | `--replication-role`                | Specifies the replication role of this host for HA deployments. Valid values are `primary` or `standby`.                                                                                                                                                                                                                                                                        |
+
+> **Note**
+>
+> The `--asb-host-name` option does not apply to the following:
+>
+> - PostgreSQL socket (except when specifying a socket path on Linux, which must begin with /)
+> - `PEM_MONITORED_SERVER_PASSWORD` (except as a required but unused value when a socket path is provided)
+> - `--server-addr` (except as a default if `--asb-host-name` is not supplied)
+
+If you don't provide configuration properties on the command line, the script prompts you for values. When you invoke the script, choose from:
+
+1. `Web Services and Database` — Select this option if the web server and database both reside on the same host as the PEM server.
+
+2. `Web Services` — Select this option if the web server resides on a different host from the PEM server.
+
+3. `Database` — Select this option to configure the PEM backend database for use by the PEM server. The specified database must reside on the local host.
+
+> **Note**
+>
+> If the web server and the backend database (PEM server) reside on separate hosts, configure the database server first (option 3) and then web services (option 2). The script proceeds only if the backend database is configured before web services.
+
+After selecting a configuration option, the script prompts you for configuration properties. When the script finishes, it creates the objects required by the PEM server or performs the configuration steps required. To view help for the script, use the command:
+
+```shell
+/usr/edb/pem/bin/configure-pem-server.sh --help
+```
+
+### Selecting a web server
+
+PEM supports both NGINX and Apache HTTPD as the server for the web application. New installations use NGINX by default. The web server is installed and configured by the `configure-pem-server.sh` script.
+
+To select the web server, set the `USE_NGINX` environment variable before running the script:
+
+- `USE_NGINX=1` — Use NGINX (default)
+- `USE_NGINX=0` — Use Apache HTTPD
+
+For example, to use Apache HTTPD:
+
+```shell
+USE_NGINX=0 /usr/edb/pem/bin/configure-pem-server.sh
+```
+
+You may change the web server after configuration by running `/usr/edb/pem/bin/switch-web-server.sh`.
+
+### Configuring SELinux
+
+If your system has SELinux enabled (the default for RHEL-like systems) you must run the `configure-selinux.sh` on the server where the PEM web application is installed.
+You must specify the web selected web server, even if you are using the default. `USE_NGINX=1` for NGINX and `USE_NGINX=0` for Apache HTTPD.
+
+```shell
+USE_NGINX=1 /usr/edb/pem/bin/configure-selinux.sh
+```
+
+## Post-configuration steps when web server and PEM backend database are installed separately
+
+If you choose to run the web application server on a separate host to the backend database, you need to perform some additional manual steps before PEM is fully operational.
+
+Make sure that the backend Postgres database accepts the connections from any user permitted to log in to PEM from the web application server. To achieve this, add this entry to `pg_hba.conf`:
+
+```ini
+host pem +pem_user <web_app_ip>/32 md5
+```
+
+Where `<web_app_ip>` is the IP address of the web application server.
+
+Additionally, if the IP address of the web application server isn't within the network address range specified when the script is executed, you must add two entries to allow the PEM agent on this server to connect:
+
+```ini
+host pem +pem_agent <web_app_ip>/32 md5
+host pem +pem_agent <web_app_ip>/32 cert
+```
+
+Where `<web_app_ip>` is the IP address of the web application server.
+
+## Accessing the PEM application
+
+After configuring the PEM server, you can access the PEM web interface in your browser. Navigate to:
+
+```text
+https://<ip_address_of_PEM_server>:8443/pem
+```
+
+By default, the web services listen on port 8443. To change the port, see [Changing the default port](https://www.enterprisedb.com/docs/pem/latest/changing_default_port/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,168 @@
+---
+title: AI inference functions
+description: SQL functions for invoking AI models directly — encoding text or images into vectors, generating text with language models, and configuring inference parameters.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/sql-functions/encode-decode/
+lastModified: 2026-08-26T21:11:52+05:30
+---
+
+# AI inference functions
+
+AIDB provides a set of SQL functions for performing AI inference directly in queries. These functions let you encode data into vector representations, generate text with language models, and control inference behavior — without setting up a pipeline.
+
+## `aidb.encode_text()`
+
+Encodes a single text string into a vector using a registered embedding model.
+
+```sql
+SELECT aidb.encode_text(model_name => 'my_embedder', input => 'What is pgvector?');
+
+```
+
+```output title="Output"
+                         encode_text
+--------------------------------------------------------------
+ [0.021,-0.043,0.117, ...]
+(1 row)
+```
+
+For the full parameter reference, see [Models reference](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#aidbencode_text).
+
+---
+
+## `aidb.encode_text_batch()`
+
+Encodes multiple text strings into vectors in a single batched request. More efficient than calling `encode_text()` in a loop when processing many inputs.
+
+```sql
+SELECT * FROM aidb.encode_text_batch(
+    model_name => 'my_model_name',
+    input      => ARRAY['What is pgvector?', 'How does RAG work?', 'Explain embeddings.']
+);
+
+```
+
+```output title="Output"
+  encode_text_batch
+-------------------------
+ [0.021,-0.043,0.117,...]
+ [0.008, 0.091,-0.034,...]
+ [0.055,-0.012, 0.076,...]
+(3 rows)
+```
+
+For the full parameter reference, see [Models reference](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#aidbencode_text_batch).
+
+---
+
+## `aidb.encode_image()`
+
+Encodes a single image into a vector using a registered multimodal embedding model (for example, a CLIP model).
+
+```sql
+SELECT aidb.encode_image(
+    model_name => 'my_model_name',
+    input      => pg_read_binary_file('/path/to/image.png')::BYTEA
+);
+
+```
+
+```output title="Output"
+                         encode_image
+--------------------------------------------------------------
+ [-0.012, 0.084, 0.031, ...]
+(1 row)
+```
+
+For the full parameter reference, see [Models reference](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#aidbencode_image).
+
+---
+
+## `aidb.generate_text()`
+
+Generates text from a language model (LLM) given a prompt. This is the core function for LLM inference in AIDB.
+
+```sql
+SELECT aidb.generate_text(
+    model_name => 'my_model_name',
+    input      => 'Explain what a knowledge base is in two sentences.'
+);
+
+```
+
+```output title="Output"
+                                         generate_text
+--------------------------------------------------------------------------------------------
+ A knowledge base is a structured repository of information used to answer queries or ...
+(1 row)
+```
+
+To control generation behavior, pass an `inference_config` object built by `aidb.inference_config()`. Cast its JSONB result to `json` so the call matches the `aidb.generate_text(TEXT, TEXT, json)` signature:
+
+```sql
+SELECT aidb.generate_text(
+    model_name       => 'my_model_name',
+    input            => 'Summarize the following text: ...',
+    inference_config => aidb.inference_config(
+        system_prompt => 'You are a concise technical writer.',
+        temperature   => 0.2,
+        max_tokens    => 256
+    )::json
+);
+```
+
+For the full parameter reference, see [Models reference](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#aidbgenerate_text).
+
+---
+
+## `aidb.generate_text_batch()`
+
+Generates text responses for multiple prompts in a single batched request.
+
+```sql
+SELECT aidb.generate_text_batch(
+    model_name => 'my_model_name',
+    input  => ARRAY[
+        'What is a vector database?',
+        'What is retrieval-augmented generation?'
+    ]
+);
+
+```
+
+```output title="Output"
+                           generate_text_batch
+----------------------------------------------------------
+ A vector database stores high-dimensional vectors ...
+ Retrieval-augmented generation (RAG) combines a ...
+(2 rows)
+```
+
+For the full parameter reference, see [Models reference](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#aidbgenerate_text_batch).
+
+---
+
+## `aidb.inference_config()`
+
+Builds an inference configuration object to control language model generation behavior. Pass the result as the `inference_config` argument of `aidb.generate_text()` or `aidb.generate_text_batch()`, or as part of `aidb.summarize_text_config()` inside a pipeline step.
+
+```sql
+SELECT aidb.generate_text(
+    model_name       => 'my_llm',
+    input            => 'Write a haiku about PostgreSQL.',
+    inference_config => aidb.inference_config(
+        temperature => 0.9,
+        max_tokens  => 64,
+        seed        => 42
+    )::json
+);
+```
+
+For the full parameter reference, see [Models reference](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#aidbinference_config).
+
+> **Note**
+>
+> To use these functions as steps inside a pipeline, see [Pipeline steps](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

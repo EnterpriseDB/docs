@@ -1,0 +1,82 @@
+---
+title: Updating a subscription (updatesub)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/46_updating_subscription_cli/
+lastModified: 2025-05-14T11:36:38+02:00
+---
+
+# Updating a subscription (updatesub)
+
+<div id="updating_subscription_cli" class="registered_link"></div>
+
+**For SMR only:** The `updatesub` command updates certain metadata of a given subscription. This metadata allows the subscription server to find the host running the publication server that manages the publication associated with the subscription.
+
+## Synopsis
+
+```shell
+-updatesub subname
+  -subsvrfile subsvrfile
+  -pubsvrfile pubsvrfile
+  -host newpubsvr_ipaddress
+  -port newpubsvr_port
+```
+
+The `updatesub` command allows you to update the subscription metadata. The metadata consists of the IP address and port number identifying the publication server that is the parent of the publication associated with the subscription.
+
+This metadata is essential to the proper operation of the replication system. It is the means by which the subscription server locates the publication server whenever a replication must be performed on a given subscription. The replication process is always carried out by the publication server that manages the publication associated with the subscription.
+
+Use the `updatesub` command in the scenario in which you built your replication system using IP addresses that are valid at that point in time. At some later point, the IP address assigned to the host running the publication server changed.
+
+You use the `host` and `port` parameters of the `updatesub` command to supply the new network address identifying the publication server.
+
+See [Updating a subscription](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/05_managing_subscription/#updating-a-subscription) for more information.
+
+## Parameters
+
+`subname`
+
+The name of the subscription whose metadata to update.
+
+`subsvrfile`
+
+The file containing the subscription server login information for the subscription server in which subscription `subname` was created.
+
+`pubsvrfile`
+
+The file containing publication server login information for the publication server that manages the publication associated with subscription `subname`. The values that you supply for `newpubsvr_ipaddress` and `newpubsvc_port` must be the same as the values set in fields `host` and `port` in the file `pubsvrfile`.
+
+`newpubsvr_ipaddress`
+
+The new IP address for the publication server that manages the publication associated with subscription `subname`. This value must be the same as the IP address specified for the field `host` in the file `pubsvrfile`.
+
+`newpubsvr_port`
+
+The new port number for the publication server that manages the publication associated with subscription `subname`. This value must be the same as the port number specified for the field `port` in the file `pubsvrfile`.
+
+## Examples
+
+If the publication server host IP address changed to `192.168.2.7`, then make sure the publication server login information in file `pubsvrfile.prop` contains the new IP address, as shown by the following:
+
+```ini
+host=192.168.2.7
+port=9051
+user=enterprisedb
+# Password is in encrypted form.
+password=ygJ9AxoJEX854elcVIJPTw==
+```
+
+To update the metadata for subscription `dept_emp_sub` so that its subscription server can find the new publication server host, run the following command:
+
+```shell
+$ java -jar edb-repcli.jar -updatesub dept_emp_sub \
+>   -subsvrfile ~/subsvrfile.prop \
+>   -pubsvrfile ~/pubsvrfile.prop \
+>   -host 192.168.2.7 \
+>   -port 9051
+Updating subscription dept_emp_sub...
+
+Subscription is updated successfully
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,43 @@
+---
+title: ALTER TABLE...TRUNCATE SUBPARTITION
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/04_partitioning_commands_compatible_with_oracle_databases/17_alter_table_truncate_subpartition/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# ALTER TABLE...TRUNCATE SUBPARTITION
+
+<div id="alter_table_truncate_subpartition" class="registered_link"></div>
+
+Use the `ALTER TABLE… TRUNCATE SUBPARTITION` command to remove all of the data from the specified subpartition and leave the subpartition structure intact. The syntax is:
+
+```sql
+ALTER TABLE <table_name>
+  TRUNCATE SUBPARTITION <subpartition_name>
+  [{DROP|REUSE} STORAGE]
+```
+
+## Parameters
+
+`table_name`
+
+The name (optionally schema-qualified) of the partitioned table.
+
+`subpartition_name`
+
+The name of the subpartition to truncate.
+
+## Description
+
+The `ALTER TABLE… TRUNCATE SUBPARTITION` command removes all data from a specified subpartition, leaving the subpartition structure intact.
+
+`ALTER TABLE… TRUNCATE SUBPARTITION` doesn't cause `ON DELETE` triggers for the table to fire, but it fires `ON TRUNCATE` triggers. If an `ON TRUNCATE` trigger is defined for the subpartition, all `BEFORE TRUNCATE` triggers are fired before any truncation happens. All `AFTER TRUNCATE` triggers are fired after the last truncation occurs.
+
+You must have the `TRUNCATE` privilege on a table to invoke `ALTER TABLE… TRUNCATE SUBPARTITION`.
+
+The `DROP STORAGE` and `REUSE STORAGE` clauses are included only for compatibility. The clauses are parsed and ignored.
+
+- [Example: Emptying a subpartition](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/04_partitioning_commands_compatible_with_oracle_databases/17_alter_table_truncate_subpartition/01_example_emptying_a_subpartition/): This example removes the data from a subpartition of the sales table.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

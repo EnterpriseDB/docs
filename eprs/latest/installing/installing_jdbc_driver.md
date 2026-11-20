@@ -1,0 +1,43 @@
+---
+title: Installing a JDBC driver
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/installing/installing_jdbc_driver/
+lastModified: 2023-11-30T05:51:18Z
+---
+
+# Installing a JDBC driver
+
+## Choosing and installing a JDBC driver
+
+The JDBC driver you use depends on the database you're using. If you're using:
+
+- **EDB Postgres Advanced Server**, use the EDB JDBC driver. To download the latest driver, see [EDB Connectors](https://enterprisedb.com/software-downloads-postgres#edb-connectors) on the EDB Downloads page. For installation instructions, see [Installing and configuring EDB JDBC Connector](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/).
+
+- **PostgreSQL**, use the PostgreSQL JDBC driver. To download the latest supported driver (Java 8), see the [JDBC drivers section](https://jdbc.postgresql.org/download/) on the PostgreSQL Downloads page.
+
+- **Oracle**, use the freely available [Oracle JDBC](https://www.oracle.com/database/technologies/appdev/jdbc-downloads.html) driver.
+
+- **Microsoft SQL Server**, use the freely available [Microsoft SQL Server JDBC](https://learn.microsoft.com/en-us/sql/connect/jdbc/release-notes-for-the-jdbc-driver?view=sql-server-ver16#102) driver.
+
+> **Note**
+>
+> For Microsoft SQL Server, if your system uses JDK/JAVA, then we recommend that you use an equal or earlier mssql-jdbc jre version than the JDK/JAVA version on your system. For example, a system with JDK/JAVA version 18 can use `mssql-jdbc-11.2.0.jre18.jar`, `mssql-jdbc-11.2.0.jre17.jar`, and so on.
+
+## Configuring the driver
+
+After downloading the driver, create a symlink in the `XDB-install-folder/lib/jdbc` directory that points to the location where you installed the driver.
+
+For Linux, create a symlink for the driver using these naming conventions.
+
+| Driver               | symlink name   |
+| -------------------- | -------------- |
+| EDB                  | edb-jdbc18.jar |
+| PostgreSQL           | postgresql.jar |
+| Oracle               | ojdbc.jar      |
+| Microsoft SQL Server | mssql-jdbc.jar |
+| jTDS                 | jtds.jar       |
+
+For Windows, copy the drivers to the `XDB-install-folder/lib/jdbc` directory and rename them using the same naming conventions.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

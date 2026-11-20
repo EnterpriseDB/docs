@@ -1,0 +1,94 @@
+---
+title: DEFINE_COLUMN_LONG
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/17_dbms_sql/10a_define_column_long/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# DEFINE\_COLUMN\_LONG
+
+The `DEFINE_COLUMN_LONG` procedure defines a column of the type `LONG` in the `SELECT` list to be returned and retrieved in a cursor.
+
+When you use this procedure, the column you are defining is identified by its relative position in the SELECT list of the statement in the specified cursor. The COLUMN value type determines the type of column being defined.
+
+```sql
+DEFINE_COLUMN_LONG(<c> IN NUMBER, <position> IN NUMBER);
+```
+
+## Parameters
+
+`c`
+
+Cursor ID of the cursor from which a row is selected.
+
+`position`
+
+Relative position of the column in the row being defined. The first column in a statement has position 1.
+
+### Examples
+
+```sql
+-- Creating the required object
+CREATE TABLE rm44142_dtypes (
+   col_long             LONG,
+   col_int  INTEGER);
+
+-- Insert data into table
+INSERT INTO rm44142_dtypes VALUES ('TestingForDefineColumnValueLong', 1);
+
+-- Use zero offset
+DECLARE
+   cur_id               INTEGER;
+   v_long       VARCHAR(20);
+   sql_stmt     VARCHAR2(50) := 'SELECT col_long ' || ' FROM rm44142_dtypes';
+   status       INTEGER;
+   length       INTEGER;
+
+BEGIN
+   cur_id := DBMS_SQL.OPEN_CURSOR;
+   DBMS_SQL.PARSE(cur_id, sql_stmt, DBMS_SQL.native);
+   DBMS_SQL.define_column_long(cur_id, 1);
+   status := DBMS_SQL.EXECUTE(cur_id);
+   status := DBMS_SQL.FETCH_ROWS(cur_id);
+   DBMS_SQL.COLUMN_VALUE_LONG(cur_id, 1, 7, 0, v_long, length);
+   DBMS_OUTPUT.PUT_LINE('col_long: ' || v_long);
+   DBMS_OUTPUT.PUT_LINE('value_length: ' || length);
+   DBMS_SQL.CLOSE_CURSOR(cur_id);
+END;
+
+Output:
+col_long: Testing
+value_length: 7
+
+EDB-SPL Procedure successfully completed
+
+-- Use positive offset
+DECLARE
+   cur_id               INTEGER;
+   v_long       VARCHAR2(20);
+   sql_stmt     VARCHAR2(50) := 'SELECT col_int, col_long ' || ' FROM rm44142_dtypes';
+   status       INTEGER;
+   length       INTEGER;
+
+BEGIN
+   cur_id := DBMS_SQL.OPEN_CURSOR;
+   DBMS_SQL.PARSE(cur_id, sql_stmt, DBMS_SQL.native);
+   DBMS_SQL.define_column_long(cur_id, 2);
+   status := DBMS_SQL.EXECUTE(cur_id);
+   status := DBMS_SQL.FETCH_ROWS(cur_id);
+   DBMS_SQL.COLUMN_VALUE_LONG(cur_id, 2, 12, 10, v_long, length);
+   DBMS_OUTPUT.PUT_LINE('col_long: ' || v_long);
+   DBMS_OUTPUT.PUT_LINE('value_length: ' || length);
+   DBMS_SQL.CLOSE_CURSOR(cur_id);
+END;
+
+Output:
+col_long: DefineColumn
+value_length: 12
+
+EDB-SPL Procedure successfully completed
+
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

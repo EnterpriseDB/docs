@@ -1,0 +1,141 @@
+---
+title: Configuring backups to support disaster recovery (DR)
+description: Learn about backup requirements and understand what RTO and RPO times to expect when restoring your HM instance and Postgres clusters.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/hadr/backup_considerations/
+lastModified: 2026-09-03T10:47:41+02:00
+---
+
+# Configuring backups to support disaster recovery (DR)
+
+A successful disaster recovery (DR) outcome is directly tied to a robust backup strategy. While HM provides a default backup configuration, you should evaluate and implement supplemental schedules to ensure the environment aligns with your specific recovery time objective (RTO) and recovery point objective (RPO) requirements. HM backups are handled with [Velero](https://velero.io/).
+
+## RTO and RPO
+
+The ability to do any restore, and the associated RTO and RPO depend on the frequency and size of the backups.
+
+- The **RTO** will be determined by the time it takes to deploy a new HM instance and restore the HM control plane and data plane (Postgres database clusters) from the available backups. The RTO will be affected by the size of the Postgres clusters, the number of Postgres clusters, and the size of the HM control plane data.
+
+- The **RPO** will be determined by the frequency of the backups and the backup lifecycle policies. Critical data, such as the definition of the Postgres clusters, is stored as Kubernetes objects and included in the Velero backup. By default, this backup runs daily at 23:00, as defined by the default `velero-backup-kube-state` schedule. If your RPO requires more frequent backups, either [change the default schedule](#changing-the-default-backup-schedule) or complement it with an [additional custom backup schedule](#adding-a-custom-backup-schedule).
+
+> **Note**
+>
+> While RTO and RPO targets are defined by your organization's service level requirements, the actual time and data recovery points achieved during a disaster will vary based on data volume and the manual nature of this procedure. We strongly recommend that you perform periodic disaster recovery exercises to validate that these manual steps can meet your defined RTO and RPO objectives.
+
+## Backup readiness
+
+During installation, you configure an [S3-compatible storage](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/sys_reqs/#7-object-storage) for your HM instance that stores:
+
+- Internal backups (HM control plane data)
+- Postgres backups (Postgres database backups or data plane data)
+
+There is a default storage location in your bucket for these backups. However, HM supports storing backup data into a custom storage location (**Managed Storage Locations** ) in the same bucket. If you use custom storage locations, ensure these directories are included in your cross-region replication strategy to remain available during a regional outage.
+
+All of this data needs to be available after a disaster. Depending on the criticality of the data and the level of disaster that you want to be able to recover from, you’ll need to replicate this data outside of the CSP region or physical data center where the HM instance resides.
+
+> **Tip**
+>
+> When using a bucket, you can achieve replication by using cross-region replication. For example, for AWS S3 buckets, see [cross-region replication](https://docs.aws.amazon.com/AmazonS3/latest/userguide/replication.html#crr-scenario).
+
+### Default backup configuration
+
+HM employs a dual-layered backup strategy to protect both the control plane and your data plane:
+
+- **Postgres database data** — Managed via continuous backups. This ensures that once a cluster is restored, your data can be recovered to a specific point-in-time, limited only by your backup lifecycle policies.
+
+- **HM configuration data** — Managed via Velero. This captures the "blueprints" of your environment, including the definitions of your Postgres clusters. By default, this occurs daily at 23:00 via the `velero-backup-kube-state` schedule.
+
+If your RPO requires more frequent snapshots of your cluster definitions (for example, if you create or delete clusters frequently), you can either [change the default schedule](#changing-the-default-backup-schedule) or [add a supplemental one](#adding-a-custom-backup-schedule).
+
+> **Danger**
+>
+> Don't edit the `velero-backup-kube-state` schedule directly with `kubectl` or `velero`. HM owns that resource, so direct edits may be overwritten by an HM software update. Change it through the `HybridControlPlane` custom resource, as described in [Changing the default backup schedule](#changing-the-default-backup-schedule).
+
+### Changing the default backup schedule
+
+The `velero-backup-kube-state` schedule is rendered from a component's `schedule` parameter. The value is a standard cron expression and defaults to `0 23 * * *` (daily at 23:00).
+
+Which component owns that parameter depends on your HM version:
+
+| HM version     | Component           |
+| :------------- | :------------------ |
+| 1.4.3 or later | `upm-velero-config` |
+| Before 1.4.3   | `upm-velero`        |
+
+Starting in HM 1.4.3, the Velero configuration (the backup storage location, the volume snapshot location, and the backup schedule) moves out of the Velero installation into the `upm-velero-config` component.
+
+To change the schedule, set `schedule` for the component that applies to your version in your `HybridControlPlane` custom resource. For example, to back up every six hours on HM 1.4.3 or later:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  componentsParameters:
+    upm-velero-config:
+      schedule: "0 */6 * * *"
+    # ... your other componentsParameters
+```
+
+Apply the updated custom resource:
+
+```shell
+kubectl apply -f hybridmanager.yaml
+```
+
+Confirm the new value has been applied:
+
+```shell
+velero get schedules velero-backup-kube-state -o yaml | yq .spec.schedule
+```
+
+> **Warning: Upgrading to 1.4.3 with a customized schedule**
+>
+> In HM versions before 1.4.3, if you set `schedule` under `spec.componentsParameters.upm-velero`, move that value to `upm-velero-config` as part of the upgrade. Starting in HM 1.4.3, Velero no longer reads a value left under `upm-velero`, and the schedule reverts to the default of `0 23 * * *`.
+
+### Adding a custom backup schedule
+
+The following command creates a supplemental backup schedule that runs every 6 hours in addition to the default system backups. This ensures more frequent snapshots of your metadata without interfering with the built-in `velero-backup-kube-state` schedule. Note that `--snapshot-volumes=false` is used because the actual Postgres data is already protected by the continuous backup stream in your object storage.
+
+```shell
+velero create schedule <backup-name> --schedule="0 */6 * * *" --include-namespaces='*' --include-resources='*' --snapshot-volumes=false --ttl=168h --skip-immediately=false
+```
+
+> **Warning: Object storage retention must match backup retention**
+>
+> The `--ttl` value sets how long HM considers a backup valid. Your object storage bucket's lifecycle or retention policy must be set to a duration **at least as long as** this TTL. If the bucket deletes objects before the TTL expires, backups are removed prematurely and become unavailable for restore.
+>
+> For example, if `--ttl=168h` (7 days), ensure your bucket does not expire objects in fewer than 7 days.
+
+To check how the backup schedule was configured in the backend, run the following command:
+
+```shell
+velero get schedules <backup-name> -o yaml | yq .spec
+```
+
+Which should return the following output:
+
+```yaml
+schedule: 0 */6 * * *
+skipImmediately: false
+template:
+  csiSnapshotTimeout: 0s
+  hooks: {}
+  includedNamespaces:
+    - '*'
+  includedResources:
+    - '*'
+  itemOperationTimeout: 0s
+  metadata: {}
+  snapshotVolumes: false
+  ttl: 168h0m0s
+useOwnerReferencesInBackup: false
+```
+
+## Next topic
+
+[Perform a disaster recovery of your HM instance and Postgres clusters using Velero](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/hadr/hadr_recovery/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

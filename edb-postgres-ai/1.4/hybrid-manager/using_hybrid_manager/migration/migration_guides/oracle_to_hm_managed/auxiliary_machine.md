@@ -1,0 +1,66 @@
+---
+title: Configuring your auxiliary machine or bastion host
+description: Setting up the auxiliary machine that bridges your Oracle source and Hybrid Manager, including required agents, Oracle Instant Client, and environment configuration.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/auxiliary_machine/
+lastModified: 2026-08-24T10:19:20+02:00
+---
+
+# Configuring your auxiliary machine or bastion host
+
+The EDB Postgres AI agent (`beacon-agent`) and the DMS agent (`cdcagent`) can run on the Oracle database server itself or on a separate auxiliary machine or bastion host. In most production environments, running the agents on a dedicated auxiliary machine is preferred — it avoids installing additional software on the database server, and a single agent instance can connect to databases on multiple servers.
+
+## Required software
+
+Ensure you install the following software on your auxiliary machine before running the agents:
+
+> **Note**
+>
+> If your auxiliary machine is air-gapped and can't reach the EDB repositories directly, see [Building local mirrors](https://www.enterprisedb.com/docs/repos/working_with_repos/building_local_mirrors/) and [Installing in an air-gapped environment](https://www.enterprisedb.com/docs/repos/working_with_repos/installing_airgapped/) before you begin.
+
+- **Java 17 or higher** — required by the DMS agent (`cdcagent`). Verify with `java -version`.
+
+- **Oracle Instant Client with SQL\*Plus** — required by both agents. The EDB Postgres AI agent uses SQL\*Plus to extract DDL from the Oracle source. The DMS agent uses the Oracle JDBC libraries for Change Data Capture (CDC) connectivity. [Download Oracle Instant Client](https://www.oracle.com/database/technologies/instant-client/downloads.html) and install both the Basic and SQL\*Plus packages. Ensure you download a version compatible with your source Oracle database.
+
+- **EDB Postgres AI agent** (`beacon-agent`) — handles database registration and schema assessment. Check the [beacon-agent version compatibility matrix](https://www.enterprisedb.com/docs/tools/agent/installing/#supported-hm-versions-for-the-edb-postgres-ai-agent). Then [install a compatible version of the EDB Postgres AI agent](https://www.enterprisedb.com/docs/tools/agent/installing/).
+
+- **DMS agent** (`cdcagent`) — handles data migration and CDC. Check the [DMS agent version compatibility matrix](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/cdcagent_compatibility/). Then [install a compatible version of the DMS agent](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/installing_agent/).
+
+## Configuring the environment
+
+Both agents must be able to locate the Oracle libraries and binaries at runtime. Set the following environment variables on your auxiliary machine, replacing `</path/to/instantclient>` with the actual Instant Client directory (for example, `/opt/oracle/instantclient_19_19`). These variables must be set in the same shell session where you run the agents. For persistent configuration, add them to your shell profile (for example, `~/.bashrc` or `~/.bash_profile`). If you run the agents as systemd services, set these variables in the service file instead.
+
+```shell
+export ORACLE_HOME=</path/to/instantclient>
+export PATH=$ORACLE_HOME:$PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME:$LD_LIBRARY_PATH
+```
+
+> **Note**
+>
+> For Oracle Instant Client, the SQL\*Plus binary and the shared libraries (`.so` files) are both located directly in the Instant Client root directory — not in a `bin/` or `lib/` subdirectory. Set both `PATH` and `LD_LIBRARY_PATH` to the Instant Client root.
+
+Verify the setup before proceeding.
+
+```shell
+which sqlplus
+```
+
+The output should show the path to the SQL\*Plus binary inside the Instant Client directory with the version number. Alternatively, run:
+
+```shell
+sqlplus -V
+```
+
+Which shows the SQL\*Plus version.
+
+## Network connectivity
+
+Ensure network connectivity between the auxiliary machine and the source database host, and between the auxiliary machine and Hybrid Manager. You'll verify the specific ports required later, when configuring the agents.
+
+## Next step
+
+[Prepare your Oracle source database](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/preparing_oracle_source/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

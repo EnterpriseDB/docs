@@ -1,0 +1,89 @@
+---
+title: Observability (Agent Factory on HM)
+description: Monitor model serving and Agent Studio workloads in Hybrid Manager using built-in dashboards, logs, and Grafana.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/ai-factory/observability/
+lastModified: 2026-08-07T14:25:48+05:30
+---
+
+# Observability (Agent Factory on HM)
+
+## Observability in Hybrid Manager
+
+When you deploy Agent Factory components on Hybrid Manager, the platform gives you integrated observability for both **Model Serving** (KServe) and **Agent Studio** workloads.
+
+### Model Serving (KServe)
+
+- Use the platform dashboards and logs to monitor **InferenceServices** and GPU workloads.
+- Metrics include request latency, throughput, GPU/CPU utilization, and error rates.
+- See: [Monitor InferenceService](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/monitor-inferenceservice/)
+
+### Agent Studio
+
+- Monitor Agent Studio logs, pod health, replica count, and flow availability via Prometheus and Grafana.
+- See: [Agent Studio troubleshooting](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/ai-factory/langflow/troubleshooting/)
+
+---
+
+## Accessing metrics and logs
+
+- **Dashboards.** Hybrid Manager surfaces Agent Factory metrics through the built-in observability dashboards (Grafana).
+- **Logs.** Use `kubectl logs` or the HM UI log viewer to inspect Agent Studio pods, KServe InferenceServices, and retriever jobs.
+
+---
+
+## Typical commands
+
+For cluster-level troubleshooting or custom dashboards, you can also pull metrics and logs directly:
+
+```bash
+# Check logs for a running InferenceService
+kubectl logs -n <project-namespace> svc/<model-service-name>
+
+# Port-forward Grafana if running locally
+kubectl port-forward -n observability svc/grafana 3000:3000
+```
+
+---
+
+## Grafana dashboard setup for Agent Factory metrics
+
+Hybrid Manager includes a Grafana instance in the observability stack. You can access it through the Launchpad or configure dashboards for Agent Factory-specific metrics.
+
+### Access Grafana
+
+Navigate to the Launchpad in the Hybrid Manager Portal and click on the Grafana tile.
+
+### Recommended dashboard panels
+
+Build or import a dashboard with the following panels to cover Agent Factory health at a glance:
+
+| Panel                      | Metric                                                                       | Visualisation |
+| -------------------------- | ---------------------------------------------------------------------------- | ------------- |
+| Inference request rate     | `rate(kserve_request_duration_seconds_count[5m])`                            | Time series   |
+| P95 inference latency      | `histogram_quantile(0.95, rate(kserve_request_duration_seconds_bucket[5m]))` | Time series   |
+| Inference error rate       | `rate(kserve_request_duration_seconds_count{response_code!~"2.."}[5m])`      | Time series   |
+| Model server replica count | `kube_deployment_status_replicas_ready{deployment=~".*inferenceservice.*"}`  | Stat          |
+| Agent Studio replica count | `kube_deployment_status_replicas_ready{deployment=~".*langflow.*"}`          | Stat          |
+| GPU utilisation            | `DCGM_FI_DEV_GPU_UTIL`                                                       | Gauge         |
+
+### Import a pre-built dashboard
+
+KServe publishes a community Grafana dashboard. To import it:
+
+1. In Grafana, go to **Dashboards** → **Import**.
+2. Enter the dashboard ID or paste the JSON from the [KServe community dashboards](https://github.com/kserve/kserve/tree/master/config/grafana).
+3. Select your Prometheus data source.
+4. Select **Import**.
+
+---
+
+## Key takeaway
+
+- **Model Serving** → monitored as KServe services with full metrics.
+- **Agent Studio** → pod health, replica count, and flow availability monitored via Prometheus and Grafana.
+- **Hybrid Manager** provides a unified observability layer — no separate monitoring stack to configure.
+- **Enterprise monitoring** → extend the built-in stack with custom Grafana dashboards.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

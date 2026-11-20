@@ -1,0 +1,300 @@
+---
+title: Enabling audit logging
+description: How to configure EDB Postgres Advanced Server to log the items you want to audit
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/epas_security_guide/05_edb_audit_logging/03_enabling_audit_logging/
+lastModified: 2026-06-26T13:00:30+05:30
+---
+
+# Enabling audit logging
+
+<div id="enabling_audit_logging" class="registered_link"></div>
+
+EDB Postgres Advanced Server provides comprehensive auditing capabilities, allowing you to track connections, disconnections, DDL, DCL, DML statements, and errors.
+
+## Core Configuration Parameters
+
+To enable and manage auditing, configure the following parameters in your configuration file:
+
+| Parameter                 | Description                                                      | Scope                                                 |
+| ------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
+| edb\_audit                | Enables auditing set to `xml`, `csv`, or `json`.                 | Cluster-level only.                                   |
+| edb\_audit\_connect       | Set to `all` to log connections.                                 | Cluster-level only. (No ALTER ROLE/DATABASE support). |
+| edb\_audit\_disconnect    | Set to `all` to log disconnections.                              | Cluster-level only. (No ALTER ROLE/DATABASE support). |
+| edb\_audit\_statement     | Controls captured SQL statements like DDL, DML, DCL, and others. | Global default overridable at lower levels.           |
+| edb\_audit\_directory     | Sets the audit log file location.                                | Cluster-level only.                                   |
+| edb\_audit\_rotation\_day | Sets the rotation schedule.                                      | Cluster-level only.                                   |
+
+For more information, see [selecting SQL statements to audit](https://www.enterprisedb.com/docs/epas/17/epas_security_guide/05_edb_audit_logging/02_selecting_sql_statements_to_audit/#selecting_sql_statements_to_audit).
+
+## Parameter scope and override matrix
+
+Refer to the following matrix to see which parameters support granular overrides via ALTER commands:
+
+| Parameter              | Cluster (Global) | ALTER DATABASE | ALTER ROLE | ALTER ROLE IN DATABASE |
+| ---------------------- | ---------------- | -------------- | ---------- | ---------------------- |
+| edb\_audit\_connect    | Yes              | No             | No         | No                     |
+| edb\_audit\_disconnect | Yes              | No             | No         | No                     |
+| edb\_audit\_statement  | Yes              | Yes            | Yes        | Yes                    |
+
+## Examples
+
+The following are examples of this technique.
+
+The database cluster is established with `edb_audit_statement` set to `all` as shown in its `postgresql.conf` file:
+
+```ini
+logging_collector = 'on'
+edb_audit_statement = 'all'     # Statement type to be audited:
+                                # none, dml, insert, update, delete, truncate,
+                                # select, error, rollback, ddl, create, drop,
+                                # alter, grant, revoke, set, all
+                                # {select | update | delete | insert}@groupname
+```
+
+A database and role are established with the following settings for the `edb_audit_statement` parameter:
+
+- Database `auditdb` with `ddl`, `insert`, `update`, and `delete`
+- Role `admin` with `select`, `truncate`, and `set`
+- Role `admin` in database `auditdb` with `create table`, `insert`, and `update`
+
+The following shows creating and altering the database and role:
+
+```sql
+$ psql edb enterprisedb
+Password for user enterprisedb:
+psql.bin (17.2.0)
+Type "help" for help.
+
+edb=# SHOW edb_audit_statement;
+```
+
+```output title="Output"
+ edb_audit_statement
+---------------------
+ all
+(1 row)
+```
+
+```sql
+edb=# CREATE DATABASE auditdb;
+CREATE DATABASE
+edb=# ALTER DATABASE auditdb SET edb_audit_statement TO 'ddl, insert, update, delete';
+ALTER DATABASE
+edb=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD 'password';
+CREATE ROLE
+edb=# ALTER ROLE admin SET edb_audit_statement TO 'select, truncate';
+ALTER ROLE
+edb=# ALTER ROLE admin IN DATABASE auditdb SET edb_audit_statement TO 'create table, insert, update';
+ALTER ROLE
+```
+
+The following shows the changes made and the resulting audit log file for three cases.
+
+### Case 1: Changes made in database `auditdb` by role `enterprisedb`
+
+Only `ddl`, `insert`, `update`, and `delete` statements are audited:
+
+```sql
+$ psql auditdb enterprisedb
+Password for user enterprisedb:
+psql.bin (17.2.0)
+Type "help" for help.
+
+auditdb=# SHOW edb_audit_statement;
+```
+
+```output title="Output"
+     edb_audit_statement
+-----------------------------
+ ddl, insert, update, delete
+(1 row)
+```
+
+```sql
+auditdb=# CREATE TABLE audit_tbl (f1 INTEGER PRIMARY KEY, f2 TEXT);
+CREATE TABLE
+auditdb=# INSERT INTO audit_tbl VALUES (1, 'Row 1');
+INSERT 0 1
+auditdb=# UPDATE audit_tbl SET f2 = 'Row A' WHERE f1 = 1;
+UPDATE 1
+auditdb=# SELECT * FROM audit_tbl;                  <== Should not be audited
+```
+
+```output title="Output"
+ f1 |  f2
+----+-------
+  1 | Row A
+(1 row)
+```
+
+```sql
+auditdb=# TRUNCATE audit_tbl;                       <== Should not be audited
+TRUNCATE TABLE
+```
+
+The following audit log file shows entries only for the `CREATE TABLE`, `INSERT INTO audit_tbl`, and `UPDATE audit_tbl` statements. The `SELECT * FROM audit_tbl` and `TRUNCATE audit_tbl` statements weren't audited. (Each audit log entry was split and displays across multiple lines. A blank line was inserted between the audit log entries for visual clarity.)
+
+```text
+2020-05-25 15:59:12.332 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,2,
+"idle",2020-05-25 15:59:02 IST,5/7,0,AUDIT,00000,"statement: CREATE TABLE 
+audit_tbl(f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+
+2020-05-25 15:59:22.419 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,3,
+"idle",2020-05-25 15:59:02 IST,5/8,0,AUDIT,00000,"statement: INSERT INTO 
+audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+
+2020-05-25 15:59:32.180 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,4,
+"idle",2020-05-25 15:59:02 IST,5/9,0,AUDIT,00000,"statement: UPDATE
+audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql","client backend","UPDATE","","update"
+```
+
+### Case 2: Changes made in database `edb` by role `admin`
+
+Only `select`, `truncate`, and `set` statements are audited:
+
+```sql
+$ psql edb admin
+Password for user admin:
+psql.bin (17.2.0)
+Type "help" for help.
+
+edb=# SHOW edb_audit_statement;
+```
+
+```output title="Output"
+ edb_audit_statement
+-----------------------
+ select, truncate, set
+(1 row)
+```
+
+```sql
+edb=# SET default_with_rowids TO TRUE;
+SET
+
+edb=# CREATE TABLE edb_tbl (f1 INTEGER PRIMARY KEY, f2 TEXT); <== Should not be audited
+CREATE TABLE
+edb=# INSERT INTO edb_tbl VALUES (1, 'Row 1');                <== Should not be audited
+INSERT 0 1
+edb=# SELECT * FROM edb_tbl;
+```
+
+```output title="Output"
+ f1 |  f2
+----+-------
+  1 | Row 1
+(1 row)
+```
+
+```sql
+edb=# TRUNCATE edb_tbl;
+TRUNCATE TABLE
+```
+
+Continuation of the audit log file now appears as follows. The last two entries representing the second case show only the `SET default_with_rowids TO TRUE`, `SELECT * FROM edb_tbl`, and `TRUNCATE edb_tbl` statements. The `CREATE TABLE edb_tbl` and `INSERT INTO edb_tbl` statements weren't audited.
+
+```text
+2020-05-25 15:59:12.332 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,2,
+"idle",2020-05-25 15:59:02 IST,5/7,0,AUDIT,00000,"statement: CREATE TABLE 
+audit_tbl(f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+
+2020-05-25 15:59:22.419 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,3,
+"idle",2020-05-25 15:59:02 IST,5/8,0,AUDIT,00000,"statement: INSERT INTO 
+audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+
+2020-05-25 15:59:32.180 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,4,
+"idle",2020-05-25 15:59:02 IST,5/9,0,AUDIT,00000,"statement: UPDATE
+audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql","client backend","UPDATE","","update"
+
+2021-02-18 08:04:57.434 IST,"admin","edb",3182,"[local]",602e65dc.c6e,1,
+"idle",2021-02-18 08:04:28 IST,4/22,0,AUDIT,00000,"statement: SET default_with_rowids TO TRUE;
+",,,,,,,,,"psql","client backend","SET","","set"
+
+2021-02-18 08:06:01.662 IST,"admin","edb",3182,"[local]",602e65dc.c6e,2,
+"idle",2021-02-18 08:04:28 IST,4/27,0,AUDIT,00000,"statement: SELECT * FROM edb_tbl;
+",,,,,,,,,"psql","client backend","SELECT","","select"
+
+2021-02-18 08:06:11.125 IST,"admin","edb",3182,"[local]",602e65dc.c6e,3,
+"idle",2021-02-18 08:04:28 IST,4/28,0,AUDIT,00000,"statement: TRUNCATE edb_tbl;
+",,,,,,,,,"psql","client backend","TRUNCATE TABLE","","truncate"
+```
+
+### Case 3: Changes made in database `auditdb` by role `admin`
+
+Only `create table`, `insert`, and `update` statements are audited:
+
+```sql
+$ psql auditdb admin
+Password for user admin:
+psql.bin (17.2.0)
+Type "help" for help.
+
+auditdb=# SHOW edb_audit_statement;
+```
+
+```output title="Output"
+     edb_audit_statement
+------------------------------
+ create table, insert, update
+(1 row)
+```
+
+```sql
+auditdb=# CREATE TABLE audit_tbl_2 (f1 INTEGER PRIMARY KEY, f2 TEXT);
+CREATE TABLE
+auditdb=# INSERT INTO audit_tbl_2 VALUES (1, 'Row 1');
+INSERT 0 1
+auditdb=# SELECT * FROM audit_tbl_2;                <== Should not be audited
+```
+
+```output title="Output"
+ f1 |  f2
+----+-------
+  1 | Row 1
+(1 row)
+```
+
+```sql
+auditdb=# TRUNCATE audit_tbl_2;                     <== Should not be audited
+TRUNCATE TABLE
+```
+
+Continuation of the audit log file now appears as follows. The next-to-last two entries representing the third case show only `CREATE TABLE audit_tbl_2` and `INSERT INTO audit_tbl_2` statements. The `SELECT * FROM audit_tbl_2` and `TRUNCATE audit_tbl_2` statements weren't audited.
+
+```text
+2020-05-25 15:59:12.332 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,2,
+"idle",2020-05-25 15:59:02 IST,5/7,0,AUDIT,00000,"statement: CREATE TABLE 
+audit_tbl(f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+
+2020-05-25 15:59:22.419 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,3,
+"idle",2020-05-25 15:59:02 IST,5/8,0,AUDIT,00000,"statement: INSERT INTO 
+audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+
+2020-05-25 15:59:32.180 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,4,
+"idle",2020-05-25 15:59:02 IST,5/9,0,AUDIT,00000,"statement: UPDATE
+audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql","client backend","UPDATE","","update"
+
+2021-02-18 08:04:57.434 IST,"admin","edb",3182,"[local]",602e65dc.c6e,1,
+"idle",2021-02-18 08:04:28 IST,4/22,0,AUDIT,00000,"statement: SET default_with_rowids TO TRUE;
+",,,,,,,,,"psql","client backend","SET","","set"
+
+2021-02-18 08:06:01.662 IST,"admin","edb",3182,"[local]",602e65dc.c6e,2,
+"idle",2021-02-18 08:04:28 IST,4/27,0,AUDIT,00000,"statement: SELECT * FROM edb_tbl;
+",,,,,,,,,"psql","client backend","SELECT","","select"
+
+2021-02-18 08:06:11.125 IST,"admin","edb",3182,"[local]",602e65dc.c6e,3,
+"idle",2021-02-18 08:04:28 IST,4/28,0,AUDIT,00000,"statement: TRUNCATE edb_tbl;
+",,,,,,,,,"psql","client backend","TRUNCATE TABLE","","truncate"
+
+2020-05-25 17:30:59.057 IST,"admin","auditdb",122093,"[local]",5ecbb370.1dced,2,
+"idle",2020-05-25 17:30:48 IST,5/11,0,AUDIT,00000,"statement: CREATE TABLE
+audit_tbl_2 (f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+
+2020-05-25 17:31:08.866 IST,"admin","auditdb",122093,"[local]",5ecbb370.1dced,3,
+"idle",2020-05-25 17:30:48 IST,5/12,0,AUDIT,00000,"statement: INSERT INTO
+audit_tbl_2 VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

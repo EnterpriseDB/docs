@@ -1,0 +1,35 @@
+---
+title: Destinations
+description: Learn about creating destinations to prepare for database migrations to Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrate/destinations/
+lastModified: 2026-07-23T17:52:58+02:00
+---
+
+# Destinations
+
+Destinations are externally managed databases you connected to the Hybrid Manager using the [Data Migration Service or DMS](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/) so you can use them as destinations for migrations. For a database to appear in this view, you must install and configure the [EDB DMS Agent in writer mode](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/installing_agent/).
+
+This view displays all the configured destinations in the project.
+
+Each destination's view shows the database name, database type, `cdcagent` ID, the current [status](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrate/destinations/#status), the destination type, and more.
+
+## Status
+
+HM can display the following statuses for a destination.
+
+| Status                         | Description                                                                                                                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Waiting for tables metadata    | The EDB DMS Agent is retrieving information about the tables (for example, names, columns, data types). If the destination is stuck in this state, there might be connectivity issues with the database. |
+| Ready to start a new migration | The EDB DMS Agent can successfully access the destination database, and you can use it for a migration.                                                                                                  |
+| Running                        | A migration process using this destination is currently active and data is being transferred.                                                                                                            |
+| Paused                         | An ongoing migration process that's using this destination was temporarily stopped.                                                                                                                      |
+| Connectivity error             | The EDB DMS Agent can't establish a connection to the externally managed database. This can be due to incorrect connection details (host, port, database name, username, password) or network issues.    |
+| Error                          | Unspecified problem. Investigate HM Console and `cdcagent` logs to understand the specific cause.                                                                                                        |
+
+> **Note**
+>
+> You can't use a source or destination that's part of an active migration (in any state, including running or paused) for another migration. The existing migration must be completed or deleted before you can reuse the source or destination.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

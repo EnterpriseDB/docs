@@ -1,0 +1,1282 @@
+---
+title: BDR system functions
+product: EDB Postgres Distributed (PGD)
+version: 4.4.2
+url: https://www.enterprisedb.com/docs/pgd/4.4/bdr/functions/
+lastModified: 2026-08-28T14:54:41+01:00
+---
+
+# BDR system functions
+
+Perform BDR management primarily by using functions you call from SQL.
+All functions in BDR are exposed in the `bdr` schema. Schema qualify any calls to these
+functions instead of putting `bdr` in the
+`search_path`.
+
+## Version information functions
+
+### bdr.bdr\_version
+
+This function retrieves the textual representation of the BDR version
+currently in use.
+
+### bdr.bdr\_edition
+
+This function retrieves the textual representation of the BDR edition
+currently in use.
+
+### bdr.bdr\_version\_num
+
+This function retrieves the BDR version number that is
+currently in use. Version numbers are monotonically increasing, allowing this
+value to be used for less-than and greater-than comparisons.
+
+The following formula returns the version number consisting of
+major version, minor version, and patch release into a single numerical
+value:
+
+```
+MAJOR_VERSION * 10000 + MINOR_VERSION * 100 + PATCH_RELEASE
+```
+
+## System information functions
+
+### bdr.get\_relation\_stats
+
+Returns the relation information.
+
+### bdr.get\_subscription\_stats
+
+Returns the current subscription statistics.
+
+## System and progress information parameters
+
+BDR exposes some parameters that you can query using `SHOW` in `psql`
+or using `PQparameterStatus` (or equivalent) from a client
+application.
+
+### bdr.local\_node\_id
+
+When you initialize a session, this is set to the node id the client is
+connected to. This allows an application to figure out the node it's
+connected to, even behind a transparent proxy.
+
+It's also used with [Connection pools and proxies](https://www.enterprisedb.com/docs/pgd/4.4/bdr/camo/#connection-pools-and-proxies).
+
+### bdr.last\_committed\_lsn
+
+After every `COMMIT` of an asynchronous transaction, this parameter is updated to
+point to the end of the commit record on the origin node. Combining it with `bdr.wait_for_apply_queue`,
+allows applications
+to perform causal reads across multiple nodes, that is, to wait until a transaction
+becomes remotely visible.
+
+### transaction\_id
+
+As soon as Postgres assigns a transaction id, if CAMO is enabled, this parameter is
+updated to show the transaction id just assigned.
+
+### bdr.is\_node\_connected
+
+#### Synopsis
+
+```sql
+bdr.is_node_connected(node_name name)
+```
+
+Returns boolean by checking if the walsender for a given peer is active
+on this node.
+
+### bdr.is\_node\_ready
+
+#### Synopsis
+
+```sql
+bdr.is_node_ready(node_name name, span interval DEFAULT NULL)
+```
+
+Returns boolean by checking if the lag is lower than the given span or
+lower than the `bdr.global_commit_timeout` otherwise.
+
+## Consensus function
+
+### bdr.consensus\_disable
+
+Disables the consensus worker on the local node until server restart or until
+it's reenabled using `bdr.consensus_enable` (whichever happens first).
+
+> **Warning**
+>
+> Disabling consensus disables some features of BDR and
+> affects availability of the EDB Postgres Distributed cluster if left disabled for a
+> long time. Use this function only when working with
+> Technical Support.
+
+### bdr.consensus\_enable
+
+Reenabled disabled consensus worker on local node.
+
+### bdr.consensus\_proto\_version
+
+Returns currently used consensus protocol version by the local node.
+
+Needed by the BDR group reconfiguration internal mechanisms.
+
+### bdr.consensus\_snapshot\_export
+
+#### Synopsis
+
+```sql
+bdr.consensus_snapshot_export(version integer DEFAULT NULL)
+```
+
+Generate a new BDR consensus snapshot from the currently committed-and-applied
+state of the local node and return it as bytea.
+
+By default, a snapshot for the highest supported Raft version is
+exported. But you can override that by passing an explicit `version`
+number.
+
+The exporting node doesn't have to be the current Raft leader, and it doesn't
+need to be completely up to date with the latest state on the leader. However, `bdr.consensus_snapshot_import()`
+might not accept such a snapshot.
+
+The new snapshot isn't automatically stored to the local node's
+`bdr.local_consensus_snapshot` table. It's only returned to the caller.
+
+The generated snapshot might be passed to `bdr.consensus_snapshot_import()` on
+any other nodes in the same BDR node group that's behind the exporting node's
+Raft log position.
+
+The local BDR consensus worker must be disabled for this function to work.
+Typical usage is:
+
+```
+ SELECT bdr.bdr_consensus_disable();
+ \copy (SELECT * FROM bdr.consensus_snapshot_export()) TO 'my_node_consensus_snapshot.data'
+ SELECT bdr.bdr_consensus_enable();
+```
+
+While the BDR consensus worker is disabled:
+
+- DDL locking attempts on the node fail or time out.
+- galloc sequences don't get new values.
+- Eager and CAMO transactions pause or error.
+- Other functionality that needs the distributed consensus system is disrupted.
+  The required downtime is generally very brief.
+
+Depending on the use case, it might be practical to extract a snapshot that
+already exists from the `snapshot` field of the `bdr.local_consensus_snapshot`
+table and use that instead. Doing so doesn't require you to stop the consensus worker.
+
+### bdr.consensus\_snapshot\_import
+
+#### Synopsis
+
+```sql
+bdr.consensus_snapshot_import(IN snapshot bytea)
+```
+
+Import a consensus snapshot that was exported by
+`bdr.consensus_snapshot_export()`, usually from another node in the same BDR
+node group.
+
+It's also possible to use a snapshot extracted directly from the `snapshot`
+field of the `bdr.local_consensus_snapshot` table on another node.
+
+This function is useful for resetting a BDR node's catalog state to a known good
+state in case of corruption or user error.
+
+You can import the snapshot if the importing node's `apply_index` is less than
+or equal to the snapshot-exporting node's `commit_index` when the
+snapshot was generated. (See `bdr.get_raft_status()`.) A node that can't accept
+the snapshot because its log is already too far ahead raises an error
+and makes no changes. The imported snapshot doesn't have to be completely
+up to date, as once the snapshot is imported the node fetches the remaining
+changes from the current leader.
+
+The BDR consensus worker must be disabled on the importing node for this
+function to work. See notes on `bdr.consensus_snapshot_export()` for details.
+
+It's possible to use this function to force the local node to generate a new Raft
+snapshot by running:
+
+```
+SELECT bdr.consensus_snapshot_import(bdr.consensus_snapshot_export());
+```
+
+This approach might also truncate the Raft logs up to the current
+applied log position.
+
+### bdr.consensus\_snapshot\_verify
+
+#### Synopsis
+
+```sql
+bdr.consensus_snapshot_verify(IN snapshot bytea)
+```
+
+Verify the given consensus snapshot that was exported by
+`bdr.consensus_snapshot_export()`. The snapshot header contains the
+version with which it was generated and the node tries to verify it
+against the same version.
+
+The snapshot might have been exported on the same node or any other node
+in the cluster. If the node verifying the snapshot doesn't support the
+version of the exported snapshot, then an error is raised.
+
+### bdr.get\_consensus\_status
+
+Returns status information about the current consensus (Raft) worker.
+
+### bdr.get\_raft\_status
+
+Returns status information about the current consensus (Raft) worker.
+Alias for `bdr.get_consensus_status`.
+
+### bdr.raft\_leadership\_transfer
+
+#### Synopsis
+
+```sql
+bdr.raft_leadership_transfer(IN node_name text, IN wait_for_completion boolean)
+```
+
+Request the node identified by `node_name` to be the Raft leader. The
+request can be initiated from any of the BDR nodes and is
+internally forwarded to the current leader to transfer the leadership to
+the designated node. The designated node must be an ACTIVE BDR node
+with full voting rights.
+
+If `wait_for_completion` is false, the request is served on
+a best-effort basis. If the node can't become a leader in the
+`bdr.raft_election_timeout` period, then some other capable node
+becomes the leader again. Also, the leadership can change over the
+period of time per Raft protocol. A `true` return result indicates
+only that the request was submitted successfully.
+
+If `wait_for_completion` is `true`, then the function waits until
+the given node becomes the new leader and possibly waits infinitely if
+the requested node fails to become Raft leader (for example, due to network
+issues). We therefore recommend that you always set a `statement_timeout`
+with `wait_for_completion` to prevent an infinite loop.
+
+## Utility functions
+
+### bdr.wait\_slot\_confirm\_lsn
+
+Allows you to wait until the last write on this session was replayed
+to one or all nodes.
+
+Waits until a slot passes a certain LSN. If no position is supplied, the
+current write position is used on the local node.
+
+If no slot name is passed, it waits until all BDR slots pass the LSN.
+
+The function polls every 1000 ms for changes from other nodes.
+
+If a slot is dropped concurrently, the wait ends for that slot.
+If a node is currently down and isn't updating its slot, then the wait continues.
+You might want to set `statement_timeout` to complete earlier in that case.
+
+#### Synopsis
+
+```sql
+bdr.wait_slot_confirm_lsn(slotname name, target pg_lsn)
+```
+
+Both parameters are required (neither has a default), but you can pass
+`NULL` explicitly for either one to get the behaviors described above.
+
+#### Parameters
+
+- `slotname` — Name of replication slot, or `NULL` for all BDR slots.
+- `target` — LSN to wait for, or `NULL` to use the current write LSN on the
+  local node.
+
+### bdr.wait\_for\_apply\_queue
+
+The function `bdr.wait_for_apply_queue` allows a BDR node to wait for
+the local application of certain transactions originating from a given
+BDR node. It returns only after all transactions from that peer
+node are applied locally. An application or a proxy can use this
+function to prevent stale reads.
+
+For convenience, BDR provides a variant of this function for
+CAMO and the CAMO partner node. See
+[bdr.wait\_for\_camo\_partner\_queue](https://www.enterprisedb.com/docs/pgd/4.4/bdr/camo/#wait-for-consumption-of-the-apply-queue-from-the-camo-partner).
+
+In case a specific LSN is given, that's the point in the recovery
+stream from which the peer waits. You can use this
+with `bdr.last_committed_lsn` retrieved from that peer node on a
+previous or concurrent connection.
+
+If the given `target_lsn` is NULL, this function checks the local
+receive buffer and uses the LSN of the last transaction received from
+the given peer node, effectively waiting for all transactions already
+received to be applied. This is especially useful in case the peer
+node has failed and it's not known which transactions were sent.
+In this case, transactions that are still in transit or
+buffered on the sender side aren't waited for.
+
+#### Synopsis
+
+```sql
+bdr.wait_for_apply_queue(node_name TEXT, target_lsn pg_lsn)
+```
+
+#### Parameters
+
+- `node_name` — The name of the peer node from which incoming
+  transactions are expected to be queued and to wait
+  for. If NULL, waits for all peer node's apply queue to be consumed.
+- `target_lsn` — The LSN in the replication stream from the peer node
+  to wait for, usually learned by way of `bdr.last_committed_lsn` from the
+  peer node.
+
+### bdr.get\_node\_sub\_receive\_lsn
+
+You can use this function on a subscriber to get the last LSN that was
+received from the given origin. It can be either unfiltered or filtered to take into
+account only relevant LSN increments for transactions to be applied.
+
+The difference between the output of this function and the output of
+`bdr.get_node_sub_apply_lsn()` measures the size of the corresponding
+apply queue.
+
+#### Synopsis
+
+```sql
+bdr.get_node_sub_receive_lsn(node_name name, committed bool default true)
+```
+
+#### Parameters
+
+- `node_name` — The name of the node that's the source of the
+  replication stream whose LSN is being retrieved.
+- `committed` —; The default (true) makes this function take into
+  account only commits of transactions received rather than the last
+  LSN overall. This includes actions that have no effect on the subscriber
+  node.
+
+### bdr.get\_node\_sub\_apply\_lsn
+
+You can use this function on a subscriber to get the last LSN that was
+received and applied from the given origin.
+
+#### Synopsis
+
+```sql
+bdr.get_node_sub_apply_lsn(node_name name)
+```
+
+#### Parameters
+
+- `node_name` — the name of the node that's the source of the
+  replication stream whose LSN is being retrieved.
+
+### bdr.run\_on\_all\_nodes
+
+Function to run a query on all nodes.
+
+> **Warning**
+>
+> This function runs an arbitrary query on a remote node with the
+> privileges of the user used for the internode connections as specified in the
+> node's DSN. Use caution when granting privileges to this function.
+
+#### Synopsis
+
+```sql
+bdr.run_on_all_nodes(query text)
+```
+
+#### Parameters
+
+- `query` — Arbitrary query to execute.
+
+#### Notes
+
+This function connects to other nodes and executes the query, returning
+a result from each of them in JSON format. Multiple rows might be returned from
+each node, encoded as a JSON array. Any errors, such as being unable to
+connect because a node is down, are shown in the response field.
+No explicit statement\_timeout or other runtime parameters are set, so
+defaults are used.
+
+This function doesn't go through normal replication. It uses direct client
+connection to all known nodes. By default, the connection is created
+with `bdr.ddl_replication = off`, since the commands are already being sent
+to all of the nodes in the cluster.
+
+Be careful when using this function since you risk breaking replication
+and causing inconsistencies between nodes. Use either transparent DDL
+replication or `bdr.replicate_ddl_command()` to replicate DDL.
+DDL might be blocked in a future release.
+
+#### Example
+
+It's useful to use this function in monitoring, for example, as in the following
+query:
+
+```sql
+SELECT bdr.run_on_all_nodes($$
+	SELECT local_slot_name, origin_name, target_name, replay_lag_size
+      FROM bdr.node_slots
+     WHERE origin_name IS NOT NULL
+$$);
+```
+
+This query returns something like this on a two-node cluster:
+
+```
+[
+    {
+        "dsn": "host=node1 port=5432 dbname=bdrdb user=postgres ",
+        "node_id": "2232128708",
+        "response": {
+            "command_status": "SELECT 1",
+            "command_tuples": [
+                {
+                    "origin_name": "node1",
+                    "target_name": "node2",
+                    "local_slot_name": "bdr_bdrdb_bdrgroup_node2",
+                    "replay_lag_size": "0 bytes"
+                }
+            ]
+        },
+        "node_name": "node1"
+    },
+    {
+        "dsn": "host=node2 port=5432 dbname=bdrdb user=postgres ",
+        "node_id": "2058684375",
+        "response": {
+            "command_status": "SELECT 1",
+            "command_tuples": [
+                {
+                    "origin_name": "node2",
+                    "target_name": "node1",
+                    "local_slot_name": "bdr_bdrdb_bdrgroup_node1",
+                    "replay_lag_size": "0 bytes"
+                }
+            ]
+        },
+        "node_name": "node2"
+    }
+]
+```
+
+### bdr.run\_on\_nodes
+
+Function to run a query on a specified list of nodes.
+
+> **Warning**
+>
+> This function runs an arbitrary query on remote nodes with the
+> privileges of the user used for the internode connections as specified in the
+> node's DSN. Use caution when granting privileges to this function.
+
+#### Synopsis
+
+```postgresql
+bdr.run_on_nodes(node_names text[], query text)
+```
+
+#### Parameters
+
+- `node_names` — Text ARRAY of node names where query is executed.
+- `query` — Arbitrary query to execute.
+
+#### Notes
+
+This function connects to other nodes and executes the query, returning
+a result from each of them in JSON format. Multiple rows can be returned from
+each node, encoded as a JSON array. Any errors, such as being unable to
+connect because a node is down, are shown in the response field.
+No explicit statement\_timeout or other runtime parameters are set, so
+defaults are used.
+
+This function doesn't go through normal replication. It uses direct client
+connection to all known nodes. By default, the connection is created
+with `bdr.ddl_replication = off`, since the commands are already being sent
+to all of the nodes in the cluster.
+
+Be careful when using this function since you risk breaking replication
+and causing inconsistencies between nodes. Use either transparent DDL
+replication or `bdr.replicate_ddl_command()` to replicate DDL.
+DDL might be blocked in a future release.
+
+### bdr.run\_on\_group
+
+Function to run a query on a group of nodes.
+
+> **Warning**
+>
+> This function runs an arbitrary query on remote nodes with the
+> privileges of the user used for the internode connections as specified in the
+> node's DSN. Use caution when granting privileges to this function.
+
+#### Synopsis
+
+```postgresql
+bdr.run_on_group(node_group_name text, query text)
+```
+
+#### Parameters
+
+- `node_group_name` — Name of node group where query is executed.
+- `query` — Arbitrary query to execute.
+
+#### Notes
+
+This function connects to other nodes and executes the query, returning
+a result from each of them in JSON format. Multiple rows can be returned from
+each node, encoded as a JSON array. Any errors, such as being unable to
+connect because a node is down, are shown in the response field.
+No explicit statement\_timeout or other runtime parameters are set, so
+defaults are used.
+
+This function doesn't go through normal replication. It uses direct client
+connection to all known nodes. By default, the connection is created
+with `bdr.ddl_replication = off`, since the commands are already being sent
+to all of the nodes in the cluster.
+
+Be careful when using this function since you risk breaking replication
+and causing inconsistencies between nodes. Use either transparent DDL
+replication or `bdr.replicate_ddl_command()` to replicate DDL.
+DDL might be blocked in a future release.
+
+### bdr.global\_lock\_table
+
+This function acquires a global DML locks on a given table.
+See [DDL locking details](https://www.enterprisedb.com/docs/pgd/4.4/bdr/ddl/#ddl-locking-details) for information
+about global DML lock.
+
+#### Synopsis
+
+```sql
+bdr.global_lock_table(relation regclass)
+```
+
+#### Parameters
+
+- `relation` — Name or oid of the relation to lock.
+
+#### Notes
+
+This function acquires the global DML lock independently of the
+`ddl_locking` setting.
+
+The `bdr.global_lock_table` function requires `UPDATE`, `DELETE`, or `TRUNCATE`
+privilege on the locked `relation` unless `bdr.backwards_compatibility` is
+set to 30618 or lower.
+
+### bdr.wait\_for\_xid\_progress
+
+You can use this function to wait for the given transaction (identified
+by its XID) originated at the given node (identified by its node id)
+to make enough progress on the cluster. The progress is defined as the
+transaction being applied on a node and this node having seen all
+other replication changes done before the transaction is applied.
+
+#### Synopsis
+
+```sql
+bdr.wait_for_xid_progress(origin_node_id oid, origin_topxid int4, allnodes boolean DEFAULT true)
+```
+
+#### Parameters
+
+- `origin_node_id` — Node id of the node where the transaction
+  originated.
+
+- `origin_topxid` — XID of the transaction.
+
+- `allnodes` — If `true` then wait for the transaction to progress on
+  all nodes. Otherwise wait only for the current node.
+
+#### Notes
+
+You can use the function only for those transactions that
+replicated a DDL command because only those transactions are tracked
+currently. If a wrong `origin_node_id` or `origin_topxid` is supplied,
+the function might wait forever or until `statement_timeout` occurs.
+
+### bdr.local\_group\_slot\_name
+
+Returns the name of the group slot on the local node.
+
+#### Example
+
+```sql
+bdrdb=# SELECT bdr.local_group_slot_name();
+ local_group_slot_name
+-----------------------
+ bdr_bdrdb_bdrgroup
+```
+
+### bdr.node\_group\_type
+
+Returns the type of the given node group. Returned value is the same as what
+was passed to `bdr.create_node_group()` when the node group was created,
+except `normal` is returned if the `node_group_type` was passed as NULL
+when the group was created.
+
+#### Example
+
+```sql
+bdrdb=# SELECT bdr.node_group_type('bdrgroup');
+ node_group_type
+-----------------
+ normal
+```
+
+### bdr.alter\_node\_kind
+
+Modifies the kind of an existing BDR node. The current kind of a node
+can be checked in the `node_kind` column of [`bdr.node`](https://www.enterprisedb.com/docs/pgd/4.4/bdr/catalogs/#bdrnode).
+
+#### Synopsis
+
+```sql
+bdr.alter_node_kind(node_name text, node_kind text)
+```
+
+#### Parameters
+
+- `node_name` — Name of the node to modify.
+- `node_kind` — New kind to assign to the node.
+
+## Global advisory locks
+
+BDR supports global advisory locks. These locks are similar to
+the advisory locks available in PostgreSQL except that the
+advisory locks supported by BDR are global. They follow semantics
+similar to DDL locks. So an advisory lock is obtained by majority consensus and
+can be used even if one or more nodes are down or lagging behind, as long
+as a majority of all nodes can work together.
+
+Currently only EXCLUSIVE locks are supported. So if another node or another
+backend on the same node has already acquired the advisory lock on the object,
+then other nodes or backends must wait for the lock to be released.
+
+Advisory lock is transactional in nature. So the lock is automatically released
+when the transaction ends unless it's explicitly released before the end of
+the transaction. In this case, it becomes available as soon as it's released.
+Session-level advisory locks aren't currently supported.
+
+Global advisory locks are reentrant. So if the same resource is locked three
+times, you must then unlock it three times for it to be released for use in other sessions.
+
+### bdr.global\_advisory\_lock
+
+This function acquires an EXCLUSIVE lock on the provided object. If the lock isn't
+available, then it waits until the lock becomes available or the
+`bdr.global_lock_timeout` is reached.
+
+#### Synopsis
+
+```sql
+bdr.global_advisory_lock(key bigint)
+```
+
+#### parameters
+
+- `key` — The object on which an advisory lock is acquired.
+
+#### Synopsis
+
+```sql
+bdr.global_advisory_lock(key1 integer, key2 integer)
+```
+
+#### parameters
+
+- `key1` — First part of the composite key.
+- `key2` — second part of the composite key.
+
+### bdr.global\_advisory\_unlock
+
+This function releases a previously acquired lock on the application-defined
+source. The lock must have been obtained in the same transaction by
+the application. Otherwise, an error is raised.
+
+#### Synopsis
+
+```sql
+bdr.global_advisory_unlock(key bigint)
+```
+
+#### Parameters
+
+- `key` — The object on which an advisory lock is acquired.
+
+#### Synopsis
+
+```sql
+bdr.global_advisory_unlock(key1 integer, key2 integer)
+```
+
+#### Parameters
+
+- `key1` — First part of the composite key.
+- `key2` — Second part of the composite key.
+
+## Monitoring functions
+
+### bdr.monitor\_group\_versions
+
+To provide a cluster-wide version check, this function uses
+BDR version information returned from the view
+`bdr.group_version_details`.
+
+#### Synopsis
+
+```sql
+bdr.monitor_group_versions()
+```
+
+#### Notes
+
+This function returns a record with fields `status` and `message`,
+as explained in [Monitoring](https://www.enterprisedb.com/docs/pgd/4.4/monitoring/#monitoring-bdr-versions).
+
+This function calls `bdr.run_on_all_nodes()`.
+
+### bdr.monitor\_group\_raft
+
+To provide a cluster-wide Raft check, this function uses
+BDR Raft information returned from the view
+`bdr.group_raft_details`.
+
+#### Synopsis
+
+```sql
+bdr.monitor_group_raft()
+```
+
+#### Notes
+
+This function returns a record with fields `status` and `message`,
+as explained in [Monitoring](https://www.enterprisedb.com/docs/pgd/4.4/monitoring/#monitoring-raft-consensus).
+
+This function calls `bdr.run_on_all_nodes()`.
+
+### bdr.monitor\_local\_replslots
+
+This function uses replication slot status information returned from the
+view `pg_replication_slots` (slot active or inactive) to provide a
+local check considering all replication slots except the BDR group
+slots.
+
+#### Synopsis
+
+```sql
+bdr.monitor_local_replslots()
+```
+
+#### Notes
+
+This function returns a record with fields `status` and `message`,
+as explained in [Monitoring replication slots](https://www.enterprisedb.com/docs/pgd/4.4/monitoring/#monitoring-replication-slots).
+
+### bdr.wal\_sender\_stats
+
+If the [decoding worker](https://www.enterprisedb.com/docs/pgd/4.4/bdr/nodes/#decoding-worker) is enabled, this
+function shows information about the decoder slot and current LCR
+(logical change record) segment file being read by each WAL sender.
+
+#### Synopsis
+
+```sql
+bdr.wal_sender_stats() 
+```
+
+#### Output columns
+
+- `pid` — PID of the WAL sender (corresponds to `pg_stat_replication`'s `pid` column).
+
+- `is_using_lcr` — Whether the WAL sender is sending LCR files. The next columns are `NULL` if `is_using_lcr` is `FALSE`.
+
+- `decoder_slot_name` — The name of the decoder replication slot.
+
+- `lcr_file_name` — The name of the current LCR file.
+
+### bdr.get\_decoding\_worker\_stat
+
+If the [decoding worker](https://www.enterprisedb.com/docs/pgd/4.4/bdr/nodes/#decoding-worker) is enabled, this function
+shows information about the state of the decoding worker associated with the
+current database. This also provides more granular information about decoding
+worker progress than is available via `pg_replication_slots`.
+
+#### Synopsis
+
+```sql
+bdr.get_decoding_worker_stat() 
+```
+
+#### Output columns
+
+- `pid` — The PID of the decoding worker (corresponds to the column `active_pid` in `pg_replication_slots`).
+
+- `decoded_upto_lsn` — LSN up to which the decoding worker read transactional logs.
+
+- `waiting` — Whether the decoding worker is waiting for new WAL.
+
+- `waiting_for_lsn` — The LSN of the next expected WAL.
+
+#### Notes
+
+For further details, see [Monitoring WAL senders using LCR](https://www.enterprisedb.com/docs/pgd/4.4/monitoring/#monitoring-wal-senders-using-lcr).
+
+### bdr.lag\_control
+
+If [lag control](https://www.enterprisedb.com/docs/pgd/4.4/bdr/lag-control/#configuration) is enabled, this function
+shows information about the commit delay and number of nodes conforming
+to their configured lag measure for the local node and current database.
+
+#### Synopsis
+
+```sql
+bdr.lag_control()
+```
+
+#### Output columns
+
+- `commit_delay` — Current runtime commit delay, in fractional milliseconds.
+
+- `commit_delay_maximum` — Configured maximum commit delay, in fractional milliseconds.
+
+- `commit_delay_adjustment` — Change to runtime commit delay possible during
+  a sample interval, in fractional milliseconds.
+
+- `conforming_nodes` — Current runtime number of nodes conforming to lag measures.
+
+- `conforming_nodes_minimum` — Configured minimum number of nodes required to
+  conform to lag measures, below which a commit delay adjustment is applied.
+
+- `lag_bytes_threshold` — Lag size at which a commit delay is applied, in kilobytes.
+
+- `lag_bytes_maximum` — Configured maximum lag size, in kilobytes.
+
+- `lag_time_threshold` — Lag time at which a commit delay is applied, in milliseconds.
+
+- `lag_time_maximum` — Configured maximum lag time, in milliseconds.
+
+- `sample_interval` — Configured minimum time between lag samples and possible
+  commit delay adjustments, in milliseconds.
+
+### bdr.lag\_history
+
+If [lag control](https://www.enterprisedb.com/docs/pgd/4.4/bdr/lag-control/#configuration) is enabled, this function
+returns a history of recent lag samples recorded for each peer node,
+complementing the current-state snapshot returned by `bdr.lag_control()`.
+
+#### Synopsis
+
+```sql
+bdr.lag_history()
+```
+
+#### Output columns
+
+- `peer_node_id` — OID of the peer node this sample was recorded for.
+
+- `ts` — Timestamp at which the sample was recorded.
+
+- `send_ptr`, `write_ptr`, `flush_ptr`, `apply_ptr` — LSNs reported by
+  the peer for the send, write, flush, and apply positions at the time of
+  the sample.
+
+- `apply_rate` — Apply rate calculated for the peer at the time of
+  the sample.
+
+## Internal functions
+
+### BDR message payload functions
+
+`bdr.decode_message_response_payload` and `bdr.decode_message_payload`
+
+These functions decode the consensus payloads to a more human-readable output.
+
+Used primarily by the `bdr.global_consensus_journal_details` debug view.
+
+### bdr.get\_global\_locks
+
+This function shows information about global locks held on the local node.
+
+Used to implement the `bdr.global_locks` view to provide a more detailed
+overview of the locks.
+
+### bdr.get\_slot\_flush\_timestamp
+
+Retrieves the timestamp of the last flush position confirmation for a given
+replication slot.
+
+Used internally to implement the `bdr.node_slots` view.
+
+### BDR internal function replication functions
+
+`bdr.internal_alter_sequence_set_kind`, `internal_replication_set_add_table`, `internal_replication_set_remove_table`
+
+Functions used internally for replication of the various function calls.
+
+No longer used by the current version of BDR. Exists only for backward
+compatibility during rolling upgrades.
+
+### bdr.internal\_submit\_join\_request
+
+Submits a consensus request for joining a new node.
+
+Needed by the BDR group reconfiguration internal mechanisms.
+
+### bdr.isolation\_test\_session\_is\_blocked
+
+A helper function, extending (and actually invoking) the original
+`pg_isolation_test_session_is_blocked` with an added check for blocks
+on global locks.
+
+Used for isolation/concurrency tests.
+
+### bdr.local\_node\_info
+
+This function displays information for the local node, needed by the BDR group
+reconfiguration internal mechanisms.
+
+The view `bdr.local_node_summary` provides similar information useful for
+user consumption.
+
+### bdr.msgb\_connect
+
+Function for connecting to the connection pooler of another node,
+used by the consensus protocol.
+
+### bdr.msgb\_deliver\_message
+
+Function for sending messages to another node's connection pooler,
+used by the consensus protocol.
+
+### bdr.node\_group\_member\_info
+
+Looks up a node group and reports BDR and pglogical node information for its
+members. Used internally during node join to protect against concurrent
+catalog changes.
+
+### bdr.peer\_state\_name
+
+This function transforms the node state (`node_state`) into a textual
+representation and is used mainly to implement the `bdr.node_summary` view.
+
+### bdr.request\_replay\_progress\_update
+
+Requests the immediate writing of a 'replay progress update' Raft message.
+It's used mainly for test purposes but can be also used to test if the
+consensus mechanism is working.
+
+### bdr.seq\_nextval
+
+Internal implementation of sequence increments.
+
+Use this function instead of standard `nextval` in queries that
+interact with [BDR global sequences](https://www.enterprisedb.com/docs/pgd/4.4/bdr/sequences/#bdr-global-sequences).
+
+#### Notes
+
+The following are also internal BDR sequence manipulation functions.
+`bdr.seq_currval` and `bdr.seq_lastval` are used automatically.
+
+### bdr.show\_subscription\_status
+
+Retrieves information about the subscription status and is used mainly to
+implement the `bdr.subscription_summary` view.
+
+### bdr.get\_node\_conflict\_resolvers
+
+Displays a text string of all the conflict resolvers on the local node.
+
+### bdr.reset\_subscription\_stats
+
+Returns a Boolean result after resetting the statistics created by subscriptions,
+as viewed by `bdr.stat_subscription`.
+
+### bdr.reset\_relation\_stats
+
+Returns a Boolean result after resetting the relation stats,
+as viewed by `bdr.stat_relation`.
+
+### bdr.pg\_xact\_origin
+
+Returns origin id of a given transaction.
+
+#### Synopsis
+
+```sql
+bdr.pg_xact_origin(xmin xid)
+```
+
+#### Parameters
+
+- `xid` — Transaction id whose origin is returned,
+
+### bdr.difference\_fix\_origin\_create
+
+Creates a replication origin with a given name passed as an argument but adding a `bdr_` prefix.
+It returns the internal id of the origin. This performs the same functionality
+as `pg_replication_origin_create()`, except this requires `bdr_superuser`
+rather than postgres superuser permissions.
+
+#### Synopsis
+
+### bdr.difference\_fix\_session\_setup
+
+Marks the current session as replaying from the current origin.
+The function uses the pre-created `bdr_local_only_origin` local
+replication origin implicitly for the session. It allows replay
+progress to be reported and returns void. This function performs the
+same functionality as `pg_replication_origin_session_setup()`
+except that this function requires bdr\_superuser rather than postgres
+superuser permissions. The earlier form of the function,
+`bdr.difference_fix_session_setup(text)`, was deprecated and will be
+removed in upcoming releases.
+
+#### Synopsis
+
+```sql
+bdr.difference_fix_session_setup()
+```
+
+### bdr.difference\_fix\_session\_reset
+
+Marks the current session as not replaying from any origin, essentially
+resetting the effect of `bdr.difference_fix_session_setup()`.
+It returns void. This function has the same functionality as
+`pg_replication_origin_session_reset()` except this function requires
+bdr\_superuser rather than postgres superuser permissions.
+
+#### Synopsis
+
+```sql
+bdr.difference_fix_session_reset()
+```
+
+### bdr.difference\_fix\_xact\_set\_avoid\_conflict
+
+Marks the current transaction as replaying a transaction that
+committed at LSN '0/0' and timestamp '2000-01-01'. This function has
+the same functionality as
+`pg_replication_origin_xact_setup('0/0', '2000-01-01')`
+except this requires bdr\_superuser rather than postgres superuser
+permissions.
+
+#### Synopsis
+
+```sql
+bdr.difference_fix_xact_set_avoid_conflict()
+```
+
+### bdr.resynchronize\_table\_from\_node(node\_name name, relation regclass)
+
+Resynchronizes the relation from a remote node.
+
+#### Synopsis
+
+```sql
+bdr.resynchronize_table_from_node(node_name name, relation regclass)
+```
+
+#### Parameters
+
+- `node_name` — The node from which to copy or resync the relation data.
+- `relation` — The relation to copy from the remote node.
+
+#### Notes
+
+This function acquires a global DML lock on the relation, truncates the relation
+locally, and copies data into it from the remote node.
+
+The relation must exist on both nodes with the same name and definition.
+
+The following are supported:
+
+- Resynchronizing partitioned tables with identical partition definitions
+- Resynchronizing partitioned table to nonpartitioned table and vice versa
+- Resynchronizing referenced tables by temporarily dropping and recreating
+  foreign key constraints
+
+After running the function on a referenced table, if the referenced column
+data no longer matches the referencing column values, it throws an error.
+After resynchronizing the referencing table data, rerun the function.
+
+Furthermore, it supports resynchronization of tables with generated columns by
+computing the generated column values locally after copying the data from
+remote node.
+
+Currently, row\_filters are ignored by this function.
+
+The `bdr.resynchronize_table_from_node` function can be executed only by
+the owner of the table, provided the owner has bdr\_superuser privileges.
+
+### bdr.consensus\_kv\_store
+
+Stores value in the consistent KV Store.
+
+Returns timestamp of the value expiration time. This depends on `ttl`. If `ttl`
+is `NULL`, then this returns `infinity`. If the value was deleted, it
+returns `-infinity`.
+
+#### Synopsis
+
+```sql
+bdr.consensus_kv_store(key text, value jsonb,
+        prev_value jsonb DEFAULT NULL, ttl int DEFAULT NULL)
+```
+
+#### Parameters
+
+- `key` — An arbitrary unique key to insert, update, or delete.
+- `value` — JSON value to store. If NULL, any existing record is deleted.
+- `prev_value` — If set, the write operation is done only if the current value
+  is equal to `prev_value`.
+- `ttl` — Time to live of the new value, in milliseconds.
+
+#### Notes
+
+This is an internal function, mainly used by HARP.
+
+> **Warning**
+>
+> Don't use this function in user applications.
+
+### bdr.consensus\_kv\_fetch
+
+Fetch value from the consistent KV Store in JSON format.
+
+#### Synopsis
+
+```sql
+bdr.consensus_kv_fetch(IN key text) RETURNS jsonb
+```
+
+#### Parameters
+
+- `key` — An arbitrary key to fetch.
+
+#### Notes
+
+This is an internal function, mainly used by HARP.
+
+> **Warning**
+>
+> Don't use this function in user applications.
+
+### bdr.alter\_subscription\_skip\_changes\_upto
+
+Because logical replication can replicate across versions, doesn't replicate
+global changes like roles, and can replicate selectively, sometimes the logical
+replication apply process can encounter an error and stop applying changes.
+
+Wherever possible, fix such problems by making changes to the
+target side. `CREATE` any missing table that's blocking replication,
+`CREATE` a needed role, `GRANT` a necessary permission, and so on. But occasionally a
+problem can't be fixed that way and it might be necessary to skip entirely over a
+transaction.
+Changes are skipped as entire transactions—all or nothing. To decide where to
+skip to, use log output to find the commit LSN, per the example that follows, or peek
+the change stream with the logical decoding functions.
+
+Unless a transaction made only one change, you often need to manually
+apply the transaction's effects on the target side, so it's important to
+save the problem transaction whenever possible, as shown in the examples that follow.
+
+It's possible to skip over changes without
+`bdr.alter_subscription_skip_changes_upto` by using
+`pg_catalog.pg_logical_slot_get_binary_changes` to skip to the LSN of interest,
+so this is a convenience function. It does do a faster skip, although it
+might bypass some kinds of errors in logical decoding.
+
+This function works only on disabled subscriptions.
+
+The usual sequence of steps is:
+
+1. Identify the problem subscription and LSN of the problem commit.
+2. Disable the subscription.
+3. Save a copy of the transaction using `pg_catalog.pg_logical_slot_peek_changes` on the source node, if possible.
+4. `bdr.alter_subscription_skip_changes_upto` on the target node.
+5. Apply repaired or equivalent changes on the target manually, if necessary.
+6. Reenable the subscription.
+
+> **Warning**
+>
+> It's easy to make problems worse when using this function. Don't
+> do anything unless you're certain it's the only option.
+
+#### Synopsis
+
+```sql
+  bdr.alter_subscription_skip_changes_upto(
+    sub_name text,
+    skip_upto_and_including pg_lsn
+  );
+```
+
+#### Example
+
+Apply of a transaction is failing with an error, and you've determined that
+lower-impact fixes such as changes on the target side can't resolve this
+issue. You determine that you must skip the transaction.
+
+In the error logs, find the commit record LSN to skip to, as in this
+example:
+
+```
+ERROR:  XX000: CONFLICT: target_table_missing; resolver skip_if_recently_dropped returned an error: table does not exist
+CONTEXT:  during apply of INSERT from remote relation public.break_me in xact with commit-end lsn 0/300AC18 xid 131315
+committs 2021-02-02 15:11:03.913792+01 (action #2) (effective sess origin id=2 lsn=0/300AC18)
+while consuming 'I' message from receiver for subscription bdr_regression_bdrgroup_node1_node2 (id=2667578509)
+on node node2 (id=3367056606) from upstream node node1 (id=1148549230, reporiginid=2)
+```
+
+In this portion of log, you have the information you need:
+the\_target\_lsn: **0/300AC18**
+the\_subscription: **bdr\_regression\_bdrgroup\_node1\_node2**
+
+Next, disable the subscription so the apply worker doesn't try to connect to the replication slot:
+
+```sql
+  SELECT bdr.alter_subscription_disable('the_subscription');
+```
+
+You can't skip only parts of the transaction: it's all or nothing. So
+we strongly recommend that you save a record of it by copying it out on the
+provider side first, using the subscription's slot name.
+
+```sql
+  \\copy (SELECT * FROM pg_catalog.pg_logical_slot_peek_changes('the_slot_name',
+      'the_target_lsn', NULL, 'min_proto_version', '1', 'max_proto_version', '1',
+      'startup_params_format', '1', 'proto_format', 'json'))
+   TO 'transaction_to_drop.csv' WITH (FORMAT csv);
+```
+
+This example is broken into multiple lines for readability,
+but issue it in a single line. `\copy` doesn't
+support multi-line commands.
+
+You can skip the change by changing `peek` to `get`, but
+`bdr....skip_changes_upto` does a faster skip that avoids decoding
+and outputting all the data:
+
+```sql
+  SELECT bdr.alter_subscription_skip_changes_upto('subscription_name',
+      'the_target_lsn');
+```
+
+You can apply the same changes (or repaired versions of them)
+manually to the target node, using the dumped transaction contents as a guide.
+
+Finally, reenable the subscription:
+
+```sql
+  SELECT bdr.alter_subscription_enable('the_subscription');
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

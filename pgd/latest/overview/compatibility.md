@@ -1,0 +1,140 @@
+---
+title: PGD compatibility
+description: Compatibility of EDB Postgres Distributed with different versions of Postgres
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/overview/compatibility/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# PGD compatibility
+
+Learn what EDB Postgres Distributed (PGD) 6 supports and is compatible with, including Postgres versions, operating systems and architectures, and extensions. Check this page before you deploy or upgrade a cluster to confirm your environment is supported.
+
+## PGD compatibility with Postgres versions
+
+PGD supports the following minimum minor version, per major version, across community Postgres, EDB Postgres Extended (PGE), and EDB Postgres Advanced Server (EPAS).
+
+| PGD 6                                                  | Community Postgres | EDB Postgres Extended | EDB Postgres Advanced Server |
+| ------------------------------------------------------ | ------------------ | --------------------- | ---------------------------- |
+| [6.5.1](https://www.enterprisedb.com/docs/pgd/latest/) | 18.7.0+            | 18.7.0+               | 18.7.0+                      |
+| [6.5.1](https://www.enterprisedb.com/docs/pgd/latest/) | 17.12.0+           | 17.12.0+              | 17.12.0+                     |
+| [6.5.1](https://www.enterprisedb.com/docs/pgd/latest/) | 16.16.0+           | 16.16.0+              | 16.16.0+                     |
+| [6.5.1](https://www.enterprisedb.com/docs/pgd/latest/) | 15.20.0+           | 15.20.0+              | 15.20.0+                     |
+| [6.5.1](https://www.enterprisedb.com/docs/pgd/latest/) | 14.25.0+           | 14.25.0+              | 14.25.0+                     |
+| [6.5.0](https://www.enterprisedb.com/docs/pgd/latest/) | 18.1.0+            | 18.6.0+               | 18.6.0+                      |
+| [6.5.0](https://www.enterprisedb.com/docs/pgd/latest/) | 17.5.0+            | 17.11.0+              | 17.11.0+                     |
+| [6.5.0](https://www.enterprisedb.com/docs/pgd/latest/) | 16.9.0+            | 16.15.0+              | 16.15.0+                     |
+| [6.5.0](https://www.enterprisedb.com/docs/pgd/latest/) | 15.13.0+           | 15.19.0+              | 15.19.0+                     |
+| [6.5.0](https://www.enterprisedb.com/docs/pgd/latest/) | 14.18.0+           | 14.24.0+              | 14.24.0+                     |
+
+> **Important**
+>
+> PGD 6.5.1 requires Postgres, EDB Postgres Extended, or EDB Postgres Advanced Server 14.25, 15.20, 16.16, 17.12, or 18.7, or later, due to internal compatibility changes in PGD 6.5.1.
+
+> **Important**
+>
+> PGD 6.5.0 requires EDB Postgres Extended or EDB Postgres Advanced Server 14.24, 15.19, 16.15, 17.11, or 18.6, due to internal compatibility changes in PGD 6.5.0. This requirement doesn't apply to community Postgres.
+>
+> PGD 6.0 through 6.4 aren't compatible with EDB Postgres Extended or EDB Postgres Advanced Server 14.24, 15.19, 16.15, 17.11, or 18.6, or later. Upgrade to PGD 6.5.0 or later if you're upgrading Postgres, EDB Postgres Extended, or EDB Postgres Advanced Server to one of these versions. See [Performing a combined minor upgrade](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-postgres-and-pgd/minor-upgrade/) for the steps.
+
+> **Note**
+>
+> Postgres versions 14.24, 15.19, 16.15, 17.11, and 18.6 add the `output_plugin_libraries` parameter. On community Postgres, you must add `bdr` to `output_plugin_libraries` and reload the configuration when you upgrade to one of these versions. See [Postgres configuration](https://www.enterprisedb.com/docs/pgd/latest/reference/postgres-configuration/#postgres-settings) for the required setting and instructions. For EPAS or PGE, no action is required.
+
+EDB recommends that you use the latest minor version of any Postgres major version with a supported PGD.
+
+## PGD compatibility with operating systems and architectures
+
+PGD supports the following operating systems and architectures:
+
+| Operating System                   | x86\_64<br/>(amd64) | ppc64le | arm64/<br/>aarch64 |
+| ---------------------------------- | ------------------- | ------- | ------------------ |
+| RHEL 8                             | Yes                 | Yes     |                    |
+| RHEL 9                             | Yes                 | Yes     | Yes                |
+| Oracle Linux 8                     | Yes                 |         |                    |
+| Oracle Linux 9                     | Yes                 |         |                    |
+| Rocky Linux/AlmaLinux              | Yes                 |         |                    |
+| SUSE Linux Enterprise Server 15SP6 | Yes                 | Yes     |                    |
+| SUSE Linux Enterprise Server 15SP7 | Yes                 | Yes     |                    |
+| Ubuntu 22.04                       | Yes                 |         |                    |
+| Ubuntu 24.04                       | Yes                 |         |                    |
+| Debian 12                          | Yes                 |         | Yes                |
+| IBM Linux One                      | Yes                 |         |                    |
+
+## PGD compatibility with extensions
+
+PGD supports the following Postgres contrib modules and EDB extensions. The distributed nature of PGD means that you must carefully consider and plan the extensions you select and install. For the full list of extensions available across EDB's Postgres distributions, see [Postgres extensions available by deployment](https://www.enterprisedb.com/docs/pg_extensions/). For steps to install and configure an extension in a PGD cluster, see [Installing extensions](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/06-extensions/).
+
+### Postgres contrib extensions
+
+Contrib extensions ship with community Postgres, EDB Postgres Extended, and EDB Postgres Advanced Server, so no separate download is needed. The following contrib extensions are compatible with PGD on all supported Postgres versions.
+
+| Extension                                                                             | Compatible versions                                            |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [`amcheck`](https://www.postgresql.org/docs/current/amcheck.html)                     | All supported versions                                         |
+| [`bloom`](https://www.postgresql.org/docs/current/bloom.html)                         | All supported versions                                         |
+| [`btree_gin`](https://www.postgresql.org/docs/current/btree-gin.html)                 | All supported versions                                         |
+| [`btree_gist`](https://www.postgresql.org/docs/current/btree-gist.html)               | All supported versions                                         |
+| [`citext`](https://www.postgresql.org/docs/current/citext.html)                       | All supported versions                                         |
+| [`cube`](https://www.postgresql.org/docs/current/cube.html)                           | All supported versions                                         |
+| [`dblink`](https://www.postgresql.org/docs/current/dblink.html)                       | All supported versions                                         |
+| [`earthdistance`](https://www.postgresql.org/docs/current/earthdistance.html)         | All supported versions                                         |
+| [`file_fdw`](https://www.postgresql.org/docs/current/file-fdw.html)                   | All supported versions                                         |
+| [`fuzzystrmatch`](https://www.postgresql.org/docs/current/fuzzystrmatch.html)         | All supported versions                                         |
+| [`hstore`](https://www.postgresql.org/docs/current/hstore.html)                       | All supported versions                                         |
+| [`intarray`](https://www.postgresql.org/docs/current/intarray.html)                   | All supported versions                                         |
+| [`isn`](https://www.postgresql.org/docs/current/isn.html)                             | All supported versions                                         |
+| [`lo`](https://www.postgresql.org/docs/current/lo.html)                               | All supported versions                                         |
+| [`ltree`](https://www.postgresql.org/docs/current/ltree.html)                         | All supported versions                                         |
+| [`pg_buffercache`](https://www.postgresql.org/docs/current/pgbuffercache.html)        | All supported versions                                         |
+| [`pg_prewarm`](https://www.postgresql.org/docs/current/pgprewarm.html)                | All supported versions                                         |
+| [`pg_stat_statements`](https://www.postgresql.org/docs/current/pgstatstatements.html) | All supported versions                                         |
+| [`pg_trgm`](https://www.postgresql.org/docs/current/pgtrgm.html)                      | All supported versions                                         |
+| [`pg_visibility`](https://www.postgresql.org/docs/current/pgvisibility.html)          | All supported versions                                         |
+| [`pgcrypto`](https://www.postgresql.org/docs/current/pgcrypto.html)                   | All supported versions                                         |
+| [`pgrowlocks`](https://www.postgresql.org/docs/current/pgrowlocks.html)               | All supported versions                                         |
+| [`pgstattuple`](https://www.postgresql.org/docs/current/pgstattuple.html)             | All supported versions                                         |
+| [`postgres_fdw`](https://www.postgresql.org/docs/current/postgres-fdw.html)           | All supported versions                                         |
+| [`seg`](https://www.postgresql.org/docs/current/seg.html)                             | All supported versions                                         |
+| [`tablefunc`](https://www.postgresql.org/docs/current/tablefunc.html)                 | All supported versions                                         |
+| [`unaccent`](https://www.postgresql.org/docs/current/unaccent.html)                   | All supported versions                                         |
+| [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html)                 | All supported versions, except EDB Postgres Advanced Server 18 |
+
+### Third-party and EDB extensions
+
+These extensions aren't bundled with Postgres. You install them separately, and most need an entry in `shared_preload_libraries` before you create them.
+
+| Extension                                                                   | Compatible versions                                                                                    |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| [Apache AGE](https://www.enterprisedb.com/docs/pg_extensions/apache_age/)   | All supported versions, except EDB Postgres Advanced Server 14 through 16 and EDB Postgres Extended 14 |
+| [`hypopg`](https://github.com/HypoPG/hypopg)                                | All supported versions                                                                                 |
+| [`pg_cron`](https://github.com/citusdata/pg_cron)                           | All supported versions                                                                                 |
+| [`pg_hint_plan`](https://github.com/ossc-db/pg_hint_plan)                   | Postgres and EDB Postgres Extended, all supported versions.                                            |
+| [`pg_ivm`](https://www.enterprisedb.com/docs/pg_extensions/pg_ivm/)         | All supported versions, except EDB Postgres Advanced Server 14 through 16                              |
+| [`pg_partman`](https://github.com/pgpartman/pg_partman)                     | All supported versions                                                                                 |
+| [`pg_repack`](https://github.com/reorg/pg_repack)                           | All supported versions                                                                                 |
+| [`pg_squeeze`](https://www.enterprisedb.com/docs/pg_extensions/pg_squeeze/) | All supported versions                                                                                 |
+| [`pgaudit`](https://www.pgaudit.org/)                                       | All supported versions                                                                                 |
+| [`pgtt`](https://www.enterprisedb.com/docs/pg_extensions/pgtt/)             | All supported versions                                                                                 |
+| [`pgvector`](https://www.enterprisedb.com/docs/pg_extensions/pgvector/)     | All supported versions                                                                                 |
+| [`plpgsql_check`](https://github.com/okbob/plpgsql_check)                   | All supported versions, except Postgres 14                                                             |
+| [`PostGIS`](https://www.enterprisedb.com/docs/postgis/latest/)              | All supported versions                                                                                 |
+
+### EDB Postgres Advanced Server extensions
+
+These packages are built into EDB Postgres Advanced Server and don't need a separate download.
+
+| Extension                                                                                                                                                      | Compatible versions    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| [`dbms_aq`](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/02_dbms_aq/)     | All supported versions |
+| [`dbms_pipe`](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/10_dbms_pipe/) | All supported versions |
+| `edb_gen`                                                                                                                                                      | All supported versions |
+| [`edb_pg_tuner`](https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/)                                                                                    | All supported versions |
+| [`edb_wait_states`](https://www.enterprisedb.com/docs/pg_extensions/wait_states/)                                                                              | All supported versions |
+
+> **Note**
+>
+> `dbms_aq` queue table DDL and queue metadata replicate to all nodes. Enqueued messages don't replicate. They stay local to the node where they're created.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

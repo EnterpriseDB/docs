@@ -1,0 +1,66 @@
+---
+title: Managing alerts
+description: Manage alerts to govern the incident lifecycle using the Prometheus Alertmanager integration to receive real-time notifications.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/monitoring/alerts/
+lastModified: 2026-09-22T14:04:10+01:00
+---
+
+# Managing alerts
+
+Maintain high availability and resolve incidents quickly by using real-time infrastructure signals to drive your operations. WEM bundles Alertmanager as a managed subprocess and enables the **Alerts** panel automatically, so you can detect performance degradation or system failures before they result in downtime without installing or configuring anything separately.
+
+### Understanding alert sources and severity
+
+To respond effectively, you must understand where alerts originate and how they're categorized.
+
+**Supported alert sources**
+
+- Canary check failures: triggered by the automated canary checks, covering lock-check duration, transaction ID wraparound risk, active connection counts, and checks that fail outright or stop reporting.
+- Segment down events: Triggered if a segment becomes unreachable.
+- Disk usage thresholds: Fired when filesystem usage crosses a Warning (80%) or Critical (90%) threshold.
+- Long-running queries: Fired when a query's runtime crosses a threshold.
+
+WEM ships built-in system rules that back these alert sources, evaluated by WEM itself rather than by a separate Prometheus rule file.
+
+**Severity levels**
+
+- **Critical:** Indicates a severe failure or a total loss of service. These require immediate attention.
+- **Warning:** Highlights performance degradation or resource pressure. Investigate these to prevent escalation.
+- **Info:** Routine informational notices regarding system changes or successful task completions.
+
+### Responding to cluster incidents
+
+Govern the incident lifecycle by using the **Alerts** panel on the left sidebar to identify, mute, and audit notifications. This proactive approach ensures that critical failures are addressed before they impact database availability.
+
+The **Total Active**, **Critical**, and **Warning** header cards give an instant cluster-wide snapshot. If Alertmanager itself becomes unreachable, an **Alertmanager Disconnected** banner appears above these cards until it recovers.
+
+- Identify and prioritize threats using the **Active Alerts** tab. The **Active Alerts** table shows each alert's **Severity**, **Alert** name, **Summary**, **Status**, and **Duration**. Address Critical failures first, such as service outages or segment failures, before investigating Warning or Info events.
+- If you are performing a scheduled recovery or hardware upgrade, use the **Silence** button under the **Actions** column to silence an alert directly from the table to mute specific alerts. Every alert you silence is displayed in the **Silences** tab. If Admin, select **Delete** on a silence to remove it before it expires, making the alert active again.
+
+### Reviewing alert history
+
+Identify recurring patterns after an incident is resolved with the **History** tab.
+
+- Filter entries by time range, or search by rule name to focus on a specific alert.
+- If Admin, use **Delete History** to remove entries you no longer need, either all history or a specific date range.
+
+### Creating and managing alert rules
+
+Alert rules fall into two categories, shown as a **Source** tag on the **Rules** tab: **System** rules ship with WEM and can't be deleted by anyone, including Admins, though Admins can still edit them. **User** rules are the ones you create yourself.
+
+- Select **New Rule**, or the edit action on an existing user rule, to open the rule editor. Set the rule's **Name**, **Group**, **Severity**, and how long it must keep firing before it's sent (**For (hold-down)**, blank for immediate) on the **General** tab.
+- On the **Query** tab, toggle between **Builder** and **Raw SQL** to switch between a guided form and directly editing the ClickHouse SQL expression the rule evaluates.
+- In the builder, choose a **Table** (**Gauge** for point-in-time readings, or **Sum** for cumulative counters) and a **Metric** from it, then set a **Time Window** to look back over and, optionally, an **Aggregation** to collapse multiple data points into a single value. Add one or more **label filters** to scope the rule to specific instances, databases, or other label values, rather than triggering on the metric cluster-wide, and optionally **Group By** one or more labels so each unique combination fires its own alert. Set a comparison **Operator** (`>`, `>=`, `<`, `<=`, `=`, `!=`) and, optionally, a **Threshold** the aggregated value must satisfy for the rule to fire.
+- Under **Annotations**, set a **Summary** and **Description** for the alert, referencing the query's own labels and value with `{{ $labels.<name> }}` and `{{ $value }}`.
+- Operators can edit or delete only the user rules they created themselves. Admins can edit or delete any user rule, regardless of who created it. Viewers can only view the rules.
+
+### Configuring notifications
+
+Edit the Alertmanager configuration file (`alertmanager.yml`) directly through the built-in editor on the **Notifications** tab to set up receivers such as Slack or email.
+
+- Select **Validate** to check your edits for errors before saving, without applying them.
+- Select **Save & Reload** to write your changes to `alertmanager.yml` and reload Alertmanager so they take effect.
+- Select **Reload** to reload Alertmanager with whatever version of the file is currently on disk, without editing anything here first. Use this if the file was changed outside WEM.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

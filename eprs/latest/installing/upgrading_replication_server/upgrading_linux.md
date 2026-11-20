@@ -1,0 +1,23 @@
+---
+title: Upgrading from a Replication Server 7.x installation on Linux
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/installing/upgrading_replication_server/upgrading_linux/
+lastModified: 2023-10-12T16:24:44-04:00
+---
+
+# Upgrading from a Replication Server 7.x installation on Linux
+
+If you have an existing Replication Server 7.x installation on Linux, you can use yum to upgrade your repository configuration file and update to a more recent product version. To update the `edb.repo` file, assume superuser privileges and enter:
+
+`yum upgrade edb-repo`
+
+`yum` updates the `edb.repo` file to enable access to the current EDB repository, configured to connect with the credentials specified in your `edb.repo` file. Then, you can use yum to upgrade any installed packages:
+
+`yum upgrade edb-xdb*`
+
+If you're upgrading from a Replication Server 6.2 installation on Linux, see [Upgrading from a Replication Server 6.2 installation on Linux](https://www.enterprisedb.com/docs/eprs/latest/installing/upgrading_replication_server/upgrading_with_xdb_rpm_package/) for details.
+
+After upgrading and before using Replication Server, you need to download a JDBC driver and create a symlink to it. See [Installing a JDBC driver](https://www.enterprisedb.com/docs/eprs/latest/installing/installing_jdbc_driver/) for more information.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

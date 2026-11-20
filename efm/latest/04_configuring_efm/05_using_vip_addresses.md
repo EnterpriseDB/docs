@@ -1,0 +1,216 @@
+---
+title: Using Failover Manager with virtual IP addresses
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/05_using_vip_addresses/
+lastModified: 2026-03-27T20:08:19+05:30
+---
+
+# Using Failover Manager with virtual IP addresses
+
+<div id="using_vip_addresses" class="registered_link"></div>
+
+Failover Manager can be used along with a virtual IP address (VIP) for routing requests to the current primary node.
+
+> **Note: Cloud provider support and alternatives**
+>
+> Virtual IP addresses aren't supported by many cloud providers. In those environments, use another mechanism, such as an elastic IP address on AWS, that can be changed when needed by a fencing or post-promotion script.
+
+## Behavior during shutdown of an EFM agent
+
+Failover Manager will not drop the virtual IP address from the primary node when the agent for that node shuts down. As a convenience for testing, the primary node's agent will _acquire_ the VIP during startup if the node does not already have it, but otherwise starting and stopping Failover Manager has no effect on whether the node holds the virtual IP address.
+
+This allows you to upgrade and perform maintenance on EFM services without interrupting access to the database.
+
+## Behavior during promotion of a node from standby to primary
+
+The VIP should be initially assigned to the primary node. When EFM detects failure of the primary node's database, it will release the VIP and then assign it to a standby node as that node is promoted to be the new primary.
+
+EFM verifies (using the command configured in the [`ping.server.command`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#ping_server_command) cluster property) that the VIP is not currently in use during promotion of a standby, and will not promote a new primary node until or unless the ping indicates the VIP is unreachable. You can disable this behavior via the [`check.vip.before.promotion`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#check_vip_before_promotion) cluster property, or increase the amount of time to wait with the [`check.vip.timeout`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#check_vip_timeout) cluster property.
+
+> **Tip: Meaning of the ping command exit code**
+>
+> Failover Manager uses the exit code of the ping command to determine whether an address is reachable. A zero exit code indicates the address is reachable (in this context, this means the VIP is assigned). A non-zero exit code indicates the address isn't reachable (in this context, this means the VIP is unassigned).
+>
+> This matches the behavior of the standard [`ping(8)`](https://manned.org/ping.8) command; if you configure a different command via the [`ping.server.command`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#ping_server_command) cluster property, it should also conform to this behavior.
+
+## Behavior of the primary agent when releasing the VIP
+
+The default behavior of the primary agent is to release the VIP in the background while performing other tasks. In some environments, this can prevent new database connections from the agent that are being made at the same time. This can prevent, for example, the primary agent from being able to choose a standby database to promote during a switchover (when there is more than one promotable standby database). There are two ways to change this behavior using the [`release.vip.*`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#release_vip_background) properties:
+
+1. Keep the default value of `release.vip.background=true` and set the `release.vip.pre.wait` property to a non-zero value, for example, 5 seconds. This setting allows you to avoid this issue by having the agent wait until after a standby has been chosen before dropping the VIP.
+
+2. Change the default value of `release.vip.background` to false and set the `release.vip.post.wait` property to a non-zero value, for example, 1 or 2 seconds. These settings will cause the agent to drop the VIP and then wait before continuing to choose a standby to promote.
+
+The effects of these properties can be tested by performing a switchover, which will cause the primary to drop the VIP and the promoted node to acquire it.
+
+## Configuring Postgres when using multiple addresses for nodes
+
+If a VIP address or any address other than the `bind.address` is assigned to a node, the operating system can choose the source address used when contacting the database. Be sure to modify the `pg_hba.conf` file on all monitored databases to allow contact from all addresses within your replication scenario.
+
+## Using multiple interfaces
+
+The network interface used for the VIP doesn't have to be the same interface used for the Failover Manager agent's [`bind.address`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#bind_address) value. The primary agent drops the VIP as needed during a failover, and Failover Manager verifies that the VIP is no longer available before promoting a standby. A failure of the bind address network leads to primary isolation and failover.
+
+If the VIP uses a different interface from the `bind.address`, you might encounter a timing condition in which the rest of the cluster checks for a reachable VIP before the primary agent drops it. In this case, Failover Manager retries the VIP check for the number of seconds specified in the [`check.vip.timeout`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#check_vip_timeout) property to help ensure that a failover happens as expected.
+
+## The efm\_address script
+
+Failover Manager uses the `efm_address` script to assign or release a virtual IP address.
+
+The script resides in: `/usr/edb/efm-5.<x>/bin/efm_address`
+
+Failover Manager uses the following command variations to assign or release an IPv4 or IPv6 IP address.
+
+To assign a virtual IPv4 IP address:
+
+```console
+efm_address add4 <interface_name> <IPv4_addr>/<prefix>
+```
+
+To assign a virtual IPv6 IP address:
+
+```console
+efm_address add6 <interface_name> <IPv6_addr>/<prefix>
+```
+
+To release a virtual address:
+
+```console
+efm_address del <interface_name> <IP_address/prefix>
+```
+
+Where:
+
+`<interface_name>` matches the name specified in the `virtual.ip.interface` property in the cluster properties file.
+
+`<IPv4_addr>` or `<IPv6_addr>` matches the value specified in the `virtual.ip` property in the cluster properties file.
+
+`prefix` matches the value specified in the `virtual.ip.prefix` property in the cluster properties file.
+
+For more information about properties that describe a virtual IP address, see [The cluster properties file](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#virtual_ip).
+
+Invoke the `efm_address` script as the root user. The efm user is created during the installation and is granted privileges in the sudoers file to run the `efm_address` script. For more information about the `sudoers` file, see [Extending Failover Manager permissions](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/04_extending_efm_permissions/#extending_efm_permissions).
+
+## Testing the VIP
+
+When using a virtual IP (VIP) address with Failover Manager, it's important to test the VIP functionality manually before starting Failover Manager. This catches any network-related issues before they cause a problem during an actual failover.
+
+> **Important**
+>
+> While testing the VIP, make sure that Failover Manager isn't running.
+
+The following steps test the actions that Failover Manager takes. The example uses the following property values:
+
+```ini
+virtual.ip=172.24.38.239
+virtual.ip.interface=eth0
+virtual.ip.prefix=24
+ping.server.command=/bin/ping -q -c3 -w5
+```
+
+> **Note**
+>
+> The `virtual.ip.prefix` specifies the number of significant bits in the virtual IP address.
+
+When instructed to ping the VIP from a node, use the command defined by the [`ping.server.command`](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#ping_server_command) property and run it from the machine configured in EFM for the appropriate role (primary / secondary / witness).
+
+1. Ping the VIP from all nodes to confirm that the address isn't already in use:
+
+   ```console
+   /bin/ping -q -c3 -w5 172.24.38.239
+   ```
+
+   ```output title="Output"
+   PING 172.24.38.239 (172.24.38.239) 56(84) bytes of data.
+   --- 172.24.38.239 ping statistics ---
+   4 packets transmitted, 0 received, +3 errors, 100% packet loss,
+   time 3000ms
+   ```
+
+   You will see 100% packet loss when the address is unused.
+
+   > **Tip: Meaning of the ping command exit code for unreachable addresses**
+   >
+   > Failover Manager uses the exit code of the ping command to determine whether the address was reachable. In this case, the exit code isn't zero. If you're using a command other than ping, it must return a non-zero exit code when the address isn't reachable.
+
+2. Run the `efm_address add4` command on the machine configured as the primary node to assign the VIP, and then confirm with ip address:
+
+   ```console
+   efm_address add4 eth0 172.24.38.239/24
+   ip address
+   ```
+
+   ```output title="Output"
+   <output truncated>
+   eth0 Link encap:Ethernet HWaddr 36:AA:A4:F4:1C:40
+   inet addr:172.24.38.239 Bcast:172.24.38.255
+   ...
+   ```
+
+3. Ping the VIP from the other nodes to verify that they can reach the VIP:
+
+   ```console
+   /bin/ping -q -c3 -w5 172.24.38.239
+   ```
+
+   ```output title="Output"
+   PING 172.24.38.239 (172.24.38.239) 56(84) bytes of data.
+   --- 172.24.38.239 ping statistics ---
+   3 packets transmitted, 3 received, 0% packet loss, time 1999ms
+   rtt min/avg/max/mdev = 0.023/0.025/0.029/0.006 ms
+   ```
+
+   You will see 0% packet loss, indicating the IP now reaches the machine configured as the primary node.
+
+   > **Tip: Meaning of the ping command exit code for reachable addresses**
+   >
+   > Failover Manager uses the exit code of the ping command to determine whether the address was reachable. In this case, the exit code is zero. If you're using a command other than ping, it must return a zero exit code when the address is reachable.
+
+4. Use the `efm_address del` command to release the address on the primary node and confirm the VIP was released with the `ip address` command:
+
+   ```console
+   efm_address del eth0 172.24.38.239/24
+   ip address
+   ```
+
+   ```output title="Output"
+   eth0 Link encap:Ethernet HWaddr 22:00:0A:89:02:8E
+   inet addr:10.137.2.142 Bcast:10.137.2.191
+   ...
+   ```
+
+   The output from this step will no longer show the VIP address on the eth0 interface.
+
+5. Repeat step 3, this time verifying that the standby and witness don't see the VIP in use:
+
+   ```console
+   /bin/ping -q -c3 -w5 172.24.38.239
+   ```
+
+   ```output title="Output"
+   PING 172.24.38.239 (172.24.38.239) 56(84) bytes of data.
+   --- 172.24.38.239 ping statistics ---
+   4 packets transmitted, 0 received, +3 errors, 100% packet loss,
+   time 3000ms
+   ```
+
+   100% packet loss occurs. Repeat this step on all nodes.
+
+6. Repeat steps 2, 3 and 4 on all standby nodes to verify that the VIP can be successfully assigned to and released from every node. You can ping the VIP from any node to verify that it's in use.
+
+   ```console
+   efm_address add4 eth0 172.24.38.239/24
+   ip address
+   ```
+
+   ```output title="Output"
+   <output truncated>
+   eth0 Link encap:Ethernet HWaddr 36:AA:A4:F4:1C:40
+   inet addr:172.24.38.239 Bcast:172.24.38.255
+   ...
+   ```
+
+After these test steps, release the VIP from any nonprimary node before attempting to start Failover Manager.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

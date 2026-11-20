@@ -1,0 +1,38 @@
+---
+title: Why should you use TDE?
+description: Learn about some of the use cases for TDE encryption, and what it doesn't protect against.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/about/why/
+lastModified: 2026-11-02T10:35:00+01:00
+---
+
+# Why should you use TDE?
+
+TDE ensures that user data remains protected from unauthorized access. When configured with a [data encryption key securing mechanism](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/), data stored on the database server and in backups is accessible only by users and processes with decryption keys.
+
+Some use cases include:
+
+- **Protection of sensitive personal data:** Industries like finance, e-commerce, healthcare, and government organizations often deal with personally identifiable information that must be protected to comply with data privacy regulations such as GDPR, HIPAA, and PCI DSS.
+
+- **Compliance with government standards:** Government institutions must comply with information processing standards like the Federal Information Processing Standards (FIPS) to ensure computer security and interoperability.
+
+- **Protecting transactional data:** Financial institutions deal with transaction, account, and payment data that must be protected to prevent fraud and financial losses.
+
+- **Protecting intellectual property:** Organizations safeguard proprietary information, designs, and plans to keep their competitive advantage, support brand value, and foster innovation.
+
+- **Protecting data in cloud-based deployments and public web applications:** Encrypting a database's data provides an added layer of security when infrastructure is shared or when vulnerabilities could potentially infiltrate in an application's API.
+
+When your data is encrypted, it becomes unintelligible if it's stolen or misplaced.
+
+## What TDE doesn't protect against
+
+TDE protects data at rest: the data files, WAL, and temporary files. It doesn't protect against threats that reach the database through its normal query interface or through access already granted to a user, such as:
+
+- SQL injection or other attacks carried out through the database's own query interface.
+- Stolen or compromised credentials used to connect and query the database normally.
+- Misuse of data by a user or process that already has legitimate database access, including a privileged administrator.
+- Data read from memory while the server is running, since TDE encrypts data only while it's stored on disk.
+
+TDE is one layer of a broader security strategy. Combine it with access controls, auditing, and encrypted connections (SSL/TLS) to protect against these other risks.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

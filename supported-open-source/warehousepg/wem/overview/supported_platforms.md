@@ -1,0 +1,38 @@
+---
+title: Supported platforms
+description: Provides information for determining the platform support for WarehousePG Enterprise Manager.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/overview/supported_platforms/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Supported platforms
+
+## Supported WarehousePG versions
+
+WarehousePG Enterprise Manager (WEM) is compatible with the following versions of WarehousePG (WHPG):
+
+| WHPG version | Supported RHEL versions |
+| ------------ | ----------------------- |
+| 6.x          | RHEL 7, RHEL 8, RHEL 9  |
+| 7.x          | RHEL 8, RHEL 9          |
+
+## Supported platforms
+
+| Component     | Supported operating systems                                       |
+| ------------- | ----------------------------------------------------------------- |
+| WEM           | RHEL 8, RHEL 9, RHEL 10, Debian 13                                |
+| WEM (ppc64le) | RHEL 8, RHEL 9, RHEL 10                                           |
+| ClickHouse    | RHEL 8, RHEL 9, RHEL 10, Rocky Linux 9, Rocky Linux 10, Debian 13 |
+
+WEM requires ClickHouse for metrics and log storage. You can deploy ClickHouse inside your WHPG cluster, on the coordinator or standby coordinator, or on a separate host outside the cluster. See [ClickHouse compatibility](https://www.enterprisedb.com/docs/clickhouse/latest/overview/compatibility/) for supported platforms and architectures.
+
+> **Note**
+>
+> Neither WEM nor ClickHouse supports RHEL 7. If you're running WHPG 6.x on RHEL 7, you can't deploy WEM or ClickHouse on a node inside that cluster. Deploy WEM and ClickHouse on a separate host running a supported RHEL version instead. WEM can still monitor the RHEL 7 cluster remotely.
+
+## Host agent compatibility
+
+WEM requires `acp-host-agent` 1.1.0 or later on every cluster node. See [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

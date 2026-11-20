@@ -1,0 +1,74 @@
+---
+title: CREATE TEXT SEARCH TEMPLATE
+product: WarehousePG
+version: "7.6"
+url: https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/CREATE_TEXT_SEARCH_TEMPLATE/
+lastModified: 2026-10-14T08:34:33Z
+---
+
+# CREATE TEXT SEARCH TEMPLATE
+
+<a id="description"></a>
+
+Defines a new text search template.
+
+<a id="synopsis"></a>
+
+## Synopsis
+
+<div id="sql_command_synopsis"></div>
+
+```
+CREATE TEXT SEARCH TEMPLATE <name> (
+    [ INIT = <init_function> , ]
+    LEXIZE = <lexize_function>
+)
+```
+
+<a id="section3"></a>
+
+## Description
+
+`CREATE TEXT SEARCH TEMPLATE` creates a new text search template. Text search templates define the functions that implement text search dictionaries. A template is not useful by itself, but must be instantiated as a dictionary to be used. The dictionary typically specifies parameters to be given to the template functions.
+
+If a schema name is given then the text search template is created in the specified schema. Otherwise it is created in the current schema.
+
+You must be a superuser to use `CREATE TEXT SEARCH TEMPLATE`. This restriction is made because an erroneous text search template definition could confuse or even crash the server. The reason for separating templates from dictionaries is that a template encapsulates the "unsafe" aspects of defining a dictionary. The parameters that can be set when defining a dictionary are safe for unprivileged users to set, and so creating a dictionary need not be a privileged operation.
+
+Refer to [Using Full Text Search](https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/query/textsearch/) for further information.
+
+<a id="section4"></a>
+
+## Parameters
+
+### name
+
+The name of the text search template to be created. The name can be schema-qualified.
+
+### init\_function
+
+The name of the init function for the template.
+
+### lexize\_function
+
+The name of the lexize function for the template.
+
+The function names can be schema-qualified if necessary. Argument types are not given, since the argument list for each type of function is predetermined. The lexize function is required, but the init function is optional.
+
+The arguments can appear in any order, not only the order shown above.
+
+<a id="section7"></a>
+
+## Compatibility
+
+There is no `CREATE TEXT SEARCH TEMPLATE` statement in the SQL standard.
+
+<a id="section8"></a>
+
+## See Also
+
+[DROP TEXT SEARCH TEMPLATE](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/DROP_TEXT_SEARCH_TEMPLATE/), [ALTER TEXT SEARCH TEMPLATE](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/ALTER_TEXT_SEARCH_TEMPLATE/)
+
+**Parent topic:** [SQL Commands](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,134 @@
+---
+title: Searching a semantic knowledge base
+description: Run natural-language schema search against a semantic knowledge base with semantic_kb_search and the schema-metadata functions.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/
+lastModified: 2026-11-02T20:04:14+05:30
+---
+
+# Searching a semantic knowledge base
+
+Searching a semantic KB is how an agent grounds [text-to-SQL](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/text-to-sql/) in your real schema: instead of guessing at table and column names, it describes what it needs in plain language and gets back the matching relations and columns. You can run the same searches yourself too, to find the right tables, views, and columns by meaning rather than by already knowing their exact names.
+
+Once a semantic KB has crawled your schemas, you search it with a natural-language query: the KB embeds your query with the same model it used to index the schema, then returns whatever's closest. `aidb.semantic_kb_search()` is the composite function that ranks results across every source at once, four narrower functions search only schema metadata, and `aidb.semantic_kb_subgraph()` returns the joins around a search's hits. Every search function takes the KB name as `kb_name`, which you can omit when only one KB exists.
+
+## Searching everything at once
+
+`semantic_kb_search()` is the composite entry point: it runs the per-source ranked searches ([schema metadata](#schema-metadata-functions), [relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/), curated [semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/), and [query history](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/query-history/#searching-history)) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF). Use it when you want a single ranked answer to "what in my schema relates to this?"
+
+```sql
+SELECT source_type, entity_type, schema_name, relation_name, column_name, rank
+FROM aidb.semantic_kb_search(
+    query_text => 'which customers spent the most',
+    kb_name    => 'analytics_kb',
+    top_k      => 5
+);
+```
+
+Beyond `query_text`, `kb_name`, and `top_k`, `sources` and `entity_types` narrow which sources and entity kinds are searched, and `include_proposed` also returns relationships that are still proposed, not just approved ones.
+
+Each returned row carries a `source_type` ([`schema`](#schema-metadata-functions), [`alias`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/), [`relationship`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/), or [`history`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/query-history/#searching-history)), an `entity_type`, the matched object's identity (`schema_name`, `relation_name`, `column_name`, or, for a relationship row, `object_ref`), its `definition` and `comment`, and a fused `score` and `rank`. For every parameter, default, and return column, see the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbsemantic_kb_search).
+
+Because `semantic_kb_search()` returns schema entities, relationships, and matching aliases in one ranked list, it's the natural first call in a [text-to-SQL](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/text-to-sql/) workflow.
+
+> **Note: score is a fusion rank, not a similarity**
+>
+> Results are combined across sources with Reciprocal Rank Fusion, so `score` is `1 / (rrf_k + rank_within_source)` — with the default `rrf_k => 60`, the first hit from every source scores `1/61`. Rows from different sources therefore tie, and the tie means nothing. To compare results directly, read the true cosine from `components->>'cosine'`, or restrict to one source with `sources => ARRAY['relationship']` (or another single source) so the ranking becomes directly comparable.
+
+## Schema-metadata functions
+
+For narrower needs, four functions search only schema metadata. They share the same optional `kb_name` and a `similarity` score (cosine similarity, higher is closer), with `min_similarity` as an optional floor and `top_k` / `offset` for paging. See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#searching-a-semantic-kb) for each function's full parameter and return-column list.
+
+### Searching all schema metadata
+
+`aidb.get_metadata()` is the broadest schema search, returning columns, tables, and views together with full metadata.
+
+```sql
+SELECT schema_name, relation_name, column_name, entity_type, similarity
+FROM aidb.get_metadata(
+    kb_name    => 'analytics_kb',
+    query_text => 'customer email address',
+    top_k      => 10
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k` (default `10`), `offset` (default `0`). Returns `schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `definition_vector`, and `similarity`.
+
+### Searching tables and views only
+
+`aidb.get_entity_definitions()` matches tables and views only.
+
+```sql
+SELECT schema_name, relation_name, entity_type, similarity
+FROM aidb.get_entity_definitions(
+    kb_name      => 'analytics_kb',
+    query_text   => 'orders and line items',
+    entity_types => ARRAY['Table', 'View']
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `entity_types` (default `ARRAY['Table','View']`), `top_k`, `offset`. Returns `schema_name`, `relation_name`, `entity_type`, `definition`, `comment`, `similarity`.
+
+### Searching for lean definitions
+
+`aidb.get_column_definitions()` returns just the matching column and table definitions, the leanest result, useful as compact grounding for SQL generation.
+
+```sql
+SELECT definition
+FROM aidb.get_column_definitions(
+    kb_name    => 'analytics_kb',
+    query_text => 'order total amount'
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k`, `offset`. Returns a single `definition` column.
+
+### Searching your documentation
+
+`aidb.search_by_comment()` matches only the natural-language `COMMENT ON` text attached to schemas, tables, and columns.
+
+```sql
+SELECT relation_name, column_name, comment, similarity
+FROM aidb.search_by_comment(
+    kb_name    => 'analytics_kb',
+    query_text => 'order status values'
+);
+```
+
+Parameters: `kb_name`, `query_text`, `min_similarity`, `top_k`, `offset`. Returns `schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `similarity`.
+
+This is the most direct way to leverage documentation you've already written into your schema. For example, a column commented "order lifecycle state: pending, confirmed, shipped, delivered, cancelled" surfaces for a query like "order status values" even if the column itself is named `st`. Because comment search depends on well-documented objects, keeping `COMMENT ON` statements current is the highest-leverage way to improve a semantic KB's results.
+
+## Tuning results
+
+- `min_similarity` trades recall for precision. Lower it (for example `0.3`) when a query returns nothing. Raise it when results are too broad.
+- `top_k` / `offset` page through results.
+- `entity_types` narrows to the kinds you care about, such as `ARRAY['Column']`, when you're hunting for a specific field.
+
+## Finding the joins around a search
+
+Every function above this one returns matched objects — tables, columns, or aliases. `semantic_kb_subgraph()` doesn't: it's the search-driven counterpart to [`find_join_path()` and `suggest_joins()`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#finding-a-join-route), returning the join neighborhood around a match instead of the match itself. Where those two functions start from table names you already know, this one starts from a natural-language query, seeds from the same kind of hits `semantic_kb_search()` returns, and adds the [relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/) around them — so you get the joins connected to a question, not just the entities.
+
+```sql
+SELECT hop, from_object, to_object, via_object, kind, confidence, seeded_by
+FROM aidb.semantic_kb_subgraph(
+    kb_name    => 'analytics_kb',
+    query_text => 'money moved out of an account',
+    top_k      => 3,
+    max_hops   => 1
+);
+```
+
+It returns one row per hop: `from_object` and `to_object`, the `kind` and `confidence` of the join, `via_object` for a `junction` hop, and `seeded_by`, the matched object that pulled that hop in. `top_k` (default `10`) controls how many search hits are seeded, and `max_hops` (default `3`) how far the neighborhood extends from them. See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbsemantic_kb_subgraph) for the full parameter and return-column list.
+
+It only traverses relationships that are `approved` and routable, the same restriction as the other route-finders — see [the routability rule](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#status-and-confidence).
+
+## Next steps
+
+- Learn how tables join, and how to record a join by hand, in [relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/).
+- Save frequently asked questions as reusable, parameterized queries with [semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/).
+- Let an agent drive these searches end to end in the [text-to-SQL](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/text-to-sql/) workflow.
+- Look up every search function's full parameters and return columns in the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#searching-a-semantic-kb).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

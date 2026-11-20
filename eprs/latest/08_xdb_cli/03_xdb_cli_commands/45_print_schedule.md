@@ -1,0 +1,88 @@
+---
+title: Print schedule (printschedule)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/45_print_schedule/
+lastModified: 2025-04-03T18:05:51+02:00
+---
+
+# Print schedule (printschedule)
+
+<div id="print_schedule" class="registered_link"></div>
+
+The `printschedule` command displays a recurring replication schedule.
+
+## Synopsis
+
+```shell
+-printschedule { subname | pubname }
+  -repsvrfile { subsvrfile | pubsvrfile }
+[ -repgrouptype { s | m } ]
+For a single-master replication system use:
+-printschedule subname -repsvrfile subsvrfile
+```
+
+**For a multi-master replication system:**
+
+`-printschedule pubname -repsvrfile pubsvrfile -repgrouptype m`
+
+## Parameters
+
+`subname`
+
+**For SMR only:** The name of the subscription whose schedule to display.
+
+`pubname`
+
+**For MMR only:** The name of the publication whose schedule to display.
+
+`subsvrfile`
+
+**For SMR only:** The file containing the subscription server login information.
+
+`pubsvrfile`
+
+**For MMR only:** The file containing the publication server login information.
+
+`-repgrouptype`
+
+Specify `s` if this command applies to a single-master replication system. Specify `m` if this command applies to a multi-master replication system. The default is `s`.
+
+## Examples
+
+This example displays the schedule for a subscription in a single-master replication system.
+
+```shell
+$ java -jar edb-repcli.jar -printschedule dept_emp_sub \
+>   -repsvrfile ~/subsvrfile.prop
+Printing subscription schedule ...
+
+Job type                Synchronize
+
+Scheduled time          2012-06-19 13:27:20
+
+Previous fire time      2012-06-19 13:27:20
+
+Next fire time          2012-06-19 13:32:20
+```
+
+This example displays the schedule for a publication in a multi-master replication system. The `-repgrouptype m` parameter is required in this case.
+
+```shell
+$ java -jar edb-repcli.jar -printschedule emp_pub \
+>   -repsvrfile ~/pubsvrfile.prop \
+>   -repgrouptype m
+Printing subscription schedule ...
+
+Job type                Synchronize
+
+Scheduled time          2012-06-19 13:27:55
+
+Previous fire time      Not available
+
+Next fire time          2012-06-20 08:00:00
+
+Cron expression         0 0 8 * * ?
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

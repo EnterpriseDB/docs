@@ -1,0 +1,23 @@
+---
+title: Oracle table partitioning compatibility summary
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/application_programming/epas_compat_table_partitioning/01_oracle_compat_summary/
+lastModified: 2026-08-27T08:27:59-03:00
+---
+
+# Oracle table partitioning compatibility summary
+
+EDB Postgres Advanced Server supports aspects of table partitioning that are compatible with Oracle databases.
+
+> **Note**
+>
+> The _declarative partitioning_ feature, introduced with PostgreSQL version 10, is not covered here. However, PostgreSQL declarative partitioning is supported in EDB Postgres Advanced Server 10 in addition to the table partitioning compatible with Oracle databases described here. For information about declarative partitioning, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/static/ddl-partitioning.html).
+
+The PostgreSQL `INSERT... ON CONFLICT DO NOTHING/UPDATE` clause, commonly known as `UPSERT`, is supported on Oracle-styled partitioned tables. Since EDB Postgres Advanced Server 10, Oracle-style partitioned tables are implemented internally using PostgreSQL's native declarative partitioning, so `ON CONFLICT` behaves the same as it does on a table created with declarative partitioning syntax.
+
+> **Note**
+>
+> EDB Postgres Advanced Server doesn't support global indexes, so the index isn't inherited when you define a primary key on the partitioned table that doesn't include partition key columns. However, all partitions defined in `CREATE TABLE` have an independent primary index on the column. You can re-create the primary key on all newly added partitions by using `ALTER TABLE ... ADD CONSTRAINT`. This primary index enforces uniqueness in each partition but not across the entire partition hierarchy. In other words, you can have the same value repeated for the primary index column in two or more partitions.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

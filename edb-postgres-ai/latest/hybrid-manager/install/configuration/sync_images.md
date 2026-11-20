@@ -1,0 +1,182 @@
+---
+title: Syncing images to a local private registry
+description: Mirror EDB Postgres AI container images to your internal registry for security, reliability, and air-gapped or disconnected environments.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/sync_images/
+lastModified: 2026-11-05T19:23:14Z
+---
+
+# Syncing images to a local private registry
+
+**Related installation phase:** [Phase 4: Preparing the Environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/)
+
+For the full inventory of artifact types HM distributes, where each one lives, and what your registry and network need to support them, see [Container registry and artifact reference](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/).
+
+## Prerequisites
+
+- [**`edbctl` CLI tool**](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/edbctl/) installed and configured.
+
+- A valid [**EDB Repos 2.0 Token**](https://www.enterprisedb.com/docs/repos/getting_started/).
+
+- Write access to your target local private registry (examples: AWS ECR, Google Artifact Registry, Harbor).
+
+---
+
+Hosting images internally ensures:
+
+- **Security & compliance:** You control the scanning and approval of artifacts.
+
+- **Reliability:** Your deployment is not dependent on external internet connectivity or third-party uptime.
+
+- **Performance:** Lower latency for cluster nodes pulling images.
+
+- **Air-gapped and disconnected clusters:** Gets HM's artifacts to a cluster with no route to EDB's registry, as long as `edbctl` can run somewhere with access to both, such as a bastion or jump host. For environments where nothing can reach EDB's registry directly, see [Mirroring without edbctl](#mirroring-without-edbctl).
+
+This process uses the `edbctl` tool to copy artifacts from EDB Repos 2.0 to your private registry while preserving SHA256 digests.
+
+The software stack of HM is pushed into EDB Repos 2.0 registry to provide artifacts for you to use in your local private registry: customer-managed internal registry for RHOS or Rancher RKE2 on-premises scenarios, or a self-managed registry on your cloud service provider (CSP) registry [AWS Elastic Container Registry](https://aws.amazon.com/ecr/) (ECR), [Google Cloud Artifact Registry](https://cloud.google.com/artifact-registry/docs) (GAR), or [Azure Container Registry](https://azure.microsoft.com/en-us/products/container-registry) (ACR) for HM on CSP scenarios.
+
+Before you begin, ensure you have a secure, approved private registry ready to host the container images.
+
+You need the registry's URI, along with a username and password (or token) that has write access.
+Additionally, confirm the specific version of EDB Postgres AI you intend to install.
+
+Using these credentials, the sync process copies all necessary artifacts from EDB Repos 2.0 directly into your local private registry, ensuring they are available for your Helm chart installation or upgrade.
+
+## Preserving digests
+
+HM resolves artifacts by digest (a SHA-256 hash of the artifact's exact contents) in addition to tag. `edbctl image sync-to-local-registry` preserves digests automatically. If you build your own mirroring pipeline instead (see [Mirroring without edbctl](#mirroring-without-edbctl)), preserving digests is something you have to ensure yourself, because several common tools don't:
+
+- A `docker pull` followed by `docker push` unpacks and reconstructs the artifact, which can change its digest even though the content looks identical and the copy appears to succeed.
+- Some proxying or caching registry configurations behave the same way: they re-serialize what passes through them rather than storing the exact bytes.
+- [`skopeo`](https://github.com/containers/skopeo/blob/main/install.md), a command-line tool for copying and inspecting container images and OCI artifacts between registries without needing a container daemon, preserves digests by default, but some copy paths can still rewrite a manifest without reporting an error. `--preserve-digests` makes the copy fail instead of silently changing a digest when that would otherwise happen.
+- `skopeo copy` copies only one architecture by default (`--multi-arch system`): the machine's own platform, or whatever you set with `--override-os`/`--override-arch`. `--preserve-digests` doesn't change this behavior. HM's manifests pin to the index digest, not a single platform's, so the index itself has to be present in your registry — use `--multi-arch all` to copy it.
+
+The resulting failure is easy to misdiagnose: the artifact arrives, is correctly named, and scans cleanly, but the specific digest HM asks for no longer exists, and nothing in the copy step reported an error. See [Registry and artifact errors](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/troubleshooting/registry_errors/) for what this failure looks like when it happens.
+
+To copy an artifact's full multi-architecture index while preserving digests:
+
+```bash
+skopeo copy --preserve-digests --multi-arch all \
+  docker://docker.enterprisedb.com/pgai-platform/<image>:<tag> \
+  docker://<your-registry>/<repository-name>/<image>:<tag>
+```
+
+## Mirroring with edbctl
+
+### Configure sync variables
+
+**Required Information:**
+
+- **Release Version:** The tag of Hybrid Manager (HM) you intend to install (example:`v2026.5.1`).
+- **EDB Token:** Your access token for `docker.enterprisedb.com`.
+- **Local Registry:** The URI and credentials for your organization's registry.
+
+1. Define the EDB release version
+
+   ```bash
+   export EDBPGAI_RELEASE=<EDB-pgai-release-version>
+   ```
+
+2. Define EDB credentials (Source)
+
+   ```
+   export CS_EDB_TOKEN=<your-edb-repos-token>
+   export EDB_SOURCE_REGISTRY=pgai-platform
+   ```
+
+   `CS_EDB_TOKEN` is your EDB Repos 2.0 API token, passed as the password. `EDB_SOURCE_REGISTRY` isn't a personal username, it's passed as `--source-registry-username`, but the value is your subscription namespace (`pgai-platform`). See [Registry credentials](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/#registry-credentials).
+
+3. Define private registry credentials (Destination)
+
+   ```
+   export LOCAL_REGISTRY_URI=<your_local_container_registry_uri>
+   export LOCAL_REGISTRY_USER=<your_local_registry_user>
+   export LOCAL_REGISTRY_PWD=<your_local_registry_password>
+   ```
+
+> **Note**
+>
+> **Cloud Registries:** If you are using AWS ECR, Google Artifact Registry, or Azure ACR, ensure your local environment is authenticated (e.g., via `aws ecr get-login-password`) and that your `LOCAL_REGISTRY_PWD` reflects a valid token.
+
+### Sync platform images
+
+Execute the following command to sync the platform images and the operator artifacts in a single step:
+
+```bash
+edbctl image sync-to-local-registry \
+    --destination-registry-uri "${LOCAL_REGISTRY_URI}" \
+    --version "${EDBPGAI_RELEASE}" \
+    --source-registry-username "${EDB_SOURCE_REGISTRY}" \
+    --source-registry-password "${CS_EDB_TOKEN}" \
+    --destination-registry-username "${LOCAL_REGISTRY_USER}" \
+    --destination-registry-password "${LOCAL_REGISTRY_PWD}"
+```
+
+The command mirrors the following artifacts to your private registry:
+
+- **Platform images** — Portal, Beacon, and other HM components.
+- **Operator manager image** — `edb-hcp-operator` controller image.
+- **Operator bundle image** — OCP-certified bundle, used to build self-hosted OperatorHub catalogs in air-gapped OpenShift clusters.
+- **Operator helm chart** — `edb-hcp-operator` chart, mirrored as an OCI artifact alongside the images.
+
+> **Note: Scope of this command**
+>
+> This command syncs the platform images, the operator, and the operator's own Helm chart. It doesn't sync the `hm-installer` chart, marketplace [OCI artifacts](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/#oci-artifacts), or [extension images](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/#extension-images). If you use those, mirror each with the tooling in [Mirroring without edbctl](#mirroring-without-edbctl). See [Container registry and artifact reference](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/#artifact-types) for the full artifact inventory.
+
+## Mirroring without edbctl
+
+`edbctl image sync-to-local-registry` is the supported path and the only one that doesn't require you to track every artifact class yourself. Use it wherever your environment allows it.
+
+Some environments can't use `edbctl image sync-to-local-registry`, including fully air-gapped or disconnected clusters with no route from `edbctl` to EDB's registry. `edbctl` needs direct network access to both the source and destination registries and broad enough credentials to read from one and write to the other. If your organization instead requires artifacts to be submitted individually through a governed ingestion or approval process, you're effectively performing the same job `edbctl` automates, by hand: for each artifact class, pull it from EDB's registry with the recommended tool, carry it through whatever approval or transfer step your organization requires, then push it into your destination registry or repository using that same tool.
+
+| Artifact class                      | Tool and action                                                                                                                                                                                                                                                                                                                                                                     |
+| :---------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Container images                    | `edbctl` (if usable), or the same `skopeo copy --preserve-digests --multi-arch all` invocation shown in [Preserving digests](#preserving-digests), with your destination path as the target                                                                                                                                                                                         |
+| OCI artifacts (`kapp-marketplace/`) | `skopeo copy` (or the equivalent `crane`/`oras` copy command), not `docker` or `podman`, with Docker Content Trust disabled for this path, against the `kapp-marketplace/` path from [OCI artifacts](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/#oci-artifacts)                                                    |
+| Helm charts                         | `helm pull` (or `curl`) the `.tgz` from the repository URL in [Helm charts](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/#helm-charts). These charts aren't registry content, so registry-mirroring tools won't enumerate them. Then publish it to your own chart repository the way you would any other local chart |
+| Extension images                    | Any OCI-compliant client, using the same pull/push pattern as container images                                                                                                                                                                                                                                                                                                      |
+| CLI binaries                        | No mirroring path. See [Container registry and artifact reference](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/registry_artifact_reference/#cli-binaries-and-kubectl-plugins)                                                                                                                                                                   |
+
+Avoid `docker` or `podman` as your primary mirroring tool for anything beyond a quick, single-platform test copy. Both parse and regenerate manifests on pull/push, which risks the same digest-preservation problem described in [Preserving digests](#preserving-digests), and, with Docker Content Trust enabled, they reject OCI artifacts outright rather than mirroring them.
+
+> **Note: Registry caching and stale tags**
+>
+> If your destination registry sits behind a proxying or caching repository (for example, a Nexus proxy repository), it may cache a "not found" result for a tag for up to 24 hours by default. If you correct an outdated image list and a tag still fails to resolve shortly afterward, check whether your proxy's negative cache needs to be cleared rather than assuming the correction didn't take.
+
+## Updating your configuration
+
+Once the sync is complete, you must configure HM to pull images from your private registry.
+
+Edit your `HybridControlPlane` CR to set `spec.registry.url` to your private registry URI:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  registry:
+    url: "<your_local_container_registry_uri>"
+    # ... your other registry settings
+  # ... your other spec fields
+```
+
+> **Note**
+>
+> `spec.registry` gathers all of the container registry settings of a `HybridControlPlane` in one place and requires HM operator 2.2.0 or later. The older `spec.imageRegistry` field is deprecated. It still applies when `spec.registry.url` is unset, but a future API version removes it. See [Configuring image discovery](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/image_discovery/#deprecated-registry-fields) for the full list of fields it replaces.
+
+Apply the updated CR:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+## Next steps
+
+With your images synced and your configuration updated, you are ready to proceed with the installation.
+
+**Return to [Phase 4: Preparing your Environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/) or [Phase 5: Installing Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/).**
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

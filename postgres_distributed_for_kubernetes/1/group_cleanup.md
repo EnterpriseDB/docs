@@ -1,0 +1,88 @@
+---
+title: PGDGroup parting
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/group_cleanup/
+lastModified: 2026-06-22T07:38:49-07:00
+---
+
+# PGDGroup parting
+
+## Deletion and finalizers
+
+When deleting a PGD Group, the operator will start parting every node in the group first.
+It will connect to an active instance and part every node in the target group.
+Once a node is parted, the node will not participate in replication and consensus operations.
+To make sure the node is correctly parted before being deleted, the operator uses the
+`k8s.pgd.enterprisedb.io/partNodes` finalizer. Please refer to the
+[kubernetes documentation on finalizers](https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/)
+for context.
+
+> **Note**
+>
+> If a namespace holding a PGD Group is deleted directly, the operator cannot ensure
+> the deleting and parting sequence is carried out correctly. Before deleting
+> a namespace, it is recommended to delete all the contained PGD groups.
+
+## Time limit
+
+When parting a node, the operator needs to connect to an active instance to
+execute the `bdr.part_node` function. To avoid this operation hanging,
+a time limit for the finalizer is used; by default, it is 300 seconds.
+After the time limit expires, the finalizer will be removed, and the node
+will be deleted anyway, potentially leaving stale metadata in the global PGD catalog.
+This time limit can be configured through `spec.failingFinalizerTimeLimitSeconds`,
+which is specified in seconds.
+
+## Skip finalizer
+
+For testing purposes only, the operator also provides an annotation to skip the
+finalizer: `k8s.pgd.enterprisedb.io/noFinalizers`.
+When this annotation is added to a PGDGroup, the finalizer will be skipped when
+the PGDGroup is being deleted, and the nodes will not be parted from the PGD cluster.
+
+## PGDGroup cleanup
+
+### Clean up parted nodes
+
+Once the PGDGroup is deleted from Kubernetes and all the nodes belonging to this group are parted,
+the group information is still available in the pgd metadata like `bdr.node_group`. The PGD4K operator
+defines a CRD named `PGDGroupCleanup` to help drop the PGDGroup and clean up the `parted` nodes belonging to
+this group, if any.
+
+In the example below, the `PGDGroupCleanup` executes locally from `region-a`,
+and will clean up all parted nodes of region-b, with the prerequisite that all the nodes must be
+in the `PARTED` state. It will then drop the PGDGroup `region-b`.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroupCleanup
+metadata:
+  name: region-b-cleanup
+spec:
+  executor: region-a
+  target: region-b
+```
+
+Please note that if the target group (`region-b` in the example) contains nodes
+not in a `PARTED` state, the Group Cleanup will stop in phase
+`PGDGroupCleanup - Waiting for nodes in target PGDGroup to be parted`.
+In cases of extreme need, we can add the `force` option.
+
+> **Warning**
+>
+> Using `force` can leave the PGD cluster in an inconsistent state. Use it only to
+> recover from failures in which you can't part the group nodes any other way.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroupCleanup
+metadata:
+  name: region-b-cleanup
+spec:
+  force: true
+  executor: region-a
+  target: region-b
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,25 @@
+---
+title: Version 5.5
+description: Enhancements, bug fixes, and other changes in Failover Manager 5.5.
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/efm_rel_notes/24_efm_55_rel_notes/
+lastModified: 2026-11-18T07:03:54Z
+---
+
+# Version 5.5
+
+Enhancements, bug fixes, and other changes in EFM 5.5 include:
+
+| Type        | Description                                                                                                                                                    | Addresses |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Enhancement | The minimum Java version required to run Failover Manager is now version 17 instead of 11.                                                                     |           |
+| Enhancement | Failover Manager now uses JGroups version 5.5.7.                                                                                                               |           |
+| Enhancement | Failover Manager now uses the Bouncy Castle cryptographic library version 2.1.3.                                                                               |           |
+| Enhancement | Improved the handling of an edge case involving a hanging primary agent waking up and seeing that it has been replaced as primary.                             |           |
+| Bug Fix     | Fixed an edge case that could leave an agent with an incorrect internal state, potentially leading to a promotion when `auto.failover` is set to false.        | 62250     |
+| Bug Fix     | Failover Manager no longer checks directory permissions at startup in a way that could interfere with many agents starting on the same node simultaneously.    | 59121     |
+| Bug Fix     | Failover Manager agents are no longer blocked while waiting for remote nodes to respond during an `efm cluster-status` call.                                   |           |
+| Bug Fix     | Fixed an edge case that prevented a timely database server shutdown when a primary agent is isolated and can't connect to the local database at the same time. |           |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

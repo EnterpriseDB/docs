@@ -1,0 +1,57 @@
+---
+title: Configuring EDB Job Scheduler
+product: EDB Job Scheduler
+url: https://www.enterprisedb.com/docs/pg_extensions/edb_job_scheduler/configuring/
+lastModified: 2025-03-24T16:45:06-04:00
+---
+
+# Configuring EDB Job Scheduler
+
+The EDB Job Scheduler has a scheduler process that starts when the database cluster starts. To start the scheduler process, load the EDB Job Scheduler extension using the `shared_preload_libraries` parameter.
+
+After you load the extension, create the extension using the `CREATE EXTENSION` command. The database in which you're creating the extension must be listed in the `edb_job_scheduler.database_list` parameter.
+
+The `CREATE EXTENSION` command also creates two tables in the `sys` schema: `jobs` and `job_run_details`.
+
+The EDB Job Scheduler provides the following GUCs:
+
+- `edb_job_scheduler.max_jobs_per_database` — Controls the maximum number of jobs per database level.
+
+- `edb_job_scheduler.max_workers_per_database` — Controls the maximum number of worker processes per database level.
+
+- `edb_job_scheduler.database_list` — Specifies a comma-separated list of database names for job scheduling. If you modify this parameter you must:
+  - For EDB Postgres Advanced Server version 16 and later, reload the server to make the changes take effect using `pg_reload_conf()` or `pg_ctl reload`.
+  - For EDB Postgres Advanced Server version 15 and earlier, restart the server to make the changes take effect using `pg_ctl restart` .
+
+- `edb_job_scheduler.max_database_list_size` — Defines the maximum number of databases that can be listed in `edb_job_scheduler.database_list`. The default value is 32.
+  - You can modify `database_list` up to the configured limit without restarting the server.
+  - If the number of databases in `database_list` exceeds `max_database_list_size`, a server restart is required\
+    for the changes to take effect.
+
+> **Note**
+>
+> The `edb_job_scheduler.max_database_list_size` parameter is available for EDB Postgres Advanced Server versions 16 and later.
+
+## Example
+
+This example configures the EDB Job Scheduler extension.
+
+1. Set the GUC parameter and the shared libraries parameter in `postgresql.conf`:
+
+   ```ini
+   edb_job_scheduler.database_list = 'edb'
+   shared_preload_libraries='$libdir/edb_job_scheduler' 
+   ```
+
+2. Restart the database server.
+
+3. Create the extension:
+
+   ```sql
+   # Using psql, connect to edb database as superuser
+   psql -d edb -U enterprisedb
+   # Create the extension
+   CREATE EXTENSION edb_job_scheduler;
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

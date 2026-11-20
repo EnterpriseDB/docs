@@ -1,0 +1,41 @@
+---
+title: Connecting a client to EDB Pgpool-II
+product: PgPool-II
+version: "4"
+url: https://www.enterprisedb.com/docs/pgpool/latest/04_connecting_a_client_to_pgpool-II/
+lastModified: 2023-02-13T17:06:58-05:00
+---
+
+# Connecting a client to EDB Pgpool-II
+
+<div id="connecting_a_client_to_pgpool-II" class="registered_link"></div>
+
+Connect client applications directly to the EDB Pgpool-II listener port on the EDB Pgpool-II host. For example, to connect to the edb database (while using EDB Pgpool-II), enter:
+
+```shell
+psql -d edb -U enterprisedb -h localhost -p 9999
+```
+
+When invoked at the psql prompt, the following `SHOW` command keywords display EDB Pgpool-II information:
+
+| Command                        | Information provided                                                                                |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `SHOW pool_status`             | Displays EDB Pgpool-II configuration parameters and their name, value, and description              |
+| `SHOW pool_nodes`              | Displays a list of all configured nodes                                                             |
+| `SHOW pool_processes`          | Displays a list of all EDB Pgpool-II processes waiting for connections or dealing with a connection |
+| `SHOW pool_pools`              | Displays a list of pools                                                                            |
+| `SHOW pool_version`            | Displays the EDB Pgpool-II release number                                                           |
+| `PGPOOL SHOW`                  | Displays the configuration parameter value                                                          |
+| `PGPOOL SET`                   | Changes a configuration parameter                                                                   |
+| `PGPOOL RESET`                 | Restores the configuration parameter to the default value                                           |
+| `SHOW POOL_CACHE`              | Displays cache storage statistics                                                                   |
+| `SHOW POOL_HEALTH_CHECK_STATS` | Displays health check statistics                                                                    |
+| `SHOW POOL_BACKEND_STATS`      | Displays backend SQL command statistics                                                             |
+
+To view more information about `SHOW` command options, see the [Pgpool project site](https://www.pgpool.net/docs/current/en/html/sql-commands.html).
+
+> **Note**
+>
+> `SHOW POOL_HEALTH_CHECK_STATS` and `SHOW POOL_BACKEND_STATS` commands are available from EDB Pgpool version 4.2 onwards.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

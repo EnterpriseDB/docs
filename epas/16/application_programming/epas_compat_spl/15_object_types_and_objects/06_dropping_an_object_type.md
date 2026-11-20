@@ -1,0 +1,48 @@
+---
+title: Dropping an object type
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/application_programming/epas_compat_spl/15_object_types_and_objects/06_dropping_an_object_type/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# Dropping an object type
+
+<div id="dropping_an_object_type" class="registered_link"></div>
+
+## Deleting an object type
+
+The syntax for deleting an object type is as follows:
+
+```sql
+DROP TYPE <objtype>;
+```
+
+Where `objtype` is the identifier of the object type to drop. If the definition of `objtype` contains attributes that are themselves object types or collection types, you must drop these nested object types or collection types last.
+
+If an object type body is defined for the object type, the `DROP TYPE` command deletes the object-type body as well as the object-type specification. To re-create the complete object type, you must reissue both the `CREATE TYPE` and `CREATE TYPE BODY` commands.
+
+This example drops the `emp_obj_typ` and the `addr_obj_typ` object types. You must drop `emp_obj_typ` first since it contains `addr_obj_typ` in its definition as an attribute.
+
+```sql
+DROP TYPE emp_obj_typ;
+DROP TYPE addr_obj_typ;
+```
+
+## Dropping only the object type body
+
+The syntax for deleting an object type body but not the object type specification is:
+
+```sql
+DROP TYPE BODY <objtype>;
+```
+
+You can re-create the object type body by issuing the `CREATE TYPE BODY` command.
+
+This example drops only the object type body of the `dept_obj_typ`:
+
+```sql
+DROP TYPE BODY dept_obj_typ;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

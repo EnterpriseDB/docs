@@ -1,0 +1,312 @@
+---
+title: Using EDB Postgres Tuner
+product: EDB Postgres Tuner
+url: https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/using/
+lastModified: 2025-01-09T14:54:50Z
+---
+
+# Using EDB Postgres Tuner
+
+You can use EDB Postgres Tuner in two ways: to automatically apply all tuning recommendations or to manually apply selected tuning recommendations.
+
+## Automatic tuning
+
+To automatically apply all tuning recommendations, set the `edb_pg_tuner.autotune` parameter to `true`. Restart Postgres to apply the change. EDB Postgres Tuner then begins applying tuning recommendations.
+
+> **Note**
+>
+> Automatic tuning isn't currently supported for BigAnimal.
+
+## Manual tuning
+
+To manually apply selected tuning recommendations, make sure the `edb_pg_tuner.autotune` parameter is set to `false`, which is the default. Then, use the `edb_pg_tuner_recommendations` function to inspect the tuning recommendations from the output.
+
+You can set the format of the tuning recommendations to either `conf` or `sql`. For example:
+
+```sql
+SELECT edb_pg_tuner_recommendations('sql');
+```
+
+Where:
+
+- `conf` provides an output like `parameter = value`, which you can copy and paste into your configuration file. This is the default.
+
+- `sql` provides an output like `ALTER SYSTEM SET parameter = value`, which you can execute in your preferred Postgres client tool.
+
+### Example
+
+This example shows how to manually apply tuning recommendations to a `postgresql.conf` file.
+
+Here's an example of settings in a `postgresql.conf` file:
+
+```ini
+checkpoint_completion_target = 0.2
+effective_cache_size = '4GB'
+enable_seqscan = off
+fsync = off
+full_page_writes = off
+max_wal_size = '2MB'
+seq_page_cost = 1.3
+shared_buffers = '128MB'
+```
+
+The following command provides tuning recommendations for the `postgresql.conf` file in the default `conf` format:
+
+```sql
+postgres=# SELECT * FROM edb_pg_tuner_recommendations();
+```
+
+```output title="Output"
+           recommendation
+------------------------------------
+ checkpoint_completion_target = 0.9
+ effective_cache_size = '4653 MB'
+ enable_seqscan = on
+ fsync = on
+ full_page_writes = on
+ max_wal_size = '84MB'
+ maintenance_work_mem = '524 MB'
+ shared_buffers = '1474 MB'
+(8 rows)
+```
+
+The following command provides an output in the `sql` format:
+
+```sql
+postgres=# SELECT edb_pg_tuner_recommendations('sql');
+```
+
+```output title="Output"
+             edb_pg_tuner_recommendations
+------------------------------------------------------
+ ALTER SYSTEM SET checkpoint_completion_target = 0.9;
+ ALTER SYSTEM SET effective_cache_size = '4653 MB';
+ ALTER SYSTEM SET enable_seqscan = on;
+ ALTER SYSTEM SET fsync = on;
+ ALTER SYSTEM SET full_page_writes = on;
+ ALTER SYSTEM SET max_wal_size = '84MB';
+ ALTER SYSTEM SET maintenance_work_mem = '524 MB';
+ ALTER SYSTEM SET shared_buffers = '1474 MB';
+(8 rows)
+```
+
+You can copy and paste the tuning recommendations in the `conf` format into the `postgresql.conf` file:
+
+```ini
+checkpoint_completion_target = 0.9
+effective_cache_size = '4653 MB'
+enable_seqscan = on
+fsync = on
+full_page_writes = on
+max_wal_size = '84MB'
+maintenance_work_mem = '524 MB'
+shared_buffers = '1474 MB'
+```
+
+You can execute the tuning recommendations in the `sql` format in your preferred Postgres client tool:
+
+```sql
+ALTER SYSTEM SET checkpoint_completion_target = 0.9;
+ALTER SYSTEM SET effective_cache_size = '4653 MB';
+ALTER SYSTEM SET enable_seqscan = on;
+ALTER SYSTEM SET fsync = on;
+ALTER SYSTEM SET full_page_writes = on;
+ALTER SYSTEM SET max_wal_size = '84MB';
+ALTER SYSTEM SET maintenance_work_mem = '524 MB';
+ALTER SYSTEM SET shared_buffers = '1474 MB';
+```
+
+## Auto-tuning `work_mem`
+
+For Postgres 14 and higher, you can use EDB Postgres Tuner to optimize query performance by proactively adjusting the `work_mem` parameter based on historical execution data. This can reduce disk I/O and improve overall query performance.
+
+### Memory Pool and Usage Limits:
+
+Before a query is planned and executed, EDB Postgres Tuner will check the hash table to determine if a previous execution of the query resulted in disk spills. If there was a spill, a new `work_mem` value is calculated using the following formula:
+
+```bash
+new_work_mem = ceil(max(1.75 * previous_sort_spill, 5.0 * previous_hash_spill))
+```
+
+- This calculation aims to allocate sufficient memory to avoid disk spills for the current execution.
+- In-memory sorts and hash aggregates require more memory than when run with disk spills.
+- While calculating the exact amount is non-trivial (if possible at all), the values of 1.75 and 5 have worked well in test cases.
+
+### Requirements and Limitations for auto-tuning `work_mem`
+
+- The new `work_mem` value will be subject to the memory pool usage limits.
+- A memory pool of `edb_pg_tuner.work_mem_pool` size is allocated to address these additional memory requirements.
+- A particular query can utilize a maximum of 25% of this memory pool.
+- If the required memory exceeds either the remaining space in the pool or the 25% limit, the `work_mem` will not be increased, and the query will execute with the default `work_mem` setting.
+
+> **Warning**
+>
+> Because `work_mem` is allocated from a pool on a per-query basis, based on the highest disk spill previously seen for the query, it's possible for memory to be over allocated, because each query might use that amount of memory in each of multiple sort or hash aggregate nodes in the execution plan.
+
+- The following example shows `work_mem` automatically bumped based on a disk spill for the previous query execution:
+
+```sql
+SET client_min_messages='debug2';
+SET
+EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+
+DEBUG:  query: 6680971448440786597, duration: 916.011 ms, disk spill: 209504 KiB
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Merge  (cost=215219.55..448152.39 rows=1999999 width=97) (actual time=302.233..845.138 rows=2000000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=214219.52..216302.86 rows=833333 width=97) (actual time=298.210..384.456 rows=666667 loops=3)
+         Sort Key: abalance, aid
+         Sort Method: external merge  Disk: 66872kB
+         Worker 0:  Sort Method: external merge  Disk: 71264kB
+         Worker 1:  Sort Method: external merge  Disk: 71368kB
+         ->  Parallel Seq Scan on pgbench_accounts  (cost=0.00..41120.33 rows=833333 width=97) (actual time=0.021..77.510 rows=666667 loops=3)
+ Planning Time: 0.395 ms
+ Execution Time: 919.485 ms
+(11 rows)
+
+EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+
+DEBUG:  query: 6680971448440786597, bumping work_mem from 4096 KiB to 366632 KiB based on disk spill 209504 KiB
+DEBUG:  query: 6680971448440786597, reset work_mem from 366632 KiB to 4096 KiB
+DEBUG:  query: 6680971448440786597, duration: 589.159 ms, disk spill: 0 KiB
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=262102.69..267102.69 rows=2000000 width=97) (actual time=454.984..536.848 rows=2000000 loops=1)
+   Sort Key: abalance, aid
+   Sort Method: quicksort  Memory: 283528kB
+   ->  Seq Scan on pgbench_accounts  (cost=0.00..52787.00 rows=2000000 width=97) (actual time=0.032..198.565 rows=2000000 loops=1)
+ Planning Time: 0.071 ms
+ Execution Time: 628.238 ms
+(6 rows)
+```
+
+- The following example shows that when the disk spill is more than 25% of the reserved memory, `work_mem` is not increased:
+
+```sql
+postgres=# EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+
+DEBUG:  query: 13238408051869520710, duration: 5836.414 ms, disk spill: 732944 KiB
+                                                                    QUERY PLAN
+
+-----------------------------------------------------------------------------------------------
+----------------------------------------------------
+ Gather Merge  (cost=781842.37..1601931.65 rows=7041419 width=97) (actual time=3072.305..5574.8
+60 rows=7000000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=780842.35..788177.16 rows=2933925 width=97) (actual time=3011.208..3413.014
+rows=2333333 loops=3)
+         Sort Key: abalance, aid
+         Sort Method: external merge  Disk: 262128kB
+         Worker 0:  Sort Method: external merge  Disk: 234416kB
+         Worker 1:  Sort Method: external merge  Disk: 236400kB
+         ->  Parallel Seq Scan on pgbench_accounts  (cost=0.00..144773.25 rows=2933925 width=97
+) (actual time=0.030..473.394 rows=2333333 loops=3)
+ Planning Time: 0.511 ms
+ Execution Time: 5849.844 ms
+(11 rows)
+
+postgres=# EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+DEBUG:  query: 13238408051869520710, duration: 5705.320 ms, disk spill: 732944 KiB
+                                                                    QUERY PLAN
+
+-----------------------------------------------------------------------------------------------
+----------------------------------------------------
+ Gather Merge  (cost=783131.43..1604535.04 rows=7052704 width=97) (actual time=2905.680..5433.5
+50 rows=7000000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=782131.41..789477.98 rows=2938627 width=97) (actual time=2865.627..3264.335
+rows=2333333 loops=3)
+         Sort Key: abalance, aid
+         Sort Method: external merge  Disk: 235720kB
+         Worker 0:  Sort Method: external merge  Disk: 241464kB
+         Worker 1:  Sort Method: external merge  Disk: 255760kB
+         ->  Parallel Seq Scan on pgbench_accounts  (cost=0.00..145005.27 rows=2938627 width=97
+) (actual time=0.024..412.503 rows=2333333 loops=3)
+ Planning Time: 0.061 ms
+ Execution Time: 5718.664 ms
+(11 rows)
+```
+
+## Logging
+
+For Postgres 14 and higher, you can use EDB Postgres Tuner to log query statistics.
+
+### Requirements and Limitations for logging:
+
+- The queries that exceed the `edb_pg_tuner.log_min_duration` execution time are logged.
+- The sort and hash aggregate nodes of the query plan that caused the biggest spill to disk including the parallel workers are added.
+- This data along with the number of times executed and query id is stored in a hash table in shared memory.
+- If the `edb_pg_tuner.log_min_duration` is disabled, the auto tuning will still occur for already logged queries.
+- If the `edb_pg_tuner.tune_work_mem` is disabled, only statistics will be logged for eligible queries.
+- If both are disabled, then neither function is performed.
+
+## Monitoring
+
+You can use the following SQL functions to monitor statistics information:
+
+- `edb_pg_tuner_global_stats()`
+- `edb_pg_tuner_query_stats()`
+
+### edb\_pg\_tuner\_global\_stats()
+
+The `edb_pg_tuner_global_stats()` shows:
+
+- The total number of queries that have executed regardless of whether or not were logged.
+- The size of the query hash table in shared memory (`edb_pg_tuner.buffer_size`).
+- The number of unique queries in the shared memory buffer (capped at `edb_pg_tuner.buffer_size`).
+- The number of entries that have been deallocated from the shared memory buffer.
+- The size of the reserved `work_mem` pool (`edb_pg_tuner.work_mem_pool`).
+- The amount of the memory pool (in KiB) that is currently allocated to running queries.
+
+```sql
+postgres=# SELECT * FROM edb_pg_tuner_global_stats();
+
+           stats_reset            | total_queries | buffer_size | unique_queries | deallocation
+s | pool_size | pool_used
+----------------------------------+---------------+-------------+----------------+-------------
+--+-----------+-----------
+ 04-NOV-24 10:11:34.876737 +05:30 |            52 |        5000 |             19 |
+0 |   2097152 |         0
+(1 row)
+```
+
+### edb\_pg\_tuner\_query\_stats()
+
+The `edb_pg_tuner_query_stats()` function shows for each query in the buffer:
+
+- The query ID (the same as `pg_stat_statements` uses).
+- The number of times the query has executed.
+- The maximum amount of sort disk spill recorded in any node in any invocation of the query.
+- The maximum amount of sort nodes in the execution plan of any invocation of the query.
+- The maximum amount of hash aggregate disk spill recorded in any node in any invocation of the query.
+- The maximum amount of hash aggregate nodes in the execution plan of any invocation of the query.
+
+```sql
+postgres=# SELECT * FROM edb_pg_tuner_query_stats() WHERE sort_spill > 0 OR hash_spill > 0;
+
+      query_id       | executed | sort_spill | sort_nodes | hash_spill | hash_nodes
+---------------------+----------+------------+------------+------------+------------
+ 8309825044411750783 |        6 |     146656 |          1 |          0 |          0
+ 3944940152695791236 |        1 |    1456218 |          1 |          0 |          0
+ -264435973028163932 |        2 |      12592 |          1 |          0 |          0
+ 3595982096380934851 |        3 |    1256528 |          1 |          0 |          0
+(4 rows)
+```
+
+> **Warning**
+>
+> The `edb_pg_tuner_global_stats()` and `edb_pg_tuner_query_stats()` functions are supported for Postgres 14 and higher versions.  For Postgres 13 and lower versions, the functions will return the following error:
+>
+> ```sql
+>  postgres=# SELECT * FROM edb_pg_tuner_global_stats();
+> ERROR:  "edb_pg_tuner_global_stats" is not supported in this version
+>
+> postgres=# SELECT * FROM edb_pg_tuner_query_stats();
+> ERROR:  "edb_pg_tuner_query_stats" is not supported in this version
+> ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

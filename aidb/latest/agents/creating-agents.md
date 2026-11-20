@@ -1,0 +1,194 @@
+---
+title: Managing agents
+description: Register, update, and delete AIDB agents — their model, tools, permissions, and structured output.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/agents/creating-agents/
+lastModified: 2026-11-20T11:26:56+05:30
+---
+
+# Managing agents
+
+An agent is a row in `aidb.agents`, created with `aidb.create_agent()`. Nothing runs until you call [`aidb.agent_converse()`](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/) — creating an agent just stores its configuration.
+
+```sql
+SELECT aidb.create_agent(
+    name                 => 'db_helper',
+    instructions         => 'You are a helpful assistant that answers questions about this database. Be concise.',
+    model                => 'my_gpt',
+    tools                => ARRAY['run_sql_query'],  -- optional; tool names from aidb.tools. Default: NULL (no tools)
+    delegates            => NULL,                    -- optional; names of other agents to delegate to. Default: NULL (no delegation)
+    purpose              => NULL,                    -- optional; name of a purpose from aidb.purpose_registry. Default: NULL (tool calls run as the calling role)
+    output_type          => NULL,                    -- optional; structured output schema from aidb.output_type(). Default: NULL (plain-text answer)
+    input_token_budget   => NULL,                    -- optional; input token cap per agent_converse call. Default: NULL (no limit)
+    output_token_budget  => NULL,                    -- optional; output token cap per agent_converse call. Default: NULL (no limit)
+    max_iterations       => NULL,                    -- optional; reasoning-round cap per call. Default: NULL (a hard ceiling of 25 always applies)
+    timeout              => NULL,                    -- optional; wall-clock seconds cap per call. Default: NULL (300 seconds applied at runtime)
+    budget_strategy      => 'attempt_complete',      -- optional; behavior when a budget is exceeded. Default: 'attempt_complete'
+    preset               => NULL,                    -- optional; reserved for future use, has no effect today. Default: NULL
+    plugins              => NULL                     -- optional; names of agent plugins to attach. Default: NULL (no plugins)
+);
+```
+
+Returns no rows on success. On failure (for example, the name is already taken), it returns a single row with an `error` column set — it never raises, so a batch of `create_agent` calls can't abort partway through:
+
+```sql
+SELECT * FROM aidb.create_agent('db_helper', 'Be helpful.', 'my_gpt');
+
+```
+
+```output title="Output"
+                error
+------------------------------------
+ agent 'db_helper' already exists
+(1 row)
+```
+
+## Choosing a model
+
+`model` must name an already-registered [model](https://www.enterprisedb.com/docs/aidb/latest/integrating-models/) that's capable of generating text and following instructions. Embedding, reranking, OCR, and multimodal-embedding providers (`bert_local`, `openai_embeddings`, `nim_reranking`, `clip_local`, and so on) can't back an agent at all, and `t5_local` is rejected outright since it has no instruction-following or system-prompt support. Every other text-generation provider works, split into two tiers by tool-calling quality:
+
+**Preferred** — these send real, provider-native tool-call requests:
+
+- `openai_responses` (+ `openai_responses_azure`)
+- `anthropic_messages` (+ `anthropic_messages_azure` / `anthropic_messages_bedrock`)
+- `llamacpp_generate`
+
+**Supported** — these work, but AIDB simulates tool calling by describing the available tools in the prompt text and parsing a tool call back out of the model's plain-text reply:
+
+- `openai_completions`
+- `completions` (any other OpenAI-Chat-Completions-compatible endpoint)
+- `nim_completions`
+- `openrouter_chat`
+- `gemini`
+- `llama_instruct_local`
+
+Where your server supports it, use `openai_responses` for agents. With `openai_completions`, the model must reply with bare JSON, and small or local models often add code fences or text, or use the wrong keys, so the tool never runs. Not every completions server supports tool calls and AIDB can't reliably detect it, so it doesn't switch automatically.
+
+See [Tool calling and structured output](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#tool-calling-and-structured-output) for more on the preferred/supported distinction. The model doesn't need to exist yet when you call `create_agent` — only `agent_converse` requires it to be resolvable.
+
+## Tools and delegates
+
+`tools` is an array of names from the [tool catalog](https://www.enterprisedb.com/docs/aidb/latest/tools/) (`aidb.tools`) the agent is allowed to call; `delegates` is an array of names of other agents it may [hand off to](https://www.enterprisedb.com/docs/aidb/latest/agents/delegation/). Both are validated against `aidb.tools`/`aidb.agents` at `create_agent`/`update_agent` time — an unknown name is rejected immediately rather than surfacing later inside `agent_converse`. Omit either for an agent with no tools or no delegates.
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'help_desk',
+    instructions => 'Help users with general questions, delegating data questions to a specialist.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query'],
+    delegates    => ARRAY['sql_specialist']
+);
+```
+
+## Plugins
+
+`plugins` is an array of [agent plugin](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/) names. A plugin packages reusable guidance and a set of existing tools. When the agent runs, AIDB adds each plugin's content to the agent's instructions and each plugin's tools to the agent's `tools`. Like `tools` and `delegates`, each name is validated when you call `create_agent` or `update_agent`. Omit `plugins` for an agent with no plugins.
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'billing_agent',
+    instructions => 'Answer questions about billing data.',
+    model        => 'my_gpt',
+    plugins      => ARRAY['billing_sql']
+);
+```
+
+See [Agent plugins](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/) for how to create plugins, how AIDB combines them with an agent's tools and instructions, and the managed plugin that each [semantic knowledge base](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/) publishes.
+
+## Permissions
+
+By default, an agent's tool calls run as the Postgres role that calls `agent_converse`. To run them as a different role, give the agent a purpose.
+
+A purpose is a named entry in `aidb.purpose_registry` that maps to a Postgres role. Members of the `aidb_governance` role create purposes:
+
+```sql
+SELECT aidb.create_purpose(
+    name        => 'sales_reporting',
+    role        => 'reporting_role',
+    description => 'Read-only access to the sales schema'
+);
+```
+
+Pass the purpose name when you create or update an agent:
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'readonly_reporter',
+    instructions => 'Answer questions about sales data. Never modify data.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query'],
+    purpose      => 'sales_reporting'
+);
+```
+
+Each time the agent is invoked, AIDB looks up the purpose's current role and checks that the caller is a member of it. If the caller isn't a member, or the purpose has been deleted with `aidb.delete_purpose()`, the call is refused. `create_agent` and `update_agent` don't check role membership.
+
+To change the role for every agent that holds a purpose, call `aidb.update_purpose()`. See [Purpose management functions](https://www.enterprisedb.com/docs/aidb/latest/reference/agents/#purpose-management-functions).
+
+Every tool SQL execution under a purpose is recorded as an `allowed` or `denied` decision. See [Recording purpose-enforcement decisions](https://www.enterprisedb.com/docs/aidb/latest/reference/observability/#recording-purpose-enforcement-decisions).
+
+## Structured output
+
+By default, `agent_converse`'s answer is plain text. To get back structured JSON instead, build a schema with `aidb.output_type()` and `aidb.output_field()`:
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'sentiment_tagger',
+    instructions => 'Classify the sentiment of the given text.',
+    model        => 'my_gpt',
+    output_type  => aidb.output_type(
+        aidb.output_field('sentiment', 'TEXT', 'One of: positive, negative, neutral'),
+        aidb.output_field('confidence', 'FLOAT')
+    )
+);
+```
+
+`aidb.output_field()`'s `description` argument is optional. A call-time `output_type` argument to `agent_converse` overrides the agent's configured schema for that one call only.
+
+## Budgets, iterations, and timeouts
+
+`input_token_budget`, `output_token_budget`, `max_iterations`, and `timeout` (seconds) cap how much a single `agent_converse` call can cost and how long it can run; `budget_strategy` controls what happens when a budget is exceeded. All are optional — see [Budgets and limits](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#budgets-and-limits) for the full behavior, since it's a property of how a conversation runs, not of the agent's static configuration.
+
+```sql
+SELECT aidb.create_agent(
+    name                 => 'cost_capped_helper',
+    instructions         => 'Answer questions about the orders table.',
+    model                => 'my_gpt',
+    input_token_budget   => 20000,   -- INTEGER; input tokens allowed per agent_converse call
+    output_token_budget  => 2000,    -- INTEGER; output tokens allowed per agent_converse call
+    max_iterations       => 10,      -- INTEGER; reasoning rounds allowed per call (a hard ceiling of 25 always applies)
+    timeout              => 60,      -- INTEGER; wall-clock seconds allowed per call
+    budget_strategy      => 'error'  -- TEXT; one of 'ignore', 'error', 'summarize', 'attempt_complete'
+);
+```
+
+## Updating and deleting agents
+
+`aidb.update_agent()` takes the same fields as `create_agent`, all optional — only the fields you pass change; everything else keeps its current value:
+
+```sql
+SELECT aidb.update_agent('db_helper', model => 'my_new_gpt', max_iterations => 15);
+```
+
+Pass `plugins` to attach or replace the agent's [plugins](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/). The array you pass replaces the agent's current plugin list.
+
+There's no dedicated "list agents" function — `aidb.agents` is a normal table, so `SELECT * FROM aidb.agents` lists them. See [Agents reference](https://www.enterprisedb.com/docs/aidb/latest/reference/agents/#aidbagents) for its full column list.
+
+`aidb.delete_agent()` removes an agent by name:
+
+```sql
+SELECT aidb.delete_agent('db_helper');
+```
+
+If the agent has any conversation history, this fails by default (its internal task records are referenced by foreign key) — pass `force => true` to delete that internal history alongside the agent. The conversation _transcript_ itself is untouched either way and remains readable with [`aidb.get_conversation()`](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#retrieving-conversations) even after the agent that produced it has been deleted.
+
+```sql
+SELECT aidb.delete_agent('db_helper', force => true);
+```
+
+> **Note**
+>
+> `create_agent`/`update_agent` also accept a `preset` argument (for example, `'text_to_sql'`). It's stored on the agent but doesn't currently change its behavior — reserved for future use.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,538 @@
+---
+title: Installation and upgrade
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/installation_upgrade/
+lastModified: 2026-06-22T07:38:49-07:00
+---
+
+# Installation and upgrade
+
+> **Tip: OpenShift**
+>
+> For instructions on how to install EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC) on Red Hat
+> OpenShift Container Platform, see ["OpenShift"](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/openshift/).
+
+## Installing the operator on Kubernetes
+
+### Obtaining an EDB subscription token
+
+> **Important**
+>
+> You must obtain an EDB subscription token to install CNPG-GC. The token
+> grants access to the EDB private software repositories.
+
+Installing CNPG-GC requires an EDB Repos 2.0 token to gain access to the EDB private software repositories.
+For instructions on obtaining this token, see: [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/).
+
+Then set the Repos 2.0 token as an environment variable `EDB_SUBSCRIPTION_TOKEN`:
+
+```shell
+EDB_SUBSCRIPTION_TOKEN=<your-token>
+```
+
+> **Warning**
+>
+> The token is sensitive information. Ensure that you don't expose it to unauthorized users.
+
+You can now proceed with the installation.
+
+### Using the Helm chart
+
+You can install the operator using the provided [Helm chart](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts).
+
+### Directly using the operator manifest
+
+You can deploy the CNPG-GC operator directly using the manifest.
+This manifest installs both CNPG-GC operator and the latest
+supported EDB Postgres for Kubernetes operator in the same namespace. To deploy the operators
+using the manifest, follow the steps below:
+
+#### Install the cert-manager
+
+CNPG-GC requires Cert Manager 1.10 or higher. You can follow the
+[installation guide](https://cert-manager.io/docs/installation/) or use this
+command to deploy cert-manager:
+
+```shell
+kubectl apply -f \
+  https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+```
+
+#### Install the EDB pull secret
+
+Before installing CNPG-GC, you need to create a _pull secret_ for
+the EDB container registry.
+
+The pull secret needs to be saved in the namespace where the operator will reside (`pgd-operator-system` by default).
+Create the `pgd-operator-system` namespace using this command:
+
+```shell
+kubectl create namespace pgd-operator-system
+```
+
+To create the pull secret, run the following command:
+
+```shell
+kubectl create secret -n pgd-operator-system docker-registry edb-pull-secret \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password=${EDB_SUBSCRIPTION_TOKEN}
+```
+
+#### Install the operator manifest
+
+After the pull-secret is added to the namespace, you can install the operator like any other resource in Kubernetes:
+through a YAML manifest applied via `kubectl`.
+
+To install the manifest for the latest version of the operator:
+
+```sh
+kubectl apply --server-side -f \
+  https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.2.0-rc1.yaml
+```
+
+Check the operator deployment:
+
+```sh
+kubectl get deployment -n pgd-operator-system pgd-operator-controller-manager
+```
+
+> **Note**
+>
+> As CNPG-GC internally manages each PGD node using the
+> `Cluster` resource defined by EDB Postgres for Kubernetes, you also need to have the
+> EDB Postgres for Kubernetes operator installed as a dependency. The manifest used
+> above contains a well-tested version of EDB Postgres for Kubernetes operator, which will
+> be installed into the same namespace as the CNPG-GC operator.
+
+## Details about the deployment
+
+In Kubernetes, the operator is by default installed in the `pgd-operator-system`
+namespace as a Kubernetes `Deployment`. The name of this deployment depends on the installation method.
+When installed through the manifest, by default it's named `pgd-operator-controller-manager`.
+When installed via Helm, by default the deployment name is derived from the Helm release name, appended with the
+suffix `-edb-postgres-distributed-for-kubernetes` (that is, `<name>-edb-postgres-distributed-for-kubernetes`).
+
+> **Note**
+>
+> With Helm, you can customize the name of the deployment via the
+> `fullnameOverride` field in the [_"values.yaml"_ file](https://helm.sh/docs/chart_template_guide/values_files/).
+
+You can get more information using the `describe` command in `kubectl`:
+
+```sh
+$ kubectl get deployments -n pgd-operator-system
+NAME                READY   UP-TO-DATE   AVAILABLE   AGE
+<deployment-name>   1/1     1            1           18m
+```
+
+```sh
+kubectl describe deploy \
+  -n pgd-operator-system \
+  <deployment-name>
+```
+
+As with any deployment, it sits on top of a ReplicaSet and supports rolling upgrades. The
+default configuration of the CNPG-GC operator is
+a deployment of a single replica, which is suitable for most installations. If the
+node where the pod is running isn't reachable anymore, the pod will be rescheduled on
+another node.
+
+If you require high availability at the operator level, it's possible to specify multiple
+replicas in the deployment configuration, given that the operator supports leader election.
+In addition, you can take advantage of taints and tolerations to make sure that the operator does
+not run on the same nodes where the actual PostgreSQL clusters are running. (This might even
+include the control plane for self-managed Kubernetes installations.)
+
+> **Tip: Operator configuration**
+>
+> You can change the default behavior of the operator by overriding
+> some default options. For more information, see
+> ["Operator configuration"](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/operator_conf/).
+
+## Deploy PGD clusters
+
+Be sure to create a cert issuer before you start deploying PGD clusters.
+The Helm chart prompts you to do this, but in case you miss it,
+you can run, for example:
+
+```sh
+kubectl apply -f \
+  https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml
+```
+
+With the operators and a self-signed cert issuer deployed, you can start
+creating PGD clusters. See
+[Quick start](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/quickstart/#part-3---deploy-a-pgd-cluster) for an example.
+
+### Default operand images
+
+By default, each operator release binds a default version and flavor for PGD and PGD Proxy images.
+If the image names
+aren't specified in the `spec.pgd.imageName` and `spec.pgdproxy.imageName` fields of the PGDGroup YAML file, the default
+images are used.
+
+You can overwrite default images using the `pgd-operator-controller-manager-config` operator configuration map.
+For more details, see [CNPG-GC operator configuration](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/operator_conf/).
+
+You can find the images the PGD cluster is using by checking the PGDGroup status:
+
+```sh
+kubectl get pgdgroup <pgdgroup name> -o yaml | yq ".status.image"
+```
+
+### Specifying operand images
+
+This example shows a PGD cluster using explicit image names:
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-customized
+spec:
+  instances: 2
+  proxyInstances: 2
+  witnessInstances: 1
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:17.6-pgd590-ubi9
+  pgdProxy:
+    imageName: docker.enterprisedb.com/k8s/edb-pgd-proxy:5.9.0-ubi9
+  imagePullSecrets:
+  - name: registry-pullsecret
+  pgd:
+    parentGroup:
+      name: world
+      create: true
+  cnp:
+    storage:
+      size: 1Gi
+```
+
+### Specifying operand images using ImageCatalog
+
+Since the release of version 1.1.1, the PGD4K-PGD operator supports using `ImageCatalog` to specify operand images.
+
+Different `ImageCatalogs` are available based on PGD versions for each PostgreSQL flavor.
+Note that the image included in the `ImageCatalog` are ubi-9 based.
+
+- EDB Postgres Advanced PGD:
+  `https://get.enterprisedb.io/pgd-k8s-image-catalogs/epas-k8s-pgd<PGD_VERSION>-ubi9.yaml`
+- EDB Postgres Extended PGD:
+  `https://get.enterprisedb.io/pgd-k8s-image-catalogs/pgextended-k8s-pgd<PGD_VERSION>-ubi9.yaml`
+- Postgres Community PGD:
+  `https://get.enterprisedb.io/pgd-k8s-image-catalogs/postgresql-k8s-pgd<PGD_VERSION>-ubi9.yaml`
+
+You can create an `ImageCatalog` in the PGD cluster namespace and reference it in your YAML file.
+
+This command creates an EDB Postgres Extended PGD 5.9 `ImageCatalog`:
+
+```sh
+kubectl create -f \
+  https://get.enterprisedb.io/pgd-k8s-image-catalogs/epas-k8s-pgd5.9-ubi9.yaml
+```
+
+This example shows how to use the EDB Postgres Extended PGD 5.9 `ImageCatalog` to
+specify a PostgreSQL major version of 17 for the PGD operand image. The PGD Proxy image is also sourced from
+the `ImageCatalog`.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-catalog
+spec:
+  instances: 2
+  proxyInstances: 2
+  witnessInstances: 1
+  imageCatalogRef:
+    apiGroup: pgd.k8s.enterprisedb.io
+    kind: ImageCatalog
+    major: 17
+    name: epas-k8s-pgd59-ubi9
+...
+```
+
+## Operator upgrade
+
+> **Warning: CRITICAL WARNING: UPGRADING OPERATORS**
+>
+> OpenShift users, or any customer attempting an operator upgrade, MUST configure the new unified repository pull secret (docker.enterprisedb.com/k8s) before running the upgrade. If the old, deprecated repository path is still in use during the upgrade process, image pull failure will occur, leading to deployment failure and potential downtime. Follow the [Central Migration Guide](https://www.enterprisedb.com/docs/repos/working_with_repos/migrating_edb_registries/) first.
+
+> **Important**
+>
+> Carefully read the [release notes](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/rel_notes/)
+> before performing an upgrade, as some versions might
+> require extra steps.
+
+The CNPG-GC (PGD4K) operator relies on the
+EDB Postgres for Kubernetes (PG4K) operator to manage clusters. To upgrade the EDB PGD4K
+operator, the PG4K operator must also be upgraded to a supported version. We recommend
+keeping the EDB PG4K operator on the [long-term support (LTS)](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/#long-term-support)
+version, as this is the tested version compatible with the PGD4K operator.
+
+To upgrade the EDB Postgres Distributed (PGD) for Kubernetes operator:
+
+1. Upgrade the EDB Postgres for Kubernetes operator as a dependency.
+2. Upgrade the PGD4K controller and the related Kubernetes resources.
+
+When you upgrade the EDB Postgres for Kubernetes operator, the instance manager on
+each PGD node is also upgraded. For more details, see
+[EDB Postgres for Kubernetes upgrades](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/installation_upgrade/#upgrades).
+
+Unless differently stated in the release notes, those steps are normally done by applying the manifest of the newer version for plain Kubernetes installations.
+
+### Compatibility among versions
+
+CNPG-GC (PGD4K) follows semantic versioning.
+Every release of the operator within the same API version is compatible with the
+previous one. The current API version is v1, corresponding to versions 1.x.y of
+the operator.
+
+The minor version of PGD4K operator is tracking a PG4K LTS release change.
+For example:
+
+- PGD4K operator 1.0.x is fully tested against PG4K LTS 1.22.
+- PGD4K operator 1.1.x is fully tested against PG4K LTS 1.25.
+- PGD4K operator 1.2.x is fully tested against PG4K LTS 1.28.
+
+A PGD4K operator release has the same support scope as the PG4K LTS release it's tracking.
+
+In addition to new features, new versions of the operator contain bug fixes and
+stability enhancements.
+
+> **Important**
+>
+> Each version is released to maintain the most secure and stable
+> Postgres environment. Because of this, we strongly encourage you to upgrade
+> to the latest version of the operator.
+
+The [release notes](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/rel_notes/) contains a detailed list of the
+changes introduced in every released version of CNPG-GC.
+Read them before upgrading to a newer version of the software.
+
+Most versions are directly upgradable. In that case, applying the
+newer manifest for plain Kubernetes installations will complete the upgrade.
+
+When versions aren't directly upgradable, you must remove the old version (of both PGD4K and PG4K)
+before installing the new one. This won't affect user data, only the operator.
+
+### Upgrading to 1.0.1 on Red Hat OpenShift
+
+On the OpenShift platform, starting from version 1.0.1, the CNPG-GC
+operator is required to reference the LTS releases of the PG4K operator. For example,
+PGD4K v1.0.1 specifically references the PG4K LTS version 1.22.x. (Any patch release of the 1.22 LTS branch is valid.)
+
+To upgrade PGD4K operator, ensure that the PG4K operator is upgraded to a supported
+version first. Only then can you upgrade the PGD4K operator.
+
+> **Important**
+>
+> As PGD4K v1.0.0 doesn't require referencing an LTS release of the PG4K operator,
+> it may have been installed with any PG4K version. If the installed PG4K version is
+> less than 1.22, you can upgrade to PG4K version 1.22 by changing the subscription
+> channel. For more information, see [Upgrading the operator](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/installation_upgrade/#upgrades). However, if the installed PG4K version
+> is greater than 1.22, you must reinstall the operator from the stable-1.22
+> channel to upgrade PGD4K to v1.0.1.
+
+### Upgrading to 1.2.0 on Red Hat OpenShift
+
+Starting with release 1.2.0, operator and operand images use a single EDB registry.
+Before upgrading the operator and cluster, follow the [EDB Registry Migration Guide](https://www.enterprisedb.com/docs/repos/working_with_repos/migrating_edb_registries/)
+to update your image pull secrets with the new credentials.
+
+### Server-side apply of manifests
+
+To ensure compatibility with Kubernetes 1.29 and upcoming versions,
+CNPG-GC now mandates the use of
+[server-side apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)
+when deploying the operator manifest.
+
+While employing this installation method poses no challenges for new
+deployments, updating existing operator manifests using the `--server-side`
+option may result in errors like the following:
+
+```text
+Apply failed with 1 conflict: conflict with "kubectl-client-side-apply" using..
+```
+
+If such errors arise, you can resolve them by explicitly specifying the
+`--force-conflicts` option to enforce conflict resolution:
+
+```sh
+kubectl apply --server-side --force-conflicts -f <OPERATOR_MANIFEST>
+```
+
+From then on, `kube-apiserver` is acknowledged as a recognized
+manager for the CRDs, eliminating the need for any further manual intervention
+on this matter.
+
+## Operand upgrade
+
+Operand upgrades fall into two categories based on PostgreSQL and PGD versions:
+
+- Minor version upgrades (for example, PostgreSQL from 17.4 to 17.5 and PGD from 5.7 to 5.8)
+- Major version upgrades (for example, PostgreSQL from 16.x to 17.5, no PGD major version upgrade as only PGD 5.x is supported now)
+
+> **Note**
+>
+> The PGD operand upgrade proceeds sequentially on each node. The node upgrade process
+> is managed by the PG4K operator. For detailed information, see
+> [PostgreSQL upgrades](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/postgres_upgrades/)
+
+### Checking current PGD and proxy versions
+
+Before upgrading, you can check the current PGD and PGD proxy versions:
+
+```sh
+kubectl get pgdgroup <pgdgroup name> -o yaml | yq ".status.image"
+```
+
+### Minor version upgrade
+
+The PGD cluster supports in-place upgrades of the operand image's minor version,
+though the PostgreSQL service is temporarily unavailable during the upgrade.
+
+#### Upgrade procedure
+
+- Using default or customized image name:
+  To upgrade the operand to a new minor version, replace the imageName in the
+  `spec.imageName` and `spec.pgdproxy.imageName` sections of the PGD group YAML file with the new imageName.
+  The images on each node will be upgraded sequentially and restarted accordingly.
+
+- Using image catalog:
+  If the PGD cluster manages image versions using an `ImageCatalog`, upgrade the
+  image version specified in the referenced `ImageCatalog`. The PGD cluster
+  applies the new image version.
+
+### Major version upgrade
+
+Since release v1.1.2, the PGD4K operator supports in-place upgrades for major PostgreSQL versions.
+During the process, each PGD node is upgraded sequentially, with the write leader transferred to an available node
+before the upgrade.
+
+#### Prerequisites for major version in-place upgrade
+
+- PGD4K operator v1.1.2 or higher
+- PG4K operator v1.26.0 or higher
+- PGD operand 5.8 or greater
+
+#### Upgrade procedure
+
+Like minor version upgrades, initiating a major version upgrade involves updating the `spec.imageName`
+in the PGDGroup to point to the new operand image.
+
+Example scenario:
+
+Suppose you have a PGDGroup named `pgd-sample`, currently running with PostgreSQL 16.9
+plus PGD 5.8.1. You plan to upgrade to PostgreSQL 17.5 plus PGD 5.8.1.
+
+##### Step-by-step guidance
+
+1. Check the current operand version you're using:
+
+```shell
+kubectl -n pgd get pgdgroup pgd-sample -o yaml | yq ".status.image"
+```
+
+Output:
+
+```shell
+pgd: docker.enterprisedb.com/k8s/edb-postgres-advanced-pgd:16.10-pgd581-ubi9
+proxy: docker.enterprisedb.com/k8s/edb-pgd-proxy:5.8.1-ubi9
+```
+
+2. Update the operand image
+
+Edit the PGDGroup and update the `spec.imageName` or patch it directly to
+`docker.enterprisedb.com/k8s/edb-postgres-advanced-pgd:17.5-pgd581-ubi9`
+
+```shell
+kubectl patch pgdgroup pgd-sample -n pgd --patch \
+'{"spec": {"imageName": "docker.enterprisedb.com/k8s/edb-postgres-advanced-pgd:17.5-pgd581-ubi9"}}' \
+--type=merge
+```
+
+3. Monitor the node-by-node major version upgrade
+
+The cluster begins upgrading nodes sequentially:
+
+Observe the upgrading node, for example, pgd-sample-3, shows "Upgrading Postgres major version".
+
+```shell
+> kubectl -n pgd get cluster
+NAME           AGE    INSTANCES   READY   STATUS                             PRIMARY
+pgd-sample-1   121m   1           1       Cluster in healthy state           pgd-sample-1-1
+pgd-sample-2   118m   1           1       Cluster in healthy state           pgd-sample-2-1
+pgd-sample-3   115m   1                   Upgrading Postgres major version   pgd-sample-3-1
+```
+
+During the process, the PGDGroup status is:
+
+```shell
+> kubectl -n pgd get pgdgroup
+NAME         DATA INSTANCES   WITNESS INSTANCES   PHASE                                                         AGE
+pgd-sample   2                1                   PGDGroup - Waiting for nodes to be ready   123m
+```
+
+The upgrade of individual nodes is managed via dedicated jobs:
+
+```shell
+> kubectl -n pgd get job
+NAME                           STATUS    COMPLETIONS   DURATION   AGE
+pgd-sample-3-1-major-upgrade   Running   0/1           3m22s      3m22s
+```
+
+Check logs in the upgrade job pod for detailed upgrade status
+
+```shell
+kubectl -n pgd logs -f pgd-sample-3-1-major-upgrade-ldtnj
+```
+
+Once a node's major version upgrade completes, the process moves to the next node:
+
+```shell
+NAME           AGE    INSTANCES   READY   STATUS                             PRIMARY
+pgd-sample-1   128m   1           1       Cluster in healthy state           pgd-sample-1-1
+pgd-sample-2   125m   1                   Upgrading Postgres major version   pgd-sample-2-1
+pgd-sample-3   122m   1           1       Cluster in healthy state           pgd-sample-3-1
+```
+
+4. Confirm completion and health
+
+Once all nodes are upgraded, the PGDGroup phase switches to Healthy.
+
+```shell
+NAME         DATA INSTANCES   WITNESS INSTANCES   PHASE                AGE
+pgd-sample   2                1                   PGDGroup - Healthy   137m
+```
+
+Verify the overall image version:
+
+```shell
+kubectl -n pgd get pgdgroup  pgd-sample -o yaml | yq ".status.image"
+```
+
+Output:
+
+```shell
+pgd: docker.enterprisedb.com/k8s/edb-postgres-advanced-pgd:17.5-pgd581-ubi9
+proxy: docker.enterprisedb.com/k8s/edb-pgd-proxy:5.8.1-ubi9
+```
+
+5. Confirm PostgreSQL version on each node:
+
+```shell
+kubectl -n pgd exec -it pgd-sample-1-1 -c postgres -- psql -c "select version()"
+```
+
+Output:
+
+```
+                                                                       version
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 17.5 (EnterpriseDB Advanced Server 17.5.0) on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 11.5.0 20240719 (Red Hat 11.5.0-5), 64-bit
+(1 row)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,43 @@
+---
+title: Security considerations for Agent Studio
+description: How Agent Studio on Hybrid Manager handles credentials across the flow builder, published bundles, and deployed flows, and how deployed flows reach models in air-gapped environments.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/security/
+lastModified: 2026-08-07T14:25:48+05:30
+---
+
+# Security considerations for Agent Studio
+
+This page covers how credentials are handled as a flow moves from the flow builder to a deployed flow.
+
+## Credentials in Global Variables
+
+Global Variables in the flow builder are used for storing credentials and non-sensitive configuration values. Understand where credentials live at each stage and the risk that carries.
+
+In the flow builder:
+
+- Global Variables are encrypted and stored in the Agent Studio database. That database is shared by all flows in the flow builder, and Global Variables for all flows and all users are encrypted with the same key. Users can't see each other's Global Variables, but there is no isolation: any compromise of the database or the encryption key exposes every user's Global Variables.
+
+When a flow is published:
+
+- Global Variable values are not included in the published bundle. The variable names are extracted and stored in the bundle as parameters. You can set default values for generic parameters at publish time; no value can be set for a credential parameter.
+
+When a flow is deployed:
+
+- You provide values for parameters at deploy time. Generic parameters can use their defaults, but credential parameters must be given a value. Those values are stored as Kubernetes secrets in an isolated namespace used only by that deployed flow.
+
+Recommendations:
+
+- In the flow builder, use Global Variables only for credentials to non-sensitive resources (for example developer or test databases and model deployments).
+
+- Add production credentials only when deploying a flow, where each deployment's credential values are stored as Kubernetes secrets isolated to that flow.
+
+---
+
+## Related pages
+
+- [Sovereign AI on Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/) — data residency and air-gapped architecture concepts.
+- [Flow deployment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/flow-deployment/) — project-level isolation, scaling, and access control for deployed Agent Studio flows.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

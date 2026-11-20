@@ -1,0 +1,133 @@
+---
+title: Configuration
+product: Lasso
+version: "4"
+url: https://www.enterprisedb.com/docs/lasso/latest/configuration/
+lastModified: 2026-01-21T13:58:00+01:00
+---
+
+# Configuration
+
+Besides being mandatory for the customer `id`, the Lasso
+configuration file also allows you to omit most of the command line
+options that your environment might require. (You can see a list of all
+the command-line options in [Usage](https://www.enterprisedb.com/docs/lasso/latest/usage/).)
+
+Lasso looks for configuration files in the following paths, in this
+order, and uses the first match:
+
+1. `./edb-lasso.cfg` in the same directory where Lasso is running
+2. `./edb-lasso.conf` in the same directory where Lasso is running
+3. `$HOME/.edb-lasso.conf`
+4. `/etc/edb-lasso.conf`
+
+To specify a configuration file not in this list,
+run Lasso with the `--config-file` option. For example:
+
+```
+lasso --config-file /path/to/file.conf
+```
+
+A template file for the configuration file looks like this:
+
+```
+    ; Lasso template configuration file
+    ;
+    ; Copyright (C) EnterpriseDB UK Limited 2015-2024 - All Rights Reserved.
+    ; Licensed only for use with an EnterpriseDB subscription
+
+    [customer]
+    ; the "Company code" from the customer page in the EDB Portal
+    id=
+    ; the "Token" from the customer page in the EDB Portal
+    ;    since Lasso 4.17.0, the token is no longer mandatory.
+    token=
+    ; the depth of the Lasso report. Must be one between: surface, shallow and deep
+    depth=deep
+    ; the environment of the server. Can be any string
+    environment=
+
+    [postgresql]
+    ; Lasso uses the following connection string parameters to connect to your
+    ; PostgreSQL cluster and take diagnostics. By default it will attempt a peer
+    ; connection to socket under directory /var/run/postgresql
+    ; dbname=
+    ; user=
+    ; port=
+    ; hostname can be a host or a socket directory
+    ; hostname=/var/run/postgresql
+    ; password=
+
+    ; session variable to control timeout on lock waits
+    ; lock_timeout=3s
+    ; session variable to control statement execution time
+    ; statement_timeout=5min
+
+    [environment]
+    ; PostgreSQL binaries directory. Lasso will try to detect this automatically if
+    ; not set
+    ; bindir=
+    ; if the host is able to access the internet and reach the EDB servers to upload
+    ; Lasso reports
+    ; external_access=yes
+
+    [barman]
+    ; path to barman.conf, if using a non-default one
+    ; configuration=
+
+    [repmgr]
+    ; path to repmgr.conf, if using a non-default one
+    ; configuration=
+
+    [efm]
+    ; path to efm.properties, if using a non-default one
+    ; configuration=
+
+    [xdb]
+    ; path to xdb_pubserver.conf, if using a non-default one
+    ; pubserver_configuration=
+    ; path to xdb_subserver.conf, if using a non-default one
+    ; subserver_configuration=
+
+    [pgbouncer]
+    ; path to pgbouncer.ini, if using a non-default one
+    ; configuration=
+
+    [harp]
+    ; path to config.yml, if using a non-default one
+    ; configuration=
+    ; proxy_configuration=
+
+    [pgd-proxy]
+    ; path to pgd-proxy-config.yml, if using a non-default one
+    ; configuration=
+```
+
+You can use this template to set up your configuration file. Uncomment
+the desired parameters and set their values according to your
+environment.
+
+On Linux, you can find that same template configuration
+file at `/etc/edb-lasso.conf.templ`.
+
+You can see more details about how each of these arguments is used in
+[Report types](https://www.enterprisedb.com/docs/lasso/latest/report-types/).
+
+# PEM file
+
+Lasso requires a PEM file used to verify the SSL connection to the insights Enterprise DB server.
+By default, Lasso looks for the PEM file at `/etc/edb_lasso_ca.pem`.
+To use a different path, you can run Lasso with the `--edb-collector-ca-file` option. For example:
+
+```shell
+lasso --edb-collector-ca-file /path/to/file.pem
+```
+
+Note that Lasso installations from EnterpriseDB packages include the PEM file at the default location.
+
+# Upload url
+
+By using the `--upload-base-url` option you can specify a different domain for uploading the reports.
+The default value is `https://scipio.enterprisedb.com/collections`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

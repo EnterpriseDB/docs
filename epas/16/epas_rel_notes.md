@@ -1,0 +1,74 @@
+---
+title: EDB Postgres Advanced Server release notes
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/
+lastModified: 2026-11-11T11:56:13Z
+---
+
+# EDB Postgres Advanced Server release notes
+
+EDB Postgres Advanced Server 16 is built on open-source PostgreSQL 16, which introduces myriad enhancements that enable databases to scale up and scale out in more efficient ways.
+
+The EDB Postgres Advanced Server documentation describes the latest version of EDB Postgres Advanced Server 16 including minor releases and patches. These release notes provide information on what was new in each release.
+
+| Version                                                                                    | Release date | Upstream merges                                                                                                  |
+| ------------------------------------------------------------------------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| [16.16.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_16_0_rel_notes/) | 12 Nov 2026  | [16.16](https://www.postgresql.org/docs/16/release-16-16.html)                                                   |
+| [16.15.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_15_0_rel_notes/) | 13 Aug 2026  | [16.15](https://www.postgresql.org/docs/16/release-16-15.html)                                                   |
+| [16.14.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_14_0_rel_notes/) | 14 May 2026  | [16.14](https://www.postgresql.org/docs/16/release-16-14.html)                                                   |
+| [16.13.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_13_0_rel_notes/) | 26 Feb 2026  | [16.13](https://www.postgresql.org/docs/16/release-16-13.html)                                                   |
+| [16.12.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_12_0_rel_notes/) | 12 Feb 2026  | [16.12](https://www.postgresql.org/docs/16/release-16-12.html)                                                   |
+| [16.11.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_11_0_rel_notes/) | 13 Nov 2025  | [16.11](https://www.postgresql.org/docs/16/release-16-11.html)                                                   |
+| [16.10.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_10_0_rel_notes/) | 14 Aug 2025  | [16.10](https://www.postgresql.org/docs/16/release-16-10.html)                                                   |
+| [16.9.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_9_0_rel_notes/)   | 08 May 2025  | [16.9](https://www.postgresql.org/docs/16/release-16-9.html)                                                     |
+| [16.8.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_8_0_rel_notes/)   | 20 Feb 2025  | [16.8](https://www.postgresql.org/docs/16/release-16-8.html)                                                     |
+| [16.7.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_7_0_rel_notes/)   | 13 Feb 2025  | [16.7](https://www.postgresql.org/docs/16/release-16-7.html)                                                     |
+| [16.6.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_6_0_rel_notes/)   | 21 Nov 2024  | [16.6](https://www.postgresql.org/docs/16/release-16-6.html)                                                     |
+| [16.5.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_5_0_rel_notes/)   | 14 Nov 2024  | [16.5](https://www.postgresql.org/docs/16/release-16-5.html)                                                     |
+| [16.4.1](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_4_1_rel_notes/)   | 16 Aug 2024  |                                                                                                                  |
+| [16.4.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_4_0_rel_notes/)   | 08 Aug 2024  | [16.4](https://www.postgresql.org/docs/16/release-16-4.html)                                                     |
+| [16.3.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_3_0_rel_notes/)   | 09 May 2024  | [16.3](https://www.postgresql.org/docs/16/release-16-3.html)                                                     |
+| [16.2](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_2_0_rel_notes/)     | 08 Feb 2024  | [16.2](https://www.postgresql.org/docs/16/release-16-2.html)                                                     |
+| [16.1](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_rel_notes/)         | 09 Nov 2023  | [16.0](https://www.postgresql.org/docs/16/release-16.html),[16.1](https://www.postgresql.org/docs/release/16.1/) |
+
+## Component certification
+
+This components are included in the EDB Postgres Advanced Server v16.1 release:
+
+- pgAgent 4.4.2
+- PL Debugger 1.5.1
+- pg\_catcheck 1.4.0
+- EDB Query Advisor 1.0.1
+- EDB Wait States 1.1.0
+- EDB Clone Schema
+- EDB Parallelcone
+- EDB EDB\*Plus 41.2.0
+- SQL Profiler 4.1.1
+- SPL Check
+
+## Support announcements
+
+### Backup and Recovery Tool (BART) incompatibility
+
+The EDB Backup and Recovery Tool (BART) isn't supported by EDB Postgres Advanced Server or PostgreSQL version 14 and later. We strongly recommend that you move to [Barman](https://www.enterprisedb.com/docs/supported-open-source/barman/) or [PgBackRest](https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/) as your backup recovery tool.
+
+- [Version 16.16.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_16_0_rel_notes/): Released: 12 Nov 2026
+- [Version 16.15.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_15_0_rel_notes/): Released: 13 Aug 2026
+- [Version 16.14.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_14_0_rel_notes/): Released: 14 May 2026
+- [Version 16.13.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_13_0_rel_notes/): Released: 26 Feb 2026
+- [Version 16.12.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_12_0_rel_notes/): Released: 12 Feb 2026
+- [Version 16.11.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_11_0_rel_notes/): Released: 13 Nov 2025
+- [Version 16.10.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_10_0_rel_notes/): Released: 14 Aug 2025
+- [Version 16.9.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_9_0_rel_notes/): Released: 09 May 2025
+- [Version 16.8.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_8_0_rel_notes/): Released: 20 Feb 2025
+- [Version 16.7.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_7_0_rel_notes/): Released: 13 Feb 2025
+- [Version 16.6.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_6_0_rel_notes/): Released: 21 Nov 2024
+- [Version 16.5.0 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_5_0_rel_notes/): Released: 14 Nov 2024
+- [Version 16.4.1 ](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_4_1_rel_notes/): Released: 16 Aug 2024
+- [Version 16.4.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_4_0_rel_notes/): Released: 8 Aug 2024
+- [Version 16.3.0](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_3_0_rel_notes/): Released: 9 May 2024
+- [Version 16.2](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_2_0_rel_notes/): Released: 8 Feb 2024
+- [Version 16.1](https://www.enterprisedb.com/docs/epas/16/epas_rel_notes/epas16_rel_notes/): Released: 09 Nov 2023
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

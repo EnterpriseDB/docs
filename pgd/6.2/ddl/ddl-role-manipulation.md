@@ -1,0 +1,72 @@
+---
+title: DDL and role manipulation statements
+product: EDB Postgres Distributed (PGD)
+version: 6.2.0
+url: https://www.enterprisedb.com/docs/pgd/6.2/ddl/ddl-role-manipulation/
+lastModified: 2026-09-23T17:21:18+01:00
+---
+
+# DDL and role manipulation statements
+
+Users are global objects in a PostgreSQL instance, which means they span
+multiple databases while PGD operates on an individual database level. Because of this behavior,
+role manipulation statement handling needs extra thought.
+
+PGD requires that any roles that are referenced by any replicated DDL must
+exist on all nodes. The roles don't have to have the same grants,
+password, and so on, but they must exist.
+
+PGD replicates role manipulation statements if [`bdr.role_replication`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/pgd-settings/#bdrrole_replication) is
+enabled (default) and role manipulation statements are run in a PGD-enabled
+database.
+
+The role manipulation statements include the following:
+
+- `CREATE ROLE`
+- `ALTER ROLE`
+- `DROP ROLE`
+- `GRANT ROLE`
+- `CREATE USER`
+- `ALTER USER`
+- `DROP USER`
+- `CREATE GROUP`
+- `ALTER GROUP`
+- `DROP GROUP`
+
+In general, either:
+
+- Configure the system so that exactly one PGD-enabled database
+  on the Postgres instance has `bdr.role_replication = on`, and run all
+  role management DDL on that database. We recommend this approach.
+
+- Configure the system with `bdr.role_replication = off`, and
+  deploy all role changes (user and group) by external orchestration
+  tools like Ansible, Puppet, and Chef or explicitly replicated by
+  `bdr.replicate_ddl_command()`. We recommend against this approach.
+
+We recommend that you run all role management commands in one
+database, with [`bdr.role_replication`](https://www.enterprisedb.com/docs/pgd/6.2/reference/tables-views-functions/pgd-settings/#bdrrole_replication) set to `on`.
+
+If role replication is turned off, then the administrator must ensure that
+any roles used by DDL on one node also exist on the other nodes. Otherwise PGD apply
+stalls with an error until the role is created on the other nodes.
+
+> **Note: Connection Manager authentication**
+>
+> For Connection Manager authentication to work correctly, set or change
+> role passwords only while connected to a PGD-enabled database with
+> [`bdr.role_replication`](https://www.enterprisedb.com/docs/pgd/6.2/reference/tables-views-functions/pgd-settings/#bdrrole_replication)
+> set to `on`. A password set or changed while
+> disconnected from the PGD-enabled database, or with `bdr.role_replication`
+> set to `off`, doesn't replicate, and Connection Manager can then fail to
+> authenticate that role.
+
+> **Note: PGD with non-PGD-enabled databases**
+>
+> PGD doesn't capture and replicate role management statements when they
+> run on a non-PGD-enabled database in a PGD-enabled PostgreSQL instance.
+> For example, suppose you have databases `pgddb` (bdr group member) and `postgres` (bare db),
+> and `bdr.role_replication = on`. A `CREATE USER` run in `pgddb` is
+> replicated, but a `CREATE USER` run in `postgres` isn't.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

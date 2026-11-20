@@ -1,0 +1,76 @@
+---
+title: Installing EDB JDBC Connector
+product: JDBC Connector
+version: 42.7.3.5
+url: https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/
+lastModified: 2026-09-16T09:02:51+02:00
+---
+
+# Installing EDB JDBC Connector
+
+Select a link to access the applicable installation instructions:
+
+## Linux [x86-64 (amd64)](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/)
+
+### Red Hat Enterprise Linux (RHEL) and derivatives
+
+- [RHEL 10](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_rhel_10/), [RHEL 9](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_rhel_9/), [RHEL 8](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_rhel_8/)
+
+- [Oracle Linux (OL) 10](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_rhel_10/), [Oracle Linux (OL) 9](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_rhel_9/), [Oracle Linux (OL) 8](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_rhel_8/)
+
+- [Rocky Linux 9](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_other_linux_9/), [Rocky Linux 8](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_other_linux_8/)
+
+- [AlmaLinux 9](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_other_linux_9/), [AlmaLinux 8](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_other_linux_8/)
+
+### SUSE Linux Enterprise (SLES)
+
+- [SLES 15](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_sles_15/)
+
+### Debian and derivatives
+
+- [Ubuntu 24.04](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_ubuntu_24/), [Ubuntu 22.04](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_ubuntu_22/)
+
+- [Debian 13](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_debian_13/), [Debian 12](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_debian_12/), [Debian 11](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/jdbc_debian_11/)
+
+## Linux [IBM Power (ppc64le)](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_ppc64le/)
+
+### Red Hat Enterprise Linux (RHEL) and derivatives
+
+- [RHEL 10](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_ppc64le/jdbc_rhel_10/), [RHEL 9](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_ppc64le/jdbc_rhel_9/), [RHEL 8](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_ppc64le/jdbc_rhel_8/)
+
+### SUSE Linux Enterprise (SLES)
+
+- [SLES 15](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_ppc64le/jdbc_sles_15/)
+
+## Linux [IBM Z (s390x)](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_s390x/)
+
+### Red Hat Enterprise Linux (RHEL) and derivatives
+
+- [RHEL 10](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_s390x/jdbc_rhel_10/)
+
+## Linux [AArch64 (ARM64)](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/)
+
+### Red Hat Enterprise Linux (RHEL) and derivatives
+
+- [RHEL 10](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/jdbc_rhel_10/), [RHEL 9](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/jdbc_rhel_9/)
+
+- [Oracle Linux (OL) 10](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/jdbc_rhel_10/), [Oracle Linux (OL) 9](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/jdbc_rhel_9/)
+
+### Debian and derivatives
+
+- [Debian 13](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/jdbc_debian_13/), [Debian 12](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/jdbc_debian_12/)
+
+## Windows
+
+- [Windows Server 2019](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/windows/)
+
+* [On Linux ppc64le](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_ppc64le/): Operating system-specific install instructions are described in the corresponding documentation:
+* [On Linux x86](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_x86_64/): Operating system-specific install instructions are described in the corresponding documentation:
+* [On Linux ARM64](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_arm64/): Operating system-specific install instructions are described in the corresponding documentation:
+* [On Linux s390x](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/linux_s390x/): Operating system-specific install instructions are described in the corresponding documentation:
+* [On Windows](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/windows/): EDB provides a graphical installer for Windows. You can access it two ways:
+* [Using Maven](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/using_maven/): EDB supports installing EDB JDBC Connector using the Maven dependency manager.
+* [Configuring for Java](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/configuring_for_java/): edb-jdbc18.jar supports JDBC version 4.2.
+* [Upgrading](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/upgrading/): If you have an existing JDBC Connector installation on a Linux platform, you can upgrade your repository configuration file, which enables access to the current EDB repository. Then you can upgrade to a more recent version of JDBC Connector.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,50 @@
+---
+title: Provisioning FIPS-compatible clusters
+description: Learn how to provision FIPS-compatible database clusters in Hybrid Manager by configuring the ssl_groups parameter.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/fips-compatible-clusters/
+lastModified: 2026-09-24T17:17:47Z
+---
+
+# Provisioning FIPS-compatible clusters
+
+Federal Information Processing Standard (FIPS) 140 defines the cryptographic algorithms that a system is permitted to use. To operate a Hybrid Manager (HM) database cluster in a FIPS-compatible way, the Transport Layer Security (TLS) key exchange must be restricted to FIPS-approved elliptic curve groups.
+
+The `ssl_groups` parameter controls which groups Postgres offers for the TLS key exchange. Its default value, `X25519:prime256v1`, includes the X25519 curve, which isn't a FIPS-approved algorithm. Setting `ssl_groups` to `prime256v1` alone removes the non-approved curve while retaining the FIPS-approved P-256 curve.
+
+## System databases
+
+The system databases that HM uses internally for platform bookkeeping (PostgreSQL 18 clusters) are already preconfigured with a FIPS-compatible `ssl_groups` value. You don't need to take any action for these clusters.
+
+## Provisioning a FIPS-compatible cluster
+
+When you create a new database cluster, override the default `ssl_groups` value so the cluster only offers a FIPS-approved key exchange group.
+
+1. Start to create a cluster from scratch. See [Creating a database cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/).
+
+2. Configure the [Cluster info](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/cluster-info/) and [Cluster setup](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/cluster-settings/) tabs as needed.
+
+3. On the **DB Configuration** tab, find the `ssl_groups` parameter. For more information about this tab, see [Database configuration parameters](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/db-configuration/).
+
+4. Change the value of `ssl_groups` from the default `X25519:prime256v1` to `prime256v1`.
+
+5. Finish configuring the remaining tabs and select **Create Cluster**.
+
+> **Note**
+>
+> Changing `ssl_groups` on an existing cluster requires a restart. The restart terminates all open connections. For more information, see [Database configuration parameters](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/db-configuration/).
+
+## Using a predefined cluster template
+
+Rather than setting `ssl_groups` manually on every cluster, you can provision from a cluster template that already has the FIPS-compatible value applied.
+
+Every new project includes an example set of cluster templates for EDB Postgres Extended Server, one for each supported cluster architecture (single-node, high availability, and distributed high availability). These example templates set `ssl_groups` to `prime256v1` in the configuration parameters, so any cluster you create from them is FIPS-compatible by default.
+
+You can use these example templates directly, or use them as a starting point to create your own templates that suit your requirements:
+
+- To create a cluster from an example template, see [Creating a cluster from a template](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/create-clusters-with-templates/).
+
+- To build your own FIPS-compatible template, see [Create a database cluster template](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/create-cluster-template/), and set `ssl_groups` to `prime256v1` on the **DB Configuration** tab.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

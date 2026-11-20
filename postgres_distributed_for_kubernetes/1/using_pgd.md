@@ -1,0 +1,191 @@
+---
+title: Managing EDB Postgres Distributed (PGD) databases
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/using_pgd/
+lastModified: 2026-06-22T07:38:49-07:00
+---
+
+# Managing EDB Postgres Distributed (PGD) databases
+
+As described in the [architecture document](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/architecture/),
+EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC) is an operator created to deploy
+PGD databases.
+By leveraging the Kubernetes ecosystem, it can offer self-healing and
+declarative control.
+The operator is also responsible for the backup and restore operations.
+See [Backup](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/backup/).
+
+However, many of the operations and control of PGD clusters aren't
+managed by the operator.
+The pods created by CNPG-GC come with the
+[PGD CLI](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/) installed. You can use
+this tool, for example, to execute a switchover.
+
+## PGD CLI
+
+> **Warning**
+>
+> Don't use the PGD CLI to create and delete resources. For example,
+> avoid the `create-proxy` and `delete-proxy` commands.
+> Provisioning of resources is under the control of the operator, and manual
+> creation and deletion isn't supported.
+
+As an example, execute a switchover command.
+
+We recommend that you use the PGD CLI from proxy pods.
+
+> **Note**
+>
+> If you are running the PGD CLI inside a PGD instance pod, set the BDR database in the PGD DSN.
+> Either add `--dsn "dbname=$APP_DATABASE"` to each command, or export `PGD_CLI_DSN=dbname=$APP_DATABASE`
+> for the whole session. On the OpenShift pods (which run with an arbitrary user), include the PostgreSQL user
+> as well:
+>
+> - Use `--dsn "dbname=$APP_DATABASE user=postgres"` with each command, or
+> - Export `PGD_CLI_DSN="dbname=$APP_DATABASE user=postgres"` for the entire session.
+
+To find the proxy pods, get a pod listing for your cluster:
+
+```shell
+kubectl get pods -n my-namespace
+
+NAME                   READY   STATUS    RESTARTS      AGE
+location-a-1-1         1/1     Running   0             2h
+location-a-2-1         1/1     Running   0             2h
+location-a-3-1         1/1     Running   0             2h
+location-a-proxy-0     1/1     Running   0             2h
+location-a-proxy-1     1/1     Running   0             2h
+```
+
+The proxy nodes have `proxy` in the name. Choose one, and get a command
+prompt in it:
+
+```shell
+kubectl exec -n my-namespace -ti location-a-proxy-0 -- bash
+```
+
+You now have a bash session open with the proxy pod. The `pgd` command
+is available:
+
+```shell
+pgd
+
+Available Commands:
+  check-health       Checks the health of the EDB Postgres Distributed cluster.
+  <- snipped ->
+  switchover         Switches over to new write leader.
+  <- snipped ->
+```
+
+You can easily move your way through getting the information needed for the
+switchover:
+
+```shell
+pgd switchover --help
+
+  $ pgd switchover --group-name group_a --node-name bdr-a1
+  switchover is complete
+```
+
+```shell
+pgd show-groups -f $PGD_CONFIG_FILE
+
+Group      Group ID   Type   Parent Group Location Raft Routing Write Leader
+-----      --------   ----   ------------ -------- ---- ------- ------------
+world      3239291720 global                       true true    location-a-2
+location-a 2135079751 data   world                 true true    location-a-1
+```
+
+```shell
+pgd show-nodes -f $PGD_CONFIG_FILE
+Node         Node ID    Group      Type Current State Target State Status Seq ID
+----         -------    -----      ---- ------------- ------------ ------ ------
+location-a-1 3165289849 location-a data ACTIVE        ACTIVE       Up     1
+location-a-2 3266498453 location-a data ACTIVE        ACTIVE       Up     2
+location-a-3 1403922770 location-a data ACTIVE        ACTIVE       Up     3
+```
+
+## Accessing the database
+
+In [Use cases](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/use_cases/) is a discussion on using the
+database within the Kubernetes cluster versus from outside. In
+[Connectivity](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/connectivity/), you can find a discussion on services,
+which is relevant for accessing the database from applications.
+
+However you implement your system, your applications must use the proxy
+service to connect to reap the benefits of PGD and
+of the increased self-healing capabilities added by the EDB Postgres Distributed
+for Kubernetes operator.
+
+> **Important**
+>
+> As per the EDB Postgres for Kubernetes defaults, data nodes are
+> created with a database called `app` and owned by a user named `app`, in
+> contrast to the `bdrdb` database described in the EDB Postgres
+> Distributed documentation. You can configure these values
+> in the `cnp` section of the manifest.
+> For reference, see [Bootstrap](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/bootstrap/) in the EDB Postgres for Kubernetes
+> documentation.
+
+You might, however, want access to your PGD data nodes for administrative tasks,
+using the psql CLI.
+
+You can get a pod listing
+for your PGD cluster and `kubectl exec` into a data node:
+
+```shell
+kubectl exec -n my-namespace -ti location-a-1-1 -- psql
+```
+
+In the familiar territory of psql, remember that the default
+created database is named `app` (see previous warning).
+
+```terminal
+postgres=# \c app
+You are now connected to database "app" as user "postgres".
+app=# \x
+Expanded display is on.
+app=# select * from bdr.node_summary;
+-[ RECORD 1 ]---------------------------------------
+node_name              | location-a-1
+node_group_name        | location-a
+interface_connstr      | host=location-a-1-node user=streaming_replica sslmode=verify-ca port=5432 sslkey=/controller/certificates/streaming_replica.key sslcert=/controller/certificates/streaming_replica.crt sslrootcert=/controller/certificates/server-ca.crt application_name=location-a-1 dbname=app
+peer_state_name        | ACTIVE
+peer_target_state_name | ACTIVE
+
+<- snipped ->
+```
+
+For your applications, use the non-privileged role (`app`
+by default).
+
+You need the user credentials, which are stored in a Kubernetes secret:
+
+```shell
+kubectl get secrets
+
+NAME                     TYPE                       DATA   AGE
+<- snipped ->
+location-a-app           kubernetes.io/basic-auth   2      2h
+```
+
+This secret contains the username and password needed for the Postgres DSN,
+encoded in base64:
+
+```shell
+kubectl get secrets location-a-app -o yaml
+
+apiVersion: v1
+data:
+  password: <base64-encoded-password>
+  username: <base64-encoded-username>
+kind: Secret
+metadata:
+  creationTimestamp: <timestamp>
+  labels:
+
+<- snipped ->
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

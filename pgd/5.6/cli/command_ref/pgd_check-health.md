@@ -1,0 +1,86 @@
+---
+title: check-health
+product: EDB Postgres Distributed (PGD)
+version: 5.6.1
+url: https://www.enterprisedb.com/docs/pgd/5.6/cli/command_ref/pgd_check-health/
+lastModified: 2025-02-26T18:09:18Z
+---
+
+# check-health
+
+Checks the health of the EDB Postgres Distributed cluster.
+
+### Synopsis
+
+Performs various checks such as if all nodes are accessible and all
+replication slots are working.
+
+Please note that the current implementation of clock skew may return an
+inaccurate skew value if the cluster is under high load while running this
+command or has large number of nodes in it.
+
+```sh
+pgd check-health [flags]
+```
+
+### Options
+
+No specific command options. See [global options](https://www.enterprisedb.com/docs/pgd/5.6/cli/command_ref/#global-options) for global options.
+
+### Examples
+
+#### Checking health with a node down
+
+In this example, we have a 3 node cluster, bdr-a1 and bdr-c1 are up, bdr-b1 is down.
+
+```bash
+$ pgd check-health
+```
+
+```output title="Output"
+Check      Status   Message
+-----      ------   -------
+ClockSkew  Critical Clockskew cannot be determined for at least 1 BDR node pair
+Connection Critical The node bdr-b1 is not accessible
+Raft       Warning  There is at least 1 node that is not accessible
+Replslots  Critical There is at least 1 BDR replication slot which is inactive
+Version    Warning  There is at least 1 node that is not accessible
+```
+
+#### Checking health with clock skew
+
+In this example there is a 3 node cluster with all nodes up but the system clocks are not in sync.
+
+```bash
+$ pgd check-health
+```
+
+```output title="Output"
+Check      Status  Message
+-----      ------  -------
+ClockSkew  Warning At least 1 BDR node pair has clockskew greater than 2 seconds
+Connection Ok      All BDR nodes are accessible
+Raft       Ok      Raft Consensus is working correctly
+Replslots  Ok      All BDR replication slots are working correctly
+Version    Ok      All nodes are running same BDR versions
+```
+
+#### Checking health with all nodes working correctly
+
+In this example, there is a 3 node cluster with all nodes are up and all checks are Ok.
+
+```bash
+$ pgd check-health
+```
+
+```output title="Output"
+Check      Status Message
+-----      ------ -------
+ClockSkew  Ok     All BDR node pairs have clockskew within permissible limit
+Connection Ok     All BDR nodes are accessible
+Raft       Ok     Raft Consensus is working correctly
+Replslots  Ok     All BDR replication slots are working correctly
+Version    Ok     All nodes are running same BDR versions
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

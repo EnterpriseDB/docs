@@ -1,0 +1,103 @@
+---
+title: SMTP
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/monitoring_performance/notifications/smtp/
+lastModified: 2026-06-22T21:47:06+05:30
+---
+
+# SMTP
+
+> **Important**
+>
+> You must configure the PEM server to use an SMTP server to deliver email before PEM can send email notifications.
+
+> **Note**
+>
+> PEM sends email through an SMTP server that you provide and maintain. Setting up and managing the mail server is outside the scope of a PEM installation.
+
+## Configuring SMTP settings
+
+Before PEM can send email notifications, you must connect it to an SMTP server by setting the relevant server configuration parameters.
+
+To configure SMTP settings:
+
+1. In the PEM browser, select **Management > Server Configuration**.
+
+2. Set the following parameters to match your SMTP server:
+
+   | Parameter             | Default     | Description                                                                                     |
+   | --------------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+   | `smtp_server`         | `127.0.0.1` | The host address of your SMTP server.                                                           |
+   | `smtp_port`           | `25`        | The port your SMTP server listens on.                                                           |
+   | `smtp_enabled`        | `true`      | Set to `true` to enable email sending.                                                          |
+   | `smtp_encryption`     | `false`     | Set to `true` to send email over an encrypted connection.                                       |
+   | `smtp_authentication` | `false`     | Set to `true` if your SMTP server requires authentication.                                      |
+   | `smtp_username`       | —           | The username to authenticate with the SMTP server. Required if `smtp_authentication` is `true`. |
+   | `smtp_password`       | —           | The password to authenticate with the SMTP server. Required if `smtp_authentication` is `true`. |
+
+3. Select **Save** to apply the changes.
+
+For the full list of SMTP-related parameters, see [Server configuration parameters — reference](https://www.enterprisedb.com/docs/pem/latest/managing_pem_server/#server-configuration-parameters---reference).
+
+## Creating an email group
+
+PEM monitors your system for conditions that require attention. You can use an email group to specify the email addresses of users for the server to notify if current values deviate from threshold values specified in an alert definition. An email group can notify multiple users or target specific users during the time periods you specify.
+
+Use the **Email Groups** tab to configure groups of SMTP email recipients. To open the **Email Groups** tab, in the PEM client, select **Management > Alerts > Manage Alerts**. When the **Manage Alerts** tab opens, select **Email Groups** from the Quick Links toolbar.
+
+The **Email Groups** tab displays a list of the currently defined email groups. To modify an existing group, select a group name and select **Edit** at the far left end of the row.
+
+To define a new email group, select the plus sign (+) in the upper-right corner of the **Email Groups** table. Use the Email Groups dialog box to define an email group and its members.
+
+Each row in the email group definition associates a set of email addresses with a specific time period. When an alert is triggered, the server evaluates the times specified in each row and sends the message to those group members whose definitions are associated with the time that the alert triggered.
+
+1. Provide a name for the email group in the **Group Name** field.
+
+2. To open the **Options** tab, select the plus sign (+) in the group members table.
+
+3. Add the member addresses to receive notifications for the time period specified:
+
+   - Enter a comma-delimited list of recipient addresses in the **Reply to Addresses** field.
+   - Enter a comma-delimited list of addresses to receive a copy of the email in the **CC Addresses** field.
+   - Enter a comma-delimited list of addresses to receive a copy of the email without the knowledge of other  recipients in the **Bcc Addresses** field.
+   - Enter the email address to send the messages from in the **From Address** field.
+   - Use the **Subject prefix** field to provide a message to add to the start of each subject line when a notification is sent.
+   - Use the **From Time** and **To Time** selectors to specify the time range for notifications to the group members that are identified on this row. Provide these values in the locale of the PEM client host. The PEM server translates the time into other time zones as required.
+
+4. Select **Add** to add a row to the table, and specify another time period and the email addresses to notify during those hours.
+
+5. When you've finished defining the email group, select **Save**.
+
+After creating the email group, you can use the **Manage Alerts** tab to set up the notification details for an alert to direct notifications to the group.
+
+## Deleting an email group
+
+To delete an email group, in the Email Group table, select the name of the group and select **Delete**, located to the left of the group name.
+
+The group name appears in the Email Group table in red. Select **Save** to permanently remove the group from the table.
+
+## Customizing email templates
+
+PEM monitors your system for conditions that require user attention and sends email notifications. Use **Email Templates** to customize the email subject and the payload that the server sends if the current values deviate from the threshold values specified by an alert.
+
+These are the default email templates that are customizable:
+
+- Alert detected
+- Alert level increased
+- Alert level decreased
+- Alert cleared
+- Alert reminder
+- Job success
+- Job failure
+- Job cancellation
+- Job step
+- Job step (Database server)
+
+To customize the email template, select the edit button next to the email template name. As needed, edit the **Subject** and **Payload** fields from the available list of placeholders. After modifying the field values, select **Save**.
+
+If any of the default email templates are customized, then a green tick mark is displayed for that template in the `Custom Template?` column on the **Email Templates** tab.
+
+To restore the customized email template as the default template, select the custom template and select the undo button at the top of the **Email Templates** tab.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

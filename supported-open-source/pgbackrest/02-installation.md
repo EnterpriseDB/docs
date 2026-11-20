@@ -1,0 +1,65 @@
+---
+title: Installation
+description: Instructions for installing pgBackRest on supported systems, including EDB Postgres Advanced Server
+product: pgBackRest
+url: https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/02-installation/
+lastModified: 2022-06-18T16:46:58-03:00
+---
+
+# Installation
+
+### Available platforms
+
+pgBackRest packages are available on the following platforms.
+
+#### Debian/Ubuntu
+
+To install pgBackRest, configure the [PostgreSQL](https://www.postgresql.org/download/linux/ubuntu/) **apt** repository and then run:
+
+```bash
+$ sudo apt-get install pgbackrest
+```
+
+The following additional packages will be installed:
+
+- `postgresql-client-common`
+- `postgresql-common`
+
+#### RHEL/CentOS
+
+pgBackRest can be installed from the [PostgreSQL](https://yum.postgresql.org/) **yum** repository, and requires Extra Packages for Enterprise Linux ([EPEL](https://fedoraproject.org/wiki/EPEL)).
+
+Once you configured the repositories, run the following command to install pgBackRest:
+
+```bash
+$ sudo yum install pgbackrest
+```
+
+The following additional packages may be installed to satisfy the dependencies:
+
+- `libpq5`
+- `libzstd`
+
+### EDB Postgres Advanced Server
+
+The PGDG packages will fetch **PostgreSQL** libraries and create the `postgres` system user.
+
+If **EDB Postgres Advanced Server** is already installed on the system, the libraries installed at that time would be used.
+
+By default, the packages create the following directories owned by `postgres`:
+
+- `/var/lib/pgbackrest`
+- `/var/log/pgbackrest`
+- `/var/spool/pgbackrest`
+
+The `pg_hba.conf` settings should allow the `postgres` user to execute the `pgbackrest` command.
+
+If you are using **EDB Postgres Advanced Server**, the `enterprisedb` system user will execute the `pgbackrest` command. The following commands will change the ownership of the pgBackRest directories:
+
+```bash
+$ sudo chown -R enterprisedb: /var/lib/pgbackrest
+$ sudo chown -R enterprisedb: /var/log/pgbackrest
+$ sudo chown -R enterprisedb: /var/spool/pgbackrest
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,26 @@
+---
+title: PG_NAMESPACE
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/oracle_compatibility_reference/epas_compat_cat_views/pg_views/pg_namespace/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# PG\_NAMESPACE
+
+The `PG_NAMESPACE` view describes namespaces, which are the structures underlying SQL schemas. Each namespace can have a separate collection of relations, types, and so forth without name conflicts.
+
+In addition to the information in the [PostgreSQL pg\_namespace description](https://www.postgresql.org/docs/current/catalog-pg-namespace.html), EDB Postgres Advanced Server provides the following information.
+
+| Name               | Type    | Description                                                                         |
+| ------------------ | ------- | ----------------------------------------------------------------------------------- |
+| nspbodysrc         | text    | The object identifier of the parent table                                           |
+| nspcompoundtrigger | Boolean | Specifies whether this a compound trigger's package                                 |
+| nspforeignserver   | oid     | Object identifier of the foreign server where the foreign namespace resides         |
+| nspheadsrc         | text    | Header for the package                                                              |
+| nspobjecttype      | oid     | Object identifier of the type to which this package belongs                         |
+| nspparent          | oid     | Object identifier of the schema (namespace) of the package (0 for a regular schema) |
+| nspremoteschema    | text    | Name of the foreign namespace                                                       |
+| nspsecdef          | Boolean | Specifies whether the namespace (package) is a security definer                     |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

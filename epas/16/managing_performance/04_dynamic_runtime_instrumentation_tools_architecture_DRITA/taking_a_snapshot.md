@@ -1,0 +1,56 @@
+---
+title: Taking a snapshot
+description: Describes how to take a snapshot of system performance data
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/managing_performance/04_dynamic_runtime_instrumentation_tools_architecture_DRITA/taking_a_snapshot/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# Taking a snapshot
+
+<div id="configuring_and_using_DRITA" class="registered_link"></div>
+
+EDB Postgres Advanced Server's `postgresql.conf` file includes a configuration parameter named `timed_statistics` that controls collecting timing data. The valid parameter values are `TRUE` or `FALSE`. The default value is `FALSE`.
+
+`timed_statistics` is a dynamic parameter that you can modify in the `postgresql.conf` file or while a session is in progress. To enable DRITA, you must either:
+
+1. Modify the `postgresql.conf` file, setting the `timed_statistics` parameter to `TRUE`.
+
+2. Connect to the server with the EDB-PSQL client and invoke the command:
+
+   ```sql
+   SET timed_statistics = TRUE
+   ```
+
+3. After modifying the `timed_statistics` parameter, take a starting snapshot. A snapshot captures the current state of each timer and event counter. The server compares the starting snapshot to a later snapshot to gauge system performance. Use the `edbsnap()` function to take the beginning snapshot:
+
+   ```sql
+   edb=# SELECT * FROM edbsnap();
+   ```
+
+   ```output title="Output"
+       edbsnap
+   ----------------------
+    Statement processed.
+   (1 row)
+   ```
+
+4. Run the workload that you want to evaluate. When the workload is complete or at a strategic point during the workload, take another snapshot:
+
+   ```sql
+   edb=# SELECT * FROM edbsnap();
+   ```
+
+   ```output title="Output"
+       edbsnap
+   ----------------------
+    Statement processed.
+   (1 row)
+   ```
+
+You can capture multiple snapshots during a session. Finally, you can use the DRITA functions and reports to manage and compare the snapshots to evaluate performance information.
+
+<div id="DRITA_functions" class="registered_link"></div>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

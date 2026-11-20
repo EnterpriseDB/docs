@@ -1,0 +1,234 @@
+---
+title: edbctl operand
+description: Use the edbctl utility to manage EDB Postgres AI Postgres Operand images.
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_operand/
+lastModified: 2026-08-07T12:30:10+05:30
+---
+
+# edbctl operand
+
+The `edbctl operand` command provides tools for managing the EDB Postgres AI Postgres Operand images, including syncing or listing images from the EDB repository to your local container image registry.
+
+> **Note: Scope**
+>
+> `edbctl operand` manages Postgres database engine images only — it doesn't cover the full set of Hybrid Manager platform images (operator, control plane, bundle, and so on). For the complete image set needed for a full air-gapped install, see [Getting the full Hybrid Manager platform image list](#getting-the-full-hybrid-manager-platform-image-list) below.
+
+> **Note: Credential model**
+>
+> None of the `edbctl operand` commands require a provisioned HM instance or a stored access-key credential (`edbctl credential import-access-key`). They authenticate directly to the container registry, either through inline `--source-registry-*` flags or your local Docker credential store — so they're safe to run before HM is installed.
+
+## Commands
+
+- [edbctl operand sync-to-local-registry](#edbctl-operand-sync-to-local-registry) — Sync operand images from EDB repository to a local registry.
+- [edbctl operand list-images](#edbctl-operand-list-images) — Displays a complete list of all operand images managed by EDB.
+- [edbctl operand download-image-list](#edbctl-operand-download-image-list) — Used to download the file containing the list of required operand images.
+- [edbctl operand annotate-extensions](#edbctl-operand-annotate-extensions) — Annotate an operand image with its available Postgres extensions.
+- [edbctl operand copy-version](#edbctl-operand-copy-version) — Copy the operand set version annotation from one image to another.
+- [edbctl operand read-version](#edbctl-operand-read-version) — Read the operand set version annotation from an image.
+- [edbctl operand show-extensions](#edbctl-operand-show-extensions) — Show the available Postgres extensions recorded on an image.
+- [edbctl operand write-version](#edbctl-operand-write-version) — Write the operand set version annotation to an image.
+
+### edbctl operand sync-to-local-registry
+
+Syncs the operand images from EDB repository to a local registry to provision in a local install of HM.
+
+```
+edbctl operand sync-to-local-registry [options]
+```
+
+Where `options` are:
+
+```
+      --source-registry-username string        Source registry username (required).
+      --source-registry-password string        Source registry password (required).
+      --destination-registry-uri string        Destination registry URI (required).
+      --destination-registry-username string   Destination registry username (required).
+      --destination-registry-password string   Destination registry password (required).
+      --version string                         Operand version (required).
+      --sign-by-sigstore-private-key string    Path to the Sigstore private key.
+      --sign-passphrase-file string            Path to the file containing the passphrase for the Sigstore private key.
+  -w, --workers int                            Number of concurrent workers for syncing images (default is 3).
+      --cpu int                                Set CPU limit for each worker (max OS threads for Go runtime, must be your CPU core count or lower).
+  -y, --yes                                    Auto-confirm all confirmations.
+  -h, --help                                   Help for sync-to-local-registry.
+```
+
+This example shows how to sync the EDB repository to a local registry:
+
+```
+edbctl operand sync-to-local-registry --source-registry-username <username> --source-registry-password <password> --destination-registry-uri <registry> --destination-registry-username <username> --destination-registry-password <password> --version "v.<version>"
+```
+
+### edbctl operand list-images
+
+This command retrieves and displays the list of EDB Postgres operand images (the `postgresql`, `edb-postgres-advanced`, and `edb-postgres-extended` images under `pgai-platform/`) for a specific Hybrid Manager release. It doesn't include the full set of Hybrid Manager platform images (operator, control plane, bundle, and so on) needed for a complete install.
+
+```
+edbctl operand list-images [options]
+```
+
+Where `options` are:
+
+```
+      --source-registry-username string          Source registry username (required). The username for accessing the repository where the images are stored.
+      --source-registry-password string          Source registry password (required). The password for accessing the repository where the images are stored.
+      --version string                           Hybrid Manager release version (required). Specifies which version of the operand to list images for.
+  -y, --yes                                      Auto-confirm all confirmations.
+  -h, --help                                     Displays help information for the list-images command.
+```
+
+### edbctl operand download-image-list
+
+This command allows you to download a file that contains a list of all required operand images for a specified version of the Hybrid Manager. This is particularly useful for preparing for installations in air-gapped or internet-disconnected environments.
+
+```
+edbctl operand download-image-list [options]
+```
+
+Where `options` are:
+
+```
+      --source-registry-username string       Source registry username (required). The username for accessing the repository where the images are stored.
+      --source-registry-password string       Source registry password (required). The password for accessing the repository where the images are stored.
+  -o, --output-filename string                Output file path (required). The path where the downloaded image list file will be saved.
+      --version string                        Hybrid Manager release version (required). Specifies which version of the operand to download the image list for.
+  -y, --yes                                   Auto-confirm all confirmations.
+  -h, --help                                  Displays help information for the download-image-list command.
+```
+
+This example shows how to download the operand image list for a specific Hybrid Manager version:
+
+```
+edbctl operand download-image-list --version "v1.0.0" --source-registry-username "myuser" --source-registry-password "mypassword" --output-filename "/tmp/edb-images.txt"
+```
+
+### edbctl operand annotate-extensions
+
+Extracts the list of available Postgres extensions from an operand image and injects them as OCI annotations into the image manifest in its remote registry.
+
+The image is booted locally to be introspected, so a running Docker daemon is required, along with push access to the image's registry.
+
+Use `--dry-run` to print the extensions that would be recorded — in the same format as `show-extensions`, honoring `-o` — without pushing anything to the registry (the image is still booted and introspected). The `-o` output format only applies in `--dry-run` mode; without `--dry-run` the command just reports success.
+
+```
+edbctl operand annotate-extensions IMAGE [options]
+```
+
+Where `options` are:
+
+```
+    --timeout duration   Maximum time to wait for the whole extraction (for example, 30m, 2h) (default 20m0s).
+    --dry-run            Print the extensions that would be recorded instead of pushing them to the registry.
+-o, --output string      [table json yaml xml json-raw] (only used with --dry-run) (default "table").
+-y, --yes                Auto-confirm all confirmations.
+-h, --help               Help for annotate-extensions.
+```
+
+This example shows how to annotate an operand image with its extensions:
+
+```
+edbctl operand annotate-extensions upmdev.azurecr.io/postgresql-gf-custom:17.4-2503242007
+```
+
+### edbctl operand copy-version
+
+Reads the `org.enterprisedb.operandset.version` annotation from a source image and writes it to a target image, in place.
+
+```
+edbctl operand copy-version SRC_IMAGE TARGET_IMAGE [options]
+```
+
+Where `options` are:
+
+```
+-y, --yes    Auto-confirm all confirmations.
+-h, --help   Help for copy-version.
+```
+
+This example shows how to copy the operand set version annotation between images:
+
+```
+edbctl operand copy-version docker.enterprisedb.com/pgai-platform/edb-postgres-advanced:18.3-2605132051 upmdev.azurecr.io/postgresql-gf-custom:17.4-2503242007
+```
+
+### edbctl operand read-version
+
+Reads the `org.enterprisedb.operandset.version` OCI annotation from an image manifest and prints its value to stdout.
+
+```
+edbctl operand read-version IMAGE [options]
+```
+
+Where `options` are:
+
+```
+-h, --help   Help for read-version.
+```
+
+This example shows how to read the operand set version annotation from an image:
+
+```
+edbctl operand read-version docker.enterprisedb.com/pgai-platform/edb-postgres-advanced:18.3-2605132051
+```
+
+### edbctl operand show-extensions
+
+Reads the `org.enterprisedb.pg.extensions` OCI annotation from an image manifest, decodes it, and lists the available PostgreSQL extensions it records.
+
+```
+edbctl operand show-extensions IMAGE [options]
+```
+
+Where `options` are:
+
+```
+-o, --output string   [table json yaml xml json-raw] (default "table")
+-h, --help            Help for show-extensions.
+```
+
+This example shows how to show the extensions recorded on an operand image:
+
+```
+edbctl operand show-extensions upmdev.azurecr.io/edb-postgres-advanced-custom:18.4-2606080821
+```
+
+### edbctl operand write-version
+
+Sets (or replaces) the `org.enterprisedb.operandset.version` OCI annotation on a target image manifest, writing the result back to its registry in place.
+
+```
+edbctl operand write-version IMAGE [options]
+```
+
+Where `options` are:
+
+```
+    --version string   Operand set version to set (required).
+-y, --yes              Auto-confirm all confirmations.
+-h, --help             Help for write-version.
+```
+
+This example shows how to write the operand set version annotation to an image:
+
+```
+edbctl operand write-version --version 18.3-2605132051 upmdev.azurecr.io/postgresql-gf-custom:17.4-2503242007
+```
+
+### Getting the full Hybrid Manager platform image list
+
+`edbctl operand` only lists Postgres operand images. To get the complete list of Hybrid Manager platform images required for an air-gapped install, download the platform image list directly:
+
+```shell
+curl -u "pgai-platform:$EDB_SUBSCRIPTION_TOKEN" \
+  "https://downloads.enterprisedb.com/basic/pgai-platform/raw/names/{version}-images.txt/versions/{version}/images.txt"
+```
+
+Replace `{version}` with your target Hybrid Manager release (for example, `v1.4.0`). This is a temporary workaround until a dedicated `edbctl` command is available.
+
+## See also
+
+- [Custom operand images](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/image-management/custom-operand-images/) — a complete walkthrough of building, annotating, and registering a custom operand image using these commands.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

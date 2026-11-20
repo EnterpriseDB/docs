@@ -1,0 +1,27 @@
+---
+title: AI Accelerator - Pipelines 4.4.0 release notes
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/rel_notes/ai-accelerator_4.4.0_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# AI Accelerator - Pipelines 4.4.0 release notes
+
+Released: 13 August 2025
+
+This release introduces the ability to use aidb without superuser privileges.
+
+## Highlights
+
+- Introduced non-superuser execution support for enhanced security and access control.
+- Improved performance when running knowledge base pipelines on large datasets.
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Added support for non-super user</summary><p>Now <code>aidb</code> can have non-superuser execution support for enhanced security and access control.</p></details></td></tr>
+<tr><td><details><summary>Improved performance</summary><p>Now <code>aidb</code> can have improved performance when running knowledge base pipelines on large datasets.</p></details></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

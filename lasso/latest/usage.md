@@ -1,0 +1,138 @@
+---
+title: Usage
+product: Lasso
+version: "4"
+url: https://www.enterprisedb.com/docs/lasso/latest/usage/
+lastModified: 2025-01-24T07:11:19-03:00
+---
+
+# Usage
+
+Lasso uses the `libpq` environment variables to get the
+Postgres connection parameters. You can find the list of the environment
+variables in the [PostgreSQL
+documentation](http://www.postgresql.org/docs/current/static/libpq-envars.html).
+
+You can also pass the connection parameters, among other options, as command
+line arguments:
+
+```
+usage: lasso [-h] [--config-file CONFIG_FILE]
+             [-H HOST_NAME] [-p PORT] [--password PASSWORD]
+             [--lock-timeout LOCK_TIMEOUT]
+             [--statement-timeout STATEMENT_TIMEOUT]
+             [--sampling-start SAMPLING_START] [--sampling-end SAMPLING_END]
+             [--local-size-limit LOCAL_SIZE_LIMIT]
+             [--command-timeout COMMAND_TIMEOUT]
+             [--bindir BINDIR]
+             [--depth [{surface,shallow,deep}]]
+             [--describe [{short,json,full}]] [--version] [--info]
+             [--latest-version] [--system-only | --barman]
+             [--barman-configuration BARMAN_CONFIGURATION]
+             [--repmgr-configuration REPMGR_CONFIGURATION]
+             [--efm-configuration EFM_CONFIGURATION]
+             [--xdb-pubserver-configuration XDB_PUBSERVER_CONFIGURATION]
+             [--xdb-subserver-configuration XDB_SUBSERVER_CONFIGURATION]
+             [--pgbouncer-configuration PGBOUNCER_CONFIGURATION]
+             [--harp-configuration HARP_CONFIGURATION]
+             [--harp-proxy-configuration HARP_PROXY_CONFIGURATION]
+             [--etcd-configuration ETCD_CONFIGURATION]
+             [--pgd-proxy-configuration PGD_PROXY_CONFIGURATION]
+             [--patroni-configuration PATRONI_CONFIGURATION]
+             [--upload] [--keep-report] [--is-latest-version]
+             [dbname] [user]
+
+EDB Lasso (for 2ndquadrant)
+
+positional arguments:
+  dbname                Database name to connect to (default user)
+  user                  Database user name (default user)
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --config-file CONFIG_FILE
+                        Path to Lasso configuration file, if using non-default path.
+  -H HOST_NAME, --host-name HOST_NAME
+                        Database host name or socket directory (default local
+                        socket)
+  -p PORT, --port PORT  Database server port (default 5432)
+  --password PASSWORD   Database server password
+  --lock-timeout LOCK_TIMEOUT
+                        Database connection lock timeout (default 3s)
+  --statement-timeout STATEMENT_TIMEOUT
+                        Database connection statement timeout (default 5min)
+  --sampling-start SAMPLING_START
+                        Start of the range to take sampling data from
+                        edb_wait_states (default: timestamp 1 hour from now)
+  --sampling-end SAMPLING_END
+                        End of the range to take sampling data from
+                        edb_wait_states (default: timestamp now)
+  --local-size-limit LOCAL_SIZE_LIMIT
+                        Size limit, in bytes, of each file inside the tarball
+                        (minimum 1024, default 524288000)
+  --command-timeout COMMAND_TIMEOUT
+                        Timeout for each linux command execution (example
+                        '120s','2m',etc. default: No timeout)
+  --bindir BINDIR       PostgreSQL binaries directory (autodetect by default)
+  --depth [{surface,shallow,deep}]
+                        Depth of the report (default deep)
+  --describe [{short,json,full}]
+                        Describes every single module, in terms of action and
+                        output
+  --version             Shows Lasso version
+  --info                Shows Lasso modules revision
+  --latest-version      Shows the latest available version of EDB Lasso, taken
+                        from the EDB Web Services. (Deprecated, will be removed in a future version)
+  --system-only         Gather only system-related information - without
+                        requiring a PostgreSQL connection
+  --barman              Gather Barman status, enabled by default when Lasso is
+                        run as 'barman' user and the executable exists.
+                        Defaults to False. When Barman reporting is enabled,
+                        we do not gather PostgreSQL related information
+  --barman-configuration BARMAN_CONFIGURATION
+                        Barman configuration file. By default use the native
+                        algorithm in Barman to find the configuration file.
+                        Valid only if Barman reporting is enabled
+  --repmgr-configuration REPMGR_CONFIGURATION
+                        Path to the repmgr.conf file, if using a non-default
+                        path
+  --efm-configuration EFM_CONFIGURATION
+                        Path to the EFM properties file, if using a non-
+                        default path
+  --xdb-pubserver-configuration XDB_PUBSERVER_CONFIGURATION
+                        Path to the xDB publication server configuration file,
+                        if using a non-default path
+  --xdb-subserver-configuration XDB_SUBSERVER_CONFIGURATION
+                        Path to the xDB subscription server configuration
+                        file, if using a non-default path
+  --pgbouncer-configuration PGBOUNCER_CONFIGURATION
+                        Path to the pgbouncer.ini file. You can specify
+                        multiple files separated by comma
+  --harp-configuration HARP_CONFIGURATION
+                        Path to the config.yml file, if using a non-default
+                        path
+  --harp-proxy-configuration HARP_PROXY_CONFIGURATION
+                        Path to the config.yml or proxy-config.yml file for HARP Proxy, if using a non-default path
+  --etcd-configuration ETCD_CONFIGURATION
+                        Path to the etcd.conf file, if using a non-default
+                        path
+  --pgd-proxy-configuration PGD_PROXY_CONFIGURATION
+                        Path to the pgd-proxy-config.yml file, if using a non-
+                        default path
+  --patroni-configuration PATRONI_CONFIGURATION
+                        Path to the Patroni YAML file, if using a non-default
+                        path
+  --upload              Report tarball file is sent to EDB at the end of the
+                        execution. The file will be removed if successfully
+                        uploaded unless --keep-report is specified
+  --keep-report         Keep a local copy of the report even after a
+                        successful upload to EDB
+  --is-latest-version   Only check if this is the latest available version of
+                        Lasso and returns exit code 0 if this is the latest
+                        version and 1 otherwise. (Deprecated, will be removed in a future version)
+```
+
+For details about how to use each of these arguments, see
+[Report types](https://www.enterprisedb.com/docs/lasso/latest/report-types/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

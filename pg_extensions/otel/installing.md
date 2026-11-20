@@ -1,0 +1,114 @@
+---
+title: Installing EDB OTEL
+description: Installing the EDB OTEL extension from EDB's package repository and configure Postgres to load it
+product: EDB OTEL
+url: https://www.enterprisedb.com/docs/pg_extensions/otel/installing/
+lastModified: 2026-02-06T16:21:57+05:30
+---
+
+# Installing EDB OTEL
+
+To install and enable the edb\_otel extension, use the steps that follow.
+
+The edb\_otel extension is available for the following:
+
+| Platform                     | Database Version | OS                                    |
+| ---------------------------- | ---------------- | ------------------------------------- |
+| PostgreSQL                   | 14 through 17    | RHEL 8 and 9, Debian 12, Ubuntu 24.04 |
+| EDB Postgres Advanced Server | 14 through 17    | RHEL 8 and 9, Debian 12, Ubuntu 24.04 |
+| EDB Postgres Extended Server | 14 through 17    | RHEL 8 and 9, Debian 12, Ubuntu 24.04 |
+
+## Installing the package
+
+### Prerequisites
+
+Before you begin the installation process:
+
+- Install Postgres. See:
+
+  - [Installing EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/installing/)
+
+  - [Installing PostgreSQL](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/)
+
+  - [Installing EDB Postgres Extended Server](https://www.enterprisedb.com/docs/pge/latest/installing/)
+
+- Set up the repository.
+
+  Setting up the repository is a one-time task. If you've already set up your repository, you don't need to perform this step.
+
+  To set up the repository, go to [EDB repositories](https://www.enterprisedb.com/repos-downloads) and follow the instructions provided there.
+
+  If you are using RHEL 9, you also need to install the EPEL repository:
+
+  ```shell
+  sudo dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+  ```
+
+### Install the package
+
+The syntax to install edb\_otel on EDB Postgres Advanced Server and EDB Postgres Extended is:
+
+```shell
+# For EDB Postgres Advanced Server:
+sudo <package-manager> -y install edb-as<postgres_version>-edb_otel
+
+# For EDB Postgres Extended:
+sudo <package-manager> -y install edb-postgresextended<postgres_version>-edb_otel
+```
+
+Where:
+
+- `<package-manager>` is the package manager used with your operating system:
+
+  | Package manager | Operating system               |
+  | --------------- | ------------------------------ |
+  | dnf             | RHEL 9 and derivatives         |
+  | apt-get         | Debian, Ubuntu and derivatives |
+
+- `<postgres_version>` is the version of Postgres you're using.
+
+Examples:
+
+To install the latest version of edb\_otel for EDB Postgres Advanced Server 17 on a RHEL 9 platform:
+
+```shell
+sudo dnf -y install edb-as17-edb_otel
+```
+
+To install the latest version of edb\_otel for EDB Postgres Extended 17 on a RHEL 9 platform:
+
+```shell
+sudo dnf -y install edb-postgresextended17-edb_otel
+```
+
+The syntax to install edb\_otel on PostgreSQL is:
+
+```shell
+# For RHEL 9 and its derivatives:
+sudo dnf -y install edb-pg<postgres_version>-edb_otel
+```
+
+Where `<postgres_version>` is the version of PostgreSQL you're using.
+
+## Enabling the extension
+
+To enable the extension:
+
+1. Edit the `postgresql.conf` file, modifying the `shared_preload_libraries` parameter:
+
+   ```ini
+   shared_preload_libraries = '$libdir/edb_otel'
+   ```
+
+2. Restart the Postgres server.
+
+3. Create the edb\_otel extension in your database:
+
+   ```sql
+   # Connect to your database using psql
+   psql -d postgres -U enterprisedb
+   # Create the extension
+   CREATE EXTENSION edb_otel;
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

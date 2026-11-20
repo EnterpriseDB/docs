@@ -1,0 +1,79 @@
+---
+title: EDB CloudNativePG Cluster 1.25.5 release notes
+product: EDB Postgres® AI for CloudNativePG™ Cluster
+version: 1.30.2
+url: https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/rel_notes/1_25_5_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB CloudNativePG Cluster 1.25.5 release notes
+
+Released: 16 December 2025
+
+This release of EDB CloudNativePG Cluster is built on the final community release of the 1.25.x series of CloudNativePG.
+EDB will continue providing LTS releases in the 1.25.x series according to our [Long-Term Support
+policy](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/#long-term-support).
+
+This release of EDB CloudNativePG Cluster includes the following:
+
+## Highlights
+
+We've consolidated our [private container registry](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/private_edb_registries/) into a single location. This change simplifies access and deployment.
+Starting with v1.25.5, any customer attempting an operator upgrade, MUST configure the new unified repository pull secret!
+For details and instructions, follow the [Central Migration Guide](https://www.enterprisedb.com/docs/repos/working_with_repos/migrating_edb_registries/).
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Added support for 1.28 CRD fields, bringing forward compatibility improvements
+from the 1.28 release.
+</summary><p>This includes enhanced <code>Database</code> CRD with foreign data wrapper support,
+improved cluster security contexts, failover quorum configurations, TLS
+configurations for <code>Pooler</code>, and the <code>majorVersion</code> field in <code>Backup</code>
+resources.</p>
+</details></td><td>1109</td></tr>
+<tr><td>Improved <code>cnp report</code> to generate more shell-friendly file names.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/8984">#8984</a></td></tr>
+</tbody></table>
+
+## Changes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Updated the default PostgreSQL version to <code>18.1-standard-ubi9</code>.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9178">#9178</a></td></tr>
+<tr><td>Updated the default PgBouncer version to <strong>1.25.1</strong>, which carries
+a fix for <strong>CVE-2025-12819</strong>, for new Pooler deployments.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9367">#9367</a></td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Fixed the <code>CheckEmptyWalArchive</code> safeguard to run correctly when restoring
+from a volume snapshot using CNP-I backup/WAL plugins (e.g., <code>plugin-barman-cloud</code>).
+</summary><p>Previously, this check was skipped for plugin-based implementations.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9306">#9306</a></td></tr>
+<tr><td><details><summary>Fixed TLS certificate verification issues when connecting to CNP-I plugins
+by adding the <code>k8s.enterprisedb.io/pluginServerName</code> annotation.
+</summary><p>This allows customizing the DNS name used for certificate verification in
+environments where the plugin's certificate uses a different DNS name than
+the Service name.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9222">#9222</a></td></tr>
+<tr><td><details><summary>Fixed an issue where the instance manager controller could fail to restart
+after an error, reporting a &quot;controller already exists&quot; message.
+</summary><p>The controller now uses <code>SkipNameValidation</code> for subsequent initialization
+attempts.
+Contributed by @mateusoliveira43.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9123">#9123</a></td></tr>
+<tr><td><details><summary>Fixed incorrect WAL restore path handling in plugins when the destination
+path is absolute, preventing path duplication issues.
+</summary><p>Contributed by @Endevir.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9093">#9093</a></td></tr>
+<tr><td><details><summary>Fixed the <code>CREATE PUBLICATION</code> SQL generation for multi-table publications to be backward-compatible with PostgreSQL 13+.
+</summary><p>The previously generated syntax
+was only valid for PostgreSQL 15+ and caused syntax errors on older versions.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/8888">#8888</a></td></tr>
+<tr><td>Fixed backup failures in complex pod definitions by reliably selecting the <code>postgres</code> container by name instead of by index.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/8964">#8964</a></td></tr>
+<tr><td><details><summary><code>cnp</code> plugin: Fixed bugs in <code>cnp report</code> log collection, especially when fetching previous logs.
+</summary><p>The collector now correctly fetches previous and current logs in separate requests and gracefully handles missing previous logs (e.g., on containers with no restart history), ensuring current logs are always collected.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/8992">#8992</a></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

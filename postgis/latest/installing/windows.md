@@ -1,0 +1,59 @@
+---
+title: Installing PostGIS on Windows
+product: PostGIS
+version: "3"
+url: https://www.enterprisedb.com/docs/postgis/latest/installing/windows/
+lastModified: 2024-04-08T16:48:39+05:30
+---
+
+# Installing PostGIS on Windows
+
+You must install EDB Postgres Advanced Server before installing PostGIS. If you used the graphical wizard to install EDB Postgres Advanced Server, you can use StackBuilder Plus to add PostGIS to your installation. For details about using the graphical installer to install and configure EDB Postgres Advanced Server, see the [EDB Postgres Advanced Server documentation](https://www.enterprisedb.com/docs/epas/latest/).
+
+> **Note**
+>
+> To install PostGIS version 3.1 on EDB Postgres Advanced Server version 10 on Windows, you need to upgrade it to the latest EDB Postgres Advanced Server minor version of 10.16.25 or later, and then proceed with PostGIS 3.1 installation.
+
+1. Open StackBuilder Plus and select your EDB Postgres Advanced Server installation from the list on the Welcome window. Select **Next** to continue to the application selection page.
+
+   ![The StackBuilder Plus Welcome window](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgis/3/images/SBP_welcome.png)
+
+2. Expand the **Spatial Extensions** node, and select the check box next to the PostGIS version. Select **Next**.
+
+3. The selected packages and the default download directory are displayed. If requried, change the locations. Select **Next**.
+
+   ![The Installation Directory window](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgis/3/images/postgis_installation.png)
+
+4. After you download the installation files, a confirmation message is displayed. Select **Next** to start the PostGIS installation.
+
+   ![Installing Postgis](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgis/3/images/SBP_Installation_Files_Downloaded.png)
+
+5. Select an installation language and select **OK**.
+
+6. The PostGIS welcome screen is displayed. Select **Next**.
+
+   ![The Postgis welcome window](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgis/3/images/postgis_welcome.png)
+
+7. Use the **Installation Directory** field to specify the directory where you want to install the PostGIS software. Select **Next**.
+
+8. Use fields on the EDB Postgres Advanced Server Installation Details window to provide connection information for the EDB Postgres Advanced Server host:
+
+   - Use the **Host** field to identify the system on which EDB Postgres Advanced Server resides.
+
+   - In the **User Name** field, provide the name of the role for PostGIS to use for connections to the server.
+
+   - In the **Password** field, provide the password associated with the role.
+
+   - Use the **Port** field to identify the listener port that EDB Postgres Advanced Server monitors for client connections.
+
+     Select **Next**.
+
+     ![The Advanced Server installation details window](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgis/3/images/advanced_server_installation_details.png)
+
+9. The Ready to Install window notifies you when the installer has all of the information needed to install PostGIS on your system. Select **Next**.
+
+10. Progress bars inform you as the installation progresses. Select **Finish** to exit the installer when the PostGIS installation completes.
+
+    StackBuilder Plus installs PostGIS and creates the `template_postgis` database and PostGIS functions.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

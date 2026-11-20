@@ -1,0 +1,22 @@
+---
+title: Known issues
+description: Known limitations and workarounds for EDB Postgres AI for ClickHouse.
+product: EDB Postgres AI for ClickHouse
+version: "26.3"
+url: https://www.enterprisedb.com/docs/clickhouse/26.3/overview/known_issues/
+lastModified: 2026-11-02T13:02:55+01:00
+---
+
+# Known issues
+
+This release includes the following known issues and limitations. Where applicable, workarounds are included to help mitigate the impact. These issues are actively tracked and are planned for resolution in a future release.
+
+- The `PostgreSQL` table engine connects only to the WarehousePG coordinator and doesn't engage WarehousePG's massively parallel processing (MPP) architecture. For bulk data movement, use `INSERT INTO clickhouse_table SELECT * FROM warehousepg_linked_table` to load data into a native ClickHouse® `MergeTree` table.
+
+- The Iceberg catalog integration is read-only. `INSERT`, `UPDATE`, and `DELETE` operations aren't supported. Use Spark, PyIceberg, or another Iceberg-compatible writer to create and populate Iceberg tables.
+
+- The pg\_stat\_ch Debian 12 (bookworm) packages for EDB Postgres Extended Server and EDB Postgres Advanced Server aren't published for Postgres 18, on either `amd64` or `arm64`. The packages for Postgres 16 and 17 on these variants, and all community Postgres Debian packages, aren't affected.
+
+- `IMPORT FOREIGN SCHEMA` can fail against ClickHouse server 26.3 on Postgres 16 and 17, because the minimum and maximum `Float32` values read back one digit off. This doesn't occur with ClickHouse server 26.8.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,85 @@
+---
+title: Installing Analytics Accelerator
+description: Step-by-step instructions to install the PGAA extension.
+product: EDB Postgres AI Analytics Accelerator
+version: "1.9"
+url: https://www.enterprisedb.com/docs/pgaa/1.9/installing/
+lastModified: 2026-11-18T10:56:45Z
+---
+
+# Installing Analytics Accelerator
+
+To use the Postgres Analytics Accelerator (PGAA), you must install the extension on your Postgres instance and enable the background worker for the query engine. See [Compatibility](https://www.enterprisedb.com/docs/pgaa/1.9/overview/compatibility/) for a full list of supported platforms.
+
+> **Note**
+>
+> If you are installing PGAA on a WarehousePG cluster, follow the [WarehousePG-specific installation instructions](https://www.enterprisedb.com/docs/pgaa/1.9/whpg/installing/) instead, as the installation and configuration process differs from a standard Postgres deployment.
+
+## Downloading and installing the package
+
+Download the package from the EDB repository:
+
+### Debian/Ubuntu
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-token>
+export EDB_SUBSCRIPTION_PLAN=postgres_distributed
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.deb.sh" | sudo -E bash
+sudo apt-get install -y <postgres-distribution>-pgaa
+```
+
+### CentOS/RHEL
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-token>
+export EDB_SUBSCRIPTION_PLAN=postgres_distributed
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_PLAN/setup.rpm.sh" | sudo -E bash
+sudo dnf install -y <postgres-distribution>-pgaa
+```
+
+Where
+
+- `$EDB_SUBSCRIPTION_TOKEN` is the token you received when you registered for the EDB subscription.
+- `$EDB_SUBSCRIPTION_PLAN` is `postgres_distributed`, the repository that hosts the PGAA packages for EDB Postgres Advanced Server (EPAS), EDB Postgres Extended (PGE), and Postgres Distributed (PGD). PGAA for WarehousePG is in the `analytics` repository. See [Installing PGAA on WarehousePG](https://www.enterprisedb.com/docs/pgaa/1.9/whpg/installing/).
+- `<postgres-distribution>` is the package name prefix for your distribution and version, for example `postgresql-16` (community Postgres), `edb-as16` (EDB Postgres Advanced Server), or `edb-postgresextended-16` (EDB Postgres Extended).
+
+## Enabling the extension
+
+To initialize PGAA, you must update your `postgresql.conf` file. Adding `pgaa` to `shared_preload_libraries` allows Postgres to manage the life cycle of the Seafowl query engine as a background worker.
+
+1. Edit `postgresql.conf` and append PGAA and PGFS to the list of shared libraries using a comma separator:
+
+   ```ini
+   shared_preload_libraries = '<other_libraries>,pgaa,pgfs'
+   pgaa.autostart_seafowl = on
+   ```
+
+2. Restart your Postgres service to load the new library.
+
+3. Log in to your Postgres instance. Depending on whether you are working on a new installation or an update, run the appropriate command:
+
+   - For new installations:
+
+     ```sql
+     CREATE EXTENSION IF NOT EXISTS pgaa CASCADE;
+     ```
+
+     Using `CASCADE` ensures that required dependencies, such as the Postgres File System (`PGFS`), are automatically installed.
+
+   - For upgrading an existing installation:
+
+     ```sql
+     ALTER EXTENSION pgaa UPDATE;
+     ```
+
+## Verifying the installation
+
+Confirm that the extension is active using the `\dx` meta-command or by calling the version function:
+
+```sql
+SELECT pgaa.pgaa_version();
+```
+
+Once installed, you can [configure a storage location](https://www.enterprisedb.com/docs/pgaa/1.9/read_no_catalog/#creating-a-storage-location) to grant PGAA access to your data lake, or integrate Postgres [with an Iceberg catalog](https://www.enterprisedb.com/docs/pgaa/1.9/catalog/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

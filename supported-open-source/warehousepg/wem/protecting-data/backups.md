@@ -1,0 +1,60 @@
+---
+title: Securing backups
+description: Take, restore, schedule, and audit WarehousePG backups directly from WEM.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/protecting-data/backups/
+lastModified: 2026-09-22T14:04:10+01:00
+---
+
+# Securing backups
+
+Take, restore, and schedule backups of your WarehousePG (WHPG) cluster, and audit snapshot health and recovery point objectives (RPO) across the cluster, using the **Backups** panel on the left sidebar.
+
+> **Note**
+>
+> Taking and scheduling backups from WEM require [the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/) installed on every cluster node. Restoring, reviewing backup history, finding tables in backups, and deleting backups also require [`whpg-backup`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/) 1.34 or later. On an older version, WEM can still take and schedule backups, but can't list, restore, search, or delete them.
+
+## Taking, restoring, and deleting backups
+
+Take a new backup, restore an existing one, or delete one you no longer need, directly from WEM using the **List** tab.
+
+- Select **Backup** to start a new backup.
+- Select **Restore** on any listed backup to restore it.
+- Select **Delete** on any listed backup to delete it.
+
+## Reviewing backup history
+
+Review every backup in the [backup history database](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#understanding-the-backup-history-database) using the same **List** tab, which shows **Timestamp**, **Date**, **Status**, **Database**, **Type**, **Duration**, **Compressed**, and **Plugin** columns for each entry. Select a row to expand the **Details** panel below the table. Timestamps show in the host agent's own operating system time zone rather than the WEM server's.
+
+- Filter the list by a timestamp range, or by status (**All**, **Success**, or **Failed**) to quickly find failed runs. If a backup is marked as Failed, check the **Logs** panel on the left sidebar to identify which segment or network path caused the interruption.
+- Select **Report** on any listed backup for its full report, organized into **General Information** (database, status, section, start and end time, duration, and segment count), **Configuration** (compression, data file format, and other `gpbackup` settings), **Object Counts** (a per-type inventory of every backed-up object, such as tables, views, and roles), the exact `gpbackup` **Command** that ran, and the path to the **Report File** on disk.
+
+## Scheduling backups
+
+Create recurring backup schedules instead of relying on external cron jobs, using the **Schedules** tab. Each schedule groups its settings into three sections:
+
+- **Schedule** settings control when the job runs, a name, a description, the trigger time, the days of the week, and whether the schedule is enabled.
+
+- **Basic** settings control what gets backed up, the database, the backup type (full or incremental), compression, compression level, and backup directory.
+
+- **Advanced** settings expose `gpbackup` options directly, including a single data file, including statistics, skipping global objects, enabling future incremental backups, a single backup directory, the number of parallel jobs, and schema and table include and exclude filters. See the [gpbackup reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gpbackup/#options) for what each option does.
+
+- Enable or disable a schedule without deleting it.
+
+- Select **Run Now** to trigger an out-of-schedule run immediately.
+
+- Edit or delete a schedule at any time.
+
+## Reviewing activity
+
+Trace every backup, restore, and other backups job dispatched through WEM, including what ran, when, and whether it succeeded, using the **Activity** tab, alongside the entries in **List**. A run triggered by a schedule shows which one, for example `Triggered from schedule "Nightly"`.
+
+## Locating tables in backups
+
+Find which backups contain a specific table using the **Find Table** tab. Enter a table name in `table_name` or `schema.table_name` format and select **Search** to list the backups that include it. Without a schema, the search defaults to `public`.
+
+## Reviewing backup trends
+
+Review aggregate backup health trends using the **Statistics** tab. Charts show **Success Rate**, **Backup Types**, **Backups per Month**, and average backup duration over time.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

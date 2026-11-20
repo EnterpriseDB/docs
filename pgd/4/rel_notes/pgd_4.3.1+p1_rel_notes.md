@@ -1,0 +1,27 @@
+---
+title: Release notes for EDB Postgres Distributed version 4.3.1+p1
+product: EDB Postgres Distributed (PGD)
+version: 4.3.8
+url: https://www.enterprisedb.com/docs/pgd/4/rel_notes/pgd_4.3.1+p1_rel_notes/
+lastModified: 2025-08-21T21:26:25Z
+---
+
+# Release notes for EDB Postgres Distributed version 4.3.1+p1
+
+Released: 12 Jul 2023
+
+EDB Postgres Distributed version 4.3.1+p1 is a minor release of EDB Postgres Distributed 4, which includes bug fixes for issues identified in previous versions.
+
+If you are using any previous release of HARP, we recommend that you upgrade to HARP 2.3.0.
+
+> **Note**
+>
+> This version is required for EDB Postgres Advanced Server versions 12.15, 13.11, 14.8, and later.
+
+| Component | Version | Type    | Description                                                         |
+| --------- | ------- | ------- | ------------------------------------------------------------------- |
+| HARP      | 2.3.0   | Bug fix | Fix the CAMO lag computation issue - (BDR-3341).                    |
+| HARP      | 2.3.0   | Bug fix | Fix the Etcd TLS issue when only `ssl_ca_file` is set - (BDR-3582). |
+| HARP      | 2.3.0   | Feature | Add HTTP(S) health check probes for HARP.                           |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

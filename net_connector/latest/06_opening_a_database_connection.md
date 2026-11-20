@@ -1,0 +1,178 @@
+---
+title: Opening a database connection
+product: .NET Connector
+version: 10.0.1.1
+url: https://www.enterprisedb.com/docs/net_connector/latest/06_opening_a_database_connection/
+lastModified: 2026-02-16T12:16:04+01:00
+---
+
+# Opening a database connection
+
+<div id="opening_a_database_connection" class="registered_link"></div>
+
+An `EDBConnection` object is responsible for handling the communication between an instance of EDB Postgres Advanced Server and a .NET application. Before you can access data stored in an EDB Postgres Advanced Server database, you must create and open an `EDBConnection` object.
+
+## Creating an EDBConnection object
+
+Once you have [installed and configured the .NET Connector](https://www.enterprisedb.com/docs/net_connector/latest/04_installing_and_configuring_the_net_connector/), you can open a connection using one of the following approaches. In either case, you must import the namespace `EnterpriseDB.EDBClient`.
+
+### Connection with a data source
+
+1. Create an instance of the `EDBDataSource` object using a connection string as a parameter to the create method of the `EDBDataSource` class.
+
+2. To open a connection, call the `OpenConnection` method of the `EDBDataSource` object.
+
+This example shows how to open a connection using a data source:
+
+#### .NET
+
+```csharp
+// EDBDataSource should be long lived through your application
+await using var dataSource = EDBDataSource.Create(connectionString);
+await using var connection = await dataSource.OpenConnectionAsync();
+
+// your code here
+await connection.CloseAsync();
+```
+
+#### .NET Framework
+
+```csharp
+// EDBDataSource should be long lived through your application
+using (var dataSource = EDBDataSource.Create(connectionString))
+{
+	using (var connection = await dataSource.OpenConnectionAsync())
+	{
+		// your code here
+		await connection.CloseAsync();
+	}
+}
+```
+
+### Connection without a data source
+
+1. Create an instance of the `EDBConnection` object using a connection string as a parameter to the constructor of the `EDBConnection` class.
+
+2. Call the `Open` method of the `EDBConnection` object to open the connection.
+
+> **Note**
+>
+> For `EnterpriseDB.EDBClient 8.0.4` and later, we recommend `EDBDataSource` to connect to EDB Postgres Advanced Server database or execute SQL directly against it. For more information on the data source, see the [Npgsql documentation](https://www.npgsql.org/doc/basic-usage.html).
+
+This example shows how to open a connection without a data source:
+
+#### .NET
+
+```csharp
+await using var connection = new EDBConnection(connectionString);
+await connection.OpenAsync();
+// your code here
+await connection.CloseAsync();
+```
+
+#### .NET Framework
+
+```csharp
+using (var connection = new EDBConnection(ConnectionString))
+{
+	await connection.OpenAsync();
+	// your code here
+	await connection.CloseAsync();
+}
+```
+
+<div id="connection_string_parameters" class="registered_link"></div>
+
+## Connection string parameters
+
+A valid connection string specifies location and authentication information for an EDB Postgres Advanced Server instance. You must provide the connection string before opening the connection. A connection string must contain:
+
+- The name or IP address of the server
+- The name of the EDB Postgres Advanced Server database
+- The name of an EDB Postgres Advanced Server user
+- The password associated with that user
+
+You can include the following parameters in the connection string:
+
+| Parameter               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Default                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `Host` or `Server`      | The name or IP address of the EDB Postgres Advanced Server host                                                                                                                                                                                                                                                                                                                                                                                                                             | _Required_                 |
+| `Port`                  | The TCP port of the EDB Postgres Advanced Server host                                                                                                                                                                                                                                                                                                                                                                                                                                       | 5444                       |
+| `Database`              | The name of the database to connect to.                                                                                                                                                                                                                                                                                                                                                                                                                                                     | name of connected user     |
+| `User Id` or `UserName` | The username to connect with.                                                                                                                                                                                                                                                                                                                                                                                                                                                               | OS username                |
+| `Password`              | Password associated to the user to establish a connection with the server                                                                                                                                                                                                                                                                                                                                                                                                                   | _Authentication dependent_ |
+| `Command Timeout`       | Specifies the length of time (in seconds) to wait for a command to finish executing before throwing an exception.                                                                                                                                                                                                                                                                                                                                                                           | 30                         |
+| `Pooling`               | Specify a value of false to disable connection pooling                                                                                                                                                                                                                                                                                                                                                                                                                                      | `true`                     |
+| `No Reset On Close`     | When Pooling is enabled and the connection is closed, reopened, and the underlying connection is reused, then some operations are executed to discard the previous connection resources. You can override this behavior by enabling No Reset On Close.                                                                                                                                                                                                                                      | `false`                    |
+| `SSL Mode`              | Controls whether SSL is used, depending on server support. <br>Prefer — Use SSL if possible. This is the default behavior.<br>Require — Throw an exception if an SSL connection can't be established.<br>Allow — Connect without SSL unless server requires it<br>Disable — Don't attempt an SSL connection. <br>VerifyCA — SSL with certificate validation <br>VerifyFull — SSL with certificate validation and host name validation<br>See Npgsql docs for possible values and more info. | `Prefer`                   |
+
+For other parameters please refer to the [community documentation](https://www.npgsql.org/doc/connection-string-parameters.html).
+
+## Example: Opening a database connection
+
+This example shows how to open a connection to an instance of EDB Postgres Advanced Server and then close the connection.
+
+### .NET
+
+```csharp
+using EnterpriseDB.EDBClient;  // Add NuGet package EnterpriseDB.EDBClient
+
+namespace OpeningDatabaseConnection;
+
+internal class Program
+{
+    static async Task Main(string[] args)
+    {
+        // NOT FOR PRODUCTION Consider moving the connection string in a configuration file
+        var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=enterprisedb;Database=edb";
+        try
+        {
+            await using var dataSource = EDBDataSource.Create(connectionString);
+            await using var conn = await dataSource.OpenConnectionAsync();
+            Console.WriteLine("Connection opened successfully");
+            await conn.CloseAsync();
+        }
+        catch (EDBException exp)
+        {
+            Console.Write($"Error: {exp}");
+        }
+    }
+}
+```
+
+### .NET Framework
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;  // Add NuGet package EnterpriseDB.EDBClient
+
+namespace OpeningDatabaseConnection
+{
+    internal class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION Consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=enterprisedb;Database=edb";
+            try
+            {
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                {
+                    var conn = await dataSource.OpenConnectionAsync();
+                    Console.WriteLine("Connection opened successfully");
+                    await conn.CloseAsync();
+                }
+            }
+            catch (EDBException exp)
+            {
+                Console.Write($"Error: {exp}");
+            }
+        }
+    }
+}
+```
+
+In a production application, connection strings should be moved outside of the code, using configuration files for example. See official [Microsoft .NET documentation](https://learn.microsoft.com/en-us/dotnet/core/extensions/configuration).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,95 @@
+---
+title: Data types and definitions
+description: Supported Postgres types and internal PGAA state definitions.
+product: EDB Postgres AI Analytics Accelerator
+version: "1.12"
+url: https://www.enterprisedb.com/docs/pgaa/latest/reference/data_types/
+lastModified: 2026-11-18T10:56:45Z
+---
+
+# Data types and definitions
+
+The EDB Analytics Accelerator (PGAA) maps native Postgres data types to optimized columnar formats in the data lake. This page lists the supported types and defines the status codes found in PGAA administrative views.
+
+## Data types
+
+PGAA independently manages how data is read into Postgres and how it is written to the data lake (using PGD integration). This architecture maximizes performance while ensuring broad compatibility for complex or unsupported formats.
+
+**Reading from analytics**
+
+When you query a PGAA table, the engine retrieves data from the lakehouse and attempts to coerce it into the target Postgres type defined in your schema. Native binary data is mapped directly to Postgres types for maximum efficiency, while other types are coerced back into its target type using internal Postgres conversion functions.
+
+| Natively Supported    | Coerced            |
+| --------------------- | ------------------ |
+| `BOOLOID`             | `CSTRINGOID`       |
+| `BYTEAOID`            | `TEXTOID`          |
+| `CHAROID`             | `VARCHAROID`       |
+| `INT2OID`             | `BPCHAROID`        |
+| `INT4OID`             | `JSONOID`          |
+| `INT8OID`             | `JSONBOID`         |
+| `OIDOID`              | `UUIDOID`          |
+| `FLOAT4OID`           | `ANYENUMOID`       |
+| `FLOAT8OID`           | `CSTRINGARRAYOID`  |
+| `NUMERICOID`          | `TEXTARRAYOID`     |
+| `DATEOID`             | `VARCHARARRAYOID`  |
+| `TIMESTAMPOID`        | `BPCHARARRAYOID`   |
+| `TIMESTAMPTZOID`      | `UUIDARRAYOID`     |
+| `INTERVALOID`         | **Any other type** |
+| `BOOLARRAYOID`        |                    |
+| `INT2ARRAYOID`        |                    |
+| `INT4ARRAYOID`        |                    |
+| `INT8ARRAYOID`        |                    |
+| `FLOAT4ARRAYOID`      |                    |
+| `FLOAT8ARRAYOID`      |                    |
+| `DATEARRAYOID`        |                    |
+| `TIMEARRAYOID`        |                    |
+| `TIMESTAMPARRAYOID`   |                    |
+| `TIMESTAMPTZARRAYOID` |                    |
+| `NUMERICARRAYOID`     |                    |
+
+**Writing to analytics**
+
+When replicating data to the data lake (using PGD integration), PGAA utilizes native binary builders for maximum efficiency. If a column type is encountered that isn't natively supported by the underlying storage format, PGAA automatically converts it to a UTF-8 text representation to ensure a consistent and reliable write.
+
+| Natively supported    | Converted to UTF-8 text |
+| :-------------------- | :---------------------- |
+| `BOOLOID`             | `CSTRINGOID`            |
+| `BYTEAOID`            | `TEXTOID`               |
+| `CHAROID`             | `VARCHAROID`            |
+| `INT2OID`             | `BPCHAROID`             |
+| `INT4OID`             | `JSONOID`               |
+| `INT8OID`             | `JSONBOID`              |
+| `OIDOID`              | `UUIDOID`               |
+| `FLOAT4OID`           | `ANYENUMOID`            |
+| `FLOAT8OID`           | `CSTRINGARRAYOID`       |
+| `TIMESTAMPOID`        | `TEXTARRAYOID`          |
+| `TIMESTAMPTZOID`      | `VARCHARARRAYOID`       |
+| `DATEOID`             | `BPCHARARRAYOID`        |
+| `INTERVALOID`         | `UUIDARRAYOID`          |
+| `NUMERICOID`          | **All other types**     |
+| `BOOLARRAYOID`        |                         |
+| `INT2ARRAYOID`        |                         |
+| `INT4ARRAYOID`        |                         |
+| `INT8ARRAYOID`        |                         |
+| `FLOAT4ARRAYOID`      |                         |
+| `FLOAT8ARRAYOID`      |                         |
+| `DATEARRAYOID`        |                         |
+| `TIMEARRAYOID`        |                         |
+| `TIMESTAMPARRAYOID`   |                         |
+| `TIMESTAMPTZARRAYOID` |                         |
+| `NUMERICARRAYOID`     |                         |
+
+## Administrative enums and statuses
+
+The following values are primarily found in PGAA administrative tables, views, and function results. The table lists their description and supported values. Apart from `pgaa.replication_status`, which is a Postgres enum, PGAA stores these values as `TEXT`.
+
+| Name                                        | Supported values                                                                                                    | Description                                                                                                                                                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `table_format`                              | `delta`, `iceberg`, and `parquet`.                                                                                  | The storage format of the table in object storage.                                                                                                                                                                                           |
+| `catalog_type`                              | `iceberg-rest` (Iceberg REST catalog, including the AWS Glue Data Catalog), and `iceberg-s3tables` (AWS S3 Tables). | The type of catalog service.                                                                                                                                                                                                                 |
+| `catalog_status`                            | `detached`, `attached`, `refresh_retry`, and `refresh_failed`.                                                      | The current synchronization health between Postgres and the catalog.                                                                                                                                                                         |
+| `pgaa.replication_status`                   | `disabled`, `initial_offload`, and `enabled`.                                                                       | The state of data movement for Tiered Tables.                                                                                                                                                                                                |
+| `task_status`                               | `pending`, `running`, `success`, and `failure`.                                                                     | The lifecycle state of background worker tasks.                                                                                                                                                                                              |
+| `state` (in `pgaa.replicated_table_status`) | `loading` and `streaming`.                                                                                          | The state of a natively replicated table: `loading` while PGAA copies the existing rows, and `streaming` once it replicates changes. See [Replicating Postgres tables natively](https://www.enterprisedb.com/docs/pgaa/latest/replication/). |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

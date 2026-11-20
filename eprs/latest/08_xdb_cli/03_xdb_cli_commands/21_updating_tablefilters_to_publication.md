@@ -1,0 +1,60 @@
+---
+title: Updating table filters in a publication (updatefilter)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/21_updating_tablefilters_to_publication/
+lastModified: 2025-04-03T18:05:51+02:00
+---
+
+# Updating table filters in a publication (updatefilter)
+
+<div id="updating_tablefilters_to_publication" class="registered_link"></div>
+
+The `updatefilter` command changes the filter clauses of the specified tables or views.
+
+## Synopsis
+
+```shell
+-updatefilter pubname
+  -repsvrfile pubsvrfile
+  -tablesfilterclause
+    "filterid_1:filterclause_1"
+  [ "filterid_2:filterclause_2" ] ...
+```
+
+The next replication to any target subscriptions or non-MDN nodes on which these filter rules were enabled reflects the changes to the filter clauses.
+
+See [Table filters](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/13_table_filters/#table_filters) for more information.
+
+## Parameters
+
+`pubname`
+
+The name of the publication in which to update the filter clauses.
+
+`pubsvrfile`
+
+The file containing the publication server login information.
+
+`filterid_n`
+
+Filter ID identifying the filter rule for which to change the filter clause. Use the `printpubfilterslist` command to get the filter IDs for the available filter rules in the publication (see [Printing a list of filters in a publication](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/17_print_publications_filters_list/#print_publications_filters_list)).
+
+`filterclause_n`
+
+The new filter clause to use.
+
+## Examples
+
+This example modifies filter clause with filter `ID 26` in publication `analysts_managers`.
+
+```shell
+$ java -jar edb-repcli.jar -updatefilter analysts_managers \
+>   -repsvrfile ~/pubsvrfile.prop \
+>   -tablesfilterclause "26:job = 'CLERK'"
+Updating Filter(s)
+Filter clause:[26:job = 'CLERK']
+Filter(s) updated successfully.
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

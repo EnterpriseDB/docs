@@ -1,0 +1,29 @@
+---
+title: Supported platforms
+product: PgPool-II
+version: "4"
+url: https://www.enterprisedb.com/docs/pgpool/latest/supported_platforms/
+lastModified: 2026-06-01T22:14:54+05:30
+---
+
+# Supported platforms
+
+EDB Pgpool-II is supported on the same Linux platforms as EDB Postgres Advanced Server (EPAS), which are listed in the [Platform Compatibility page](https://www.enterprisedb.com/platform-compatibility#epas) on the EDB website.
+
+## Supported combinations of EPAS and EDB Pgpool-II versions
+
+This table lists the current and past EDB Pgpool-II versions and the EDB Postgres Advanced Server (EPAS) versions in which they can be used.
+
+| EDB Pgpool-II | EPAS 18 | EPAS 17 | EPAS 16 | EPAS 15 | EPAS 14 | EPAS 13 | EPAS 12 |
+| ------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- |
+| 4.7.x         | Y       | Y       | Y       | Y       | Y       | N       | N       |
+| 4.6.x         | Y       | Y       | Y       | Y       | Y       | Y       | N       |
+| 4.5.x         | N       | Y       | Y       | Y       | Y       | Y       | Y       |
+| 4.4.x         | N       | N       | Y       | Y       | Y       | Y       | Y       |
+| 4.3.x         | N       | N       | N       | N       | Y       | Y       | Y       |
+| 4.2.x         | N       | N       | N       | N       | N       | Y       | Y       |
+| 4.1.x         | N       | N       | N       | N       | N       | Y       | Y       |
+| 4.0.x         | N       | N       | N       | N       | N       | N       | Y       |
+| 3.7.x         | N       | N       | N       | N       | N       | N       | N       |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

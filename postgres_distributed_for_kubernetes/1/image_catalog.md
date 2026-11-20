@@ -1,0 +1,96 @@
+---
+title: Image catalog
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/image_catalog/
+lastModified: 2026-09-16T09:00:14-07:00
+---
+
+# Image catalog
+
+A PGD group has its own `ImageCatalog` and `ClusterImageCatalog`. `ImageCatalog` and `ClusterImageCatalog`
+are essential resources that allow you to define PGD and PGD Proxy images for creating a `PGDGroup`.
+
+The key distinction is in their scope: an `ImageCatalog` is namespaced, while
+a `ClusterImageCatalog` is cluster scoped.
+
+Both share a common structure, comprising a list of PGD images and a Proxy image.
+Each PGD image contains a `major` field indicating the major Postgres version of the image.
+
+> **Warning**
+>
+> The operator trusts the user-defined major version and doesn't conduct
+> any PostgreSQL version detection. It's your responsibility to ensure
+> alignment between the declared major version in the catalog and the PostgreSQL image.
+
+The `major` field's value must remain unique in a catalog, preventing duplication across images.
+However, distinct catalogs can expose different images under the same `major` value.
+
+## Example of a namespaced `ImageCatalog`
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: ImageCatalog
+metadata:
+  name: pgd-postgres-extended
+  namespace: default
+spec:
+  images:
+    - major: 15
+      image: docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:15.14-pgd590-ubi9
+    - major: 16
+      image: docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:16.10-pgd590-ubi9
+    - major: 17
+      image:  docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:17.6-pgd590-ubi9
+  proxyImage: docker.enterprisedb.com/k8s/edb-pgd-proxy:5.9.0-ubi9
+```
+
+## Example of a cluster-wide catalog using `ClusterImageCatalog` resource
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: ClusterImageCatalog
+metadata:
+  name: pgd-postgres-extended
+spec:
+  images:
+    - major: 15
+      image: docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:15.14-pgd590-ubi9
+    - major: 16
+      image:  docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:16.10-pgd590-ubi9
+    - major: 17
+      image:  docker.enterprisedb.com/k8s/edb-postgres-extended-pgd:17.6-pgd590-ubi9
+  proxyImage: docker.enterprisedb.com/k8s/edb-pgd-proxy:5.9.0-ubi9
+
+```
+
+A `PGDGroup` resource has the flexibility to reference either an `ImageCatalog`
+or a `ClusterImageCatalog` to precisely specify the desired image:
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example
+spec:
+  [...]
+  imageCatalogRef:
+    apiGroup: pgd.k8s.enterprisedb.io
+    kind: ImageCatalog
+    name: pgd-postgres-extended
+    major: 16
+  [...]
+```
+
+PGD groups utilizing these catalogs maintain continuous monitoring.
+Any alterations to the images in a catalog trigger automatic updates for
+all associated PGD groups that reference that specific entry.
+
+## Image catalog with latest operand
+
+The latest operand images for each PGD extension minor release are maintained in the
+[PGD Operand images](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/supported_versions/#pgd-operand-images) section. These images are the up-to-date images
+stored in the `k8s` repository.
+You can either reference the entire imageCatalog directly or use individual operand images as needed.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

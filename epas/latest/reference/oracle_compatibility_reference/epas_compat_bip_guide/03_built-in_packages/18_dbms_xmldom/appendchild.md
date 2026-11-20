@@ -1,0 +1,51 @@
+---
+title: APPENDCHILD
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/18_dbms_xmldom/appendchild/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# APPENDCHILD
+
+The `APPENDCHILD` function adds the node at the end of the list of children of a particular node. It returns the newly added node and, if a node is already present, removes the existing node before adding the new node.
+
+You can append more than one child to a document node. However, a node can't belong to several documents.
+
+When appending elements, you can't add an element to itself. Also, if the same element is added twice, only the latest is considered.
+
+```
+APPENDCHILD(n DOMNode, newChild IN DOMNode) RETURN DOMNode
+```
+
+## Parameters
+
+`n`
+
+The `DOMNode` to add the new node to.
+
+`newchild`
+
+The child node to add to the existing list of children of node `n`.
+
+## Examples
+
+This example creates an XML `DOMDocument` named `l_domdoc` and a `DOMElement` named `l_department_element` with the tag name `Departments`. It then appends the `DOMElement` as a child of the `DOMDocument`.
+
+```sql
+DECLARE
+   l_domdoc DBMS_XMLDOM.DOMDocument;
+   l_department_element DBMS_XMLDOM.DOMElement;
+   l_xmltype XMLTYPE;
+
+
+BEGIN
+   l_domdoc := DBMS_XMLDOM.NEWDOMDOCUMENT();
+   l_department_element := DBMS_XMLDOM.CREATEELEMENT(l_domdoc, 'Departments' );
+   PERFORM DBMS_XMLDOM.appendChild(DBMS_XMLDOM.MAKENODE(l_domdoc), DBMS_XMLDOM.MAKENODE(l_department_element));
+   l_xmltype := DBMS_XMLDOM.GETXMLTYPE(l_domdoc);
+   DBMS_OUTPUT.PUT_LINE(l_xmltype.getStringVal());
+END;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

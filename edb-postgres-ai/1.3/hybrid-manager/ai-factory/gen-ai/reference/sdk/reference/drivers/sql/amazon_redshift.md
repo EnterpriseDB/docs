@@ -1,0 +1,377 @@
+---
+title: amazon_redshift
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/sql/amazon_redshift/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# amazon\_redshift
+
+- `__all__ = ['AmazonRedshiftSqlDriver']` <small>module-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.__all__"></span>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver"></span>
+
+Bases:
+[`BaseSqlDriver`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/sql/#griptape.drivers.sql.BaseSqlDriver "BaseSqlDriver (griptape.drivers.sql.BaseSqlDriver)")
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+@define
+class AmazonRedshiftSqlDriver(BaseSqlDriver):
+    database: str = field(kw_only=True)
+    session: boto3.Session = field(kw_only=True)
+    cluster_identifier: Optional[str] = field(default=None, kw_only=True)
+    workgroup_name: Optional[str] = field(default=None, kw_only=True)
+    db_user: Optional[str] = field(default=None, kw_only=True)
+    database_credentials_secret_arn: Optional[str] = field(default=None, kw_only=True)
+    wait_for_query_completion_sec: float = field(default=0.3, kw_only=True)
+    _client: Optional[RedshiftDataAPIServiceClient] = field(
+        default=None, kw_only=True, alias="client", metadata={"serializable": False}
+    )
+
+    @lazy_property()
+    def client(self) -> RedshiftDataAPIServiceClient:
+        return self.session.client("redshift-data")
+
+    @workgroup_name.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+    def validate_params(self, _: Attribute, workgroup_name: Optional[str]) -> None:
+        if not self.cluster_identifier and not self.workgroup_name:
+            raise ValueError("Provide a value for one of `cluster_identifier` or `workgroup_name`")
+        if self.cluster_identifier and self.workgroup_name:
+            raise ValueError("Provide a value for either `cluster_identifier` or `workgroup_name`, but not both")
+
+    @classmethod
+    def _process_rows_from_records(cls, records: list) -> list[list]:
+        return [[c[list(c.keys())[0]] for c in r] for r in records]
+
+    @classmethod
+    def _process_cells_from_rows_and_columns(cls, columns: list, rows: list[list]) -> list[dict[str, Any]]:
+        return [{column: r[idx] for idx, column in enumerate(columns)} for r in rows]
+
+    @classmethod
+    def _process_columns_from_column_metadata(cls, meta: dict) -> list:
+        return [k["name"] for k in meta]
+
+    @classmethod
+    def _post_process(cls, meta: dict, records: list) -> list[dict[str, Any]]:
+        columns = cls._process_columns_from_column_metadata(meta)
+        rows = cls._process_rows_from_records(records)
+        return cls._process_cells_from_rows_and_columns(columns, rows)
+
+    def execute_query(self, query: str) -> Optional[list[BaseSqlDriver.RowResult]]:
+        rows = self.execute_query_raw(query)
+        if rows:
+            return [BaseSqlDriver.RowResult(row) for row in rows]
+        return None
+
+    def execute_query_raw(self, query: str) -> Optional[list[dict[str, Optional[Any]]]]:
+        function_kwargs = {"Sql": query, "Database": self.database}
+        if self.workgroup_name:
+            function_kwargs["WorkgroupName"] = self.workgroup_name
+        if self.cluster_identifier:
+            function_kwargs["ClusterIdentifier"] = self.cluster_identifier
+        if self.db_user:
+            function_kwargs["DbUser"] = self.db_user
+        if self.database_credentials_secret_arn:
+            function_kwargs["SecretArn"] = self.database_credentials_secret_arn
+
+        response = self.client.execute_statement(**function_kwargs)  # pyright: ignore[reportArgumentType]
+        response_id = response["Id"]
+
+        statement = self.client.describe_statement(Id=response_id)
+
+        while statement["Status"] in ["SUBMITTED", "PICKED", "STARTED"]:
+            time.sleep(self.wait_for_query_completion_sec)
+            statement = self.client.describe_statement(Id=response_id)
+
+        if statement["Status"] == "FINISHED":
+            statement_result = self.client.get_statement_result(Id=response_id)
+            results = statement_result.get("Records", [])
+
+            while "NextToken" in statement_result:
+                statement_result = self.client.get_statement_result(
+                    Id=response_id,
+                    NextToken=statement_result["NextToken"],
+                )
+                results = results + response.get("Records", [])
+
+            return self._post_process(statement_result["ColumnMetadata"], results)  # pyright: ignore[reportArgumentType]
+
+        if statement["Status"] in ["FAILED", "ABORTED"]:
+            return None
+        return None
+
+    def get_table_schema(self, table_name: str, schema: Optional[str] = None) -> Optional[str]:
+        function_kwargs = {"Database": self.database, "Table": table_name}
+        if schema:
+            function_kwargs["Schema"] = schema
+        if self.workgroup_name:
+            function_kwargs["WorkgroupName"] = self.workgroup_name
+        if self.cluster_identifier:
+            function_kwargs["ClusterIdentifier"] = self.cluster_identifier
+        if self.db_user:
+            function_kwargs["DbUser"] = self.db_user
+        if self.database_credentials_secret_arn:
+            function_kwargs["SecretArn"] = self.database_credentials_secret_arn
+        response = self.client.describe_table(**function_kwargs)  # pyright: ignore[reportArgumentType]
+        return str([col["name"] for col in response["ColumnList"] if "name" in col])
+```
+
+</details>
+
+- `_client = field(default=None, kw_only=True, alias='client', metadata={'serializable': False})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver._client"></span>
+
+- `cluster_identifier = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.cluster_identifier"></span>
+
+- `database = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.database"></span>
+
+- `database_credentials_secret_arn = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.database_credentials_secret_arn"></span>
+
+- `db_user = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.db_user"></span>
+
+- `session = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.session"></span>
+
+- `wait_for_query_completion_sec = field(default=0.3, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.wait_for_query_completion_sec"></span>
+
+- `workgroup_name = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.workgroup_name"></span>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver._post_process"></span>
+
+### \_post\_process(meta, records)classmethod
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+@classmethod
+def _post_process(cls, meta: dict, records: list) -> list[dict[str, Any]]:
+    columns = cls._process_columns_from_column_metadata(meta)
+    rows = cls._process_rows_from_records(records)
+    return cls._process_cells_from_rows_and_columns(columns, rows)
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver._process_cells_from_rows_and_columns"></span>
+
+### \_process\_cells\_from\_rows\_and\_columns(columns, rows)classmethod
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+@classmethod
+def _process_cells_from_rows_and_columns(cls, columns: list, rows: list[list]) -> list[dict[str, Any]]:
+    return [{column: r[idx] for idx, column in enumerate(columns)} for r in rows]
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver._process_columns_from_column_metadata"></span>
+
+### \_process\_columns\_from\_column\_metadata(meta)classmethod
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+@classmethod
+def _process_columns_from_column_metadata(cls, meta: dict) -> list:
+    return [k["name"] for k in meta]
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver._process_rows_from_records"></span>
+
+### \_process\_rows\_from\_records(records)classmethod
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+@classmethod
+def _process_rows_from_records(cls, records: list) -> list[list]:
+    return [[c[list(c.keys())[0]] for c in r] for r in records]
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.client"></span>
+
+### client()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+@lazy_property()
+def client(self) -> RedshiftDataAPIServiceClient:
+    return self.session.client("redshift-data")
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.execute_query"></span>
+
+### execute\_query(query)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+def execute_query(self, query: str) -> Optional[list[BaseSqlDriver.RowResult]]:
+    rows = self.execute_query_raw(query)
+    if rows:
+        return [BaseSqlDriver.RowResult(row) for row in rows]
+    return None
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.execute_query_raw"></span>
+
+### execute\_query\_raw(query)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+def execute_query_raw(self, query: str) -> Optional[list[dict[str, Optional[Any]]]]:
+    function_kwargs = {"Sql": query, "Database": self.database}
+    if self.workgroup_name:
+        function_kwargs["WorkgroupName"] = self.workgroup_name
+    if self.cluster_identifier:
+        function_kwargs["ClusterIdentifier"] = self.cluster_identifier
+    if self.db_user:
+        function_kwargs["DbUser"] = self.db_user
+    if self.database_credentials_secret_arn:
+        function_kwargs["SecretArn"] = self.database_credentials_secret_arn
+
+    response = self.client.execute_statement(**function_kwargs)  # pyright: ignore[reportArgumentType]
+    response_id = response["Id"]
+
+    statement = self.client.describe_statement(Id=response_id)
+
+    while statement["Status"] in ["SUBMITTED", "PICKED", "STARTED"]:
+        time.sleep(self.wait_for_query_completion_sec)
+        statement = self.client.describe_statement(Id=response_id)
+
+    if statement["Status"] == "FINISHED":
+        statement_result = self.client.get_statement_result(Id=response_id)
+        results = statement_result.get("Records", [])
+
+        while "NextToken" in statement_result:
+            statement_result = self.client.get_statement_result(
+                Id=response_id,
+                NextToken=statement_result["NextToken"],
+            )
+            results = results + response.get("Records", [])
+
+        return self._post_process(statement_result["ColumnMetadata"], results)  # pyright: ignore[reportArgumentType]
+
+    if statement["Status"] in ["FAILED", "ABORTED"]:
+        return None
+    return None
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.get_table_schema"></span>
+
+### get\_table\_schema(table\_name, schema=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+def get_table_schema(self, table_name: str, schema: Optional[str] = None) -> Optional[str]:
+    function_kwargs = {"Database": self.database, "Table": table_name}
+    if schema:
+        function_kwargs["Schema"] = schema
+    if self.workgroup_name:
+        function_kwargs["WorkgroupName"] = self.workgroup_name
+    if self.cluster_identifier:
+        function_kwargs["ClusterIdentifier"] = self.cluster_identifier
+    if self.db_user:
+        function_kwargs["DbUser"] = self.db_user
+    if self.database_credentials_secret_arn:
+        function_kwargs["SecretArn"] = self.database_credentials_secret_arn
+    response = self.client.describe_table(**function_kwargs)  # pyright: ignore[reportArgumentType]
+    return str([col["name"] for col in response["ColumnList"] if "name" in col])
+```
+
+</details>
+
+<span id="griptape.drivers.sql.amazon_redshift.AmazonRedshiftSqlDriver.validate_params"></span>
+
+### validat&#x65;_&#x70;arams(_, workgroup\_name)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/sql/amazon\_redshift\_sql\_driver.py</code>
+
+</summary>
+
+```python
+@workgroup_name.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+def validate_params(self, _: Attribute, workgroup_name: Optional[str]) -> None:
+    if not self.cluster_identifier and not self.workgroup_name:
+        raise ValueError("Provide a value for one of `cluster_identifier` or `workgroup_name`")
+    if self.cluster_identifier and self.workgroup_name:
+        raise ValueError("Provide a value for either `cluster_identifier` or `workgroup_name`, but not both")
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

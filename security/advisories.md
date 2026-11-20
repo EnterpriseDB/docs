@@ -1,0 +1,823 @@
+---
+title: EDB Security Advisories
+product: EDB Security
+url: https://www.enterprisedb.com/docs/security/advisories/
+lastModified: 2026-11-20T14:50:45Z
+---
+
+# EDB Security Advisories
+
+<h2>Released 2026</h2>
+
+<table class="table-bordered">
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132668 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132668/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 2.3 Low</span>
+
+<h4>PEM send_webhook() lets any PEM user send payloads through any configured webhook</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Any PEM user can run the pem.send\_webhook() function, which runs with elevated privileges and queues a payload for any configured webhook. The PEM agent then delivers it with that webhook's stored headers, OAuth token or client certificate, so a user can send forged notifications to endpoints they could not otherwise authenticate to. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132668/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132665 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132665/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 5.8 Medium</span>
+
+<h4>PEM job template deployment ignores team boundaries</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+The pem.deploy\_job\_template() function does not check that the caller can access the servers, groups and agents it deploys a job template to. When PEM teams are used to separate access, a user with the scheduled tasks role (pem\_manage\_schedule\_task) can deploy and schedule SQL or shell job steps on agents that belong to other teams. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132665/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132664 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132664/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 7.0 High</span>
+
+<h4>PEM stored server credentials readable by any PEM user</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Any PEM user can read the encrypted passwords that PEM agents use to connect to monitored servers, including the PEM backend superuser password stored when the PEM server is configured. Unless a custom encryption key is configured, these passwords are encrypted with a key that is the same in every PEM installation, so they can be decrypted. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132664/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132663 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132663/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 7.1 High</span>
+
+<h4>PEM webhook URLs allow local file read on the PEM server</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Webhook URLs are not validated, and the PEM agent does not restrict the URL schemes it uses to deliver webhooks. A user with the alert configuration role (pem\_config\_alert) can set up a webhook with a file:// URL. When the webhook is sent, the agent on the PEM server, which runs as root by default, reads the local file and stores its contents in the webhook error record in the PEM database, where any PEM user can read it. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132663/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132662 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132662/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 7.2 High</span>
+
+<h4>PEM SQL Profiler path traversal</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+The SQL Profiler save and load functions in the PEM web application do not keep the client-supplied file name inside the user's storage directory. A user with the SQL Profiler role (pem\_comp\_sqlprofiler) can read JSON files, and overwrite files that the PEM web server account can write, outside their own storage directory. Overwriting the PEM web application's configuration database stops the web console for all users. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132662/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132661 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132661/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 7.6 High</span>
+
+<h4>PEM multi-factor authentication bypass</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Multi-factor authentication (MFA) is not enforced on the PEM web application's own routes. An attacker who knows the password of a user who has enrolled a second factor can skip the second factor and call PEM's pages and APIs directly, with that user's permissions. A similar issue in pgAdmin 4 was assigned CVE-2024-4215. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132661/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132660 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132660/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 9.4 Critical</span>
+
+<h4>PEM SECURITY DEFINER functions allow privilege escalation through the search path</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Several SECURITY DEFINER functions in the pem schema of the PEM backend database are owned by a superuser but do not set a safe search\_path. Any PEM user who can connect to the PEM backend database can create objects that these functions use in place of the intended ones, and so run arbitrary SQL with superuser privileges. Temporary objects can be used for this on every supported PostgreSQL version, and objects in the public schema on PostgreSQL 14 backends and backends upgraded from PostgreSQL 14. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132660/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132659 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132659/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 9.4 Critical</span>
+
+<h4>PEM agent credentials can schedule jobs on any other agent</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+The row-level security policies on pem.job and pem.jobstep that apply to PEM agents do not limit an agent to its own jobs. An attacker who controls one monitored host, and so its PEM agent certificate, can create, change or delete jobs for every other agent, including the agent on the PEM server. Agents run SQL job steps with the database credentials of the server they monitor, and shell job steps where batch jobs are enabled, so compromising one monitored host can give superuser SQL access to every monitored database and to the PEM backend. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132659/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-132658 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132658/">Read Advisory</a>
+  Updated: </span><span>2026/11/19</span>
+
+  Score: <span> 9.4 Critical</span>
+
+<h4>PEM agent role can read and write files on the PEM server</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+The pem\_agent role, which every PEM agent login inherits, is a member of the PostgreSQL pg\_read\_server\_files and pg\_write\_server\_files roles on the PEM backend database. An attacker who controls any monitored host, and so its PEM agent certificate, can read and write files on the PEM server host as the postgres operating system user. This includes the PEM certificate authority key, which lets the attacker issue certificates for other agents and act as them. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026132658/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-122042 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026122042/">Read Advisory</a>
+  Updated: </span><span>2026/11/18</span>
+
+  Score: <span> 7.1 High</span>
+
+<h4>WarehousePG gpfdist out-of-bounds write from unchecked segment headers</h4>
+<h5> WarehousePG 6.27.1 through 6.27.7 and 7.2.1 through 7.6.1</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+WarehousePG (WHPG) 6.27.1 through 6.27.7 and 7.2.1 through 7.6.1 are affected by an out-of-bounds write vulnerability (CWE-787) in gpfdist, the file server used to load and unload external tables. When gpfdist attaches a request to a session, it sizes two internal arrays from the client-supplied X-GP-SEGMENT-COUNT header and writes to them at the index given by the X-GP-SEGMENT-ID header, without checking that the index is non-negative and smaller than the count (CWE-129). gpfdist does not authenticate callers unless gpfdists is used with client certificate verification, so an attacker who can reach the gpfdist port can crash it with a single HTTP request, failing every external table load or unload that uses that gpfdist instance. gpfdist is normally reachable only from the cluster's internal network. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026122042/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-87027 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202687027/">Read Advisory</a>
+  Updated: </span><span>2026/11/16</span>
+
+  Score: <span> 5.6 Medium</span>
+
+<h4>EDB Postgres Extended Server and EDB Postgres Advanced Server TDE temporary-file key incompletely initialized</h4>
+<h5> EDB Postgres Extended Server and EDB Postgres Advanced Server 15 through 18 with TDE enabled</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+In EDB Postgres Extended Server and EDB Postgres Advanced Server versions 15 through 18 with Transparent Data Encryption (TDE) enabled, the key used to encrypt temporary files was incompletely initialized. The code applied sizeof() to a pointer to the key buffer rather than to the buffer itself, so only 8 of the intended 32 bytes were filled from a secure random source and the remaining 24 bytes kept whatever was already in memory. This reduces the guaranteed randomness of the temporary-file key from 256 bits to 64 bits. Exploiting this requires local read access to the server's temporary-file directory, and those files normally exist only while the server is running; they persist only after a crash and are removed at the next server start. Permanent data files and WAL are not affected. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202687027/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-122043 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026122043/">Read Advisory</a>
+  Updated: </span><span>2026/11/11</span>
+
+  Score: <span> 6.0 Medium</span>
+
+<h4>repmgr OS command injection through event notification placeholders</h4>
+<h5> repmgr versions 4.0.0 through 5.5.0 using event notification or failover validation placeholders</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+repmgr does not escape node metadata before running event notification commands through the shell. When <code>event\_notification\_command</code> is configured, repmgr substitutes the <code>%a</code> (node name), <code>%c</code> (connection string) and <code>%d</code> (details) placeholders into the command and runs it with the shell. <code>%a</code> and <code>%c</code> are inserted without escaping, and <code>%d</code> escapes only double quotes, so shell command substitution still works inside the double quotes the documentation recommends. The <code>%a</code> placeholder of <code>failover\_validation\_command</code> has the same flaw. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026122043/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-104949 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026104949/">Read Advisory</a>
+  Updated: </span><span>2026/10/21</span>
+
+  Score: <span> 2.3 Low</span>
+
+<h4>WarehousePG gp_add_coordinator_standby() missing authorization</h4>
+<h5> WarehousePG 6.27.1 through 6.27.6 and 7.2.1 through 7.6.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+WarehousePG (WHPG) 6.27.1 through 6.27.6 and 7.2.1 through 7.6.0 are affected by a missing authorization vulnerability (CWE-862) in gp\_add\_coordinator\_standby(). The function is named gp\_add\_master\_standby() in WHPG 6, and WHPG 7 keeps that name as an alias. Unlike the other segment add and remove functions, it does not require superuser privileges. A low-privileged user who can open a utility-mode connection can use it to add a fake standby coordinator entry to gp\_segment\_configuration on a cluster that has no standby configured. Administrators then cannot add a real standby until a superuser removes the fake entry. User data is not exposed or modified. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026104949/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-104948 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026104948/">Read Advisory</a>
+  Updated: </span><span>2026/10/21</span>
+
+  Score: <span> 7.1 High</span>
+
+<h4>WarehousePG gp_expand_lock_catalog() and gp_expand_bump_version() missing authorization</h4>
+<h5> WarehousePG 6.27.1 through 6.27.6 and 7.2.1 through 7.6.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+WarehousePG (WHPG) 6.27.1 through 6.27.6 and 7.2.1 through 7.6.0 are affected by a missing authorization vulnerability (CWE-862) in the built-in cluster expansion functions gp\_expand\_lock\_catalog() and gp\_expand\_bump\_version(). Any authenticated database role can run them, and neither checks privileges. A low-privileged user can call gp\_expand\_lock\_catalog() inside an open transaction to block all catalog changes across the cluster for every user, superusers included, until that transaction ends, which in practice requires a superuser to terminate the session. Blocked changes include DDL, temporary table creation, GRANT and CREATE ROLE. The same user can call gp\_expand\_bump\_version() repeatedly. Each call disconnects sessions that hold temporary tables, with a FATAL error on their next catalog change, and makes every other session rebuild its segment connections. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026104948/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-104947 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026104947/">Read Advisory</a>
+  Updated: </span><span>2026/10/21</span>
+
+  Score: <span> 5.3 Medium</span>
+
+<h4>WarehousePG gp_log_backend_memory_contexts() missing authorization</h4>
+<h5> WarehousePG 7.2.1 through 7.6.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+WarehousePG (WHPG) 7.2.1 through 7.6.0 is affected by a missing authorization vulnerability (CWE-862) in the built-in function gp\_log\_backend\_memory\_contexts(). Any authenticated database role can run this function without a GRANT. It also gets around the superuser restriction that PostgreSQL places on the underlying pg\_log\_backend\_memory\_contexts() function. A low-privileged user can force the segment backends of any other session, superuser sessions included, to write their memory context details to the segment server logs, which the attacker cannot read. Those details can include query text from other users' cached plans, and the call can be repeated to generate large amounts of log output. WarehousePG 6.x is not affected. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve2026104947/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-93853 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202693853/">Read Advisory</a>
+  Updated: </span><span>2026/09/29</span>
+
+  Score: <span> 7.2 High</span>
+
+<h4>Barman snapshot backup deletion trusts unverified backup catalog metadata</h4>
+<h5> Barman versions 3.4.0 through 3.20.0 using cloud snapshot backups</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Barman does not verify that a cloud snapshot belongs to the backup being deleted before deleting it. When a snapshot backup is removed, either explicitly with <code>barman delete</code> or <code>barman-cloud-backup-delete</code>, or by retention policy enforcement, Barman reads the snapshot identifiers from the backup's <code>backup.info</code> catalog file and passes them to the cloud provider's delete API using Barman's own cloud credentials. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202693853/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-96538 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202696538/">Read Advisory</a>
+  Updated: </span><span>2026/09/28</span>
+
+  Score: <span> 8.7 High</span>
+
+<h4>WarehousePG pg_file_write/pg_file_rename/pg_file_unlink privilege escalation</h4>
+<h5> All 7.x versions of WarehousePG up to and including 7.5.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+WarehousePG (WHPG) 7.x contains a missing authorization vulnerability in the built-in server-side file functions <code>pg\_file\_write(text,text,bool)</code>, <code>pg\_file\_rename(text,text,text)</code>, <code>pg\_file\_unlink(text)</code>, and <code>pg\_logdir\_ls()</code>. These functions are executable by any authenticated database role, with no GRANT required, because the privilege revocation that gates them in <code>contrib/adminpack</code> was never carried over when the functions were merged into WHPG core. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202696538/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-50738 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650738/">Read Advisory</a>
+  Updated: </span><span>2026/07/28</span>
+
+  Score: <span> 7.7</span>
+
+<h4>pglogical worker signaling use-after-free</h4>
+<h5> All versions of pglogical 2.x prior to 2.4.8</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+A use-after-free condition exists in pglogical's worker signaling code, where a worker structure can be dereferenced after the underlying slot has been freed or recycled during normal worker lifecycle events. The condition is reachable during normal replication operation, including by a low-privileged user able to influence worker start, stop, and restart timing through permitted pglogical operations. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650738/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-50737 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650737/">Read Advisory</a>
+  Updated: </span><span>2026/07/28</span>
+
+  Score: <span> 9.0</span>
+
+<h4>pglogical default expression evaluation may allow code execution as superuser</h4>
+<h5> All versions of pglogical 2.x prior to 2.4.8</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+When applying replicated changes for a row that is missing one or more columns, pglogical evaluates the affected table's default expressions on the subscriber. Because the apply worker runs at a privilege level equivalent to a PostgreSQL superuser in default installations, any function invoked by such a default expression also runs at that privilege. A party acting as the publisher can use this path to cause functions to be executed on the subscriber as superuser, escalating from a role permitted to use pglogical to full superuser. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650737/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-50736 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650736/">Read Advisory</a>
+  Updated: </span><span>2026/07/28</span>
+
+  Score: <span> 9.0</span>
+
+<h4>pglogical queue may allow arbitrary SQL execution as superuser</h4>
+<h5> All versions of pglogical 2.x prior to 2.4.8</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+The pglogical queue mechanism, used to convey out-of-band commands such as replicated DDL from a publisher to a subscriber, executes message payloads on the subscriber at the privilege level of the apply worker, which is equivalent to a PostgreSQL superuser in default installations. A party acting as the publisher can send crafted queue messages that cause arbitrary SQL to be executed on the subscriber as superuser, escalating from a role permitted to use pglogical to full superuser and breaking the isolation between tenants in shared deployments. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650736/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-50735 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650735/">Read Advisory</a>
+  Updated: </span><span>2026/07/28</span>
+
+  Score: <span> 6.1</span>
+
+<h4>pglogical apply worker out-of-bounds read may disclose memory</h4>
+<h5> All versions of pglogical 2.x prior to 2.4.8</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+pglogical's apply worker does not sufficiently validate the length of certain fields in incoming replication protocol messages before copying them, resulting in an out-of-bounds read. A party acting as the publisher for a subscription, for example a non-PostgreSQL endpoint that speaks the pglogical replication protocol, can return crafted messages that cause the subscriber's apply worker to read beyond the bounds of an allocated buffer, disclosing adjacent process memory or crashing the worker. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202650735/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-6971 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve20266971/">Read Advisory</a>
+  Updated: </span><span>2026/01/16</span>
+
+  Score: <span> 9.9</span>
+
+<h4>Hybrid Manager - Remote Code Execution</h4>
+<h5> Hybrid Manager (HM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An attacker with standard user access to Hybrid Manager can create a malicious MCP server definition that allows arbitrary code execution when the MCP server is used. If exploited, this vulnerability grants the attacker access to the Langflow pod as the Langflow user, which allows read and write access to all flows, variables, messages, and API keys for every user on the appliance. This includes credentials that are encrypted at rest because the encryption key is also available to the attacker. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve20266971/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2026-0949 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve20260949/">Read Advisory</a>
+  Updated: </span><span>2026/01/16</span>
+
+  Score: <span> 6.5</span>
+
+<h4>PEM 9.8 Cross-site scripting</h4>
+<h5> Postgres Enterprise Manager (PEM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+PEM versions prior to 9.8.1 are affected by a stored Cross-Site Scripting (XSS) vulnerability that allows users with access to the “Manage Charts” menu to inject arbitrary Javascript when creating a new chart, which is then executed by any user accessing the chart. By default only the superuser and users with pem\_admin or pem\_super\_admin privileges are able to access the “Manage Charts” menu. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve20260949/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+<h2>Released 2025</h2>
+
+<table class="table-bordered">
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-14038 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202514038/">Read Advisory</a>
+  Updated: </span><span>2025/12/15</span>
+
+  Score: <span> 7.0</span>
+
+<h4>Unauthenticated gRPC API Access</h4>
+<h5> Hybrid Manager (HM)</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+EDB Hybrid Manager contains a flaw that allows an unauthenticated attacker to directly access certain gRPC endpoints. This allows unauthorized access to critical internal gRPC APIs within a Hybrid Manager service due to missing authentication and authorization checks in the Istio Gateway configuration. This vulnerability has been remediated in EDB Hybrid Manager 1.3.3 and HM 2025.12, and customers should consider upgrading to the patched version as soon as possible. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202514038/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-2506 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve20252506/">Read Advisory</a>
+  Published: </span><span>2025/05/22</span>
+
+  Score: <span> 5.3</span>
+
+<h4>pglogical 3.x, BDR/PGD 4.x and BDR/PGD 5.x allow unauthorized reads</h4>
+<h5> All versions of pglogical 3.x, BDR/PGD 4.x and BDR/PGD 5.x prior to 3.7.26-ELS, 4.3.8-ELS and 5.8.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+When pglogical attempts to replicate data, it does not verify it is using a replication connection, which means a user with CONNECT access to a database configured for replication can execute the pglogical command to obtain read access to replicated tables. When pglogical runs it should verify it is running on a replication connection but does not perform this check. This vulnerability was introduced in the pglogical 3.x codebase, which is proprietary to EDB. The same code base has been integrated into BDR/PGD 4 and 5. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve20252506/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+<h2>Released 2024</h2>
+
+<table class="table-bordered">
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2024-4545 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve20244545/">Read Advisory</a>
+  Updated: </span><span>2024/05/09</span>
+
+  Score: <span> 7.7</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) authenticated file read permissions bypass using edbldr</h4>
+<h5> All versions of EDB Postgres Advanced Server (EPAS) edbldr from 15.0 and prior to 15.7.0 and from 16.0 and prior to 16.3.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+All versions of EnterpriseDB Postgres Advanced Server (EPAS) from 15.0 and prior to 15.7.0 and from 16.0 and prior to 16.3.0 may allow users using <code>edbldr</code> to bypass role permissions from <code>pg\_read\_server\_files</code>. This could allow low privilege users to read files to which they would not otherwise have access. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve20244545/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+<h2>Released 2023</h2>
+
+<table class="table-bordered">
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41120 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341120/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 6.5</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) DBMS_PROFILER data may be removed without permission</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. It permits an authenticated user to use DBMS\_PROFILER to remove all accumulated profiling data on a system-wide basis, regardless of that user's permissions. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341120/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41119 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341119/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 8.8</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) dbms_aq helper function may run arbitrary SQL as a superuser</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. It contains the function \_dbms\_aq\_move\_to\_exception\_queue that may be used to elevate a user's privileges to superuser. This function accepts the OID of a table, and then accesses that table as the superuser by using SELECT and DML commands. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341119/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41118 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341118/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 8.8</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) UTL_FILE permission bypass</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. It may allow an authenticated user to bypass authorization requirements and access underlying implementation functions. When a superuser has configured file locations using CREATE DIRECTORY, these functions allow users to take a wide range of actions, including read, write, copy, rename, and delete. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341118/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41117 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341117/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 8.8</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) SECURITY DEFINER functions and procedures may be hijacked via search_path</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. It contain packages, standalone packages, and functions that run SECURITY DEFINER but are inadequately secured against search\_path attacks. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341117/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41116 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341116/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 4.3</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) permission bypass for materialized views</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. It allows an authenticated user to refresh any materialized view, regardless of that user's permissions. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341116/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41115 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341115/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 6.5</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) permission bypass for large objects</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. When using UTL\_ENCODE, an authenticated user can read any large object, regardless of that user's permissions. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341115/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41114 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341114/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 6.5</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) authenticated users may fetch any URL</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. It contains the functions get\_url\_as\_text and get\_url\_as\_bytea that are publicly executable, thus permitting an authenticated user to read any file from the local filesystem or remote system regardless of that user's permissions. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341114/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-41113 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341113/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 4.3</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) permissions bypass via accesshistory()</h4>
+<h5> All versions of EnterpriseDB Postgres Advanced Server (EPAS) prior to 11.21.32, 12.16.20, 13.12.17, 14.9.0, 15.4.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+An issue was discovered in EnterpriseDB Postgres Advanced Server (EPAS) before 11.21.32, 12.x before 12.16.20, 13.x before 13.12.16, 14.x before 14.9.0, and 15.x before 15.4.0. It allows an authenticated user to to obtain information about whether certain files exist on disk, what errors if any occur when attempting to read them, and some limited information about their contents (regardless of permissions). This can occur when a superuser has configured one or more directories for filesystem access via CREATE DIRECTORY and adopted certain non-default settings for log\_line\_prefix and log\_connections. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202341113/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2023-31043 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202331043/">Read Advisory</a>
+  Updated: </span><span>2025/01/31</span>
+
+  Score: <span> 7.5</span>
+
+<h4>EDB Postgres Advanced Server (EPAS) logs unredacted passwords prior to 14.6.0</h4>
+<h5> EDB Postgres Advanced Server 10.23.32 to 14.5.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+EDB Postgres Advanced Server (EPAS) versions before 14.6.0 log unredacted passwords in situations where optional parameters are used with CREATE/ALTER USER/GROUP/ROLE, and redacting was configured with edb\_filter\_log.redact\_password\_commands. The fixed versions are 10.23.33, 11.18.29, 12.13.17, 13.9.13, and 14.6.0. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202331043/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+<h2>Released 2021</h2>
+
+<table class="table-bordered">
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2019-10128 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve201910128/">Read Advisory</a>
+  Updated: </span><span>2022/01/01</span>
+
+  Score: <span> 7.8</span>
+
+<h4>EDB supplied PostgreSQL inherits ACL for installation directory</h4>
+<h5> PostgreSQL</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+A vulnerability was found in PostgreSQL versions 11.x prior to 11.3. The Windows installer for EnterpriseDB-supplied PostgreSQL does not lock down the ACL of the binary installation directory or the ACL of the data directory; it keeps the inherited ACL. In the default configuration, this allows a local attacker to read arbitrary data directory files, essentially bypassing database-imposed read access limitations. In plausible non-default configurations, an attacker having both an unprivileged Windows account and an unprivileged PostgreSQL account can cause the PostgreSQL service account to execute arbitrary code. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve201910128/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+<h2>Released 2007</h2>
+
+<table class="table-bordered">
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2007-4639 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve20074639/">Read Advisory</a>
+  Updated: </span><span>2018/10/15</span>
+
+  Score: <span> Undefined</span>
+
+<h4>EDB Advanced Server 8.2 improperly handles debugging function calls</h4>
+<h5> EDB Advanced Server 8.2</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+EDB Postgres Advanced Server 8.2 (EPAS) does not properly handle certain debugging function calls that occur before a call to <code>pldbg\_create\_listener</code>, which allows remote authenticated users to cause a denial of service (daemon crash) and possibly execute arbitrary code via a SELECT statement that invokes a <code>pldbg\_</code> function, as demonstrated by (1) <code>pldbg\_get\_stack</code> and (2) <code>pldbg\_abort\_target</code>, which triggers use of an uninitialized pointer. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve20074639/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

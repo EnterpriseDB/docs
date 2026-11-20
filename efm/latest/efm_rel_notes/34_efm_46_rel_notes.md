@@ -1,0 +1,25 @@
+---
+title: Failover Manager 4.6 release notes
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/efm_rel_notes/34_efm_46_rel_notes/
+lastModified: 2025-03-28T09:18:45-04:00
+---
+
+# Failover Manager 4.6 release notes
+
+Released: 14 Feb 2023
+
+Enhancements, bug fixes, and other changes in EFM 4.6 include:
+
+| Type         | Description                                                                                                                                                                                                                                                                                                                                             | Addresses    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| Security Fix | Failover Manager has been upgraded to use PostgreSQL JDBC Driver version 42.4.3 to address security vulnerability CVE-2018-10936. Note: Failover Manager is not impacted by the vulnerability, but no longer contains the impacted version of the library.                                                                                              |              |
+| Enhancement  | Failover Manager now supports creating the agent pidfiles in a custom location.                                                                                                                                                                                                                                                                         | 88686, 89016 |
+| Bug Fix      | Failover Manager will not continue to send "primary node missing" notifications after a primary has joined the cluster in rare cases.                                                                                                                                                                                                                   | 87106        |
+| Bug Fix      | In cases where a node is overloaded such that the Failover Manager agent is prevented from running, without failover or the overloaded node being stopped, it was possible for the cluster's internal state to become inconsistent, preventing future failovers. This case will now be handled so that the internal state is fixed after such an event. | 87975        |
+| Bug Fix      | Failover Manager primary agents will no longer fail to release a VIP in rare cases of a simultaneous database failure and node isolation.                                                                                                                                                                                                               | 79280        |
+| Bug Fix      | A misleading notification subject was fixed for the cases of a standby node failure in a cluster.                                                                                                                                                                                                                                                       |              |
+| Bug Fix      | Failover Manager now supports more than nine synchronous standbys in a cluster.                                                                                                                                                                                                                                                                         |              |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

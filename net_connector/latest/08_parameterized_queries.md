@@ -1,0 +1,111 @@
+---
+title: Parameterized queries
+product: .NET Connector
+version: 10.0.1.1
+url: https://www.enterprisedb.com/docs/net_connector/latest/08_parameterized_queries/
+lastModified: 2026-02-16T12:16:04+01:00
+---
+
+# Parameterized queries
+
+<div id="parameterized_queries" class="registered_link"></div>
+
+A _parameterized query_ is a query with one or more parameter markers embedded in the SQL statement. Before executing a parameterized query, you must supply a value for each marker found in the text of the SQL statement.
+
+Parameterized queries are useful when you need to supply values dynamically (from user input or from other data in memory, for example). Parameterized queries are also great to prevent SQL injection and for performance, as a query plan can be reused.
+
+As shown in the following example, you must declare the data type of each parameter specified in the parameterized query by creating an `EDBParameter` object and adding that object to the command's parameter collection. Then, you must specify a value for each parameter by calling the parameter's `Value` property.
+
+The example shows using a parameterized query with an `UPDATE` statement that increases an employee salary:
+
+## .NET
+
+```csharp
+using EnterpriseDB.EDBClient;
+
+namespace ParameterizedQueries;
+
+internal static class Program
+{
+    static async Task Main(string[] args)
+    {
+        try
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            var updateQuery = "UPDATE emp SET sal = sal+500 where empno = :ID";
+
+            await using var dataSource = EDBDataSource.Create(connectionString);
+            await using var connection = await dataSource.OpenConnectionAsync();
+            await using var updateCommand = new EDBCommand(updateQuery, connection);
+            
+            var idParameter = updateCommand.Parameters.Add(new EDBParameter(":ID", EDBTypes.EDBDbType.Integer));
+            idParameter.Value = 7788;
+            
+            var numRowsUpdated = await updateCommand.ExecuteNonQueryAsync();
+            
+            Console.WriteLine($"{numRowsUpdated} record(s) updated");
+            await connection.CloseAsync();
+
+        }
+        catch (Exception exp)
+        {
+            Console.WriteLine($"An error occured: {exp}");
+        }
+    }
+}
+```
+
+## .NET Framework
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+
+namespace ParameterizedQueries
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            try
+            {
+                // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+                var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+                var updateQuery = "UPDATE emp SET sal = sal+500 where empno = :ID";
+
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                using (var connection = await dataSource.OpenConnectionAsync())
+                {
+                    using (var updateCommand = new EDBCommand(updateQuery, connection))
+                    {
+
+                        var idParameter = updateCommand.Parameters.Add(new EDBParameter(":ID", EDBTypes.EDBDbType.Integer));
+                        idParameter.Value = 7788;
+
+                        var numRowsUpdated = await updateCommand.ExecuteNonQueryAsync();
+
+                        Console.WriteLine($"{numRowsUpdated} record(s) updated");
+                    }
+                    await connection.CloseAsync();
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+        }
+    }
+}
+```
+
+This program should show the following output in the Console:
+
+```text
+1 record(s) updated
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

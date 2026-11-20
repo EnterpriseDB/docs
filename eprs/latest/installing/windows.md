@@ -1,0 +1,94 @@
+---
+title: Installing Replication Server on Windows
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/installing/windows/
+lastModified: 2024-06-26T11:18:53-04:00
+---
+
+# Installing Replication Server on Windows
+
+<div id="installing_with_stackbuilder" class="registered_link"></div>
+
+EDB provides a graphical interactive installer for Windows. You can access it two ways:
+
+- Download the graphical installer from the [Downloads page](https://www.enterprisedb.com/software-downloads-postgres#replication-server) and invoke the installer directly. See [Installing directly](https://www.enterprisedb.com/docs/eprs/latest/installing/windows/#installing-directly).
+
+- Use StackBuilder Plus (with EDB Postgres Advanced Server) to download the EDB installer package and invoke the graphical installer. See [Using StackBuilder Plus](https://www.enterprisedb.com/docs/eprs/latest/installing/windows/#using-stackbuilder-plus).
+
+## Prerequisites
+
+- You must have Java Runtime Environment (JRE) version 1.8 or later installed on the hosts where you intend to install any Replication Server component (Replication Console, publication server, or subscription server). You can use any Java product, such as Oracle Java or OpenJDK. Follow the directions for your host operating system to install the Java runtime environment.
+
+- Be sure the system environment variable, `JAVA_HOME`, is set to the JRE installation directory of the JRE version you want to use with Replication Server. Make sure that the 64-bit version of JRE is installed and `JAVA_HOME` is set before installing Replication Server.
+
+> **Note**
+>
+> Replication Server doesn't support JRE installations with 32-bit.
+
+## Installing directly
+
+Download the graphical installer from the [downloads portal](https://www.enterprisedb.com/software-downloads-postgres#replication-server).
+
+Then, assume sufficient privileges (superuser or administrator), and start the installation wizard by double-clicking the installer icon.
+If prompted, provide a password.
+
+In some versions of Windows, to invoke the installer with administrator privileges, you need to right-click the installer icon and select **Run as Administrator** from the context menu.
+
+Proceed to [Using the graphical installer](#using-the-graphical-installer).
+
+## Using StackBuilder Plus
+
+> **Note**
+>
+> This method is available to EDB Postgres Advanced Server users only. PostgreSQL users must resort to the [direct installation](#installing-directly) method.
+
+You can invoke the graphical installer with StackBuilder Plus. See [Using StackBuilder Plus](https://www.enterprisedb.com/docs/epas/latest/installing/windows/installing_advanced_server_with_the_interactive_installer/using_stackbuilder_plus/).
+
+1. In StackBuilder Plus, follow the prompts until you get to the module selection page.
+
+2. Expand the **EnterpriseDB Tools** node and select **Replication Server**.
+
+3. Proceed to [Using the graphical installer](#using-the-graphical-installer).
+
+## Using the graphical installer
+
+1. Select the installation language and select **OK**.
+
+2. On the Setup Replication Server page, select **Next**.
+
+3. Read the license agreement. If you accept the agreement, select the **I accept the agreement** option and select **Next**.
+
+4. Browse to a directory where you want to install the Replication Server components, or leave the default location. Select **Next**.
+
+5. If you don't want a particular Replication Server component installed, clear the box next to the component name. Select **Next**.
+
+6. Enter information for the Replication Server administrator.
+
+   > **Note**
+   >
+   > From this point on, we suggest you record the values you enter as you need them during the publication and subscription server registration process.
+
+   Enter values for the following fields:
+
+   - **Admin User** — The Replication Server administrator user name needed to authenticate some Replication Server actions, such as registering a publication server or subscription server running on this host. You can enter any alphanumeric string for the admin user name. The default admin user name is admin.
+
+   - **Admin Password** — Password of your choice for the Replication Server administrator.
+
+   The admin user and the admin password (in encrypted form) are saved to the `XDB_HOME\etc\edb-repl.conf` configuration file. Select **Next**.
+
+7. If a publication server is being installed, enter an available port on which the publication server can run. The default port number is `9051`. Select **Next**.
+
+8. If a subscription server is being installed, enter an available port on which the subscription server can run. The default port number is `9052`. Select **Next**.
+
+9. If you're using EDB Postgres Advanced Server installed in Oracle-compatible configuration mode, enter `postgres` or `enterprisedb` for the operating system account under which the publication server or subscription server runs.
+
+10. On the Ready to Install page, select **Next**.
+
+    An information box shows the installation progress of the selected components. This might take a few minutes.
+
+11. When the installation is complete, select **Finish**.
+
+Successful installation of Replication Server results in the creation of directory structures and files in your host environment as described in [Installation details](https://www.enterprisedb.com/docs/eprs/latest/installing/installation_details/). Verify that the path to your Java runtime program set in `XDB_HOME\etc\edb-repl.conf` is correct.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

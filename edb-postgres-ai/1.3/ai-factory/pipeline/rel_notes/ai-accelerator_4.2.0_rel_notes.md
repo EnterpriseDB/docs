@@ -1,0 +1,42 @@
+---
+title: AI Accelerator - Pipelines 4.2.0 release notes
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/rel_notes/ai-accelerator_4.2.0_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# AI Accelerator - Pipelines 4.2.0 release notes
+
+Released: 16 June 2025
+
+This is a minor release that includes bug fixes and small enhancements.
+
+## Highlights
+
+- Add support for the `retrieve_text()` function when using volumes as data sources for knowledge base pipelines.
+- Bug fix for local file processing in volume knowledge bases.
+- Bug fix for easy model syncing in hybrid manager deployments.
+- Add support for preparer pipeline volume destination in foreign schemas.
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Add support for the <code>retrieve_text()</code> function when using volumes as data sources for knowledge base pipelines.</summary><p>The <code>retrieve_text()</code> function can now be used with knowledge bases that use volumes as data source. Previously, only <code>retrieve_key()</code> was supported and users had to manually load the content of the objects in they application.</p>
+</details></td></tr>
+<tr><td><details><summary>Fewer mandatory values when configuring preparer pipelines.</summary><p>Added default values for some preparer pipeline options to reduce the number of mandatory settings.</p>
+</details></td></tr>
+<tr><td><details><summary>Add support for preparer pipeline volume destination in foreign schemas.</summary><p>Volumes used as destinations for preparer pipelines can now be located in arbitrary schemas within the postgres database. This completes &quot;schema support&quot; for AIDB.</p>
+</details></td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Bug fix for local file processing in volume knowledge bases.</summary><p>An issue existed where a number of local files in a volume knowledge base were not processed due to an issue with the ordering of file results. This has been fixed.</p>
+</details></td></tr>
+<tr><td><details><summary>Bug fix for easy model syncing in hybrid manager deployments.</summary><p>The <code>sync_hcp_models()</code> function used to automatically create AIDB models in hybrid manager deployments resulted in non-working model configurations. This is now fixed.</p>
+</details></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

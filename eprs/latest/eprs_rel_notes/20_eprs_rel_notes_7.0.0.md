@@ -1,0 +1,46 @@
+---
+title: Replication Server 7.0.0 release notes
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/eprs_rel_notes/20_eprs_rel_notes_7.0.0/
+lastModified: 2023-09-28T10:23:28+01:00
+---
+
+# Replication Server 7.0.0 release notes
+
+Released: 01 Dec 2021
+
+> **Note**
+>
+> The 7.0 version is backward compatible with 6.2.x and provides a non-breaking upgrade path for the existing cluster deployments. However, it is strongly recommended to verify it in a staging or nonproduction environment before applying the upgrade in a production environment.
+
+New features, enhancements, bug fixes, and other changes in Replication Server 7.0 include the following:
+
+| Type        | Description                                                                                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| New feature | The Publication and Subscription Server configuration options can be modified and applied without requiring a server restart. The CLI now exposes a new command `reloadconf` to reload the updated configuration values at runtime.  |
+| New feature | Replication Server is enhanced to support replication from EDB Postgres Advanced Server (non-redwood mode) and PostgreSQL to Oracle.                                                                                                 |
+| Enhancement | Replication Server is certified to support PostgreSQL v14 and EDB Postgres Advanced Server v14.                                                                                                                                      |
+| Enhancement | Table-level parallel data loading significantly improves initial Snapshot data replication time for large size Publication tables. The benchmarks reveal 3X to 30X performance improvement for a given workload and related options. |
+| Enhancement | Row-level Filtering capability is enhanced to allow inclusion/exclusion of data based on a sub-query \[1284035].                                                                                                                     |
+| Enhancement | The CLI command `addtablesintopub` is enhanced to expose an option to enable row-level filter for the target Subscription (SMR)/Master (MMR) nodes \[1321993].                                                                       |
+| Enhancement | The CLI commands `createpub` and `addtablesintopub` now support a new option to allow the users to add all the tables to a Publication without requiring individual table identification \[1273701].                                 |
+| Enhancement | The CLI commands `createpub` and `addtablesintopub` are enhanced to allow the user specify a single custom conflict resolution option applicable for multiple tables \[731271].                                                      |
+| Enhancement | Table(s) can be added into an existing Publication by skipping schema replication \[926058].                                                                                                                                         |
+| Enhancement | The Replication GUI displays additional replication stats on the Real-time Monitor tab to monitor the status of the cluster \[795247].                                                                                               |
+| Enhancement | Replication of the HASH partition table is now supported from Oracle to EDB Postgres Advanced Server.                                                                                                                                |
+| Enhancement | Incremental replication of CLOB, BLOB, and XMLType is now supported from Oracle to EDB Postgres Advanced Server.                                                                                                                     |
+| Enhancement | Support added for replication of JSON data type from PostgreSQL and EDB Postgres Advanced Server to Oracle.                                                                                                                          |
+| Bug fix     | Fixed an issue where replication from EDB Postgres Advanced Server to SQL Server fails for UUID data type \[73835].                                                                                                                  |
+| Bug fix     | The CLI reports an error on Publication removal if one or more Subscriptions are associated with the Publication \[72194].                                                                                                           |
+| Big fix     | Fixed an issue where replication history cleanup job fails when Oracle is the active Controller database \[72626].                                                                                                                   |
+| Big fix     | Fixed an issue where the filter clause fails when applied for a table list with more than 10 tables.                                                                                                                                 |
+| Bug fix     | Fixed an issue where the add filter command picked the incorrect table index for the filter clause in the WAL mode replication.                                                                                                      |
+| Bug fix     | In a hybrid replication cluster, the cleanup shadow table routine is subject to remove unprocessed changes.                                                                                                                          |
+| Bug fix     | Fixed an issue where synchronize failed for an SMR cluster during replication from PostgreSQL to Oracle 12.1 when using the JSON datatype.                                                                                           |
+| Bug fix     | Fixed an issue where the initial Snapshot fails in a WAL-based MMR cluster while adding the third database.                                                                                                                          |
+| Bug fix     | Fixed an issue where running `yum install ppas-xdb` skips ppas-xdb-libs dependency.                                                                                                                                                  |
+| Bug fix     | Fixed an issue where the Synchronize operation failed to replicate NULL for a BLOB type for EPAS to Oracle.                                                                                                                          |
+| Bug fix     | Fixed an issue where the Synchronize operation fails for one of the target Subscriptions for EPAS to Oracle replication cluster.                                                                                                     |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

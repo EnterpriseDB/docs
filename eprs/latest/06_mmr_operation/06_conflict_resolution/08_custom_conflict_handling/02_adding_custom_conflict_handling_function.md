@@ -1,0 +1,44 @@
+---
+title: Adding a custom conflict-handling function
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/08_custom_conflict_handling/02_adding_custom_conflict_handling_function/
+lastModified: 2022-06-14T20:42:00Z
+---
+
+# Adding a custom conflict-handling function
+
+<div id="adding_custom_conflict_handling_function" class="registered_link"></div>
+
+To add a custom conflict handling function to the primary definition node:
+
+1. Add the publication under the primary definition node. See [Adding a publication](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/02_creating_publication_mmr/#add_pub_mmr).
+
+2. Add the function to the primary definition node. The following example shows adding the function using PSQL.
+
+   ```sql
+   edb=# \i /home/user/custom_conflict_dept.sql
+   CREATE FUNCTION
+   ```
+
+3. Open the **Conflict Resolution Options** tab. Select **Publication > Update Publication > Conflict Resolution Options**.
+
+4. For the table on which you want to use custom conflict handling, select **Custom** from the corresponding list. In the **Custom Handler** text box, enter the schema and function name used in the `CREATE FUNCTION` statement.
+
+5. Select **Update**, and then select **OK** in response to confirmation message.
+
+> **Note**
+>
+> If the multi-master replication system uses custom conflict handling and you later switch the role of the primary definition node to another primary node, you must add the functions to the new primary definition node.
+
+> **Note**
+>
+> If you want to delete the multi-master replication system, before removing the publication, remove all custom conflict-handling functions from the primary definition node.
+
+The following example shows deleting a custom conflict function.
+
+```sql
+DROP FUNCTION edb.custom_conflict_dept(_edb_replicator_pub.rrst_edb_dept,_edb_replicator_pub.rrst_edb_dept,varchar);
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

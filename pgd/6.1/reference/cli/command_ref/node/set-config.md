@@ -1,0 +1,56 @@
+---
+title: pgd node set-config
+product: EDB Postgres Distributed (PGD)
+version: 6.1.0
+url: https://www.enterprisedb.com/docs/pgd/6.1/reference/cli/command_ref/node/set-config/
+lastModified: 2025-12-05T11:11:13Z
+---
+
+# pgd node set-config
+
+## Synopsis
+
+The `pgd node set-config` command is used to set node-level Postgres setting (GUC) in the EDB Postgres Distributed cluster. The command requires node `DSN` for `superuser` i.e. Postgres process owner user.
+
+The command reloads the configuration on the node after setting the config and displays a warning of the GUC requires a server restart.
+
+## Syntax
+
+```plaintext
+pgd node <NODE_NAME> set-config [OPTIONS] <CONFIG> <VALUE>
+```
+
+Where `<NODE_NAME>` is the name of the node for which you want to get options.
+
+And `<CONFIG>` is the name of a specific node config you want to get and `<VALUE>` is the value you want it set to.
+
+## Options
+
+No command specific options. See [Global Options](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/#global-options).
+
+## Examples
+
+### Set a specific node config
+
+```shell
+pgd node pgd-a1 set-config bdr.batch_inserts 20 --dsn "host=pgd-a1 port=5432 user=postgres "
+```
+
+```output title="Output"
+Command executed successfully
+```
+
+### Set a specific node config with a space in the value
+
+```shell
+pgd node pgd-a2 set-config unix_socket_directories "/var/run/edb-pge, /tmp, /var/lib/postgresql" --dsn "host=pgd-a2 port=5432 user=postgres "
+```
+
+```output title="Output"
+WARN: Config change requires a Postgres restart to take effect.
+Command executed successfully
+```
+
+Please note the `WARN` message indicates that the configuration change will not take effect until the Postgres server is restarted.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

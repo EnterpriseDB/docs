@@ -1,0 +1,214 @@
+---
+title: Upgrading WarehousePG Enterprise Manager
+description: Learn how to upgrade WEM and its supporting components to a new version.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/upgrading/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Upgrading WarehousePG Enterprise Manager
+
+Upgrade to the latest WEM version from any earlier 1.x release. The steps depend on the version you're upgrading from.
+
+- **Upgrading from 1.4:** Upgrade the WEM package only. See [Upgrading from 1.4](#upgrading-from-14).
+- **Upgrading from 1.3 or earlier:** WEM 1.4 replaced Prometheus and Loki with ClickHouse as the metrics and log pipeline, and requires `acp-host-agent` 1.1.0 or later on every cluster node. Install ClickHouse, upgrade WEM, and upgrade the host agent, ideally reaching a ClickHouse-based 1.4 environment before you move to 1.5. See [Upgrading from 1.3 or earlier](#upgrading-from-13-or-earlier).
+
+See the [release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/release_notes/) for the full list of changes in each version.
+
+## Upgrading from 1.4
+
+WEM 1.5 doesn't include a new host agent, so the host agents stay at 1.1.0 and you don't need to upgrade them. You also don't need to install or change ClickHouse. Run the following on the host where WEM is installed:
+
+1. Configure the EDB repository:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   ```
+
+2. Upgrade the WEM package:
+
+   ```bash
+   sudo dnf upgrade whpg-enterprise-manager
+   ```
+
+3. Verify the installed version:
+
+   ```bash
+   rpm -q whpg-enterprise-manager
+   ```
+
+Version 1.5 renamed `LOG_SCAN_INTERVAL` to `QUERY_SCAN_INTERVAL`, removed `LOG_SCAN_ENABLED` and `WEM_AGENT_CALLBACK_BASE_URL`, and moved the TLS certificate example paths to `/etc/edb/wem/tls/`. If you overrode any of these in `wem.conf`, update them. Version 1.5 also moves WEM to the EDB installation layout.
+
+| Item               | Previous location                 | New location            |
+| ------------------ | --------------------------------- | ----------------------- |
+| Working directory  | `/usr/local/greenplum-db/wem`     | `/usr/edb/wem`          |
+| Binary             | `/usr/local/greenplum-db/wem/wem` | `/usr/edb/wem/bin/wem`  |
+| Configuration file | `/etc/wem/wem.conf`               | `/etc/edb/wem/wem.conf` |
+| Logs               | `/var/log/wem`                    | `/var/log/edb/wem`      |
+
+The upgrade moves your existing configuration to `/etc/edb/wem/wem.conf`, keeps the previous file as `/etc/wem/wem.conf.rpmsave`, and creates `/etc/edb/wem/wem.conf.rpmnew` with the 1.5 defaults. Compare `wem.conf.rpmnew` with your `wem.conf` to find parameters you need to change.
+
+> **Note**
+>
+> For this release only, WEM keeps compatibility links from the previous locations and reads `/etc/wem/wem.conf` with a warning if `/etc/edb/wem/wem.conf` doesn't exist. On hosts where WEM runs alongside WarehousePG, WEM creates no link in `/usr/local/greenplum-db` and prints a warning instead. WEM will remove the compatibility measures in 1.6.0, so update any scripts, monitoring, or tooling that use the previous paths. See the [1.5 release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/release_notes/1.5_rel_notes/) for the full list of changes.
+
+## Upgrading from 1.3 or earlier
+
+Upgrading from 1.3 or earlier also means installing new components and upgrading the host agent. WEM 1.4 introduced ClickHouse as the metrics and log pipeline, replacing Prometheus and Loki, and requires `acp-host-agent` 1.1.0 or later on every cluster node. See the [1.4 release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/release_notes/1.4_rel_notes/) for the full list of changes. You can upgrade directly to 1.5 from an environment that doesn't use ClickHouse, but we recommend moving to a ClickHouse-based 1.4 environment before you upgrade to 1.5.
+
+### Before you upgrade
+
+- Export or archive any historical metrics and logs you need to keep from Prometheus and Loki. Switching to ClickHouse doesn't carry over existing telemetry, so they become unavailable in WEM once you complete the upgrade. See Prometheus's [TSDB admin API](https://prometheus.io/docs/prometheus/latest/querying/api/#tsdb-admin-apis) for taking a snapshot, and Loki's [storage documentation](https://grafana.com/docs/loki/latest/operations/storage/) for backing up the underlying chunk and index store, Loki itself has no separate export feature.
+
+- If you're upgrading from 1.2, shut down any separately installed Alertmanager configured through the now-removed `ALERTMANAGER_URL` parameter. Since 1.3, WEM bundles its own instance of Alertmanager, and leaving an existing one running on the same host can block it from starting.
+
+- If you're upgrading from 1.2, note down any custom alert rules from WEM's previous Prometheus rule files, they're lost once those files are removed, and recreate them through the **Rules** tab after upgrading. See the [1.3 release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/release_notes/1.3_rel_notes/) for the full list of changes 1.3 introduced.
+
+- Note down any **User** alert rules from the **Rules** tab before upgrading. Upgrading removes Prometheus, where these rules are stored, so they're deleted rather than migrated. Recreate them afterward. **System** rules and alert history aren't affected. See [Creating and managing alert rules](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/monitoring/alerts/#creating-and-managing-alert-rules).
+
+### Installing ClickHouse and the gateway collector
+
+Install ClickHouse and, if your deployment needs one, the gateway collector, before you upgrade WEM. See [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/) and [Installing the gateway collector](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/collector/) for the placement options and when each component is required.
+
+### Upgrading WEM
+
+Upgrade WEM from the host where it's installed, either inside your WHPG cluster or on a dedicated host.
+
+To move to 1.4 before 1.5, list the available versions after you configure the repository, then name the 1.4 version in the upgrade command. Copy the version from the output of the first command:
+
+```bash
+dnf list --showduplicates whpg-enterprise-manager
+sudo dnf upgrade whpg-enterprise-manager-<1.4-version>
+```
+
+The paths in step 3 apply to 1.4 and earlier. If you upgrade to 1.5 or later, WEM stores its configuration in `/etc/edb/wem`, so use `/etc/edb/wem/wem.conf.rpmnew` and `/etc/edb/wem/wem.conf` instead.
+
+1. Configure the EDB repository:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   ```
+
+2. Upgrade the WEM package:
+
+   ```bash
+   sudo dnf upgrade whpg-enterprise-manager
+   ```
+
+3. The upgrade preserves your existing `wem.conf` and creates a new `wem.conf.rpmnew` file matching the 1.4 schema. Make that new file your configuration, keeping the old one for reference:
+
+   ```bash
+   cp /etc/wem/wem.conf /etc/wem/wem.conf.old
+   cp /etc/wem/wem.conf.rpmnew /etc/wem/wem.conf
+   ```
+
+   Open the new `/etc/wem/wem.conf` and replace, as a minimum, the following variables with your values from `wem.conf.old`:
+
+   - `WHPG_HOST`, `WHPG_PORT`, `WHPG_DATABASE`, `WHPG_USER`, `WHPG_PASSWORD`
+   - `WEM_HOST`, `WEM_PORT`, `WEM_DATABASE`, `WEM_USER`, `WEM_PASSWORD`
+   - `WEM_COOKIE_SECRET`
+   - `WEM_INSECURE_COOKIES`, if you don't serve WEM over HTTPS
+   - `CLICKHOUSE_URL`
+   - `OTEL_GATEWAY_ENDPOINT`, if your deployment needs a [dedicated gateway collector](#installing-clickhouse-and-the-gateway-collector).
+
+   See [Configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/#configuring-wem) for the complete list of configuration parameters and what each one does.
+
+   If the app-state database was repointed or restored, WEM also requires `WEM_ADMIN_PASSWORD` or `WEM_ADMIN_PASSWORD_FILE` to complete setup non-interactively. See [Installing WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/#setting-the-administrator-password).
+
+4. Restart the WEM service to apply the update:
+
+   ```bash
+   sudo systemctl restart wem
+   ```
+
+5. Verify the installed version:
+
+   ```bash
+   rpm -q whpg-enterprise-manager
+   ```
+
+6. Clear your browser cache or open WEM in a new browser session. After an upgrade, stale session data can cause a CSRF token error on first login.
+
+### Upgrading the host agent
+
+From WEM 1.4, the host agent (`acp-host-agent`) runs on every cluster node in your WarehousePG (WHPG) cluster, and WEM 1.4 requires `acp-host-agent` 1.1.0 or later, an older host agent can't connect. It depends on `edb-otelcol`, the OTel Collector, which replaces the Alloy-based WHPG Collector. Segment hosts are always a fresh install, since they never ran the host agent before 1.4 either way. The coordinator (and standby, if you have one) is either an upgrade, if you're coming from 1.3, or a fresh install, if you're coming from 1.2.
+
+1. On the coordinator, download the host agent package and its `edb-otelcol` dependency from the EDB repository:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo dnf download edb-acp-host-agent edb-otelcol
+   ```
+
+2. From the coordinator, transfer both packages to every host in the cluster:
+
+   #### WHPG 7
+
+   ```bash
+   gpsync -f all_hosts edb-acp-host-agent-*.rpm edb-otelcol-*.rpm =:/tmp
+   ```
+
+   #### WHPG 6
+
+   ```bash
+   gpscp -f all_hosts edb-acp-host-agent-*.rpm edb-otelcol-*.rpm =:/tmp
+   ```
+
+3. From the coordinator, install both packages on every host. Installing the local `.rpm` files upgrades the existing installation wherever the host agent is already present (the coordinator and standby coordinator, coming from 1.3) and installs fresh everywhere else:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo dnf install -y /tmp/edb-acp-host-agent-*.rpm /tmp/edb-otelcol-*.rpm"
+   ```
+
+4. Set `WEM_CONNECT_ADDRESS` in `/etc/edb/acp-host-agent/acp-host-agent.conf` to WEM's hostname and listen port plus 1 (default 8081) on every freshly installed host, segment hosts always, and the coordinator and standby coordinator if you're coming from 1.2. The hostname must resolve from every node. You can use an IP address instead:
+
+   ```bash
+   WEM_HOST=<wem-host>
+   gpssh -f all_hosts -u gpadmin -e \
+     "sudo sed -i 's/^WEM_CONNECT_ADDRESS=.*/WEM_CONNECT_ADDRESS=${WEM_HOST}:8081/' \
+       /etc/edb/acp-host-agent/acp-host-agent.conf"
+   ```
+
+5. Restart the service on every host so it reconnects using the self-registration and mTLS flow:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo systemctl restart acp-host-agent"
+   ```
+
+6. In WEM, go to **Management > Host Agents** and approve any agent that appears in a pending state.
+
+7. Verify every host is running 1.1.0 or later:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "rpm -q edb-acp-host-agent"
+   ```
+
+### Migrating the Prometheus metrics endpoint
+
+Migrate your Prometheus configuration if it scrapes the old combined `/prom/metrics` feed for WHPG, SQL, or system metrics, since Prometheus scraping now splits across two endpoints:
+
+- **WEM metrics:** Keep scraping WEM's own metrics from `/prom/metrics`, unaffected by this change.
+- **WHPG, SQL, and system metrics:** Set `OTEL_PROMETHEUS_SCRAPE_ENDPOINT=<host:port>` in `wem.conf`, so the OTel Collector exposes these metrics for an external Prometheus instance, then point your Prometheus configuration at that address instead.
+
+See [Metrics reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/metrics/) for the full list of available metrics.
+
+### After you upgrade
+
+- To list, restore, report on, or delete backups from the **Backups** panel, upgrade `whpg-backup` to 1.34 or later on every cluster node. Older versions can still take and schedule backups. See [Installing WarehousePG Backup and Restore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/#upgrading).
+- Stop and disable the old WHPG Collector (the `alloy` service) on every cluster node, along with any Prometheus or Loki instances you ran solely for WEM:
+
+  ```bash
+  gpssh -f all_hosts -u gpadmin -e "sudo systemctl disable --now alloy"
+  ```
+
+## Next steps
+
+Your upgrade is complete. See [Getting started with WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/get-started/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,358 @@
+---
+title: Managing SSL certificates
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/certificates/
+lastModified: 2026-06-24T22:34:07+05:30
+---
+
+# Managing SSL certificates
+
+PEM uses SSL certificates:
+
+- To secure requests to the [web server](#web-server-certificates), which provides the user interface and REST API.
+- To secure and authenticate the [PEM agent connections to the PEM backend database](#pem-backend-database-server-and-agent-connection-certificates).
+
+## Web server certificates
+
+PEM generates an SSL certificate and key file for the web server during initial configuration.
+Because the certificate is self-signed, a warning states that the site is insecure when users open the PEM web application URL in a browser.
+
+To increase security and remove this warning, you can replace the self-signed SSL certificate with a certificate signed by a trusted certificate authority.
+
+### Replace the web server certificates (NGINX)
+
+To use your own SSL certificate with NGINX, update the configuration file:
+
+- On RHEL-like systems: `/etc/nginx/conf.d/edb-pem.conf`
+- On Debian-like systems: `/etc/nginx/sites-available/edb-pem.conf`
+
+Change the server name and file paths in the configuration file to match your certificate files:
+
+```text
+server {
+   # lines omitted here
+   server_name  <yourdomain.com>;
+   # lines omitted here
+}
+
+server {
+   # lines omitted here
+   server_name  <yourdomain.com>;
+
+   ssl_certificate /path/to/your_domain_name.crt
+   ssl_certificate_key /path/to/your_private.key
+   # lines omitted here
+}
+```
+
+### Replace the web server certificates (Apache HTTPD)
+
+To use your own SSL certificate with Apache HTTPD, update the configuration file `edb-ssl-pem.conf`.
+Change the server name and file paths in the configuration file to match your certificate files.
+
+```shell
+ServerName yourdomain.com
+# lines omitted here
+SSLCertificateFile /path/to/your_domain_name.crt
+SSLCertificateKeyFile /path/to/your_private.key
+```
+
+> **Note: Example**
+>
+> For a worked example, see [Replacing httpd self-signed SSL certificates](https://www.enterprisedb.com/postgres-tutorials/how-replacing-httpd-self-signed-ssl-certificates-trusted-ca-signed-certificates).
+
+## PEM backend database server and agent connection certificates
+
+PEM implements secured SSL/TLS connections between PEM agents and the backend database.
+Each agent has an SSL certificate that's used both to encrypt its communication with the server and to authenticate with the server in place of a password.
+
+Unless configured otherwise, PEM uses the sslutils extension to allow the PEM server to generate and sign SSL certificates and keys. When a new agent is registered, the PEM server issues it a certificate.
+Certificates issued by the PEM server are signed by the PEM server, meaning the PEM server is acting as a certificate authority (CA).
+
+If this approach isn't suitable, you can use SSL certificates and keys generated outside of PEM and signed by a trusted CA.
+For more information on the different SSL models supported by PEM, see [Deciding on an SSL model](https://www.enterprisedb.com/docs/pem/latest/considerations/ssl_certs/).
+For instructions on how to convert an existing PEM installation, see [Trusted CA certificates and keys](#use-certificates-and-keys-signed-by-trusted-ca).
+
+### Certificates and key files on the PEM server
+
+During initial configuration of the PEM server, the following files are generated in the Postgres data directory of the PEM server:
+
+- `ca_certificate.crt`
+- `ca_key.key`
+- `root.crt`
+- `root.crl`
+- `server.crt`
+- `server.key`
+
+The `ca_certificate.crt` and `ca_key.key` files are used by the PEM server to sign certificates generated for agents during agent registration.
+They're also used to sign `server.crt`. Unless replaced manually, the 'ca\_certificate.crt' file is a self-signed certificate because it's acting as the root CA.
+
+The `root.crt` file is a copy of the `ca_certificate.crt` file. The `ssl_ca_file` parameter in the `postgresql.conf` file points to this file.
+
+The `root.crl` is the certificate revocation list (CRL) of certificates revoked by the issuing CA before their actual or assigned expiration date.
+The `ssl_crl_file` parameter in the `postgresql.conf` file points to this file.
+
+The `server.crt` file is the signed certificate for the PEM server, and the `server.key` file is the private key to the certificate.
+The `ssl_cert_file` parameter in the `postgresql.conf` file points to this file.
+
+These files are automatically renewed when they near their expiry date. See [PEM CA certificate renewal](#pem-certificate-renewal).
+
+### Certificates and key files for PEM agents
+
+Each agent's SSL certificate and keys are generated during [agent registration](https://www.enterprisedb.com/docs/pem/latest/registering_agent/).
+The PEM agent connects to the PEM backend database server using the libpq interface, acting as a client of the backend database server.
+The PEM agent connects to the server using the `cert` auth method and with ssl enabled.
+This means that the connection is encrypted using the agent's key and authenticated using the agent's certificate instead of, for example, a password.
+
+Each agent has a unique identifier, and the agent certificates and keys have the corresponding identifier.
+
+If required, you can use the same certificate for all agents rather than one certificate per agent. For more information, see [Generate a common agent certificate and key pair](#generate-a-common-agent-certificate-and-key-pair).
+
+For more information on using the SSL certificates to connect in Postgres, see [Securing TCP/IP connections with SSL](https://www.postgresql.org/docs/current/ssl-tcp.html) in the Postgres documentation.
+
+### PEM certificate renewal
+
+SSL certificates have an expiry date. If you're using certificates and keys generated by PEM, PEM replaces them before they expire.
+The PEM agent installed with the PEM server monitors the expiration date of the `ca_certificate.crt` file. When the certificate is about to expire, PEM:
+
+- Makes a backup of the existing certificate files.
+- Creates new certificate files and appends the new CA certificate file to the `root.crt` file on the PEM server.
+- Creates a job to renew the certificate file for any active agents.
+- Restarts the PEM server.
+
+> **Important**
+>
+> If you choose to provide your own certificates or use a single certificate for all agents, disable the automatic renewal job.
+> On the PEM server, execute the following SQL:
+>
+> ```sql
+> UPDATE pem.job 
+> SET jobenabled='false' 
+> WHERE jobname = 'Check CA certificate expiry';
+> ```
+
+If you need to regenerate the server or agent certificates manually, see:
+
+- [Regenerating the server SSL certificates](https://www.enterprisedb.com/docs/pem/latest/certificates/replacing_ssl_certificates/)
+- [Regenerating agent SSL certificates](https://www.enterprisedb.com/docs/pem/latest/certificates/regenerating_agent_certificates/)
+
+## Generate a common agent certificate and key pair
+
+By creating and using a single Postgres user for all PEM agents rather than one user per agent (the default), you can use the same certificate for all agents.
+
+Create a user, generate an agent certificate and key pair, and use them for all PEM agents.
+
+1. Create one common agent user in the PEM backend database. Grant the pem\_agent role to the user.
+
+   ```shell
+   # Running as enterprisedb
+   psql -p 5444 -U enterprisedb -d pem
+   CREATE USER pem_agent_common_user;
+   GRANT pem_agent TO pem_agent_common_user;
+   ```
+
+2. Follow the instructions in [Generating agent certificates manually](https://www.enterprisedb.com/docs/pem/latest/certificates/manual_cert_generation/) to generate and configure a certificate and key for this user.
+
+## Use certificates and keys signed by trusted CA
+
+You can replace the PEM SSL certificates and keys with certificates and keys signed by a trusted CA.
+
+After obtaining the trusted CA certificates and keys, replace the [server](#replace-the-server-ssl-certificates-with-certificates-signed-by-a-trusted-ca) and [agent](#replace-the-agent-ssl-certificates-with-certificates-signed-by-a-trusted-ca) certificates and keys.
+
+### Replace the server SSL certificates with certificates signed by a trusted CA
+
+1. Back up the old server certificate and key files:
+
+   ```shell
+   # Running as root
+   mkdir /var/lib/edb/as<x>/data/certs
+   cd /var/lib/edb/as<x>/data/
+   mv server.* root.* ca_* /var/lib/edb/as<x>/data/certs
+   ```
+
+2. Generate a private key for the server:
+
+   ```shell
+   openssl genrsa -out server.key 4096 
+   ```
+
+3. Generate a CSR for the server:
+
+   ```shell
+   openssl req -new -key server.key -out server.csr -subj '/C=IN/ST=MH/L=Pune/O=EDB/CN=PEM'
+   ```
+
+   Where `-subj` is provided as per your requirements. We recommend using the hostname or domain qualified full name of the PEM server host for `CN`.
+
+4. Obtain the CA certificate (`trusted_ca.crt`) from a trusted CA.
+
+5. Ask your CA to sign the CSR and generate the server certificate for you.
+
+6. Verify that the details of the new server certificate aren't tampered with and match your provided details:
+
+   ```shell
+   openssl x509 -noout -text -in server.crt
+   ```
+
+7. Use the new certificate obtained from the CA as the `root.crt` file:
+
+   ```shell
+   cp trusted_ca.crt root.crt
+   ```
+
+8. If the trusted CA doesn't provide CRL, disable CRL usage by the server. To disable the CRL usage, comment the `ssl_crl_file` parameter in the `postgresql.conf` file.
+
+   > **Note**
+   >
+   > If you leave a CRL from a previous CA in place and don't comment out `ssl_crl_file`, the server will start. However, authentication will fail with an SSL error message: `tlsv1 alert unknown ca`.
+   > The error doesn't specify that the CRL is the cause, so this issue can be difficult to debug if encountered out of context.
+
+9. Copy the new `root.crt`, `server.key`, and `server.crt` files to the data directory of the backend database server:
+
+   ```shell
+   cp root.crt server.key server.crt /var/lib/edb/as<x>/data
+   ```
+
+10. Change the owner and permissions of the new certificates and key files to the same name as the data directory:
+
+    ```shell
+    cd /var/lib/edb/as<x>/data/
+    chown enterprisedb server.* root.crt ca_certificate.crt
+    chmod 600 server.* root.crt ca_certificate.crt
+    ```
+
+    > **Note**
+    >
+    > Don't restart the PEM server now. If you restart the PEM server, all the registered agents will stop working.
+
+11. Replace each PEM agent SSL certificates with the trusted CA certificates. For more information, see these [instructions](#replace-the-agent-ssl-certificates-with-certificates-signed-by-a-trusted-ca).
+
+12. Restart the PEM backend database server.
+
+### Replace the agent SSL certificates with certificates signed by a trusted CA
+
+Replace the agent SSL certificates only after replacing the server certificates `server.crt` and `server.key` and CA certificate `root.crt`.
+
+1. Use psql to find all the agent identifiers (IDs) needed to replace the SSL certificates:
+
+   ```shell
+   psql -U enterprisedb -d pem --no-psqlrc -t -A -c "SELECT id FROM pem.agent WHERE active=true"
+   ```
+
+2. After identifying the agents that need key files, generate an `agent<ID>.key` for each agent:
+
+   ```shell
+   openssl genrsa -out agent<ID>.key 4096 
+   ```
+
+   Where `<ID>` is the agent identifier.
+
+3. Generate a CSR for each agent:
+
+   ```shell
+   openssl req -new -key agent<ID>.key -out agent<ID>.csr -subj '/C=IN/ST=MH/L=Pune/O=PEM/CN=agent<ID>'
+   ```
+
+   Where `-subj` is provided as per your requirements. Replace `<ID>` in `CN` with an appropriate agent identifier.
+
+   > **Note**
+   >
+   > If you prefer to use a single certificate for all PEM agents rather than one per agent, create a common Postgres user
+   > and supply this username in place of `ID`. See [Generate a common agent certificate and key pair](#generate-a-common-agent-certificate-and-key-pair).
+
+4. Ask your CA to sign the CSR and generate the agent certificate for you.
+
+5. Copy the certificate and key files on the respective hosts, where `<ID>` matches the `agent_id` in the `/usr/edb/pem/agent/etc/agent.cfg` file.
+
+6. Change the ownership and permission on the new `agent<ID>.crt` and `agent<ID>.key` file:
+
+   ```shell
+   chown root agent<ID>.crt agent<ID>.key
+   chmod 600 agent<ID>.crt agent<ID>.key
+   ```
+
+7. Back up the old agent certificate and key file:
+
+   ```shell
+   # Running as root
+   mkdir root/.pem/certs
+   mv root/.pem/agent<ID>.* root/.pem/certs
+   ```
+
+8. Replace each agent's certificate and key file with the newly generated files:
+
+   ```shell
+   cp agent<ID>.key agent<ID>.crt root/.pem
+   ```
+
+9. Restart the PEM agent service.
+
+   - On Linux:
+
+   ```shell
+   # Running as root
+   systemctl restart pemagent
+   ```
+
+   - On Windows:
+     Use the Services applet to restart the PEM agent. The PEM agent service is named Postgres Enterprise Manager Agent. Select the service name in the Services dialog box, and select **Restart the service**.
+
+> **Note**
+>
+> For agents registered after following the preceding process, you can provide a certificate to the agent at the time of registration as shown in the [Providing an existing SSL certificate and key](https://www.enterprisedb.com/docs/pem/latest/registering_agent/#providing-an-existing-ssl-certificate-and-key).
+
+> **Note**
+>
+> If the new agent certificate requires a passphrase, then specify the path to a script that returns the passphrase using the `agent_ssl_passphrase_script` parameter. For more information on the parameter, see [Modifying agent configuration](https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/modifying_agent_configuration/).
+
+## Testing certificates
+
+If you experience authentication problems, you can use these tests to validate certificates.
+
+### Validate a certificate against the root certificate
+
+To check whether a PEM agent certificate is trusted according to the server's `root.crt`, copy both certificates to the same machine. Then execute the following command:
+
+```shell
+openssl verify -verbose -CAfile root.crt  agent1.crt
+```
+
+This command returns `agent1.crt: OK` on success or an explanatory message on failure.
+
+### Make a test connection to the PEM backend database
+
+To verify whether the agent user can connect using a certificate, as root on the server where the agent is located, execute:
+
+```shell
+PGHOST=<pem_host>
+PGPORT=<pem_db_port>
+PGUSER=agent<ID>
+PGSSLCERT=/root/.pem/agent<ID>.crt
+PGSSLKEY=/root/.pem/agent<ID>.key
+PGSSLMODE=require
+
+export PGHOST PGPORT PGUSER PGSSLCERT PGSSLKEY PGSSLMODE
+
+<psql_path> -A -t -d pem -c "SELECT version()"
+```
+
+Where:
+
+- `<psql_path>` is the full path to the psql executable, for example `/usr/edb/as15/bin/psql`.
+- `<pem_host>` is the hostname or IP address of PEM server.
+- `<pem_db_port>` is the PEM backend database server port.
+- `<ID>` is the ID of the agent you're testing, as defined in the file `/usr/edb/pem/agent/etc/agent.cfg`.
+
+> **Note**
+>
+> If you used the instructions in [Generate a common agent certificate and key pair](#generate-a-common-agent-certificate-and-key-pair),
+> you must set `PGUSER` to the common agent username.
+
+If the connection succeeds, it returns the Postgres version of the database server. Success means that your certificate is valid and the Postgres user is correctly configured.
+
+- [Regenerating the server SSL certificates for PEM backends using sslutils](https://www.enterprisedb.com/docs/pem/latest/certificates/replacing_ssl_certificates/): If the PEM backend database server certificates are near expiring, plan to regenerate the certificates and key files.
+- [Regenerating the agent SSL certificates for PEM using sslutils](https://www.enterprisedb.com/docs/pem/latest/certificates/regenerating_agent_certificates/): If sslutils is in use, PEM performs these steps automatically when the certificates are nearing expiry.
+- [Generating agent certificates manually](https://www.enterprisedb.com/docs/pem/latest/certificates/manual_cert_generation/): This page explains how to manually generate an agent certificate.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

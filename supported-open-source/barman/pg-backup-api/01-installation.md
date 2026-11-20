@@ -1,0 +1,139 @@
+---
+title: Installation
+description: Instructions for installing Postgres backup API on supported systems
+product: Barman
+url: https://www.enterprisedb.com/docs/supported-open-source/barman/pg-backup-api/01-installation/
+lastModified: 2026-02-23T13:03:34+05:30
+---
+
+# Installation
+
+### Prerequisites
+
+Postgres backup API must be installed on the same server as Barman.
+
+The Postgres backup API packages depend on the Barman packages so if you are not installing alongside an existing Barman installation then the Barman packages will also be installed.
+
+It is recommended that you follow the [Barman documentation](https://docs.pgbarman.org/#installation) to ensure your Barman installation is fully functional before continuing with Postgres backup API.
+
+> **Note**
+>
+> The `pg-backup-api` packages provided through EDB repositories only support Barman packages also downloaded from the EDB repositories. It is not compatible with PGDG Barman installations due to differing Python versions, which will prevent the API from starting.
+
+### Available platforms
+
+Postgres backup API packages are available on the following platforms.
+
+#### Debian/Ubuntu
+
+Supported versions of Debian and Ubuntu are:
+
+- Debian 10 (buster)
+- Debian 11 (bullseye)
+- Ubuntu 18.04 (bionic)
+- Ubuntu 20.04 (focal)
+
+Official Debian packages for Postgres backup API are distributed by EnterpriseDB and made available through the EDB [public APT repositories](https://repos.enterprisedb.com/).
+The required repository can be enabled by following the instructions at that website.
+
+Install pg-backup-api as follows:
+
+```bash
+sudo apt-get install pg-backup-api
+```
+
+#### RHEL/CentOS
+
+Postgres backup API is supported on RHEL 7 and 8 in addition to binary compatible alternatives such as CentOS and Rocky.
+
+Official RPM packages for Postgres backup API are distributed by EnterpriseDB and made available through the EDB [public YUM repositories](https://repos.enterprisedb.com/).
+The required repository can be enabled by following the instructions at that website.
+
+> **Note**
+>
+> If you have not already installed Barman, or if the enabled repositories have changed since Barman was installed, you will also need to install the [Extra Packages Enterprise Linux (EPEL) repository](https://docs.fedoraproject.org/en-US/epel/) and the [PostgreSQL Global Development Group RPM repository](https://yum.postgresql.org/).
+
+Install pg-backup-api as follows:
+
+```bash
+sudo yum install pg-backup-api
+```
+
+#### SLES
+
+Postgres backup API is supported on SLES 15 SP3 and SLES 12 SP5.
+
+Postgres backup API packages for SLES are distributed by EnterpriseDB and made available through the EDB [public zypper repositories](https://repos.enterprisedb.com/).
+The required repository can be enabled by following the instructions at that website.
+
+> **Note**
+>
+> For SLES 12 only: If you have not already installed Barman then you will need to enable the OpenSUSE python backports repositories as described in the [Barman documentation](https://docs.pgbarman.org/#installation-on-sles-using-packages).
+
+Install pg-backup-api as follows:
+
+```bash
+sudo zypper install pg-backup-api
+```
+
+### Post installation steps
+
+Once the packages are installed you can start the pg-backup-api service:
+
+```bash
+sudo systemctl start pg-backup-api
+```
+
+Enable the service so that it is started automatically on reboot:
+
+```bash
+sudo systemctl enable pg-backup-api
+```
+
+Postgres backup API is now serving requests on localhost port 7480.
+Test everything is ok by making a request to the `status` endpoint:
+
+```bash
+curl http://localhost:7480/status
+"OK"
+```
+
+Confirm details of your Barman installation are being reported via the `diagnose` endpoint:
+
+```bash
+curl http://localhost:7480/diagnose
+{
+  "global": {
+     ...
+   },
+   ...
+}
+
+```
+
+You can now query Barman over HTTP, however because Postgres backup API works over plain HTTP it is restricted to serving on localhost only.
+To securely enable remote access follow the instructions in [securing Postgres backup API](https://www.enterprisedb.com/docs/supported-open-source/barman/pg-backup-api/02-securing-pg-backup-api/).
+
+Send a new task to perform a recover by providing metadata like this:
+
+```bash
+curl -X POST http://localhost:7480/servers/<SERVER_NAME>/operations -H "content-type: application/json" -d@payload-pg-backup-api.json
+{
+  "operation_id": {  "20221227T115428" },
+   ...
+}
+```
+
+The json payload should look like this:
+
+```json
+{"operation_type": "recover",
+ "backup_id": "latest",
+ "remote_ssh_command": "ssh postgres@locahost",
+ "destination_directory": "/var/lib/pgdata"}
+
+```
+
+Congrats! [Carry on with Operations](https://www.enterprisedb.com/docs/supported-open-source/barman/pg-backup-api/03-tasks/) for further information about how to create tasks operations with the API.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

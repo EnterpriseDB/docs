@@ -1,0 +1,122 @@
+---
+title: PGD CLI on Cloud Service
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/references/distributed_high_availability/pgd_cli_ba/
+lastModified: 2025-06-13T01:50:58Z
+---
+
+# PGD CLI on Cloud Service
+
+When running a distributed high-availability cluster on Cloud Service, you can use the [PGD CLI](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/) to manage cluster operations.
+Examples of these operations include switching over write leaders, performing cluster health checks, and viewing various details about nodes, groups, or other aspects of the cluster.
+
+## Installing the PGD CLI
+
+To [install the PGD CLI](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/installing/), for Debian and Ubuntu machines, replace `<your-token>` with your EDB subscription token in the following command:
+
+```bash
+curl -1sLf 'https://downloads.enterprisedb.com/<your-token>/postgres_distributed/setup.deb.sh' | sudo -E bash
+sudo apt-get install edb-pgd5-cli
+```
+
+For RHEL, Rocky, AlmaLinux, or Oracle Linux machines, make the replacement in this command:
+
+```bash
+curl -1sLf 'https://downloads.enterprisedb.com/<your-token>/postgres_distributed/setup.rpm.sh' | sudo -E bash
+sudo yum install edb-pgd5-cli
+```
+
+## Connecting to your Cloud Service cluster
+
+### Discovering your database connection string
+
+To connect to your distributed high-availability Cloud Service cluster using the PGD CLI, you need to [discover the database connection string](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/discover_connections/). From your Console:
+
+1. Log in to the [Cloud Service clusters](https://portal.biganimal.com/clusters) view.
+2. To show only clusters that work with PGD CLI, in the filter, set **Cluster Type** to **Distributed High Availability**.
+3. Select your cluster.
+4. In the view of your cluster, select the **Connect** tab.
+5. Copy the read/write URI from the connection info. This is your connection string.
+
+### Using the PGD CLI with your database connection string
+
+> **Important**
+>
+> PGD doesn't prompt for interactive passwords. Accordingly, you need a [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html) properly configured to allow access to the cluster. Your Cloud Service cluster's connection information page has all the information needed for the file.
+>
+> Without a properly configured `.pgpass`, you receive a database connection error when using a PGD CLI command, even when using the correct database connection string with the `--dsn` flag.
+
+To use the PGD CLI with your database connection string, use the `--dsn` flag with your PGD CLI command:
+
+```bash
+pgd nodes list --dsn "<your_connection_string>"
+```
+
+## PGD commands in Cloud Service
+
+The examples that follow show the most common PGD CLI commands with a Cloud Service cluster.
+
+### `pgd cluster show --health`
+
+`pgd cluster show --health` provides statuses with relevant messaging regarding the clock skew of node pairs, node accessibility, the current raft leader, replication slot health, and versioning consistency:
+
+```
+pgd cluster show --health --dsn "postgres://edb_admin@p-w75f4ib1pu-a.vmk31wilqpjeopka.biganimal.io:5432/bdrdb?sslmode=require"
+```
+
+```output title="Output"
+Check             Status Details
+----------------- ------ -----------------------------------------------
+Connections       Ok     All BDR nodes are accessible
+Raft              Ok     Raft Consensus is working correctly
+Replication Slots Ok     All PGD replication slots are working correctly
+Clock Skew        Ok     Clock drift is within permissible limit
+Versions          Ok     All nodes are running the same PGD version
+```
+
+### `pgd nodes list`
+
+`pgd nodes list` returns all the nodes in the distributed high-availability cluster and their summaries, including name, node id, group, and current/target state:
+
+```
+pgd nodes list --dsn "postgres://edb_admin@p-w75f4ib1pu-a.vmk31wilqpjeopka.biganimal.io:5432/bdrdb?sslmode=require"
+```
+
+```output title="Output"
+Node Name        Group Name     Node Kind Join State Node Status
+---------------- -------------- --------- ---------- -----------
+p-w75f4ib1pu-a-1 p-w75f4ib1pu-a data      ACTIVE     Up
+p-w75f4ib1pu-a-2 p-w75f4ib1pu-a data      ACTIVE     Up
+p-w75f4ib1pu-a-3 p-w75f4ib1pu-a data      ACTIVE     Up
+```
+
+### `pgd groups show`
+
+`pgd groups show` returns all groups in your distributed high-availability Cloud Service cluster.
+
+```
+pgd groups show --dsn "postgres://edb_admin@p-w75f4ib1pu-a.vmk31wilqpjeopka.biganimal.io:5432/bdrdb?sslmode=require"
+```
+
+```output title="Output"
+Group Name     Parent Group Name Group Type Nodes
+-------------- ----------------- ---------- -----
+world                            global     0
+p-w75f4ib1pu-a world             data       3
+```
+
+### `pgd group set-leader`
+
+`pgd group set-leader` manually changes the write leader of the group and can be used to simulate a [failover](https://www.enterprisedb.com/docs/pgd/5.8/quickstart/further_explore_failover/).
+
+```
+pgd group p-w75f4ib1pu-a set-leader p-w75f4ib1pu-a-2 --dsn "postgres://edb_admin@p-w75f4ib1pu-a.vmk31wilqpjeopka.biganimal.io:5432/bdrdb?sslmode=require"
+```
+
+```output title="Output"
+Command executed successfully
+```
+
+See the [PGD CLI command reference](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/) for the full range of PGD CLI commands and their descriptions.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

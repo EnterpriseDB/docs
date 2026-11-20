@@ -1,0 +1,160 @@
+---
+title: Installing ClickHouse and PostgreSQL (optional)
+description: Install and configure ClickHouse, and optionally PostgreSQL, the storage backends WEM uses for metrics, logs, and application state.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/
+lastModified: 2026-10-16T14:41:49+01:00
+---
+
+# Installing ClickHouse and PostgreSQL (optional)
+
+Install ClickHouse to store the historical metrics and log data the OTel Collector forwards from every cluster node, and an optional PostgreSQL database for WEM's own configuration and application state. You must install ClickHouse before WEM, since WEM's configuration depends on knowing its address.
+
+ClickHouse isn't bundled with WEM. The steps on this page cover one convenient path to a working instance using EDB's ClickHouse packages, but you can also point WEM at an existing ClickHouse instance you already manage, on any host reachable from every cluster node's OTel Collector or gateway collector. See ClickHouse's own [documentation](https://clickhouse.com/docs) for sizing, replication, and other production configuration this page doesn't cover.
+
+You can install ClickHouse:
+
+- **On the standby coordinator:** the simplest topology for a single WHPG cluster. If your cluster has no standby coordinator, install it on the coordinator instead.
+- **On a dedicated monitoring host, outside the cluster:** keeps observability components isolated from the cluster's own nodes.
+
+Regardless of topology, install the gateway collector only when multiple systems or clusters send observability data to the same ClickHouse instance. A single WHPG cluster sending data directly to ClickHouse doesn't need one.
+
+## Installing ClickHouse
+
+Install ClickHouse on your host of choice:
+
+1. Configure the EDB repository, then install the ClickHouse packages:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=clickhouse
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo yum install -y edb-clickhouse-server edb-clickhouse-client
+   ```
+
+   > **Note: Air-gapped environments**
+   >
+   > The `edb-clickhouse-server` and `edb-clickhouse-client` packages depend on `edb-clickhouse-common-static`. `yum install` pulls it in automatically. If you download the packages to install on a host without access to the EDB repository, download all three:
+   >
+   > ```bash
+   > sudo yum download edb-clickhouse-server edb-clickhouse-client edb-clickhouse-common-static
+   > ```
+
+2. Modify the contents `/etc/clickhouse-server/config.xml` by adding your settings as a drop-in file under `config.d/`, which ClickHouse merges in automatically. Fragments are only merged at startup, so this setting has no effect until you restart ClickHouse.
+
+   Set the following parameters:
+
+   - **Listen address** (`listen_host`): the network interface ClickHouse binds to. Required, since ClickHouse listens on `localhost` only by default and needs to accept connections from the gateway collector and from WEM.
+   - **HTTP port** (`http_port`): the port the gateway collector uses for OTLP ingest over HTTP. Already `8123` by default, ClickHouse's own default and the value WEM expects, so no change is needed unless you want a different port.
+   - **TCP port** (`tcp_port`): the port for ClickHouse's native protocol, used by `clickhouse-client` and by WEM. Already `9000` by default, so likewise no change is needed unless you want a different port.
+   - **Logger**: log level and destination. Optional, the defaults already write to the same log paths, just at a more verbose level than this configuration sets.
+
+   Set all four in a single drop-in file:
+
+   ```bash
+   sudo mkdir -p /etc/clickhouse-server/config.d
+   sudo tee /etc/clickhouse-server/config.d/observability.xml << 'EOF'
+   <clickhouse>
+       <!-- Listen on all interfaces, or restrict to the WEM host IP address -->
+       <listen_host>0.0.0.0</listen_host>
+
+       <!-- Already ClickHouse's own default and the value WEM expects.
+            Uncomment only to override it. -->
+       <!-- <http_port>8123</http_port> -->
+
+       <!-- Already ClickHouse's own default and the value WEM expects.
+            Uncomment only to override it. -->
+       <!-- <tcp_port>9000</tcp_port> -->
+
+       <logger>
+           <level>information</level>
+       </logger>
+   </clickhouse>
+   EOF
+   ```
+
+3. Set a password for the default ClickHouse user. This example uses ClickHouse's built-in `default` user, but any ClickHouse user works, as long as you use the same username consistently in the gateway collector and WEM configuration:
+
+   ```bash
+   sudo tee /etc/clickhouse-server/users.d/default-password.xml << 'EOF'
+   <clickhouse>
+       <users>
+           <default>
+               <password><your-password></password>
+           </default>
+       </users>
+   </clickhouse>
+   EOF
+   ```
+
+4. Start ClickHouse:
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo clickhouse start
+   sudo clickhouse status
+   ```
+
+5. Verify ClickHouse is accepting connections:
+
+   ```bash
+   clickhouse-client --password "<your-password>" --query "SELECT 1"
+   ```
+
+6. Confirm that ClickHouse is listening on all interfaces:
+
+   ```bash
+   grep -A1 listen_host /var/lib/clickhouse/preprocessed_configs/config.xml
+   ss -tlnp | grep -E ':8123|:9000'
+   ```
+
+7. Test the connection from another cluster node rather than from ClickHouse's own host:
+
+   ```bash
+   curl "http://<clickhouse-host>:8123/?query=SELECT%201"
+   ```
+
+## Installing PostgreSQL (optional)
+
+WEM needs a Postgres database to store its own configuration and application state, dashboards, alert rules, and user accounts, separate from the WHPG cluster it monitors. You can host this data on a dedicated instance, or reuse your WHPG cluster's own Postgres server instead. See [Application state](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/#application-state) for the trade-offs and the role to create either way.
+
+To set up a dedicated instance:
+
+1. Download and install PostgreSQL from the [official downloads page](https://www.postgresql.org/download/), or install it using your system package manager.
+
+2. Initialize the database, then enable and start the PostgreSQL service. See the [PostgreSQL documentation](https://www.postgresql.org/docs/current/server-start.html) for details.
+
+3. On PostgreSQL 13 and earlier, `password_encryption` defaults to `md5`, which is incompatible with the `scram-sha-256` authentication method this procedure's `pg_hba.conf` step uses. Check the setting, and fix it if needed, before creating the role:
+
+   ```bash
+   sudo -i -u postgres psql -c "SHOW password_encryption;"
+   sudo -i -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256';"
+   sudo -i -u postgres psql -c "SELECT pg_reload_conf();"
+   ```
+
+4. Create the role WEM connects with. See [Application state](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/#application-state) for the exact privileges required:
+
+   ```sql
+   CREATE ROLE wem_admin WITH LOGIN PASSWORD '<your-password>' CREATEDB;
+   ```
+
+5. Configure `pg_hba.conf` to allow `wem_admin` to authenticate with a password, using `all` for the database field since `wem setup` connects to the `postgres` maintenance database before switching to `wem`:
+
+   ```
+   host    all    wem_admin    127.0.0.1/32    scram-sha-256
+   host    all    wem_admin    ::1/128         scram-sha-256
+   ```
+
+6. Verify PostgreSQL is accepting connections:
+
+   ```bash
+   pg_isready -h <postgres-host> -p 5432
+   ```
+
+## Next steps
+
+If your deployment needs the gateway collector, continue to [Installing the gateway collector](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/collector/).
+
+Otherwise, continue to [Installing WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

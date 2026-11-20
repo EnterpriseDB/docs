@@ -1,0 +1,105 @@
+---
+title: Overview
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/04_functionality_overview/
+lastModified: 2024-05-21T14:29:51-04:00
+---
+
+# Overview
+
+<div id="functionality_overview" class="registered_link"></div>
+
+Migration Toolkit is a powerful command-line tool that offers granular control of the migration process. Using Migration Toolkit is a two-step process:
+
+1. Edit the `toolkit.properties` file to specify the source and target database.
+
+2. Invoke Migration Toolkit at the command line, specifying migration options.
+
+Migration Toolkit helps with migration of database objects and data to an EDB Postgres Advanced Server or PostgreSQL database from:
+
+- Oracle
+- MySQL
+- SQL Server
+
+Migration Toolkit also allows you to migrate database objects and data to an EDB Postgres Advanced Server database from Sybase. You can also use Migration Toolkit to migrate between EDB Postgres Advanced Server and PostgreSQL. Migration Toolkit includes a number of options, allowing you granular control of the migration process:
+
+- Use the `-safeMode` option to commit each row as it is migrated.
+- Use the `-fastCopy` option to bypass WAL logging to optimize migration.
+- Use the `-batchSize` option to control the batch size of bulk inserts.
+- Use the `-cpBatchSize` option to specify the batch size used with the COPY command.
+- Use the `-lobBatchSize` option to specify the batch size used for large object data types.
+- Use the `-filterProp` option to migrate only those rows that meet a condition you specify.
+- Use the `-customColTypeMapping` option to change the data type of selected columns.
+- Use the `-dropSchema` option to drop the existing schema and create a new schema prior to migration.
+- On EDB Postgres Advanced Server, use the `-allDBLinks` option to migrate all Oracle database links.
+- On EDB Postgres Advanced Server, use the `-copyViaDBLinkOra` option to enable the `dblink_ora` module.
+- Use the `-connRetryCount <connection_attempts>` option to specify the number of retry attempts to perform if the target database connection is lost during data migration.
+- Use the `-connRetryInterval <seconds>` option to specify the seconds to wait before each target database reconnection attempt during a data migration.
+- Use the `-abortConnOnFailure <true/false>` option to specify whether to abort the migration when all target database reconnection attempts fail during a data migration.
+  The default is `true`, which aborts the session if the connection fails after the the specified `-connRetryCount` threshold.
+- Use the `-pgIdleTxSessionTimeOut <seconds>` to override the value of the PostgreSQL or EDB Postgres Advanced Server `idle_in_transaction_session_timeout` configuration option in the MTK connection session.
+
+## Object migration support
+
+Migration Toolkit migrates object definitions (DDL), table data, or both. The following table contains a platform-specific list of the types of database objects that Migration Toolkit can migrate:
+
+| Object                  | Oracle | Sybase | SQL Server | MySQL |
+| ----------------------- | ------ | ------ | ---------- | ----- |
+| Schemas                 | X      | X      | X          | X     |
+| Tables                  | X      | X      | X          | X     |
+| List-partitioned table  | X      |        |            |       |
+| Range-partitioned table | X      |        |            |       |
+| Hash partitioned table  | X      |        |            |       |
+| Constraints             | X      | X      | X          | X     |
+| Indexes                 | X      | X      | X          | X     |
+| Triggers                | X      |        |            |       |
+| Table data              | X      | X      | X          | X     |
+| Views                   | X      |        | X          |       |
+| Materialized views      | X      |        |            |       |
+| Packages                | X      |        |            |       |
+| Procedures              | X      |        |            |       |
+| Functions               | X      |        |            |       |
+| Sequences               | X      |        |            |       |
+| Users/Roles             | X      |        |            |       |
+| Profiles                | X      |        |            |       |
+| Object types            | X      |        |            |       |
+| Object type methods     | X      |        |            |       |
+| Database links          | X      |        |            |       |
+| Queues                  | X      |        |            |       |
+
+For detailed information about the commands that offer granular control of the objects imported, see [Schema object selection options](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#schema-object-selection-options).
+
+## Online migration versus offline migration
+
+Migration Toolkit can migrate immediately and directly into a Postgres database (_online migration_). You can also choose to generate scripts to use later to re-create object definitions in a Postgres database (_offline migration_).
+
+By default, Migration Toolkit creates objects directly into a Postgres database. Alternatively, include the `-offlineMigration` option to generate SQL scripts you can use later to reproduce the migrated objects or data in a new database. You can alter migrated objects by customizing the migration scripts generated by Migration Toolkit before you execute them. With the `-offlineMigration` option, you can schedule the actual migration at a time that best suits your system load.
+
+For more information about the `-offlineMigration` option, see [Offline migration options](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options).
+
+## Limitations
+
+EDB Postgres Advanced Server offers complete support for some Oracle features and partial support for others. Migration Toolkit can't migrate any object that uses an unsupported feature.
+
+In some cases, Migration Toolkit can migrate objects that use features that offer partial compatibility. In other cases, EDB Postgres Advanced Server supports suitable workarounds.
+
+Full-text search is an example of functionality that isn't fully compatible with Oracle. The EDB Postgres Advanced Server database has included support for full-text search for quite some time, but the implementation is different from Oracle's. Migration Toolkit can't migrate objects that use this feature.
+
+EDB Postgres Advanced Server doesn't yet support other features. Features in this category include Automated Storage Management, table compression, and external tables. You can often implement a successful workaround:
+
+- You can replace Automated Storage Management with system-specific volume management software.
+- You can implement table compression by storing data in a tablespace that resides on a compressed filesystem.
+- External tables don't exist in EDB Postgres Advanced Server, but you can load flat text files into staging tables in the database. We recommend using the EDB\*Loader utility to load the data into an EDB Postgres Advanced Server database quickly.
+- When migrating multiple profiles from an Oracle database into EDB Postgres Advanced Server, you must manually assign the profile to a user or users when the migration completes.
+
+### Unsupported Postgres features
+
+Migration Toolkit doesn't support migration of the following Postgres features:
+
+- `OPERATOR CLASS`
+- `OPERATOR FAMILY`
+
+For information about `OPERATOR CLASS` and `OPERATOR FAMILY`, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/indexes-opclass.html).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

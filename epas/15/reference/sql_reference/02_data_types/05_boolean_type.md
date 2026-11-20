@@ -1,0 +1,43 @@
+---
+title: Boolean types
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/reference/sql_reference/02_data_types/05_boolean_type/
+lastModified: 2024-02-06T16:57:32-05:00
+---
+
+# Boolean types
+
+<div id="boolean_type" class="registered_link"></div>
+
+| Name      | Native | Alias | Description                                   |
+| --------- | ------ | ----- | --------------------------------------------- |
+| `BOOLEAN` | ✅      |       | Logical Boolean (true/false), 1 byte storage. |
+
+## Overview
+
+EDB Postgres Advanced Server provides the standard SQL type `BOOLEAN`. `BOOLEAN` can have one of only two states: `TRUE` or `FALSE`. A third state, `UNKNOWN`, is represented by the SQL `NULL` value.
+
+Literal values representing the `TRUE` state include `'TRUE'`, `'true'`, `'y'`, '`1'`, and `'t'`. Literal values representing `FALSE` include `'FALSE'`, `'false'`, `'n'`, `'0'` and `'f'`. There's no literal value for `UNKNOWN`. Use `NULL`.
+
+The follow is an example using the Boolean type:
+
+```sql
+CREATE TABLE test1 (a boolean, b text);
+INSERT INTO test1 VALUES (TRUE, 'sic est');
+INSERT INTO test1 VALUES (FALSE, 'non est');
+SELECT * FROM test1;
+ a |    b
+---+---------
+ t | sic est
+ f | non est
+
+SELECT * FROM test1 WHERE a;
+ a |    b
+---+---------
+ t | sic est
+```
+
+The parser understands that `TRUE` and `FALSE` are of type Boolean, but this isn't so for `NULL` because that can have any type. So in some contexts you might have to cast `NULL` to `BOOLEAN` explicitly.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

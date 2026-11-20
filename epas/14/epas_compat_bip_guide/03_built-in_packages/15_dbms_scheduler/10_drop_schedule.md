@@ -1,0 +1,42 @@
+---
+title: DROP_SCHEDULE
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/15_dbms_scheduler/10_drop_schedule/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# DROP\_SCHEDULE
+
+Use the `DROP_SCHEDULE` procedure to drop a schedule. The signature is:
+
+```text
+DROP_SCHEDULE(
+  <schedule_name> IN VARCHAR2,
+  <force> IN BOOLEAN DEFAULT FALSE)
+```
+
+## Parameters
+
+`schedule_name`
+
+`schedule_name` specifies the name of the schedule that's being dropped.
+
+`force`
+
+`force` specifies the behavior of the server if the specified schedule is referenced by any job:
+
+- Specify `FALSE` to return an error if the specified schedule is referenced by a job. This is the default behavior.
+- Specify `TRUE` to disable to any jobs that use the specified schedule before dropping the schedule. Any running jobs are allowed to complete before the schedule is dropped.
+
+## Example
+
+The following call to `DROP_SCHEDULE` drops a schedule named `weeknights_at_5`:
+
+```text
+DBMS_SCHEDULER.DROP_SCHEDULE('weeknights_at_5', TRUE);
+```
+
+The server disables any jobs that use the schedule before dropping the schedule.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

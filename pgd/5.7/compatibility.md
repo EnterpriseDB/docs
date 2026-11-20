@@ -1,0 +1,53 @@
+---
+title: PGD compatibility
+description: Compatibility of EDB Postgres Distributed with different versions of PostgreSQL
+product: EDB Postgres Distributed (PGD)
+version: 5.7.0
+url: https://www.enterprisedb.com/docs/pgd/5.7/compatibility/
+lastModified: 2026-10-28T13:21:17+01:00
+---
+
+# PGD compatibility
+
+## PGD compatibility with PostgreSQL versions
+
+The following table shows the major versions of PostgreSQL that EDB Postgres Distributed (PGD) is compatible with.
+
+| PGD 5                                                | Postgres Version |
+| ---------------------------------------------------- | ---------------- |
+| [5.7+](https://www.enterprisedb.com/docs/pgd/5.7/)   | 17.3             |
+| [5.6.1+](https://www.enterprisedb.com/docs/pgd/5.6/) | 17               |
+| [5.3+](https://www.enterprisedb.com/docs/pgd/5.6/)   | 16               |
+| [5](https://www.enterprisedb.com/docs/pgd/5.6/)      | 15               |
+| [5](https://www.enterprisedb.com/docs/pgd/5.6/)      | 14               |
+| [5](https://www.enterprisedb.com/docs/pgd/5.6/)      | 13               |
+
+EDB recommends that you use the latest minor version of any Postgres major version with a supported PGD.
+
+## PGD compatibility with operating systems and architectures
+
+The following tables show the versions of EDB Postgres Distributed and their compatibility with various operating systems and architectures.
+
+### Linux
+
+| Operating System                   | x86\_64<br/>(amd64) | ppc64le | arm64/<br/>aarch64² |
+| ---------------------------------- | ------------------- | ------- | ------------------- |
+| RHEL 8                             | Yes                 | Yes     |                     |
+| RHEL 9                             | Yes                 | Yes     | Yes                 |
+| Oracle Linux 8                     | Yes                 |         |                     |
+| Oracle Linux 9                     | Yes                 |         |                     |
+| Rocky Linux/AlmaLinux 8/9          | Yes                 |         |                     |
+| SUSE Linux Enterprise Server 15SP7 | Yes                 |         |                     |
+| Ubuntu 22.04                       | Yes                 |         |                     |
+| Ubuntu 24.04                       | Yes¹                |         |                     |
+| Debian 12                          | Yes                 |         | Yes                 |
+
+¹ From PGD 5.7 onwards and only with Postgres version 14 or later.
+
+² From PGD 5.6.1 onwards.
+
+> **Note**
+>
+> See [PGD 6 Compatibility](https://www.enterprisedb.com/docs/pgd/5.7/compatibility/) for the latest version of PGD.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,394 @@
+---
+title: postgresql.conf
+description: Modifying postgresql.conf on a TPA-managed Postgres cluster.
+product: Trusted Postgres Architect
+version: 23.45.0
+url: https://www.enterprisedb.com/docs/tpa/latest/reference/postgresql.conf/
+lastModified: 2026-10-12T16:47:41+01:00
+---
+
+# postgresql.conf
+
+TPA creates a `conf.d` directory with various `.conf` files under
+it, and uses `include_dir` in the main `postgresql.conf` to use these
+additional configuration files.
+
+The Postgres configuration files (postgresql.conf, pg\_ident.conf, and
+pg\_hba.conf) and the included files under `conf.d` are always stored in
+`postgres_conf_dir`. This is the same as `postgres_data_dir` by default,
+but you can set it to a different location if you wish to keep the
+configuration separate from the data directory.
+
+The main configuration mechanism is to set variables directly:
+
+```yaml
+cluster_vars:
+  temp_buffers: 16MB
+  log_connections: on
+  autovacuum_vacuum_cost_limit: -1
+  effective_cache_size: 4GB
+  max_connections: 300
+  max_wal_senders: 32
+```
+
+TPA splits the configuration up into multiple files. The two main
+files are `0000-tpa.conf` and `0001-tpa_restart.conf`. These contain
+settings that require a server reload or restart to change,
+respectively. During deployment, TPA will write any changes to the
+correct file and reload or restart Postgres as required.
+
+TPA may use other files in certain circumstances (e.g., to configure
+optional extensions), but you do not ordinarily need to care where
+exactly a given parameter is set.
+
+You should never edit any of the files under `conf.d`, because the
+changes may be overwritten when you next run `tpaexec deploy`.
+
+## postgres\_port
+
+The Postgres port can be overwritten from its default value to another
+valid port number.
+
+```yaml
+cluster_vars:
+  postgres_port: 5433
+```
+
+This method is preferred over setting the port via `postgres_conf_settings`,
+since `postgres_port` ensures that the value is correctly shared and used across all components relying on this value to interact with the postgres cluster.
+
+## postgres\_conf\_settings
+
+TPA provides variables like `temp_buffers` and
+`maintenance_work_mem` that you can set directly for many, but not all,
+available postgresql.conf settings.
+
+You can use `postgres_conf_settings` to set any parameters, whether
+recognised by TPA or not. You need to quote the value exactly as it
+would appear in `postgresql.conf`:
+
+```yaml
+cluster_vars:
+  effective_cache_size: 2GB
+  postgres_conf_settings:
+    effective_cache_size: '4GB'
+    authentication_timeout: '1min'
+    synchronous_standby_names: >-
+      'any 2 ("first", "second", "third")'
+    bdr.global_lock_statement_timeout: '60s'
+```
+
+This is most useful with settings that TPA does not recognise
+natively, but you can use it for any parameter (e.g.,
+`effective_cache_size` can be set as a variable, but
+`authentication_timeout` cannot).
+
+These settings will be written to `conf.d/9900-role-settings.conf`, and
+therefore take priority over variables set in any other way.
+
+If you make changes to values under `postgres_conf_settings`, TPA
+has no way to know whether the a reload is sufficient to effect the
+changes, or if a restart is required. Therefore it will always restart
+the server to activate the changes. This is why it's always preferable
+to use variables directly whenever possible.
+
+## shared\_buffers
+
+By default, TPA will set `shared_buffers` to 25% of the available memory
+(this is just a rule of thumb, not a recommendation). You can override this
+default by setting `shared_buffers_ratio: 0.35` to use a different proportion,
+or by setting `shared_buffers_mb: 796` to a specific number of MB, or by
+specifying an exact value directly, e.g., `shared_buffers: "2GB"`.
+
+## huge\_page\_size
+
+TPA reserves hugepages of the architecture's default size for Postgres
+to use. To use a different size, see [hugepages](https://www.enterprisedb.com/docs/tpa/latest/reference/sysctl_values/#hugepages):
+setting `huge_page_size` reserves pages of that size on the kernel
+command line and sets `huge_page_size` in `postgresql.conf` accordingly.
+
+## effective\_cache\_size
+
+By default, TPA will set `effective_cache_size` to 50% of the available
+memory. You can override this default by setting
+`effective_cache_size_ratio: 0.35` to use a different proportion, or by setting
+`effective_cache_size_mb: 796` to a specific number of MB, or by specifying an
+exact value directly, e.g., `effective_cache_size: "8GB"`.
+
+## max\_replication\_slots and max\_wal\_senders
+
+By default, TPA calculates `max_replication_slots` and
+`max_wal_senders` from the number of Postgres instances in the
+cluster (accounting for `bdr.writers_per_subscription` on BDR/PGD
+clusters, since Parallel Apply requires an extra replication origin
+per writer). You can override either by setting the variable
+directly:
+
+```yaml
+cluster_vars:
+  max_replication_slots: 20
+  max_wal_senders: 20
+```
+
+If `max_wal_senders` is not set, it defaults to whatever
+`max_replication_slots` resolves to (explicit or calculated), so that
+every replication slot has an available WAL sender by default.
+
+TPA requires `max_wal_senders` to be at least as large as
+`max_replication_slots`, and fails deployment with an explanatory
+error if that is not the case, rather than silently adjusting either
+value. In the rare case where you need to deploy despite the values
+you have set failing this check (for example, while transitioning an
+existing cluster's configuration), you can bypass the check by
+setting `skip_wal_senders_validation: true`; this is a deliberate,
+temporary escape hatch and should not be left enabled once the
+values are reconciled.
+
+Note that these variables (like most others) only take effect if
+they are not also set via `postgres_conf_settings`, which always
+takes priority; see [postgres\_conf\_settings](#postgres_conf_settings)
+above. If you set `max_replication_slots`/`max_wal_senders` only via
+`postgres_conf_settings`, TPA still independently calculates and
+writes its own (unused) values for these settings into
+`conf.d/0001-tpa_restart.conf`; because that calculation can change
+between TPA versions, an otherwise no-op upgrade can trigger a
+Postgres restart even though the values actually in effect (from
+`postgres_conf_settings`) never changed. To avoid this, set the
+variables directly (as shown above) with the value you want in
+effect, rather than only under `postgres_conf_settings`.
+
+## max\_active\_replication\_origins
+
+PostgreSQL 18 introduced the `max_active_replication_origins` GUC to
+control the number of simultaneously active replication origins. Before
+PostgreSQL 18, this was implicitly limited by `max_replication_slots`.
+
+For PGD clusters on PostgreSQL 18 and above, TPA sets
+`max_active_replication_origins` to `3 * number_of_nodes + 3`. This stays
+comfortably above the "3 per peer node" minimum
+[recommended by the EDB PGD documentation](https://www.enterprisedb.com/docs/pgd/latest/reference/postgres-configuration/#postgres-settings),
+leaving a safety margin for transient origins created during node join or
+sync operations.
+
+For non-PGD clusters, TPA leaves the PostgreSQL default (10) in place.
+
+You can override this by setting the variable directly:
+
+```yaml
+cluster_vars:
+  max_active_replication_origins: 50
+```
+
+This setting is ignored on PostgreSQL versions before 18.
+
+## shared\_preload\_libraries
+
+TPA maintains an internal list of extensions that require entries in
+`shared_preload_libraries` to work, and if you include any such
+extensions in `postgres_extensions`, it will automatically update
+`shared_preload_libraries` for you.
+
+If you are using unrecognised extensions that require preloading, you
+can add them to `preload_extensions`:
+
+```yaml
+cluster_vars:
+  preload_extensions:
+  - myext
+  - otherext
+```
+
+Now if you add `myext` to `postgres_extensions`,
+`shared_preload_libraries` will include `myext`.
+
+By default, `shared_preload_libraries` is set in
+`conf.d/8888-shared_preload_libraries.conf`.
+
+Setting `shared_preload_libraries` directly as a variable is not
+supported. You should not normally need to set it, but if unavoidable,
+you can set a fully-quoted value under
+[`postgres_conf_settings`](#postgres_conf_settings). In this case, the
+value is set in `conf.d/9900-tpa_postgres_conf_settings.conf`.
+
+## Postgres logging
+
+By default, TPA configures the Postgres `log_destination` GUC as
+`syslog` and configures rsyslog to write Postgres logs to
+`/var/log/postgres/postgres.log`.
+
+You can change these defaults using the following cluster variables.
+
+- `postgres_log_file` is the path to the log file. Defaults to
+  `/var/log/postgres/postgres.log`.
+- `postgres_log_file_mode` is the mode of the log file. Defaults to
+  `0640`.
+- `postgres_log_directory_mode` is the mode of the log directory.
+  Defaults to `0700`.
+- `log_destination` sets the Postgres GUC of the same name.
+  Defaults to `syslog`.
+- `logging_collector` sets the Postgres GUC of the same name. Defaults
+  to `off` if `log_destination` is `syslog`, otherwise `on`.
+
+If you select a `log_destination` other than `syslog` TPA will set up
+the Postgres logging collector to write the logs. In all cases, TPA will
+take care of creating the directories and configuring log rotation.
+
+The following example tells TPA to log to the selected location using
+`rsyslog`.
+
+```yaml
+cluster_vars:
+  [...]
+  postgres_log_file: '/srv/fantastic_logs/pg_server.log'
+```
+
+This example, logs to the same location, but using the Postgres logging
+collector to write JSON logs, and permitting read and execute on the log
+directory for group members.
+
+```yaml
+cluster_vars:
+  [...]
+  postgres_log_file: '/srv/fantastic_logs/pg_server.log'
+  postgres_log_directory_mode: '0750'
+  log_destination: 'jsonlog'
+```
+
+> **Note: File extensions for log files**
+>
+> When `log_destination` is `syslog` or `stderr`, the exact value of
+> `postgres_log_file` will be used for the current log file, including any
+> extension. When `log_destination` is `jsonlog` or `csvlog`, the
+> specified `postgres_log_file` will have `.json` or `.csv` appended. If
+> `.log` was included in the specified `postgres_log_file`, it will be
+> removed. This behaviour comes from
+> [Postgres](https://www.postgresql.org/docs/current/runtime-config-logging.html#GUC-LOG-FILENAME)
+> rather than from TPA.
+>
+> If you need to access the exact path of the log file, including the
+> final extension—for example as part of a hook—this is stored in the
+> Ansible fact `postgres_log_file_with_extension`. This cannot be set
+> directly.
+
+## SSL configuration
+
+By default, TPA will generate a private key and a self-signed TLS
+certificate which are used by Postgres as the `ssl_key_file` and
+`ssl_cert_file` respectively. The files are named using the TPA cluster
+name (`cluster_name.key` and `cluster_name.crt`) and located in
+`/etc/tpa`, resulting in the following default configuration in
+`0001-tpa_restart.conf`:
+
+```ini
+ssl_key_file=/etc/tpa/cluster_name.key
+ssl_cert_file=/etc/tpa/cluster_name.crt
+```
+
+This is sufficient to ensure
+that traffic between clients and server is encrypted in transit.
+
+To provide your own certificates, upload them to the target nodes as
+[artifacts](https://www.enterprisedb.com/docs/tpa/latest/reference/artifacts/), then set the path by specifying the following
+cluster variables:
+
+```yaml
+cluster_vars:
+  ...
+  artifacts:
+  - type: file
+    dest: /path/to/your_key.key
+    src: /local/path/to/your_key.key
+    owner: root
+    group: root
+    mode: "0644"
+  - type: file
+    dest: /path/to/your_cert.crt
+    src: /local/path/to/your_cert.crt
+    owner: root
+    group: root
+    mode: "0600"
+  ssl_key_file: /path/to/your_key.key
+  ssl_cert_file: /path/to/your_cert.crt
+```
+
+Alternatively, if you upload your key and certificate to the default
+location, TPA will use them instead of generating its own, and you do
+not need to specify `ssl_key_file` or `ssl_cert_file`. Note, however,
+that you must explicitly create `/etc/tpa` because it doesn't exist at
+the time artifacts are uploaded. The permissions and ownership of these
+files will be adjusted by TPA when the `postgres` user is created during
+deployment.
+
+```yaml
+cluster_vars:
+  ...
+  artifacts:
+  - type: path
+    path: /etc/tpa
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  - type: file
+    dest: /etc/tpa/cluster_name.key
+    src: /local/path/to/your_key.key
+    owner: root
+    group: root
+    mode: "0644"
+  - type: file
+    dest: /etc/tpa/cluster_name.crt
+    src: /local/path/to/your_cert.crt
+    owner: root
+    group: root
+    mode: "0600"
+```
+
+> **Note: Other SSL settings**
+>
+> TPA does not specify `ssl_ca_file` or `ssl_crl_file` by default. To
+> provide these files yourself you can do so using
+> [artifacts](https://www.enterprisedb.com/docs/tpa/latest/reference/artifacts/) and by specifying the cluster variables of the
+> same name.
+
+## Making changes by hand
+
+There are two ways you can override anything in the TPA-generated
+configuration.
+
+The first (and recommended) option is to use `ALTER SYSTEM`, which
+always takes precedence over anything in the configuration files:
+
+```sql
+ALTER SYSTEM SET bdr.global_lock_statement_timeout TO '60s';
+```
+
+You can also edit `conf.d/9999-override.conf`:
+
+```shell
+echo "bdr.global_lock_statement_timeout='60s'" >> conf.d/9999-override.conf
+```
+
+All other files under `conf.d` are subject to be overwritten during
+deployment if the configuration changes, but TPA will never change
+`9999-override.conf` after initially creating the empty file.
+
+Depending on which settings you change, you may need to execute
+`SELECT pg_reload_conf()` or restart the server for the changes to take
+effect.
+
+## Generating postgresql.conf from scratch
+
+By default, TPA will leave the default (i.e., `initdb`-generated)
+postgresql.conf file alone other than adding the `include_dir`. You
+should not ordinarily need to override this behaviour, but you can set
+`postgres_conf_template` to do so:
+
+```yaml
+cluster_vars:
+  postgres_conf_template: 'pgconf.j2'
+```
+
+Now the `templates/pgconf.j2` in your cluster directory will be used to
+generate postgresql.conf.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,21 @@
+---
+title: AIDB 4.1.0 release notes
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/release-notes/4/aidb_4.1.0_rel_notes/
+lastModified: 2026-08-26T21:11:52+05:30
+---
+
+# AIDB 4.1.0 release notes
+
+Released: 19 May 2025
+
+AIDB 4.1.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enhancement | **Automatic unnesting of preparer results:** The preparer pipeline now unnests result collections for operations that transform the shape of input data with an additional dimension. This allows preparer output to be consumed more easily by other preparers or knowledge bases. Unnested results include a new `part_id` column to track the new dimension, and a `unique_id` column for unique identification. |
+| Enhancement | **Changed output column for `chunk_text()`:** The enumeration column returned by the `chunk_text()` primitive function is now `part_id` instead of `chunk_id` to match the other preparer primitives and operations.                                                                                                                                                                                                |
+| Enhancement | **Batch processing for embeddings with external models:** The external model providers `embeddings`, `openai_embeddings`, and `nim_embeddings` can now send a batch of inputs in a single request rather than multiple concurrent requests. This can improve performance and hardware utilization. The feature is fully configurable and can be disabled.                                                           |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,49 @@
+---
+title: BROKEN
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/05_dbms_job/01_broken/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# BROKEN
+
+The `BROKEN` procedure sets the state of a job to either broken or not broken. You can execute a broken job only by using the `RUN` procedure.
+
+```text
+BROKEN(<job> BINARY_INTEGER, <broken> BOOLEAN [, <next_date> DATE ])
+```
+
+## Parameters
+
+`job`
+
+Identifier of the job to set as broken or not broken.
+
+`broken`
+
+If set to `TRUE`, the job’s state is set to broken. If set to `FALSE`, the job’s state is set to not broken. You can run broken jobs only by using the `RUN` procedure.
+
+`next_date`
+
+Date/time when the job is to be run. The default is `SYSDATE`.
+
+## Examples
+
+Set the state of a job with job identifier 104 to broken:
+
+```text
+BEGIN
+    DBMS_JOB.BROKEN(104,true);
+END;
+```
+
+Change the state back to not broken:
+
+```text
+BEGIN
+    DBMS_JOB.BROKEN(104,false);
+END;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

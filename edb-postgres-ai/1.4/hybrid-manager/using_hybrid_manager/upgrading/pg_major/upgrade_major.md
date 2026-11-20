@@ -1,0 +1,36 @@
+---
+title: Postgres major version upgrades on Hybrid Manager single-node or high-availability clusters
+description: Learn how to perform a major version upgrade on a single-node or high-availability cluster in Hybrid Manager.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/upgrading/pg_major/upgrade_major/
+lastModified: 2026-07-23T19:28:07Z
+---
+
+# Postgres major version upgrades on Hybrid Manager single-node or high-availability clusters
+
+## Prerequisites
+
+- Have a cluster created with Hybrid Manager (HM) up and in a healthy state. To ensure the cluster is in a healthy state, from the cluster's main page, select the **Monitoring** tab.
+  Check the cluster and database metrics. Make sure everything is operating and all metrics are within the defined acceptable parameters.
+
+- We strongly recommend that you perform a full backup of your cluster and validate a comprehensive recovery plan before proceeding.
+
+## Upgrade the Postgres major version of an existing cluster created with HM
+
+1. From the cluster's main page, select **Quick Actions > Upgrade Cluster**. Then choose **Major Upgrade**.
+
+2. Select your preferred new major version image.
+
+3. Review the upgrade path. Select **Continue**.
+
+4. Review the specific package changes expected with the upgrade. If everything looks correct, select **Upgrade Cluster**.
+
+5. Use the **Monitoring** and **Logs** tabs to monitor the process and troubleshoot any unexpected behavior.
+
+> **Note**
+>
+> On rare occasions, additional steps might be recommended after the major upgrade is completed for certain product releases.
+> Consult the release notes to see if this is necessary in your case.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

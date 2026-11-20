@@ -1,0 +1,86 @@
+---
+title: Exploring your post-installation options
+description: Finalize and validate your Hybrid Manager deployment with post-installation configuration and checks.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/post_install/
+lastModified: 2026-08-20T14:30:19-04:00
+---
+
+# Exploring your post-installation options
+
+## Overview
+
+> **Role:** Infrastructure Engineer / Platform Administrator
+
+### Prerequisites
+
+- [Phase 1: Planning your architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/planning_arch/) (Completed)
+- [Phase 2: Gathering your system requirements](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/sys_reqs/) (Completed)
+- [Phase 3: Deploying your Kubernetes Cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/k8s_install/) (Running and validated)
+- [Phase 4: Preparing your environment](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/environment_prep/) (Completed and validated)
+- [Phase 5: Installing Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/installing/install_hm/) (Completed & Verified)
+- Administrator access to the Hybrid Manager (HM) console.
+
+### Outcomes
+
+- _A fully configured HM environment with security integrations, AI capabilities, and monitoring enabled._
+
+**Next Phase:** [Using Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/)
+
+Now that the HM Control Plane is running, you can enable optional but critical integrations.
+While the platform is functional without these, configuring them now ensures your environment is production-ready for security, AI workloads, and observability.
+
+### Configuring identity providers (IdP)
+
+[Configure your IdP integration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/idp_management/config_idp_hm/) via the HM console to enable SSO for users. This is a critical step for production environments to ensure secure access management. After connecting an IdP, [map users to roles](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/managing_users/) so that access to projects and clusters is least-privilege from the start.
+
+## Unlock AI capabilities: Complete GenAI Builder setup
+
+- [**Guide: Gen AI Builder**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/) — Requires the `ai` installation scenario (enabled by default).
+
+## Set up notifications (Observability)
+
+Ensure your team is alerted to critical events (such as cluster failovers, backup failures, or capacity issues). HM allows you to configure notification channels globally or per project.
+
+**Supported channels:**
+
+- Email
+
+- Webhooks (Slack, Microsoft Teams, generic JSON)
+
+- PagerDuty
+
+- [**Guide: Notifications**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/monitoring/notifications/)
+
+## Monitor external databases (Observability)
+
+HM can monitor Postgres databases that it does not manage (examples: RDS, self-managed EC2, or on-prem instances).
+
+To enable this, you must install the **EDB Postgres AI agent** on the external database host.
+
+The agent collects metrics and logs, shipping them back to the HM control plane for centralized visualization.
+
+- [**SOP: Monitor External Databases**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/)
+
+## Enable Migration Co-pilot
+
+Requires the `migration` installation scenario (enabled by default).
+
+To use the AI-assisted **Migration Co-pilot**, you must apply specific secrets and configurations to the control plane.
+
+This feature assists in analyzing and converting schemas from legacy databases to EDB Postgres.
+
+- [**SOP: Enable Migration Co-pilot**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/)
+
+## Advanced node placement
+
+For production, use separate node groups — with node affinity and tolerations — so the HM control plane, Postgres, and AI workloads run on dedicated, isolated hardware. See [Set your node abstractions](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/k8s_install/#set-your-node-abstractions).
+
+### Next steps
+
+Your HM platform is now fully deployed and integrated. You are ready to onboard users and begin provisioning clusters.
+
+**Proceed to [Using Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/) →**
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

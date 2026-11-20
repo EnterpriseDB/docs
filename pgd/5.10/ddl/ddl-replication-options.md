@@ -1,0 +1,51 @@
+---
+title: DDL replication options
+product: EDB Postgres Distributed (PGD)
+version: 5.10.0
+url: https://www.enterprisedb.com/docs/pgd/5.10/ddl/ddl-replication-options/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# DDL replication options
+
+The [`bdr.ddl_replication`](https://www.enterprisedb.com/docs/pgd/5.9/reference/pgd-settings/#bdrddl_replication) parameter specifies replication behavior.
+
+`bdr.ddl_replication = on` is the default. This setting replicates DDL to the
+default replication set, which by default means all nodes. Non-default
+replication sets don't replicate DDL unless they have a
+[DDL filter](https://www.enterprisedb.com/docs/pgd/5.10/repsets/)
+defined for them.
+
+You can also replicate DDL to specific replication sets using the
+function [`bdr.replicate_ddl_command()`](https://www.enterprisedb.com/docs/pgd/5.9/reference/functions/#bdrreplicate_ddl_command). This function can be helpful if you
+want to run DDL commands when a node is down. It's also helpful if you want to have
+indexes or partitions that exist on a subset of nodes or rep sets,
+for example, all nodes at site1.
+
+```
+SELECT bdr.replicate_ddl_command(
+				'CREATE INDEX CONCURRENTLY ON foo (col7);',
+				ARRAY['site1'],     -- the replication sets
+                'all');              -- ddl_locking to apply
+```
+
+While we don't recommend it, you can skip automatic DDL replication and
+execute it manually on each node using the [`bdr.ddl_replication`](https://www.enterprisedb.com/docs/pgd/5.9/reference/pgd-settings/#bdrddl_replication) configuration
+parameter.
+
+```
+SET bdr.ddl_replication = off;
+```
+
+When set, it makes PGD skip both the global locking and the replication
+of executed DDL commands. You must then run the DDL manually on all nodes.
+
+> **Warning**
+>
+> Executing DDL manually on each node without global locking can
+> cause the whole PGD group to stop replicating if conflicting DDL or DML
+> executes concurrently.
+
+Only the bdr\_superuser or superuser can set the `bdr.ddl_replication` parameter. It can also be set in the `postgres.conf` configuration file.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

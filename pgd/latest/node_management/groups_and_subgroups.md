@@ -1,0 +1,47 @@
+---
+title: Groups and subgroups
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/node_management/groups_and_subgroups/
+lastModified: 2026-08-21T09:16:04+02:00
+---
+
+# Groups and subgroups
+
+## Groups
+
+A PGD cluster's nodes are gathered in groups. A "top level" group always exists and is the group
+to which all data nodes belong to automatically. The "top level" group can also be
+the direct parent of sub-groups.
+
+## Sub-groups
+
+A group can also contain zero or more subgroups. Subgroups can be used to
+represent data centers or locations allowing commit scopes to refer to nodes
+in a particular region as a whole. Connection Manager can also make use of subgroups
+to delineate nodes available to be write leader.
+
+The `node_group_type` value specifies the type when the subgroup is created.
+Some sub-group types change the behavior of the nodes within the group. For
+example, a [subscriber-only](https://www.enterprisedb.com/docs/pgd/latest/nodes/subscriber_only/) sub-group will make all the nodes
+within the group into subscriber-only nodes.
+
+### Configuring per-subgroup connection strings
+
+In Kubernetes and cloud environments, nodes in the same subgroup often have access to a faster or cheaper local network path that isn't exposed as the node's primary `node_dsn`. Setting `node_group_dsn` on a node tells other nodes in the same subgroup to use that DSN instead. Nodes in other subgroups continue to use `node_dsn`.
+
+Set `node_group_dsn` using [`bdr.alter_node_option`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_option):
+
+```sql
+SELECT bdr.alter_node_option('node_eu1', 'group_dsn', 'host=foo dbname=bdrdb port=5432');
+```
+
+Reset it by passing NULL:
+
+```sql
+SELECT bdr.alter_node_option('node_eu1', 'group_dsn', NULL);
+```
+
+The `node_dsn` endpoint must remain accessible by all nodes for initial setup. See [`bdr.node_config_summary`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/catalogs-internal/#bdrnode_config_summary) for the currently configured and effective values per node.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

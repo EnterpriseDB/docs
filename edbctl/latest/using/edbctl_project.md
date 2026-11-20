@@ -1,0 +1,188 @@
+---
+title: edbctl project
+description: Use the edbctl utility to manage projects for organizing clusters and resources for Hybrid Manager.
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_project/
+lastModified: 2026-11-06T16:50:26+01:00
+---
+
+# edbctl project
+
+Manages projects for organizing clusters and resources. Use this command to create, edit, view, and delete projects, making it easier to manage your database clusters efficiently.
+
+## Commands
+
+- [edbctl project list](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_project/#edbctl-project-list) — Displays all available projects.
+- [edbctl project create](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_project/#edbctl-project-create) — Creates a new project.
+- [edbctl project edit](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_project/#edbctl-project-edit) — Edits a project.
+- [edbctl project delete](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_project/#edbctl-project-delete) — Deletes a specified project.
+- [edbctl project create-object-store](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_project/#edbctl-project-create-object-store) — Creates the object storage secret used by a project.
+
+### edbctl project list
+
+Lists all available projects and displays detailed information, including project ID, name, user count, cluster count, and tags. You can also filter results by project name or ID.
+
+```
+edbctl project list [options]
+```
+
+Where `options` are:
+
+```
+-n, --name string         Project name (optional). Filter the list by a specific project name.
+-i, --id string           Project ID (optional). Filter the list by a specific project ID.
+-c, --credential string   The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-o, --output string       [table json yaml xml] \(default "table")
+-h, --help                Help for list.
+```
+
+This example shows how to list all the projects:
+
+```
+edbctl project list
+```
+
+### edbctl project create
+
+Creates a new project with a specified name and optional tags. Use this command to define and organize projects efficiently.
+
+```
+edbctl project create [options]
+```
+
+Where `options` are:
+
+```
+-n, --name string         Project name (required). The unique name for the project.
+    --tags strings        Assign tags to the project in the format name=color (color is optional).
+-c, --credential string   The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-y, --yes                 Auto-confirm all confirmations.
+-h, --help                Help for create.
+```
+
+These examples show how to create the projects using different options:
+
+```
+edbctl project create "My Project"
+edbctl project create --name "My Project" --tags name2=blue
+edbctl project create --name "My Project" --tags name2=#FF0000
+```
+
+### edbctl project edit
+
+Updates a project using its name or ID. You can rename the project and assign new tags. Make sure to provide the correct project name or ID before updating.
+
+```
+edbctl project edit {--id|--name} --new-name [options]
+```
+
+Where `options` are:
+
+```
+-i, --id string           Project ID (required if --name isn't provided). The immutable unique identifier for a project.
+-n, --name string         Project name (required if --id isn't provided). The mutable unique identifier for a project.
+-N, --new-name string     New name for the specified project.
+    --tags strings        Assign tags to the project in the format name=color (color is optional).
+-c, --credential string   The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-y, --yes                 Auto-confirm all confirmations.
+-I, --interactive         Execute command interactively.
+-h, --help                Help for edit.
+```
+
+These examples show how to update the projects:
+
+```
+edbctl project edit --id prj_MFq4M4EWEoalBAL3 --new-name "New Name"
+edbctl project edit --name "Old Name" --new-name "New Name"
+edbctl project edit --name "Old Name" --tags name2=blue
+```
+
+### edbctl project delete
+
+Deletes a specified project using its name or ID. Before deleting a project, you must permanently remove all its clusters. This action is irreversible, so ensure you have the correct project name or ID before proceeding.
+
+```
+edbctl project delete {--id|--name} [options]
+```
+
+Where `options` are:
+
+```
+-i, --id string           Project ID (required if --name isn't provided). The immutable unique identifier for a project.
+-n, --name string         Project name (required if --id isn't provided). The mutable unique identifier for a project.
+-c, --credential string   The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-y, --yes                 Auto-confirm all confirmations.
+-h, --help                Help for delete
+```
+
+### Examples
+
+```
+edbctl project delete --id prj_MFq4M4EWEoalBAL3
+edbctl project delete --name "My Project"
+```
+
+### edbctl project create-object-store
+
+Configures the object storage that a project uses by creating the project's object storage secret for the given cloud provider. Identify the project by name or ID.
+
+Hybrid Manager (HM) 2026.11 or later reads the project object storage secrets from the `edb-system` namespace, and earlier versions read them from `default`. Pass `--version` to create the secret where the installed version reads it. Without `--version`, the secret is created in `default` and a warning is printed.
+
+```
+edbctl project create-object-store {--id | --name} --provider {aws|azure|gcp|s3} [--version <version>] [--force] [options]
+```
+
+Where `options` are:
+
+```
+-i, --id string                                     Project ID (required if --name is not provided). The immutable unique identifier for a project.
+-n, --name string                                   Project name (required if --id is not provided). The mutable unique identifier for a project.
+    --version string                                The version of Hybrid Manager that will be installed on the cluster (optional). Use "latest" or "latest-ir" for the latest Innovation Release, or "latest-lts" for the latest LTS release.
+-p, --provider string                               The cloud provider the bucket uses.
+-f, --force                                         Overwrite the object storage secret if it already exists (optional, default false).
+    --aws-bucket-name string                        The name of the storage bucket.
+    --aws-region string                             AWS region of the bucket.
+    --aws-auth-type string                          Authentication type: workloadIdentity (default) or credentials (default "workloadIdentity").
+    --aws-primary-role-arn string                   ARN of the primary AWS role (required when --aws-auth-type=workloadIdentity).
+    --aws-access-key-id string                      AWS access key ID (required when --aws-auth-type=credentials).
+    --aws-secret-access-key-file string             Path to a file containing the AWS secret access key (or set AWS_SECRET_ACCESS_KEY env; required when --aws-auth-type=credentials).
+    --aws-secondary-role-arn string                 ARN of the secondary AWS role.
+    --aws-secondary-role-external-id-file string    External ID used to authenticate with the secondary AWS role (or set AWS_SECONDARY_ROLE_EXTERNAL_ID env).
+    --azure-client-id string                        Client ID of the Azure service principal.
+    --azure-client-secret-file string               Path to a file containing the client secret of the Azure service principal.
+    --azure-region string                           Azure region of the storage account.
+    --azure-resource-group-name string              Name of the Azure resource group, which contains the storage account.
+    --azure-storage-account-container-name string   Name of the Azure storage account container that will be used to access this bucket.
+    --azure-storage-account-key-file string         Path to a file containing the key used to access the storage account.
+    --azure-storage-account-name string             Name of the storage account to use.
+    --azure-subscription-id string                  Azure Subscription ID.
+    --azure-tenant-id string                        Azure Tenant ID.
+    --gcp-bucket-name string                        The name of the storage bucket.
+    --gcp-location-id string                        GCP location where the bucket is located.
+    --gcp-project-id string                         ID of the GCP project that owns the bucket.
+    --gcp-credentials-file string                   Credentials used to authenticate with GCP.
+    --gcp-hmac-access-key-id string                 GCS interoperability (HMAC) access key ID, for S3-compatible clients such as the ClickHouse cold tier.
+    --gcp-hmac-secret-access-key-file string        Path to a file containing the GCS interoperability (HMAC) secret (or set GCP_HMAC_SECRET_ACCESS_KEY env); required with --gcp-hmac-access-key-id.
+    --s3-bucket-name string                         The name of the storage bucket.
+    --s3-access-key-id string                       Access key used to authenticate with the S3 provider.
+    --s3-username string                            Username used to authenticate with the S3 provider (alias for --s3-access-key-id).
+    --s3-ca-bundle-file string                      File containing the CA bundle used to authenticate the S3 server (optional).
+    --s3-disable-server-side-encryption             Disables server-side S3 encryption (optional).
+    --s3-endpoint-url string                        URL Endpoint of the S3 provider.
+    --s3-region string                              Provider region where the bucket is located.
+    --s3-access-key-file string                     Path of a file containing the access key used to authenticate with the S3 provider.
+    --s3-password-file string                       Path of a file containing the password used to authenticate with the S3 provider (alias of --s3-access-key-file).
+-c, --credential string                             The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-y, --yes                                           Auto-confirm all confirmations.
+-h, --help                                          Help for create-object-store.
+```
+
+These examples show how to create a project's object storage secret for an AWS bucket:
+
+```
+edbctl project create-object-store --name "My Project" --provider aws --version v2026.11.0
+edbctl project create-object-store --id prj_MFq4M4EWEoalBAL3 --provider aws --version v2026.11.0
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

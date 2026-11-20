@@ -1,0 +1,85 @@
+---
+title: Installing EDB LDAP Sync
+product: EDB LDAP Sync
+url: https://www.enterprisedb.com/docs/pg_extensions/ldap_sync/installing/
+lastModified: 2026-02-06T16:21:57+05:30
+---
+
+# Installing EDB LDAP Sync
+
+EDB LDAP Sync is supported on the same platforms as the Postgres distribution you're using. Support for EDB LDAP Sync starts with Postgres 11. See:
+
+- [EDB Postgres Advanced Server Product Compatibility](https://www.enterprisedb.com/platform-compatibility#epas)
+
+- [PostgreSQL Product Compatibility](https://www.enterprisedb.com/resources/platform-compatibility#pg)
+
+- [EDB Postgres Extended Server Product Compatibility](https://www.enterprisedb.com/resources/platform-compatibility#epas_extended)
+
+## Prerequisites
+
+Before you begin the installation process:
+
+- Install Postgres. See:
+
+  - [Installing EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/installing/)
+
+  - [Installing PostgreSQL](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/)
+
+  - [Installing EDB Postgres Extended Server](https://www.enterprisedb.com/docs/pge/latest/installing/)
+
+- Install [pg\_cron](https://github.com/citusdata/pg_cron)
+
+- Install the [plpython3u](https://www.postgresql.org/docs/current/plpython.html) procedural language to run ldap2pg.
+
+> **Note**
+>
+> plpython3u is an "untrusted" language and thus a potential security risk.
+
+- Install [ldap2pg](https://ldap2pg.readthedocs.io/en/latest/).
+
+- Set up the repository.
+
+  Setting up the repository is a one-time task. If you have already set up your repository, you don't need to perform this step.
+
+  To set up the repository, go to [EDB repositories](https://www.enterprisedb.com/repos-downloads) and follow the instructions provided there.
+
+## Install the package
+
+The syntax for the RPM package install command is:
+
+```shell
+sudo <package-manager> -y install edb-ldap-sync<major_version>
+```
+
+The syntax for the Debian package install command is:
+
+```shell
+sudo <package-manager> -y install edb-ldap-sync-<major_version>
+```
+
+Where:
+
+- `<package-manager>`is the package manager used with your operating system:
+
+| Package manager | Operating system                 |
+| --------------- | -------------------------------- |
+| dnf             | RHEL 8/9 and derivatives         |
+| yum             | RHEL 7 and derivatives, CentOS 7 |
+| zypper          | SLES                             |
+| apt-get         | Debian and derivatives           |
+
+- `<major_version>` is the major version of EDB LDAP Sync you're installing.
+
+For example, to install EDB LDAP Sync version 1.0.0 on a RHEL 8 platform:
+
+```shell
+sudo dnf -y install edb-ldap-sync1
+```
+
+To install EDB LDAP Sync version 1.0.0 on a Debian 11 platform:
+
+```shell
+sudo apt-get -y install edb-ldap-sync-1
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

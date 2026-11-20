@@ -1,0 +1,198 @@
+---
+title: Commands
+description: Command reference for WarehousePG Enterprise Manager.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Commands
+
+WarehousePG Enterprise Manager (WEM) includes a powerful CLI tool for initialization, diagnostics, and service management.
+
+## wem setup
+
+The `wem setup` command is the primary utility for initializing and verifying the WarehousePG (WHPG) monitoring environment. It orchestrates the creation of the monitoring database, installs authentication schemas, and deploys the necessary views across the cluster to enable WEM functionality.
+
+### Usage
+
+```bash
+wem setup [options] [global-options]
+```
+
+### Options
+
+- `--check`: Performs a silent check. Exits with code 0 if setup is complete, and a non-zero code otherwise.
+- `--debug`: Enables verbose output, displaying all SQL queries executed during the setup process.
+- `--non-interactive`: Runs the setup without user prompts, relying on default values or environment variables.
+- `--verify`: Validates the current installation against the expected schema without modifying any data.
+- `--wem-admin-password-file`: Path to the file containing the admin password (or where an auto-generated one will be saved). You can also set the admin password directly with the `WEM_ADMIN_PASSWORD` environment variable.
+
+### Global options
+
+| Flag         | Environment variable | Default   | Description                           |
+| ------------ | -------------------- | --------- | ------------------------------------- |
+| `--host`     | `WHPG_HOST`          | localhost | The hostname of the WHPG coordinator. |
+| `--port`     | `WHPG_PORT`          | 5432      | The port for the WHPG coordinator.    |
+| `--user`     | `WHPG_USER`          | gpadmin   | The superuser for the cluster.        |
+| `--password` | `WHPG_PASSWORD`      | -         | The password for the WHPG user.       |
+| `--database` | `WHPG_DATABASE`      | wem       | The target database for monitoring.   |
+| `--sslmode`  | `WHPG_SSLMODE`       | prefer    | SSL mode for the WHPG connection.     |
+
+### Examples
+
+- Start a guided installation with prompts:
+
+  ```bash
+  wem setup
+  ```
+
+- Check if an installation is complete without making changes:
+
+  ```bash
+  wem setup --check
+  ```
+
+- Point setup to a specific host and port:
+
+  ```bash
+  wem setup --host whpg-coord-01 --port 5433
+  ```
+
+## wem doctor
+
+The `wem doctor` command runs a comprehensive suite of checks against your environment. It identifies misconfigurations in database connectivity, web settings, and service identity, and validates connectivity to the ClickHouse observability backend, before or after the service is started. WEM no longer manages PXF directly (PXF operations are dispatched through the host agent, see [`WHPG_PXF_OP_TIMEOUT_SECONDS`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#pxf)), so `wem doctor` doesn't check for a local `pxf` binary, `PXF_HOME`, or `PXF_BASE`.
+
+Check categories include: configuration consistency between the WHPG and WEM connection settings, database connectivity/TLS/authentication/schema, ClickHouse observability connectivity, web server configuration (cookie security), and effective OS user identity.
+
+### Usage
+
+```bash
+wem doctor [options] [global options]
+```
+
+### Options
+
+- `--clickhouse-url CLICKHOUSE_URL`: The URL of the ClickHouse instance used for observability data.
+- `--clickhouse-db CLICKHOUSE_DB`: The ClickHouse database that stores OTel-collected metrics and logs. Defaults to `acp_observability`.
+- `-h, --help`: Display help text for the doctor command.
+
+### Global options
+
+| Flag         | Environment variable | Default   | Description                           |
+| ------------ | -------------------- | --------- | ------------------------------------- |
+| `--host`     | `WHPG_HOST`          | localhost | The hostname of the WHPG coordinator. |
+| `--port`     | `WHPG_PORT`          | 5432      | The port for the WHPG coordinator.    |
+| `--user`     | `WHPG_USER`          | gpadmin   | The superuser for the cluster.        |
+| `--password` | `WHPG_PASSWORD`      | -         | The password for the WHPG user.       |
+| `--database` | `WHPG_DATABASE`      | wem       | The target database for monitoring.   |
+| `--sslmode`  | `WHPG_SSLMODE`       | prefer    | SSL mode for the WHPG connection.     |
+
+### Examples
+
+- Check the core database, web, and service identity configurations:
+
+  ```bash
+  wem doctor
+  ```
+
+- Validate connectivity to a specific ClickHouse instance:
+
+  ```bash
+  wem doctor --clickhouse-url http://clickhouse.internal:8123 --clickhouse-db acp_observability
+  ```
+
+## wem configure-user
+
+The `wem configure-user` command switches the OS user that the WEM service runs as. It configures the service to start as the specified user, transfers ownership of `/etc/edb/wem/wem.conf` and `/var/log/edb/wem`, provisions the user's `gpAdminLogs` directory, and updates `WHPG_OS_USER` in `wem.conf`.
+
+### Usage
+
+```bash
+wem configure-user <username> [options]
+```
+
+### Options
+
+- `--remove`: Reverts the service user to the shipped default (the dedicated `wem` system user). Takes no username argument.
+- `--allow-system-uid`: Accepts a user with a UID below 1000, which is otherwise rejected.
+- `--dry-run`: Prints what would change without writing anything.
+- `--check`: Reports whether the service is already configured for the named user without making changes. Exits with code `0` if it matches, `1` if there's drift, or `2` on error.
+
+### Example
+
+```bash
+sudo wem configure-user whpg_admin
+sudo systemctl restart wem
+```
+
+## wem serve
+
+The `wem serve` command starts the WEM web server. Use `systemctl start wem` to start WEM in normal operation. Use `wem serve` directly only when running WEM outside of systemd, such as in a container environment. Running `wem` with no subcommand also starts the server, equivalent to `wem serve`.
+
+`wem serve` refuses to start as `root` unless [`WHPG_ALLOW_ROOT`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#service-identity) is set to `1`.
+
+### Usage
+
+```bash
+wem serve [options] [global options]
+```
+
+### Options
+
+- `--listen-port PORT`: HTTP port the web portal listens on. Environment variable: `PORT`. Default: `8080`.
+- `--monitoring-db NAME`: Database WEM uses for monitoring queries, if different from `--database`. Environment variable: `WHPG_MONITORING_DB`.
+- `--high-load`: Extends WEM's internal timeouts for large clusters. Environment variable: `HIGH_LOAD_MODE`.
+- `--cookie-secret SECRET`: 32-byte secret key for session cookies. Environment variable: `WEM_COOKIE_SECRET`. Required — `serve` fails at startup if neither this flag nor the environment variable is set.
+
+## wem canary import
+
+The `wem canary import` command loads canary check definitions from a YAML file into the database, skipping checks that already exist and any built-in system checks.
+
+### Usage
+
+```bash
+wem canary import [file] [global options]
+```
+
+`file` defaults to `config/canary_checks.yaml` if not specified.
+
+> **Note**
+>
+> The command skips any check whose query isn't a single `SELECT` statement or a `WITH` query that doesn't modify data, and reports each skipped check.
+
+## wem canary export
+
+The `wem canary export` command exports user-defined canary checks (excluding built-in system checks) to YAML, either to stdout or to a file.
+
+### Usage
+
+```bash
+wem canary export [file] [global options]
+```
+
+## wem reset-password
+
+The `wem reset-password` command generates a password-reset token for a WEM dashboard user, connecting with the bootstrap database configuration from `/etc/edb/wem/wem.conf`.
+
+### Usage
+
+```bash
+wem reset-password [options]
+```
+
+### Options
+
+- `--username NAME`: The dashboard user to reset. Default: `admin`.
+
+## wem version
+
+The `wem version` command prints the WEM version, commit, build date, Go version, OS/architecture, and the WarehousePG major versions (6 and 7) that this build is compatible with.
+
+### Usage
+
+```bash
+wem version
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

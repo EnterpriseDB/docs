@@ -1,0 +1,31 @@
+---
+title: EDB Postgres AI for ClickHouse® 26.3.17.56 release notes
+description: Release notes for EDB Postgres AI for ClickHouse 26.3.17.56, including the Kubernetes operator update.
+product: EDB Postgres AI for ClickHouse
+version: "26.3"
+url: https://www.enterprisedb.com/docs/clickhouse/26.3/release_notes/rel_notes26_3_17_56/
+lastModified: 2026-11-02T13:02:55+01:00
+---
+
+# EDB Postgres AI for ClickHouse® 26.3.17.56 release notes
+
+Released: 30 July 2026
+
+EDB Postgres AI for ClickHouse® 26.3.17.56 rolls up upstream bug fixes from ClickHouse 26.3.14 through 26.3.17, and updates the Kubernetes operator.
+
+## ClickHouse® server
+
+| Type           | Description                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Upstream merge | Based on the open-source [ClickHouse 26.3.17.56](https://github.com/ClickHouse/ClickHouse/releases/tag/v26.3.17.56-lts) LTS release, rolling up upstream bug fixes from 26.3.14 through 26.3.17. |
+
+## Kubernetes operator
+
+| Type           | Description                                                                                                                                                                        |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upstream merge | Updated to `0.27.2-1edb1`, tracking upstream [Altinity clickhouse-operator release-0.27.2](https://github.com/Altinity/clickhouse-operator/releases/tag/release-0.27.2).           |
+| Feature        | Renamed `reconcile.recovery.from.*` to `reconcile.recovery.onStatus.*`. This change is backward-incompatible.                                                                      |
+| Bug fix        | Fixed unauthenticated `/debug/pprof` exposure on the metrics port.                                                                                                                 |
+| Bug fix        | Bumped the Go toolchain to 1.26.5, fixing [CVE-2026-39822](https://nvd.nist.gov/vuln/detail/CVE-2026-39822) and [CVE-2026-42505](https://nvd.nist.gov/vuln/detail/CVE-2026-42505). |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

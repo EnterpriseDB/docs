@@ -1,0 +1,151 @@
+---
+title: Uninstalling
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/installing/uninstalling/
+lastModified: 2024-05-24T16:29:37+02:00
+---
+
+# Uninstalling
+
+<div id="uninstalling_xdb_replication_server" class="registered_link"></div>
+
+Uninstalling the Replication Server results in the removal of the following:
+
+- Publication server
+- Subscription server
+- EPRS console
+- Replication Server command line interface
+- EPRS replication configuration file
+- Replication Server startup configuration file
+- Publication server configuration file
+- Subscription server configuration file
+
+Uninstalling Replication Server doesn't remove any databases used as primary nodes, publication databases, or subscription databases.
+
+Use the Replication Server console or the Replication Server command line interface to delete any existing single-master or multi-master replication systems before you uninstall Replication Server. Otherwise the control-schema objects created in the publication databases or primary nodes remain in those databases. You must then delete these control-schema objects manually, such as by using a SQL command line utility.
+
+If you installed Replication Server using the Replication Server installer program invoked from StackBuilder Plus, uninstall Replication Server by invoking the `uninstall-xdbreplicationserver` script.
+
+<div id="uninstalling_xdb_rpm_package" class="registered_link"></div>
+
+## Uninstalling an RPM package installation
+
+If you installed Replication Server from the RPM package, uninstall it using the yum package manager.
+
+If you installed Replication Server from the RPM package, you can uninstall a Replication Server component by using the following command:
+
+```
+yum remove package_name 
+```
+
+Where  `package_name` is `edb-xdb-console`, `edb-xdb-publisher`, or `edb-xdb-subscriber`.
+
+You can remove all Replication Server components using the following command:
+
+```
+yum remove edb-xdb*`
+```
+
+For example:
+
+```shell
+[root@localhost yum.repos.d]# yum remove edb-xdb*
+```
+
+```output title="Output"
+Loaded plugins: fastestmirror, langpacks
+Resolving Dependencies
+--> Running transaction check
+---> Package edb-xdb.x86_64 0:7.0.0-1.rhel7 will be erased
+---> Package edb-xdb-console.x86_64 0:7.0.0-1.rhel7 will be erased
+---> Package edb-xdb-libs.x86_64 0:7.0.0-1.rhel7 will be erased
+---> Package edb-xdb-publisher.x86_64 0:7.0.0-1.rhel7 will be erased
+---> Package edb-xdb-subscriber.x86_64 0:7.0.0-1.rhel7 will be erased
+--> Finished Dependency Resolution
+
+Dependencies Resolved
+
+=========================================================================================================================================================================================
+Package                                             Arch                                   Version                                      Repository                            Size
+=========================================================================================================================================================================================
+Removing:
+edb-xdb                                            x86_64                                 7.0.0-1.rhel7                                    installed                            0.0
+edb-xdb-console                                    x86_64                                 7.0.0-1.rhel7                                    installed                            3.3 M
+edb-xdb-libs                                       x86_64                                 7.0.0-1.rhel7                                    installed                             15 M
+edb-xdb-publisher                                  x86_64                                 7.0.0-1.rhel7                                    installed                            131 k
+edb-xdb-subscriber                                 x86_64                                 7.0.0-1.rhel7                                    installed                            5.2 k
+
+Transaction Summary
+=========================================================================================================================================================================================
+Remove  5 Packages
+
+Installed size: 19 M
+Is this ok [y/N]: y
+Downloading packages:
+Running transaction check
+Running transaction test
+Transaction test succeeded
+Running transaction
+  Erasing    : edb-xdb-7.0.0-1.rhel7.x86_64                                                                                                                                          1/5 
+  Erasing    : edb-xdb-subscriber-7.0.0-1.rhel7.x86_64                                                                                                                               2/5 
+  Erasing    : edb-xdb-console-7.0.0-1.rhel7.x86_64                                                                                                                                  3/5 
+  Erasing    : edb-xdb-publisher-7.0.0-1.rhel7.x86_64                                                                                                                                4/5 
+  Erasing    : edb-xdb-libs-7.0.0-1.rhel7.x86_64                                                                                                                                     5/5 
+  Verifying  : edb-xdb-libs-7.0.0-1.rhel7.x86_64                                                                                                                                     1/5 
+  Verifying  : edb-xdb-publisher-7.0.0-1.rhel7.x86_64                                                                                                                                2/5 
+  Verifying  : edb-xdb-7.0.0-1.rhel7.x86_64                                                                                                                                          3/5 
+  Verifying  : edb-xdb-console-7.0.0-1.rhel7.x86_64                                                                                                                                  4/5 
+  Verifying  : edb-xdb-subscriber-7.0.0-1.rhel7.x86_64                                                                                                                               5/5
+
+Removed:
+edb-xdb.x86_64 0:7.0.0-1.rhel7              edb-xdb-console.x86_64 0:7.0.0-1.rhel7      edb-xdb-libs.x86_64 0:7.0.0-1.rhel7      
+edb-xdb-publisher.x86_64 0:7.0.0-1.rhel7    edb-xdb-subscriber.x86_64 0:7.0.0-1.rhel7      
+
+Complete!
+```
+
+## Uninstalling a Windows installation
+
+To uninstall Replication Server from a Windows host:
+
+1. From the Windows Control Panel, select **Uninstall a Program**.
+
+2. From the list of programs to uninstall or change, select the Replication Server product. Select **Uninstall/Change**.
+
+3. Select **Yes** to confirm that you want to unistall Replication Server.
+
+4. The Uninstallation Completed dialog box appears when the process is complete. Select **OK**.
+
+### Uninstalling in text or unattended mode
+
+You can also uninstall Replication Server without using the user interface.
+
+The following shows how to uninstall Replication Server in text mode.
+
+```shell
+$ su root
+Password:
+$ ./uninstall-xdbreplicationserver --mode text
+Do you want to uninstall xDB Replication Server and all of its modules? [Y/n]: y
+
+----------------------------------------------------------------------------
+Uninstall Status
+
+ Uninstalling xDB Replication Server
+ 0% ______________ 50% ______________ 100%
+ #########################################
+
+Info: Uninstallation completed
+Press [Enter] to continue :
+```
+
+The following shows how to uninstall Replication Server in unattended mode.
+
+```shell
+$ su root
+Password:
+$ ./uninstall-xdbreplicationserver --mode unattended
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

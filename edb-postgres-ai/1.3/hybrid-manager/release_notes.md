@@ -1,0 +1,55 @@
+---
+title: Hybrid Manager Release Notes
+description: Release notes provides information on what is new in each release of Hybrid Manager.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/
+lastModified: 2026-07-16T19:40:58Z
+---
+
+# Hybrid Manager Release Notes
+
+The EDB Hybrid Manager documentation describes the latest version of EDB Hybrid Manager, including minor releases and patches. The release notes provide information on what was new in each release. For new functionality introduced in a minor or patch release, the content also indicates the release that introduced the feature.
+
+| Version                                                                                                           | Release date |
+| ----------------------------------------------------------------------------------------------------------------- | ------------ |
+| [1.3.10](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.10_rel_notes/) | 16 Jul 2026  |
+| [1.3.9](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.9_rel_notes/)   | 2 Jun 2026   |
+| [1.3.8](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.8_rel_notes/)   | 14 May 2026  |
+| [1.3.7](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.7_rel_notes/)   | 14 Apr 2026  |
+| [1.3.6](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.6_rel_notes/)   | 12 Mar 2026  |
+| [1.3.5](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.5_rel_notes/)   | 12 Feb 2026  |
+| [1.3.4](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.4_rel_notes/)   | 15 Jan 2026  |
+| [1.3.3](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.3_rel_notes/)   | 15 Dec 2025  |
+| [1.3.2](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.2_rel_notes/)   | 27 Nov 2025  |
+| [1.3.1](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.1_rel_notes/)   | 28 Oct 2025  |
+| [1.3](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3_rel_notes/)       | 10 Oct 2025  |
+| [1.2](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.2_rel_notes/)       | 17 Jun 2025  |
+
+## Hybrid Manager dual release strategy
+
+We are adopting a new release strategy designed to deliver new capabilities and stability improvements to you faster and more predictably.
+
+Notice that in addition to the traditional release scheme (with semantic versioning such as 1.3.0), we added a date-based release scheme (with version numbering such as 2025.11), which we are calling our Innovation Releases.
+This change supports our commitment to continuous delivery and clearer release cadences:
+
+- **Innovation releases (monthly):** These releases, such as 2025.11, are delivered monthly. They focus on continuous platform hardening, workflow improvements, stability, reliability and the introduction of smaller, iterative features. They’re great for customers and teams that want to be on the leading edge of development, and see where we’re taking the product.
+
+- **Long-term support (LTS) releases (bi-annual):** These releases, such as 1.3.0, are delivered twice a year. They consolidate the contents of previous Innovation Releases into a stable foundation for deployments requiring an extended support commitment. These LTS releases are supported for 15 months from their release date, with monthly patch releases, such as 1.3.1, that include bug and security fixes.
+
+For up-to-date platform compatibility of Hybrid Manager, please refer to our [Platform Compatibility page](https://www.enterprisedb.com/resources/platform-compatibility#hybrid%20management%20).
+
+- [Version 1.3.10](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.10_rel_notes/): Release notes for version 1.3.10 of Hybrid Manager.
+- [Version 1.3.9](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.9_rel_notes/): Release notes for version 1.3.9 of Hybrid Manager.
+- [Version 1.3.8](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.8_rel_notes/): Release notes for version 1.3.8 of Hybrid Manager.
+- [Version 1.3.7](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.7_rel_notes/): Release notes for version 1.3.7 of Hybrid Manager.
+- [Version 1.3.6](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.6_rel_notes/): Release notes for version 1.3.6 of Hybrid Manager.
+- [Version 1.3.5](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.5_rel_notes/): Release notes for version 1.3.5 of Hybrid Manager.
+- [Version 1.3.4](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.4_rel_notes/): Release notes for version 1.3.4 of Hybrid Manager.
+- [Version 1.3.3](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.3_rel_notes/): Release notes for version 1.3.3 of Hybrid Manager.
+- [Version 1.3.2](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.2_rel_notes/): Release notes for version 1.3.2 of Hybrid Manager.
+- [Version 1.3.1](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3.1_rel_notes/): Release notes for version 1.3.1 of Hybrid Manager.
+- [Version 1.3](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.3_rel_notes/): Release notes for version 1.3 of Hybrid Manager.
+- [Version 1.2](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/release_notes/hm_1.2_rel_notes/): Release notes for Version 1.2 of Hybrid Manager.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

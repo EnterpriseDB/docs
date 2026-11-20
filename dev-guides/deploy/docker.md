@@ -1,0 +1,199 @@
+---
+title: Installing PostgreSQL in a Docker container on your local machine
+description: Learn how to install PostgreSQL in a Docker container on your local machine for development purposes.
+product: The EDB Postgres AI Developer Guides
+url: https://www.enterprisedb.com/docs/dev-guides/deploy/docker/
+lastModified: 2025-07-24T21:38:58-07:00
+---
+
+# Installing PostgreSQL in a Docker container on your local machine
+
+Using Docker for your local PostgreSQL development environment streamlines setup, ensures consistency, and simplifies management. It provides a flexible, isolated, and portable solution that can adapt to various development needs and workflows.
+
+## Prerequisites
+
+- Docker-compatible OS (macOS, Windows, Linux)
+
+## Preparing Docker
+
+### Install Docker
+
+Make sure Docker is installed on your machine, or download and install it from [Docker’s official website](https://www.docker.com/products/docker-desktop/).
+
+- macOS: Download and install Docker Desktop from Docker’s official website.
+- Windows: Download and install Docker Desktop from Docker’s official website. Ensure WSL 2 is enabled if using Windows 10 or later.
+- Linux: Install Docker using your distribution’s package manager. For example, on Ubuntu:
+
+```
+sudo apt update  
+sudo apt install docker.io  
+sudo systemctl start docker  
+sudo systemctl enable docker  
+sudo usermod -ag docker $USER  
+newgrp docker
+```
+
+### Pull the PostgreSQL Docker image
+
+To pull the latest PostgreSQL image from Docker Hub, open a terminal or command prompt and run the following command:
+
+```
+docker pull postgres
+```
+
+## Running the PostgreSQL container
+
+Run a new container with the PostgreSQL image:
+
+```
+docker run --name my_postgres -d -e POSTGRES_PASSWORD=mysecretpassword -v my_pgdata:/var/lib/postgresql/data -p 5432:5432 postgres
+```
+
+#### `--name my_postgres`
+
+The `--name` flag tells Docker to create a new container named `my_postgres`.
+
+#### `-d`
+
+The `-d` flag tells Docker to run the container in detached mode. This means the container runs in the background and doesn't block the terminal.
+
+#### `-e POSTGRES_PASSWORD=mysecretpassword`
+
+The `-e` flag sets an environment variable `POSTGRES_PASSWORD` to `mysecretpassword`. This is the password for the default postgres user. We strongly recommend using a different password.
+
+#### `-v my_pgdata:/var/lib/postgresql/data`
+
+Docker uses volumes to persist data in Docker containers. This flag mounts a volume named `my_pgdata` to persist data.
+The data in this case is whatever Postgres writes to the `/var/lib/postgresql/data` directory within the container.
+These writes are persisted outside the container in a Docker volume. The command `docker volume inspect my_pgdata` shows you information about that volume.
+
+#### `-p 5432:5432`
+
+The `-p` flag maps the container’s port 5432 to the host machine’s port 5432. Port 5432 is Postgres's default port for communications. Using this flag allows you to access the PostgreSQL database from your host machine.
+
+#### `postgres`
+
+This is the name of the image to run. Docker uses this name to pull the image from Docker Hub if it isn't already present on the local machine.  If you don't pull it, this command automatically pulls the PostgreSQL image.
+
+## Verifying the container is running
+
+Verify that the container is running:
+
+```
+docker ps
+```
+
+This command lists all running containers, including the container you created (`my_postgres` in this example).
+
+You now have a persistent, locally accessible Postgres database running in a Docker container and
+can start using it.
+
+## Access PostgreSQL with a client
+
+To access the PostgreSQL database without any additional tools, you can use the following command to open a PostgreSQL prompt:
+
+```
+docker exec -it my_postgres psql -U postgres
+```
+
+This command logs into the Docker container and runs the `psql` command as the postgres user from there.
+
+The `psql` command is a powerful tool for interacting with PostgreSQL databases. Install it on your local machine to interact with the PostgreSQL database running in the Docker container.
+
+### macOS
+
+You can install the PostgreSQL client using Homebrew:
+
+```
+brew install libpq
+```
+
+### Windows
+
+Download the PostgreSQL client from the [official website](https://www.enterprisedb.com/downloads/postgres-postgresql-downloads).
+
+### Linux
+
+Use your distribution’s package manager to install the PostgreSQL client. For example, on Ubuntu:
+
+```
+sudo apt-get install postgresql-client
+```
+
+## Connecting other apps
+
+You can also connect other applications to the PostgreSQL database running in the Docker container. You need to provide the following connection details:
+
+- Host: `localhost`
+- Port: `5432`
+- Username: `postgres`
+- Password: (whatever you set it to)
+- Database: `postgres`
+
+Or use the connection string:
+
+```
+postgresql://postgres:mysecretpassword@localhost:5432/postgres
+```
+
+## Verifying data persistence
+
+1. Create a table and insert data.\
+   Access the PostgreSQL instance and run the following SQL commands to create a table with columns and insert some data:
+
+   ```sql
+   CREATE TABLE employees (  
+      id SERIAL PRIMARY KEY,  
+      first_name VARCHAR(50),  
+      last_name VARCHAR(50),  
+      email VARCHAR(100),  
+      hire_date DATE  
+   );  
+      INSERT INTO employees (first_name, last_name, email, hire_date) VALUES  
+      ('John', 'Doe','john.doe@example.com', '2020-01-15'),  
+      ('Jane', 'Smith', 'jane.smith@example.com', '2019-03-22');
+   ```
+
+2. Stop and completely remove the container:
+   ```
+   docker stop my_postgres  
+   docker rm my_postgres
+   ```
+
+3. Re-create the container with the same volume:
+
+   ```
+   docker run --name my_postgres -d -e POSTGRES_PASSWORD=mysecretpassword -v my_pgdata:/var/lib/postgresql/data -p 5432:5432 postgres
+   ```
+
+4. Verify data persistence.\
+   Access the PostgreSQL instance and check if the data still exists:
+
+   ```sql
+   SELECT * FROM employees
+   ```
+
+   If everything worked as expected, you'll see the employee table with the data previously loaded still present.
+
+## Stopping and removing the container
+
+To stop and remove the container:
+
+```
+docker stop my_postgres  
+docker rm my_postgres
+```
+
+## Deleting the volume
+
+To remove the volume containing the database, after stopping and removing the container, use the following command:
+
+```
+docker volume rm my_pgdata
+```
+
+## Conclusion
+
+By following these steps, you have set up a robust local development environment for PostgreSQL using Docker. This setup ensures data persistence and provides a flexible, isolated, and consistent environment for all of your development needs.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

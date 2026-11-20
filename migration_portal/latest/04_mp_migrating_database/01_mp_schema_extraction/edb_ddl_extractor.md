@@ -1,0 +1,236 @@
+---
+title: Extracting schemas using the EDB DDL Extractor
+product: Migration Portal
+version: 5.2.0
+url: https://www.enterprisedb.com/docs/migration_portal/latest/04_mp_migrating_database/01_mp_schema_extraction/edb_ddl_extractor/
+lastModified: 2026-10-07T14:29:04+02:00
+---
+
+# Extracting schemas using the EDB DDL Extractor
+
+Download the latest EDB DDL Extractor script from the Migration Portal **Projects** page.
+
+> **Note**
+>
+> Migration Portal might become unresponsive for very large SQL files, depending on your system and browser resource availability. To resolve this issue, try extracting fewer schemas at a time to reduce the SQL file size.
+
+## Prerequisites
+
+You can run the EDB DDL Extractor script in SQL Developer or SQL\*Plus. It uses Oracle’s `DBMS_METADATA` built-in package to extract DDLs for different objects under schemas (specified while running the script). The EDB DDL Extractor creates the DDL file uploaded to the portal and analyzed for EDB Postgres Advanced Server compatibility.
+
+> **Note**
+>
+> You must have `CONNECT` and `SELECT_CATALOG_ROLE` roles and `CREATE TABLE` privilege.
+
+## Version compatibility
+
+Migration Portal 5.0.0 and later require EDB DDL Extractor version 3.0.0 or later. Migration Portal rejects SQL files produced by extractor versions 2.4.x and earlier at upload time.
+
+If you previously extracted DDL using an older extractor version, download the latest `edb_ddl_extractor.sql` from the Migration Portal **Projects** page and re-extract your schemas before uploading.
+
+## Running the extractor
+
+You can run the EDB DDL Extractor script in SQL\*Plus or SQL Developer. In either tool, the script prompts you for the schemas to extract, the location for the output file, and whether to extract dependent objects, `GRANT` statements, and a report of objects that aren't extracted.
+
+### For SQL\*Plus
+
+1. Connect to SQL\*Plus and run this command:
+
+   ```sql
+   @edb_ddl_extractor.sql
+   ```
+
+   The script prompts you to provide the details described in the steps that follow.
+
+2. If the Oracle user that's running the script has the required privileges, press **Enter** to continue running the script.
+
+3. Provide the schema name. When extracting multiple schemas, use a comma (`‘,’`) as a delimiter.
+
+   > **Note**
+   >
+   > If you want to extract all the user schemas from the current database, don't mention any schema names while extracting. However, we recommend mentioning the schema names that you want to extract.
+
+4. Enter the path or directory for the extractor to store the extracted DDL. If you don't specify a path, the extracted DDL is output to the directory where you ran the SQL\*Plus command.
+
+5. Enter `yes` to extract dependent objects from other schemas or `no` if you don't want to extract them.
+
+6. Enter `yes` to extract `GRANT` statements or `no` to skip them. The default is `no`.
+
+7. Enter `yes` to append a report of objects that the script doesn't extract, or `no` to skip the report. The default is `no`. For details, see [Report of objects that aren't extracted](#report-of-objects-that-arent-extracted).
+
+8. Enter `yes` to include a detailed listing of each object in the report, or `no` to include counts only. The default is `no`. This setting applies only if you enabled the report.
+
+### SQL\*Plus example
+
+1. Run the extractor script:
+
+   ```text
+   @edb_ddl_extractor.sql
+   ```
+
+2. Press **Enter**.
+
+3. Specify three schemas by separating them with commas:
+
+   ```text
+   Enter a comma separated list of schemas to be extracted (Default all schemas): HR, SCOTT, FINANCE
+   ```
+
+4. Enter a path for the output file:
+
+   On Linux, you might use:
+
+   ```text
+   Location for output file (Default current location) : /home/oracle/extracted_ddls/
+   ```
+
+   Similarly on Windows:
+
+   ```text
+   Location for output file (Default current location) : c:\Users\Example\Desktop\
+   ```
+
+5. Enter `yes` to extract dependent objects in other schemas:
+
+   ```text
+   WARNING:
+
+   Given schema(s) list may contain objects which are dependent on objects 
+   from other schema(s), not mentioned in the list.` `Assessment may fail 
+   for such objects. It is suggested to extract all dependent objects 
+   together.
+   Extract dependent object from other schemas?(yes/no) (Default no / Ignored for all schemas option): yes
+   ```
+
+6. Enter `yes` to extract grant statements:
+
+   ```text
+   Extract GRANT statements?(yes/no) (Default no): yes
+   ```
+
+7. Enter `yes` to append the not-extracted objects report, and `yes` to include the detailed listing:
+
+   ```text
+   Report objects NOT extracted by this script?(yes/no) (Default no): yes
+   Include detailed listing in not-extracted report?(yes/no) (Default no, counts only): yes
+   ```
+
+### For SQL Developer
+
+After loading the `edb_ddl_extractor.sql` script into SQL Developer and connecting to the source Oracle database, run the script. As the script executes, respond to the prompts.
+
+1. If the user for the database connection has the required privileges as listed in the **Script Output** tab, select **Yes** to continue running the script.
+
+2. Enter a comma-separated list of schemas, and select **OK**.
+
+3. Enter the path for the output file, and select **OK**. The default is the location of the DDL Extractor script.
+
+4. Enter `yes` or `no` to extract dependent objects, and select **OK**. The default is not to extract dependent objects.
+
+5. Enter `yes` or `no` to extract grant statements, and select **OK**. The default is not to extract grant statements.
+
+6. Enter `yes` or `no` to append a report of objects that the script doesn't extract, and select **OK**. The default is not to include the report.
+
+7. Enter `yes` to include a detailed listing of each object or `no` to include counts only, and select **OK**. The default is counts only. This setting applies only if you enabled the report.
+
+Output of the DDL Extractor run appears in the Script Output tab. The name of the output file appears after the `Extraction Completed` message in the script output.
+
+> **Note**
+>
+> You can also enter single schema name in both SQL\*Plus and SQL Developer.
+
+The script then iterates through the object types in the source database. After the task is completed, the `.SQL` output is stored at the location you entered (for example, `c:\Users\Example\Desktop\`).
+
+## Understanding the output file
+
+The EDB DDL Extractor writes all of its output to a single `.sql` file. The file always contains the extracted DDL. If you enable the optional report, the script also appends it to the end of the same file.
+
+### Standard output
+
+Starting with EDB DDL Extractor 3.0.0, the extracted SQL file separates table definitions from their constraints:
+
+- `CREATE TABLE` statements contain column definitions only. Primary key, unique, foreign key, check, and `NOT NULL` constraints aren't included inline.
+
+- Constraints are emitted as separate `ALTER TABLE ... ADD CONSTRAINT` statements in dedicated sections of the extracted file. The sections are
+  - `## Primary Key Constraints`
+  - `## Unique Key Constraints`
+  - `## Foreign Keys`
+  - `## Check Constraints` (which also covers `NOT NULL` constraints)
+
+- Both enabled and disabled constraints are extracted.
+
+Don't edit the section markers (lines beginning with `##`) in the extracted file. Migration Portal relies on them to parse the output correctly.
+
+### Report of objects that aren't extracted
+
+The EDB DDL Extractor can append an optional report to the end of the output file. The report lists the objects in your schemas that the script didn't extract, so you can estimate how much manual migration work remains after you run the extractor.
+
+The report is informational only. It doesn't change which DDL the script extracts. The script doesn't create a separate file or display the report in the script output.
+
+The report is off by default. To enable it, answer `yes` to the last two prompts when you run the script.
+
+#### What the report contains
+
+The report groups not-extracted objects into two categories:
+
+- **Category A: Unsupported object types.** The script doesn't support extracting these object types, regardless of their state. Examples include:
+  - Scheduler objects (`CHAIN`, `PROGRAM`, `SCHEDULE`, `JOB`)
+  - Legacy `DBMS_JOB` jobs
+  - `RULE`, `RULE SET`, and `EVALUATION CONTEXT`
+  - Java objects (`JAVA CLASS`, `JAVA SOURCE`, `JAVA RESOURCE`)
+  - `LIBRARY`
+  - `OPERATOR`
+  - `AQ QUEUE` objects
+  - `CLUSTER` objects
+- **Category B: Skipped objects.** The script supports these object types (for example, tables, views, functions, procedures, packages, types, and indexes), but it skipped the specific object because it met one of these conditions:
+  - The object has an `INVALID` status.
+  - The PL/SQL source is wrapped (obfuscated). Oracle doesn't expose the source for wrapped objects.
+  - The index is a LOB index or has an `UNUSABLE` status.
+  - The table is the storage table for a nested-table column.
+  - The table is the underlying table for an AQ queue.
+
+Objects in the recycle bin (names beginning with `BIN$`) are excluded from the report, just as they're excluded from extraction. The report includes a count of the excluded objects so that nothing appears to be silently missing. For example:
+
+```text
+## Note: 3 recycle-bin (BIN$...) object(s) excluded from this report.
+```
+
+#### Example report
+
+This example shows the report with the detailed listing enabled:
+
+```text
+####################################################################################################################################
+## Objects NOT Extracted By This Script (Out-Of-Scope / Skipped)
+## Informational only - does not affect the DDL extracted above.
+####################################################################################################################################
+## [A. Unsupported object type: CHAIN] schema=APP_TEST type=CHAIN name=SCHED_CHAIN status=VALID
+## [A. Unsupported object type: CLUSTER] schema=APP_TEST type=CLUSTER name=CLU_GOOD status=VALID
+## [B. AQ queue tables] schema=APP_TEST type=QUEUE TABLE name=QUEUE_TAB status=-
+## [B. INVALID FUNCTION] schema=APP_TEST type=FUNCTION name=FN_INVALID status=INVALID
+## [B. INVALID PACKAGE] schema=APP_TEST type=PACKAGE name=PKG_INVALID_SPEC status=INVALID
+## [B. INVALID PROCEDURE] schema=APP_TEST type=PROCEDURE name=PROC_INVALID status=INVALID
+## [B. INVALID TABLE] schema=APP_TEST type=TABLE name=TAB_OF_TYPE status=INVALID
+## [B. INVALID TYPE] schema=APP_TEST type=TYPE name=TY_INVALID2 status=INVALID
+## [B. LOB indexes] schema=APP_TEST type=INDEX (LOB) name=SYS_IL0000074734C00005$$ status=VALID
+## [B. Nested-table storage] schema=APP_TEST type=TABLE (NESTED) name=TAB_NESTED_STORAGE status=-
+## [B. WRAPPED PROCEDURE] schema=APP_TEST type=PROCEDURE (WRAPPED) name=PROC_WRAPPED status=WRAPPED
+##
+## SUMMARY - counts of not-extracted objects by category
+## A. Unsupported object type: CHAIN : 1 object(s)
+## A. Unsupported object type: CLUSTER : 1 object(s)
+## B. AQ queue tables : 1 object(s)
+## B. INVALID FUNCTION : 1 object(s)
+## B. INVALID PACKAGE : 1 object(s)
+## B. INVALID PROCEDURE : 1 object(s)
+## B. INVALID TABLE : 1 object(s)
+## B. INVALID TYPE : 1 object(s)
+## B. LOB indexes : 1 object(s)
+## B. Nested-table storage : 1 object(s)
+## B. WRAPPED PROCEDURE : 1 object(s)
+## Note: 0 recycle-bin (BIN$...) object(s) excluded from this report.
+```
+
+If you don't enable the detailed listing, the report omits the list of individual objects and includes only the header, the `SUMMARY` block, and the recycle-bin note.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

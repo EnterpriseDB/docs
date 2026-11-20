@@ -1,0 +1,46 @@
+---
+title: Frequently Asked Questions
+description: Answers to Frequently Asked Questions
+product: pgBackRest
+url: https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/99-faq/
+lastModified: 2023-08-02T08:09:53+02:00
+---
+
+# Frequently Asked Questions
+
+- Why do we have to specify the `--stanza` option even if only one stanza is defined in the configuration file?
+
+Except for the repository specific commands (`info`, `start`, `stop`), the `--stanza` option is required so that adding a stanza does not cause the commands that did not have a stanza specified to suddenly throw errors because they do not know which stanza to use.
+
+---
+
+- Is it possible to only restore a specific database from a complete database cluster backup?
+
+Yes. You can restore a specific database using the [restore `--db-include`](https://pgbackrest.org/command.html#command-restore/category-command/option-db-include) option. After recovery, you can then extract the selected databases with the [`pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html) command.
+
+The databases that are not explicitly included with this option will be restored as sparse, zeroed files to save space; however, it still allows PostgreSQL to perform the recovery using less disk space. You can then remove these databases with the [`DROP DATABASE`](https://www.postgresql.org/docs/current/sql-dropdatabase.html) command since they will no longer be accessible.
+
+---
+
+- Is is possible to setup pgBackRest to access remote hosts without using the SSH protocol?
+
+Yes. Since the 2.37 release, pgBackRest can use TLS with client certificates to enable communication between the hosts. A TLS server must then be configured and started on each host.
+
+See [Setup TLS](https://pgbackrest.org/user-guide-rhel.html#repo-host/config) for more information.
+
+---
+
+- How many CPU cores are needed on a dedicated remote backup server?
+
+Since compression/decompression is performed on the Postgres host, the repository host does only need to encrypt/decrypt SSH or TLS connections. Usually 1 repository core per 4 Postgres cores is a good starting point.
+
+---
+
+- Does pgBackRest support immutable (WORM) storage?
+
+Immutable storage is a broad term referring to data storage that cannot be edited, altered, or deleted. WORM means _Write Once, Read Many_.
+
+With the current repository format, needing to have temporary files and updating information about the latest backups inside the repository, pgBackRest currently doesn't support this kind of storage.
+However, it is best practice to regularly save a copy of the repository content (backup set, archives, `.info` files,...) to an external storage.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

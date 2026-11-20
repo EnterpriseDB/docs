@@ -1,0 +1,192 @@
+---
+title: Quick Start
+description: "A walkthrough: configuring pgBackRest, then running, examining and restoring a backup of a database cluster"
+product: pgBackRest
+url: https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/03-quick_start/
+lastModified: 2023-09-28T09:53:48+01:00
+---
+
+# Quick Start
+
+This section walks you through basic pgBackRest configuration process and how to take a first backup of the database cluster running locally. It also gives a brief introduction of the `backup`, `restore`, and `info` commands.
+
+The [installation](https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/02-installation/) procedure must be followed before proceeding to this section.
+
+### Configuration
+
+The default pgBackRest configuration file location is `/etc/pgbackrest/pgbackrest.conf`. If it does not exist, then `/etc/pgbackrest.conf` is used next.
+
+For more information about configuration parameters, see the [appendix section](https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/98-appendix/#configuration-reference).
+
+The following example configures a `demo` stanza to take a backup of a database cluster running on the local host.
+
+For **EDB Postgres Advanced Server**:
+
+```ini
+[global]
+repo1-path=/var/lib/edb/as15/backups
+
+[demo]
+pg1-path=/var/lib/edb/as15/data
+pg1-user=enterprisedb
+pg1-port=5444
+pg-version-force=15
+```
+
+The `pg-version-force` value should be set to the same major version number as the server reports when using `show server_version_num;` in PSQL. Only the first two digits are the major version. For example, 15000 is major version 15.
+
+For **PostgreSQL**:
+
+```ini
+[global]
+repo1-path=/var/lib/pgsql/15/backups
+
+[demo]
+pg1-path=/var/lib/pgsql/15/data
+pg1-user=postgres
+pg1-port=5432
+```
+
+Once pgBackRest is configured, set up the database archiver process:
+
+```ini
+# postgresql.conf
+archive_mode = on
+archive_command = 'pgbackrest --stanza=demo archive-push %p'
+```
+
+As changing the `archive_mode` parameter requires a service restart, and changing the `archive_command` only requires a configuration reload, we recommend enabling `archive_mode` with an empty `archive_command` (or pointing to /bin/true) when initiating a new database cluster.
+
+Assume the identity of a system user (`postgres` or `enterprisedb`) and initiate the pgBackRest repository:
+
+```bash
+$ pgbackrest --stanza=demo --log-level-console=info stanza-create
+```
+
+Check the configuration and the archiving process:
+
+```bash
+$ pgbackrest --stanza=demo --log-level-console=info check
+```
+
+### Backups
+
+When invoking pgBackRest, you can specify any one of the backup type:
+
+- Full backup - `full`
+  - Copies all database cluster files.
+  - No dependencies on previous backups.
+
+For example:
+
+```bash
+$ pgbackrest --stanza=demo --type=full backup
+```
+
+- Incremental backup - `incr`
+  - Copies only the database cluster files that have changed since the last backup.
+  - Depends on other backups to restore the incremental backup.
+
+For example:
+
+```bash
+$ pgbackrest --stanza=demo --type=incr backup
+```
+
+- Differential backup - `diff`
+  - Copies only the database cluster files that have changed since the last full backup.
+  - Similar to an incremental backup, but always depends on the last full backup.
+
+For example:
+
+```bash
+$ pgbackrest --stanza=demo --type=diff backup
+```
+
+If there is no full backup to base an incremental or differential backup on, pgBackRest will run in full backup mode instead.
+
+### Backup Information
+
+Use the `info` command to get information about backups.
+
+```bash
+$ pgbackrest --stanza=demo info
+stanza: demo
+    status: ok
+    cipher: none
+
+    db (current)
+        wal archive min/max (13-1): 000000010000000000000001/000000010000000000000007
+
+        full backup: 20201019-162148F
+            timestamp start/stop: 2020-10-19 16:21:48 / 2020-10-19 16:21:58
+            wal start/stop: 000000010000000000000003 / 000000010000000000000003
+            database size: 23.9MB, backup size: 23.9MB
+            repository size: 2.9MB, repository backup size: 2.9MB
+...
+```
+
+By default, the `info` command provides a human-readable summary of backups for the stanza requested. Without specifying `--stanza`, the `info` command will operate on all stanzas.
+
+### Restore
+
+Use the `restore` command to restore a backup. The `--delta` option allows to keep the existing database cluster files and only recover as required, where as without the `--delta` option all files will be restored. Before running the restore command, stop the database cluster and (unless the `--delta` option is used) remove all files from the data directory, and from tablespaces.
+
+```bash
+$ pgbackrest --stanza=demo restore
+```
+
+Currently, the only way to verify the consistency of a backup is to restore it. We then recommend to try restore backups on a regular basis.
+
+#### Recovery target
+
+By default, the `restore` command will restore the latest backup and apply all of the archived WAL files found in the repository.
+
+To choose the recovery target type for the restore, include the `--type` command-line option with one of the following keywords:
+
+- `default` - recover to the end of the archive stream.
+- `immediate` - recovery only until the database becomes consistent.
+- `lsn` - recover to the LSN (Log Sequence Number).
+- `name` - recover to the restore point.
+- `xid` - recover to the transaction ID.
+- `time` - recover to a specific timestamp.
+- `preserve` - preserve the existing recovery settings.
+- `standby` - add `standby_mode=on` or `standby.signal`.
+- `none` - no recovery settings provided.
+
+When `--type` is set to **lsn**, **name**, transaction ID (**xid**), or **time**, use the `--target` option to specify a restore point.
+
+pgBackRest will automatically select the correct backup set to restore if a recovery target time or lsn is specified. Otherwise, the latest backup set will be used. To restore a specific backup set, use the `--set` option.
+
+To change the `recovery_target_action` PostgreSQL setting, use the restore `--target-action` option:
+
+- `pause` - pause when recovery target is reached (default).
+- `promote` - promote and switch timeline when recovery target is reached.
+- `shutdown` - shutdown server when recovery target is reached.
+
+### Glossary
+
+#### pgBackRest
+
+[`delta`](https://pgbackrest.org/configuration.html#section-general/option-delta)
+[`log-level-console`](https://pgbackrest.org/configuration.html#section-log/option-log-level-console)
+[`pg-path`](https://pgbackrest.org/configuration.html#section-stanza/option-pg-path)
+[`pg-port`](https://pgbackrest.org/configuration.html#section-stanza/option-pg-port)
+[`pg-user`](https://pgbackrest.org/configuration.html#section-stanza/option-pg-user)
+[`repo-path`](https://pgbackrest.org/configuration.html#section-repository/option-repo-path)
+
+##### `restore` command
+
+[restore `--set`](https://pgbackrest.org/command.html#command-restore/category-command/option-set)
+[restore `--target`](https://pgbackrest.org/command.html#command-restore/category-command/option-target)
+[restore `--target-action`](https://pgbackrest.org/command.html#command-restore/category-command/option-target-action)
+[restore `--type`](https://pgbackrest.org/command.html#command-restore/category-command/option-type)
+
+#### PostgreSQL
+
+[`archive_command`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-ARCHIVE-COMMAND)
+[`archive_mode`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-ARCHIVE-MODE)
+[`recovery_target_action`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-RECOVERY-TARGET-ACTION)
+[`standby_mode`](https://www.postgresql.org/docs/11/standby-settings.html#STANDBY-MODE)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

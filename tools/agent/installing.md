@@ -1,0 +1,111 @@
+---
+title: Installing the EDB Postgres AI agent
+description: Install the EDB Postgres AI agent for database observability, migration assessment, and usage reporting.
+product: Postgres tools
+url: https://www.enterprisedb.com/docs/tools/agent/installing/
+lastModified: 2026-11-10T13:53:54+01:00
+---
+
+# Installing the EDB Postgres AI agent
+
+Install the EDB Postgres AI agent (packaged as `beacon-agent`), your go-to tool for database monitoring, usage reporting, and migration assessment. Explore its full capabilities in [Agent](https://www.enterprisedb.com/docs/tools/agent/). Before installing, check the [compatibility matrix](#supported-hm-versions-for-the-edb-postgres-ai-agent) to confirm which EDB Postgres AI agent version is supported for your HM release.
+
+To install the EDB Postgres AI agent, use a combined approach:
+
+1. [Enable your system to download packages](#enable-your-system-to-download-packages): Obtain your authentication token from the EDB repository and configure the repository settings on your system.
+
+2. [Install the agent package](#install-the-edb-postgres-ai-agent-package): Use your operating system's package manager to install the agent.
+
+   > **Note**
+   >
+   > For the agent, installation instructions are provided exclusively in this documentation. Unlike other EDB products, the repositories contain the packages but don't include the installation commands.
+
+## Enable your system to download packages
+
+Enable the system where you're planning on running the EDB Postgres AI agent to download packages from the EDB repositories for EDB Postgres AI.
+
+Locate your EDB subscription token: [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/).
+
+Using the retrieved subscription token, set an environmental variable (`EDB_SUBSCRIPTION_TOKEN`) to the token's value. Also set an environmental variable for your EDB subscription type (`EDB_SUBSCRIPTION_TYPE`) to one of `standard` or `enterprise` depending on which plan you are signed up to:
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-repos-token>
+export EDB_SUBSCRIPTION_TYPE=<your-subscription-type>
+```
+
+Depending on your operating system, run the following command to give your system the capacity to download packages from the EDB repositories:
+
+### RHEL derivatives
+
+```shell
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_TYPE/setup.rpm.sh" | sudo -E bash
+```
+
+### SLES
+
+```shell
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_TYPE/setup.rpm.sh" | sudo -E bash
+```
+
+### Debian or Ubuntu
+
+```shell
+curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_TYPE/setup.deb.sh" | sudo -E bash
+```
+
+## Supported HM versions for the EDB Postgres AI agent
+
+The following table lists each Hybrid Manager (HM) release and its compatible `beacon-agent` version.
+
+| HM version           | Compatible `beacon-agent` version |
+| -------------------- | --------------------------------- |
+| HM 2026.11           | 1.413.11                          |
+| HM 2026.10           | 1.407.12                          |
+| HM 2026.9            | 1.405.10                          |
+| HM 2026.8            | 1.401.5                           |
+| HM 2026.7            | 1.396.12                          |
+| HM 2026.5            | 1.390.20                          |
+| HM 2026.4            | 1.387.47                          |
+| HM 2026.3            | 1.359.17                          |
+| HM 2026.2            | 1.337.18                          |
+| HM 2026.1            | 1.332.0                           |
+| HM 2025.12           | 1.332.0                           |
+| HM 2025.11           | 1.332.0                           |
+| HM 1.4.5 (LTS)       | 1.392.108                         |
+| HM 1.4.2-1.4.4 (LTS) | 1.392.69                          |
+| HM 1.4.0-1.4.1 (LTS) | 1.392.15                          |
+| HM 1.3.x (LTS)       | 1.268.58                          |
+
+## Install the EDB Postgres AI agent package
+
+Install the `beacon-agent` package from EDB's repositories:
+
+### RHEL derivatives
+
+```shell
+sudo dnf install beacon-agent
+```
+
+Or if dnf isn't available:
+
+```shell
+sudo yum install beacon-agent
+```
+
+### SLES
+
+```shell
+sudo zypper install beacon-agent
+```
+
+### Debian or Ubuntu
+
+```
+sudo apt install beacon-agent
+```
+
+## Install the EDB Postgres AI agent in air-gapped environments
+
+[Installing in air-gapped environments](https://www.enterprisedb.com/docs/repos/working_with_repos/installing_airgapped/) explains how to leverage [local mirrors](https://www.enterprisedb.com/docs/repos/working_with_repos/building_local_mirrors/) to make a product's packages and dependencies available in environments without internet access.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

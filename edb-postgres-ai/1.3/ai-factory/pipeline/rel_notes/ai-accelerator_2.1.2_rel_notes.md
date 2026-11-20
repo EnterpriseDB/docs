@@ -1,0 +1,37 @@
+---
+title: AI Accelerator - Pipelines 2.1.2 release notes
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/rel_notes/ai-accelerator_2.1.2_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# AI Accelerator - Pipelines 2.1.2 release notes
+
+Released: 24 February 2025
+
+In this maintenance release, we fix two bugs and improve the model provider listing output.
+
+## Highlights
+
+- Model provider output now contains descriptions of the providers.
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Added model provider descriptions</summary><p>The model provider view <code>select * from aidb.model_providers;</code> now includes a description column detailing the purpose and capabilities of each model provider.</p>
+</details></td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Fixed the volume listing command</summary><p>The <code>aidb.list_volumes();</code> call is now functional. A bug prevented this call from succeeding (without affecting any other functionality).</p>
+</details></td></tr>
+<tr><td><details><summary>Fixed the search path handling</summary><p>Some internal commands used to append <code>aidb</code> to the search_path. This failed in certain cases depending on the contents of the existing search path. We changed the implementation to no longer modify the search_path in order to avoid this issue. This also means that the existing search_path no longer gets modified by AIDB.</p>
+</details></td></tr>
+<tr><td><details><summary>Credentials are now completely optional for OpenAI compatible models</summary><p>Previously the <code>aidb.create_model()</code> function required a key with an empty value to be passed for the api-key. It now allows you to omit the <code>credentials</code> parameter.</p>
+</details></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

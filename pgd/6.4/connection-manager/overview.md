@@ -1,0 +1,66 @@
+---
+title: Connection Manager overview
+description: Overview of Connection Manager
+product: EDB Postgres Distributed (PGD)
+version: 6.4.0
+url: https://www.enterprisedb.com/docs/pgd/6.4/connection-manager/overview/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Connection Manager overview
+
+## About Connection Manager
+
+Connection Manager is a new background worker for EDB Postgres Distributed (PGD) 6.0 that simplifies the process of connection to PGD clusters by providing a single point of entry for client applications. It replaces the PGD 5.x proxy solution with a tightly integrated approach that exposes read-write, read-only, and HTTP status network interfaces in PGD.
+
+Connection Manager is fully integrated into PGD and is designed to work seamlessly with the existing PGD architecture. Every PGD data node has a Connection Manager instance that listens for incoming connections and routes them to the appropriate node in the cluster, specifically the current write leader in the cluster. It also provides a read-only interface for applications that only need to read data from the cluster.
+
+Starting in PGD 6.3.0, Connection Manager starts by default on subscriber-only nodes, ensuring that even nodes dedicated primarily to receiving replicated data have access to advanced connection pooling and session management features.
+
+Connection Manager consolidates three capabilities that previously required separate tools. It routes writes to the current leader, distributes read traffic across nodes, and pools backend connections. Because it runs inside PGD, authentication is configured once in `pg_hba.conf` and applies to both the proxy layer and the database, with no separate user list to maintain.
+
+## Using Connection Manager
+
+Connection Manager follows the Postgres server's configuration by default. There are three ports, the read-write port, the read-only port, and the HTTP port. The read-write port is used for write operations, while the read-only port is used for read operations. The HTTP port is used for monitoring and management purposes.
+
+The read-write port is, by default, set to the Postgres port + 1000 (usually 6432).
+The read-only port is set to the Postgres port + 1001 (usually 6433).
+The HTTP port is set to the Postgres port + 1002 (usually 6434).
+
+To use Connection Manager, configure your client applications to connect to its read-write or read-only port on the data node. Connection Manager routes the connection to the appropriate node in the cluster.
+
+Connecting to the read-only port restricts the connection to read-only operations, similar to [`SET TRANSACTION READ ONLY`](https://www.postgresql.org/docs/current/sql-set-transaction.html), except that it's not possible to change it to read-write. The [`transaction_read_only`](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-TRANSACTION-READ-ONLY) configuration parameter correctly reports `on` in these connections.
+
+## Raft leader elections and PreVote
+
+A node that is cut off from its group, for example by a flapping network link, keeps raising its Raft term while it's isolated. When it reconnects, its higher term forces the healthy leader to step down and starts an unnecessary election. Until the election ends, the group has no Raft leader and no write leader.
+
+With PreVote, a node first asks the other voting nodes whether they would vote for it, without raising its own term. It starts a real election only if a majority would. An isolated node never gets that majority, so its term stays low and it rejoins the group without disturbing the leader. Granting a PreVote doesn't change which node the voter treats as the Raft leader.
+
+PreVote needs no configuration and you can't turn it off. It's active once every node in the group runs PGD 6.2 or later, because the group then negotiates Raft protocol version 6003 or later. Until the last node is upgraded, the group uses ordinary elections. To check, look at the `Protocol Version` column of [`pgd raft show`](https://www.enterprisedb.com/docs/pgd/6.4/reference/cli/command_ref/raft/show/) or the `protocol_version` column of [`bdr.group_raft_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrgroup_raft_details).
+
+> **Note**
+>
+> PreVote applies to the Raft instance of the top-level group. Raft subgroups still use ordinary elections in this release.
+
+## Authentication
+
+Connection Manager performs TLS termination and pre-authentication using the same `pg_hba.conf` configuration as Postgres, with no separate user list to maintain. See [Authentication](https://www.enterprisedb.com/docs/pgd/6.4/connection-manager/authentication/) for supported methods and constraints.
+
+## Connection pooling
+
+Connection Manager includes built-in connection pooling, removing the need for a separate pooler such as pgBouncer in most deployments. Pooling reduces the number of backend Postgres connections by sharing them across many client connections, lowering memory and process overhead on the database server. See [Connection pooling](https://www.enterprisedb.com/docs/pgd/6.4/connection-manager/connection-pooling/) for reference details, [Configuring connection pooling](https://www.enterprisedb.com/docs/pgd/6.4/connection-pooling-dba/) for DBA setup guidance, and [Using connection pooling in your application](https://www.enterprisedb.com/docs/pgd/6.4/connection-pooling-developer/) for developer guidance.
+
+## Load balancing
+
+Connection Manager isn't a replacement for a load balancer. Use an external load balancer to distribute client traffic across Connection Manager instances running on different nodes. See [Load balancing](https://www.enterprisedb.com/docs/pgd/6.4/connection-manager/load-balancing/) for configuration details and HAProxy examples.
+
+## Configuration
+
+Connection Manager is configured through PGD group options, including ports, connection limits, consensus timeouts, and pool mode. See [Configuring Connection Manager](https://www.enterprisedb.com/docs/pgd/6.4/connection-manager/configuring/) for the full option reference.
+
+## Monitoring
+
+Connection Manager exposes connection counts and pool utilization through catalog views and HTTP endpoints. See [Monitoring](https://www.enterprisedb.com/docs/pgd/6.4/connection-manager/monitoring/) for available metrics.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

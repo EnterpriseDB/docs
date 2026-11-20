@@ -1,0 +1,432 @@
+---
+title: PL/R Language
+product: WarehousePG
+version: "7.6"
+url: https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/analytics/procedural_languages/pl_r/
+lastModified: 2026-11-05T10:53:08Z
+---
+
+# PL/R Language
+
+Use PL/R to write WarehousePG functions, aggregates, and triggers in the [R programming language](https://www.r-project.org/) and to call R packages from SQL. To run R code in the database, install PL/R, which includes R, on every host, register the language in each database that needs it, and then create your PL/R functions.
+
+PL/R is an untrusted language, so only superusers can register it in a database. For information about supported PL/R versions, see the [platform requirements](https://www.enterprisedb.com/docs/warehousepg/latest/install_guide/platform-requirements/#topic31).
+
+To start using PL/R:
+
+- [Install and enable PL/R](#topic3) on every host and in each database that needs it.
+- [Write PL/R functions](#topic_plr_functions) that call your R code.
+- [Try the examples](#topic9) to see PL/R functions in action.
+
+<a id="topic3"></a>
+
+## Installing and enabling PL/R
+
+The EDB distribution of WarehousePG provides PL/R as a package that includes R, so you don't install R separately. Install the package on every host, including the coordinator and all segment hosts.
+
+Before you install the package, make sure that WarehousePG is running, you sourced `greenplum_path.sh`, and the `$COORDINATOR_DATA_DIRECTORY` and `$GPHOME` variables are set.
+
+1. Download the PL/R package and copy it to the coordinator host.
+
+2. Install the package on the coordinator and every segment host.
+
+3. Source the file `$GPHOME/greenplum_path.sh`.
+
+4. Restart WarehousePG:
+
+   ```bash
+   gpstop -r
+   ```
+
+<a id="topic13"></a>
+
+### Installing R packages
+
+Install each R package and the packages it depends on in the R installation in `$GPHOME/lib64/R` on every host to extend what your PL/R functions can do. If you add segment hosts later, install the packages on the new hosts too.
+
+1. On the coordinator host, download the `tar.gz` file for the package and for each of its dependencies from the [Comprehensive R Archive Network (CRAN)](https://cran.r-project.org/web/packages/available_packages_by_name.html). The page for each package lists its dependencies.
+
+2. Copy the files to all hosts with the [gpsync](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/utility_guide/reference/gpsync/) utility. The `hosts_all` file lists all the WarehousePG hosts.
+
+   ```bash
+   gpsync -f hosts_all <package>_<version>.tar.gz =:/home/gpadmin
+   ```
+
+3. Install the packages on every host with `gpssh`, listing dependencies before the packages that require them. You might need root access.
+
+   ```bash
+   gpssh -f hosts_all "$GPHOME/lib64/R/bin/R CMD INSTALL <dependency>_<version>.tar.gz <package>_<version>.tar.gz"
+   ```
+
+4. Test that PL/R can load the package. This function checks whether an R package loads.
+
+   ```sql
+   CREATE OR REPLACE FUNCTION R_test_require(fname text)
+   RETURNS boolean AS
+   $BODY$
+       return(require(fname,character.only=T))
+   $BODY$
+   LANGUAGE 'plr';
+
+   SELECT R_test_require('<package>');
+   ```
+
+To list the packages installed on a host, start `$GPHOME/lib64/R/bin/R` on that host and run `installed.packages()`.
+
+<a id="topic5"></a>
+
+### Enabling PL/R
+
+Register the PL/R language for each database that requires it with the SQL command `CREATE EXTENSION`. Because PL/R is an untrusted language, only superusers can register PL/R with a database. For example, run this command as the `gpadmin` user to register the language with the database named `testdb`:
+
+```bash
+psql -d testdb -c 'CREATE EXTENSION plr;'
+```
+
+<a id="topic6"></a>
+
+### Disabling PL/R
+
+Remove PL/R from a database that no longer requires it with the SQL command `DROP EXTENSION`. The PL/R routines you created in that database stop working. Because PL/R is an untrusted language, only superusers can remove it from a database. For example, run this command as the `gpadmin` user to remove PL/R from the database named `testdb`:
+
+```bash
+psql -d testdb -c 'DROP EXTENSION plr;'
+```
+
+The default command fails if existing objects, such as functions, depend on the language. Specify the `CASCADE` option to also drop all dependent objects, including functions that you created with PL/R.
+
+<a id="topic_plr_functions"></a>
+
+## Writing PL/R functions
+
+Create a PL/R function by writing its body as standard R code, without the enclosing braces or the function assignment. Instead of `myfunc <- function(arguments) { function body }`, the body of your PL/R function is the R script itself.
+
+```sql
+CREATE OR REPLACE FUNCTION funcname(argument-types) RETURNS return-type AS '
+function body
+' LANGUAGE plr;
+```
+
+When you call the function, WarehousePG passes the argument values to the R script as variables named `arg1` through `argN`. The R code returns the result in the usual way. For example, this function returns the greater of two integer values:
+
+```sql
+CREATE OR REPLACE FUNCTION r_max(integer, integer) RETURNS integer AS '
+if (arg1 > arg2)
+  return(arg1)
+else
+  return(arg2)
+' LANGUAGE plr STRICT;
+```
+
+For more information about PL/R features such as aggregate functions, trigger procedures, and the database access and support functions, see the [PL/R User's Guide](https://github.com/warehouse-pg/whpg-plr/blob/whpg/userguide.md).
+
+### Quoting the function body
+
+Escape single quotes and backslashes in your R source, typically by doubling them, because the function body is an SQL string literal. Inside the body, you can write R string literals with single or double quotes. Each single quote must be preceded by another single quote. You can also use dollar quoting to avoid escaping. These functions are equivalent:
+
+```sql
+CREATE OR REPLACE FUNCTION hello() RETURNS text AS '
+return(''Hello'')
+' LANGUAGE plr;
+
+CREATE OR REPLACE FUNCTION hello3() RETURNS text AS
+$body$
+return('Hello')
+$body$ LANGUAGE plr;
+```
+
+### Naming arguments
+
+Name an argument when you create the function to use that name in your R script instead of the `argN` variable. For example:
+
+```sql
+CREATE OR REPLACE FUNCTION sd(vals float8[]) RETURNS float AS '
+sd(vals)
+' LANGUAGE plr STRICT;
+```
+
+### Calling an R function directly
+
+Define the function with an empty body if it's a simple call to an existing R function and has exactly the same name as the R function. PL/R passes the arguments directly to the R function. For example:
+
+```sql
+CREATE OR REPLACE FUNCTION sd(_float8) RETURNS float AS '
+' LANGUAGE plr;
+```
+
+### Handling NULL values
+
+Use the `STRICT` clause to avoid handling NULL input values. If any argument is NULL, WarehousePG doesn't call the function and returns NULL. In a function that isn't strict, a NULL argument appears in the R script as an R `NULL` object. For example, this version of `r_max` returns the non-NULL argument when the other argument is NULL:
+
+```sql
+CREATE OR REPLACE FUNCTION r_max(integer, integer) RETURNS integer AS '
+if (is.null(arg1) && is.null(arg2))
+  return(NULL)
+if (is.null(arg1))
+  return(arg2)
+if (is.null(arg2))
+  return(arg1)
+if (arg1 > arg2)
+  return(arg1)
+return(arg2)
+' LANGUAGE plr;
+```
+
+To return a NULL value from a PL/R function, return `NULL`, whether or not the function is strict.
+
+### Using composite types
+
+Access composite-type (tuple) arguments in the function as R data frames. The element names of the frame are the attribute names of the composite type. A NULL attribute appears as `NA` in the frame. For example:
+
+```sql
+CREATE TABLE emp(name text, age int, salary numeric(10,2)) DISTRIBUTED BY (name);
+INSERT INTO emp VALUES ('Joe', 41, 250000.00);
+INSERT INTO emp VALUES ('Jim', 25, 120000.00);
+INSERT INTO emp VALUES ('Jon', 35, 50000.00);
+
+CREATE OR REPLACE FUNCTION overpaid (emp) RETURNS bool AS '
+if (200000 < arg1$salary) {
+  return(TRUE)
+}
+if (arg1$age < 30 && 100000 < arg1$salary) {
+  return(TRUE)
+}
+return(FALSE)
+' LANGUAGE plr;
+
+SELECT name, overpaid(emp) FROM emp;
+```
+
+```output title="Output"
+ name | overpaid
+------+----------
+ Joe  | t
+ Jim  | t
+ Jon  | f
+(3 rows)
+```
+
+A PL/R function can also return a composite-type result. This function returns a data frame, which PL/R converts to one row of the `emp` type for each row of the frame:
+
+```sql
+CREATE OR REPLACE FUNCTION get_emps() RETURNS SETOF emp AS '
+names <- c(''Joe'',''Jim'',''Jon'')
+ages <- c(41,25,35)
+salaries <- c(250000,120000,50000)
+df <- data.frame(name = names, age = ages, salary = salaries)
+return(df)
+' LANGUAGE plr;
+```
+
+Call the function to return each row of the data frame as a row of the `emp` type.
+
+```sql
+SELECT * FROM get_emps();
+```
+
+```output title="Output"
+ name | age |  salary
+------+-----+-----------
+ Joe  |  41 | 250000.00
+ Jim  |  25 | 120000.00
+ Jon  |  35 |  50000.00
+(3 rows)
+```
+
+### Passing data values
+
+Write your R code against the R types that PL/R converts argument values to. Scalar values become single-element R vectors, with one exception. PL/R converts scalar `bytea` values to the R `raw` type and then processes them with the R `unserialize` command. One-dimensional arrays become multi-element R vectors, two-dimensional arrays become R matrices, and three-dimensional arrays become three-dimensional R arrays. PL/R doesn't support arrays with more than three dimensions. Composite types become R data frames.
+
+| Type                                           | R type      |
+| ---------------------------------------------- | ----------- |
+| `boolean`                                      | `logical`   |
+| `int2`, `int4`                                 | `integer`   |
+| `int8`, `float4`, `float8`, `money`, `numeric` | `numeric`   |
+| `bytea`                                        | `object`    |
+| All other types                                | `character` |
+
+Return values from your R code that match the declared return type of the function. PL/R first coerces the R result to the R `character` type. Any value that resolves to a string that the declared return type accepts as input produces a result. The exception is a scalar `bytea` return value. PL/R processes the returned R object with the R `serialize` command and maps the binary result directly to a `bytea` datum. The dimensionality of the declared return type also determines how PL/R maps the R object.
+
+| Return type     | R type                                              | Result                                                                                 | Example                                                                                 |
+| --------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| scalar          | array, matrix, vector                               | First column of the first row                                                          | `c(1,2,3)` in R returns 1.                                                              |
+| setof scalar    | 1D array, array with more than 2 dimensions, vector | Multi-row, one-column set                                                              | `array(1:10)` in R returns 10 rows.                                                     |
+| scalar          | data.frame                                          | Textual representation of the first column's vector                                    | `data.frame(c(1,2,3))` in R returns `c(1, 2, 3)`.                                       |
+| setof scalar    | 2D array, matrix, data.frame                        | More than one column returns an error. One column returns a multi-row, one-column set. | `(as.data.frame(array(1:10,c(2,5))))[,1]` in R returns 2 rows.                          |
+| array           | 1D array, array with more than 3 dimensions, vector | 1D array                                                                               | `array(1:8,c(2,2,2,2))` in R returns `{1,2,3,4,5,6,7,8,1,2,3,4,5,6,7,8}`.               |
+| array           | 2D array, matrix, data.frame                        | 2D array                                                                               | `array(1:4,c(2,2))` in R returns <code v-pre="">{{1,3},{2,4}}</code>.                   |
+| array           | 3D array                                            | 3D array                                                                               | `array(1:8,c(2,2,2))` in R returns <code v-pre="">{{{1,5},{3,7}},{{2,6},{4,8}}}</code>. |
+| composite       | 1D array, array with more than 2 dimensions, vector | First row, one column                                                                  | `array(1:8,c(2,2,2))` in R returns 1 row.                                               |
+| setof composite | 1D array, array with more than 2 dimensions, vector | Multi-row, one-column set                                                              | `array(1:8,c(2,2,2))` in R returns 8 rows.                                              |
+| composite       | 2D array, matrix, data.frame                        | First row, multiple columns                                                            | `array(1:4,c(2,2))` in R returns 1 row of 2 columns.                                    |
+| setof composite | 2D array, matrix, data.frame                        | Multi-row, multi-column set                                                            | `array(1:4,c(2,2))` in R returns 2 rows of 2 columns.                                   |
+
+### Using global data
+
+Use global R variables to keep state between calls or to share data between functions. All PL/R functions that run in one backend process share the same R interpreter, so a global R variable is available to every PL/R function call in that process and persists for the duration of the client connection. In WarehousePG, each segment runs its own backend process with its own R interpreter, so global variables aren't shared between segments.
+
+To create a globally available R function, use the `install_rcmd(text)` function. The R function name doesn't have to match the WarehousePG function name. For example:
+
+```sql
+SELECT install_rcmd('pg.test.install <-function(msg) {print(msg)}');
+
+CREATE OR REPLACE FUNCTION pg_test_install(text) RETURNS text AS '
+pg.test.install(arg1)
+' LANGUAGE plr;
+
+SELECT pg_test_install('hello world');
+```
+
+Only superusers can run `install_rcmd`, so this example fails for other roles. PL/R revokes `EXECUTE` permission on `install_rcmd`, `plr_environ`, `plr_set_rhome`, `plr_unset_rhome`, and `plr_set_display` from `PUBLIC`. A superuser must grant `EXECUTE` permission on these functions to any other role that needs them.
+
+> **Note**
+>
+> PL/R 8.4.8.7 and later also revoke `EXECUTE` permission on `plr_get_raw(bytea)` from `PUBLIC`, because the function passes its input to the R `unserialize()` function. Grant it only to trusted roles that need it. In earlier versions, such as 8.3.0.16, run `REVOKE EXECUTE ON FUNCTION plr_get_raw(bytea) FROM PUBLIC;` to get the same protection.
+
+You can also install R functions automatically when the interpreter starts. See [Loading R Modules at Startup](#topic_g12_gwt_3gb).
+
+PL/R also provides a global variable named `pg.state.firstpass`. On each segment, PL/R resets the variable to `TRUE` the first time a query calls each PL/R function and leaves it unchanged on later calls. Use the variable to run a costly initialization on the first call of a function and reuse the results for the remaining rows that the segment processes. For example, this function uses `pg.state.firstpass` and a global counter to count the rows that each segment processes:
+
+```sql
+CREATE OR REPLACE FUNCTION row_number2() RETURNS int AS '
+if (pg.state.firstpass)
+{
+  assign(''pg.state.firstpass'', FALSE, env=.GlobalEnv)
+  lclcntr<- 1
+}
+else
+  lclcntr<- plrcounter + 1
+assign(''plrcounter'', lclcntr, env=.GlobalEnv)
+return(lclcntr)
+' LANGUAGE plr;
+```
+
+Because each segment has its own counter, the function doesn't produce a single sequence for the whole table. For example, when three rows are stored on three different segments, each segment returns `1`:
+
+```sql
+CREATE TABLE t(f1 int) DISTRIBUTED BY (f1);
+INSERT INTO t VALUES (1),(2),(3);
+SELECT row_number2(), f1 FROM t;
+```
+
+```output title="Output"
+ row_number2 | f1
+-------------+----
+           1 |  2
+           1 |  1
+           1 |  3
+(3 rows)
+```
+
+<a id="topic_g12_gwt_3gb"></a>
+
+### Loading R modules at startup
+
+Load saved R code automatically during interpreter initialization by creating the `plr_modules` database table and inserting the R modules you want to auto-load into the table. If the table exists, PL/R loads the code it contains into the interpreter.
+
+In a WarehousePG cluster, table rows are usually distributed so that each row exists at only one segment instance. The R interpreter at each segment instance, however, needs to load all of the modules, so a regularly distributed table doesn't work. Create the `plr_modules` table as a replicated table so that all rows in the table are present at every segment instance. PL/R looks up the table by name without a schema qualifier, so create it in a schema on the `search_path`, such as `public`. For example:
+
+```sql
+CREATE TABLE public.plr_modules (
+  modseq int4,
+  modsrc text
+) DISTRIBUTED REPLICATED;
+```
+
+For more information about using the PL/R auto-load feature, see [Loading R Modules at Startup](https://github.com/warehouse-pg/whpg-plr/blob/whpg/userguide.md#startup) in the PL/R User's Guide.
+
+<a id="topic9"></a>
+
+## Examples
+
+Adapt these examples to generate random numbers, return an R data frame as a SQL table, and run hierarchical regression in your own PL/R functions.
+
+<a id="topic10"></a>
+
+### Generating normally distributed numbers
+
+Generate an array of numbers with a normal distribution by using the R function `rnorm()`.
+
+```sql
+CREATE OR REPLACE FUNCTION r_norm(n integer, mean float8,
+  std_dev float8) RETURNS float8[ ] AS
+$$
+  x<-rnorm(n,mean,std_dev)
+  return(x)
+$$
+LANGUAGE 'plr';
+```
+
+The following `CREATE TABLE` command uses the `r_norm()` function to populate the table. The `r_norm()` function creates an array of 10 numbers.
+
+```sql
+CREATE TABLE test_norm_var
+        AS SELECT id, r_norm(10,0,1) as x
+        FROM (SELECT generate_series(1,30:: bigint) AS ID) foo
+        DISTRIBUTED BY (id);
+```
+
+<a id="topic11"></a>
+
+### Returning R data frames in tabular form
+
+Return an R `data.frame` from a PL/R function as a simple SQL table, instead of arrays of arrays.
+
+1. Create a `TYPE` in WarehousePG with the same dimensions as your R `data.frame`:
+
+   ```sql
+   CREATE TYPE t1 AS ...
+   ```
+
+2. Use this `TYPE` when defining your PL/R function.
+
+   ```sql
+   ... RETURNS SETOF t1 AS ...
+   ```
+
+<a id="topic12"></a>
+
+### Running hierarchical regression
+
+Install the R package `arm` and its dependencies as described in [Installing R packages](#topic13), then define a `TYPE` and run hierarchical regression using PL/R:
+
+```sql
+--Create TYPE to store model results
+DROP TYPE IF EXISTS wj_model_results CASCADE;
+CREATE TYPE wj_model_results AS (
+  cs text, coefext float, ci_95_lower float, ci_95_upper float,
+  ci_90_lower float, ci_90_upper float, ci_80_lower float,
+  ci_80_upper float);
+
+--Create PL/R function to run model in R
+DROP FUNCTION IF EXISTS wj_plr_RE(float [ ], text [ ]);
+CREATE FUNCTION wj_plr_RE(response float [ ], cs text [ ])
+RETURNS SETOF wj_model_results AS
+$$
+  library(arm)
+  y<- log(response)
+  cs<- cs
+  d_temp<- data.frame(y,cs)
+  m0 <- lmer (y ~ 1 + (1 | cs), data=d_temp)
+  cs_unique<- sort(unique(cs))
+  n_cs_unique<- length(cs_unique)
+  temp_m0<- data.frame(matrix(0, n_cs_unique, 7))
+  for (i in 1:n_cs_unique){temp_m0[i,]<-
+    c(exp(coef(m0)$cs[i,1] + c(0,-1.96,1.96,-1.65,1.65,
+      -1.28,1.28)*se.ranef(m0)$cs[i]))}
+  names(temp_m0)<- c("Coefest", "CI_95_Lower",
+    "CI_95_Upper", "CI_90_Lower", "CI_90_Upper",
+   "CI_80_Lower", "CI_80_Upper")
+  temp_m0_v2<- data.frame(cs_unique, temp_m0)
+  return(temp_m0_v2)
+$$
+LANGUAGE 'plr';
+
+--Run modeling plr function and store model results in a
+--table
+DROP TABLE IF EXISTS wj_model_results_roi;
+CREATE TABLE wj_model_results_roi AS SELECT *
+  FROM wj_plr_RE('{1,1,1}', '{"a", "b", "c"}');
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

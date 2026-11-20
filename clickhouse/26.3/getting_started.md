@@ -1,0 +1,50 @@
+---
+title: Getting started with ClickHouse®
+description: Connect to ClickHouse after installation and find resources for working with EDB Postgres AI for ClickHouse.
+product: EDB Postgres AI for ClickHouse
+version: "26.3"
+url: https://www.enterprisedb.com/docs/clickhouse/26.3/getting_started/
+lastModified: 2026-11-02T13:02:55+01:00
+---
+
+# Getting started with ClickHouse®
+
+Connect to your ClickHouse® instance, explore EDB-specific capabilities, and find resources for going further.
+
+## Connecting to ClickHouse®
+
+Once ClickHouse is installed and running, connect using `clickhouse-client`:
+
+```bash
+clickhouse-client
+```
+
+Verify you're running an EDB-packaged build:
+
+```sql
+SELECT version();
+```
+
+The output includes the EDB release, for example `26.3.37.3+1edb1`.
+
+## Integrations
+
+- [Connecting to WarehousePG](https://www.enterprisedb.com/docs/clickhouse/26.3/connecting_warehousepg/): read from and write to WarehousePG tables using the `PostgreSQL` table engine
+- [Reading Apache Iceberg® tables](https://www.enterprisedb.com/docs/clickhouse/26.3/reading_iceberg/): query Iceberg tables stored in Amazon S3 or Azure Blob Storage
+- [Connecting AI agents with MCP](https://www.enterprisedb.com/docs/clickhouse/26.3/connecting_ai_agents/): let AI agents and LLM-based tools query ClickHouse using the MCP server
+- [Monitoring Postgres with pg\_stat\_ch](https://www.enterprisedb.com/docs/clickhouse/26.3/monitoring_postgres/): capture per-query execution telemetry from Postgres and analyze it in ClickHouse
+- [Querying ClickHouse from Postgres with pg\_clickhouse](https://www.enterprisedb.com/docs/clickhouse/26.3/querying_from_postgres/): run analytics queries on ClickHouse from Postgres without rewriting SQL
+
+## See also
+
+For SQL reference, configuration, and operational guidance beyond what's covered here, refer to the upstream ClickHouse documentation:
+
+- [Creating tables](https://clickhouse.com/docs/guides/creating-tables)
+- [Inserting data](https://clickhouse.com/docs/guides/inserting-data)
+- [Writing queries](https://clickhouse.com/docs/guides/writing-queries)
+- [SQL reference](https://clickhouse.com/docs/sql-reference)
+- [Table engines](https://clickhouse.com/docs/engines/table-engines)
+- [Server configuration](https://clickhouse.com/docs/operations/server-configuration-parameters/settings)
+- [Best practices](https://clickhouse.com/docs/best-practices)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,89 @@
+---
+title: On-demand replication
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/05_on_demand_replication_mmr/
+lastModified: 2023-06-06T12:24:48-04:00
+---
+
+# On-demand replication
+
+<div id="on_demand_replication_mmr" class="registered_link"></div>
+
+After you create a primary definition node, its publication, and additional primary nodes, you have two choices for starting the replication process:
+
+- Perform replication immediately by performing an initial on-demand snapshot. After you perform the on-demand snapshot, you can perform synchronization replication.
+- Schedule replication to start later by creating a schedule. See [Creating a schedule](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/02_creating_schedule/#creating_schedule).
+
+<div id="perform_snapshot_replication_mmr" class="registered_link"></div>
+
+## Perform snapshot replication
+
+A snapshot replication occurs from the primary definition node to a selected primary node.
+
+When you create a primary node for the first time, you can perform an initial snapshot (see Step 3 of [Creating additional primary nodes](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes)). You can also perform snapshots to this primary node later.
+
+1. In the Replication Server cojsole, select the Publication node under the primary node for which you want to perform snapshot replication.
+
+2. Select the **Snapshot** icon.
+
+3. In the Snapshot dialog box, select **Verbose Output** if you want to display the output from the snapshot in the dialog box. Don't select this option in a network address translation (NAT) environment as a large amount of output from the snapshot can delay the response from the Snapshot dialog box.
+
+4. To start snapshot replication, select **Snapshot**. Snapshot Taken Successfully appears when the snapshot is complete.
+
+5. Select **OK**.
+
+The status messages of each snapshot are saved in the Migration Toolkit log files named `mtk.log[.n]` in the following directories. (`[.n]` is an optional history file count if log file rotation is enabled.)
+
+**For Linux:**
+
+`/var/log/edb/xdb/`
+
+**For Windows:**
+
+`POSTGRES_HOME\.enterprisedb\xdb\x.x`
+
+`POSTGRES_HOME` is the home directory of the Windows postgres account (enterprisedb account for EDB Postgres Advanced Server installed in Oracle-compatible configuration mode). The specific location of `POSTGRES_HOME` depends on your version of Windows. The Replication Server version number is represented by `x.x`.
+
+The publication is now replicated from the primary definition node to the selected primary node. A record of the snapshot is saved in the replication history. See [Viewing replication history](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/04_view_replication_history/#view_replication_history) for more information.
+
+> **Note**
+>
+> Before version 7.0.0, Replication Server required superuser privileges to disable/enable constraints and indexes as part of its snapshot operation. Starting with version 7.0.0, the superuser privileges are no longer required, and the constraints/indexes are now dropped and re-created as part of the snapshot operation. This change might cause any views/materialized views with a dependency on the constraints from the target subscription/master database to be dropped. These views are then re-created at the end of snapshot operation. Depending on the permissions assigned to the Replication Server subscription database user, the re-created views/materialized views might have permissions that are inconsistent with those of the originally assigned permissions. Therefore, we recommend manually verifying the assigned permissions of the relevant views/materialized views in the target database and making any corrections where applicable.
+
+<div id="perform_synchronization_replication_mmr" class="registered_link"></div>
+
+## Perform synchronization replication
+
+> **Note**
+>
+> Be sure an initial snapshot replication was performed from the primary definition node to every other primary node in the multi-master replication system. If a newly added primary node didn't undergo an initial snapshot, any later synchronization replication might not apply the transactions to that primary node. You can take the initial snapshot when the primary node is first added (see [Creating additional primary nodes](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes)) or by performing an on-demand snapshot (see [Performing snapshot replication](#perform_snapshot_replication_mmr)).
+
+When you perform synchronization replication in a multi-master replication system, a series of synchronization operations occur between every primary node pair in the replication system.
+
+For example, if a replication system consists of primary nodes A, B, and C, synchronization is applied to the following node pairs whenever synchronization replication is initiated:
+
+- Changes on node A are applied to node B.
+- Changes on node A are applied to node C.
+- Changes on node B are applied to node A.
+- Changes on node B are applied to node C.
+- Changes on node C are applied to node A.
+- Changes on node C are applied to node B.
+
+Changes made on different nodes might result in conflicts. [Conflict resolution](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/#conflict_resolution) discusses the types of conflicts that can occur and how to resolve them.
+
+To start an on-demand synchronization replication:
+
+1. In the Replication Server console, select the Publication node under any primary node. Whatever primary node you choose, synchronization is applied to every primary node pair in the replication system.
+
+2. Select the **Synchronize** icon.
+
+3. In the Synchronize dialog box, to start synchronization replication, select **Synchronize**. When synchronization is complete, Publication Synchronized Successfully appears.
+
+4. Select **OK**.
+
+You can now see the operations that were applied to the publication tables in the replication history. See [Viewing replication history](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/04_view_replication_history/#view_replication_history) for more information.
+
+You can see conflicting changes that occurred in the conflict history. See [Viewing conflict history](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/11_view_conflict_history/) for more information.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

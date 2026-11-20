@@ -1,0 +1,43 @@
+---
+title: What's encrypted with TDE?
+description: Which data is encrypted when databases are initialized with TDE?
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/about/what/
+lastModified: 2026-11-02T10:25:59+01:00
+---
+
+# What's encrypted with TDE?
+
+TDE doesn't encrypt everything in your database system, only specific parts of it.
+
+## What TDE encrypts
+
+TDE encrypts:
+
+- The files underlying tables, sequences, and indexes, including TOAST tables and system catalogs and all forks. These files are known as data files.
+
+- The write-ahead log (WAL).
+
+- Various temporary files that are used during query processing and database system operation.
+
+Because WAL and data files are encrypted, any WAL fetched from a TDE-enabled server, including through streaming replication and archiving, is encrypted. A physical replica is encrypted (or not) in the same way and with the same keys as its primary server, and a base backup of a TDE-enabled server is encrypted.
+
+## What TDE doesn't encrypt
+
+The following aren't encrypted or otherwise disguised by TDE:
+
+- Metadata internal to operating the database system that doesn't contain user data, such as the transaction status (for example, pg\_subtrans and pg\_xact).
+
+- The file names and file system structure in the data directory. That means that the overall size of the database system, the number of databases, the number of tables, their relative sizes, as well as file system metadata, such as last access time, are all visible without decryption.
+
+- Data in foreign tables.
+
+- The server diagnostics log.
+
+- Configuration files.
+
+Logical replication isn't affected by TDE: publisher and subscriber can use different encryption settings, and the payload of the logical replication protocol itself isn't encrypted. You can still protect the connection with SSL/TLS.
+
+The output of `pg_dump` isn't encrypted by TDE either. Like logical replication, `pg_dump` reads data through the normal query interface and writes a new logical copy, so the dump file itself isn't protected, regardless of whether the source database is TDE-enabled.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

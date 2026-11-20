@@ -1,0 +1,90 @@
+---
+title: Connecting Hybrid Manager or Loki
+description: Register an EDB Hybrid Manager or standalone Loki instance — the legacy, log-based sources — so the AI agent sessions reconstructed from their Postgres query logs appear in EDB Agent Governance.
+product: EDB Agent Governance
+version: "1"
+url: https://www.enterprisedb.com/docs/agent-governance/latest/connecting_data_sources/
+lastModified: 2026-11-02T20:09:06+05:30
+---
+
+# Connecting Hybrid Manager or Loki
+
+> **Note**
+>
+> Hybrid Manager and Loki are legacy sources for agents that reach Postgres through Airman MCP. For new deployments, connect a Postgres database that runs the `aidb` extension. See [Connecting an aidb database](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/). Only this connection reads the governance decisions and agent registrations that `aidb` records.
+>
+> With the legacy sources, the viewer identifies agents by database role and declared purpose, and infers denials from PostgreSQL permission errors in the logs.
+
+Register an EDB Hybrid Manager (HM) deployment or a standalone Grafana Loki endpoint — the legacy sources — to see AI agent sessions reconstructed from their Postgres query logs. On this path the viewer doesn't read `aidb` telemetry, so it shows the SQL each session ran but no agent identities or governance decisions. For a Postgres database running the `aidb` extension — the primary source — see [Connecting an aidb database](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/) instead.
+
+An instance is a registered upstream data source. The viewer can connect to multiple instances at the same time, aggregating clusters and sessions across all of them. Instance configuration, including access keys, is stored server-side and never sent to the browser.
+
+Manage instances on the Configure page, accessible from the home page's Configure Instances button or from Settings → Configure instance in the header.
+
+## Understanding instance types
+
+Choose the instance type that matches your source:
+
+| Type                  | Description                                             | Authentication                                                          | Discovery                                                                                                                               |
+| --------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| HM                    | EDB Hybrid Manager dataplane                            | Machine user API key, sent in the `x-access-key` header                 | Auto-discovers projects and clusters                                                                                                    |
+| Loki                  | Direct Loki log store                                   | Optional `Authorization` header                                         | Creates a single stub project and cluster automatically                                                                                 |
+| Postgres (aidb\_otel) | A Postgres database running the `aidb` extension 7.7.0+ | Connection string for a dedicated viewer role, TLS with CA verification | One cluster per database. See [Connecting an aidb database](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/) |
+
+## Adding an HM instance
+
+Make sure the following is true for an HM instance to surface AI agent sessions:
+
+- Postgres statement logging is enabled on the target clusters (`log_statement = 'all'` or `log_min_duration_statement = 0`).
+- The cluster is reachable over the network from the viewer's backend.
+- AI agent workloads run through Airman MCP with a declared purpose, so that activity is tagged and discoverable. See [Configuring Airman MCP](https://www.enterprisedb.com/docs/agent-governance/latest/configuring_airman_mcp/) for how to set up purpose labels, access modes, and the Postgres roles that enforce governance boundaries.
+
+You create the machine user API key in the HM admin portal. The viewer stores it server-side and never returns it to the browser. For more on credential handling, see [Securing access and handling credentials](https://www.enterprisedb.com/docs/agent-governance/latest/security_and_data/).
+
+1. Open the Configure Instances page.
+2. Select Add New.
+3. Complete the form:
+   - Type — HM.
+   - Name — A descriptive label, for example `Production EU`.
+   - Base URL — The HM API endpoint, for example `https://hm.example.com:8443`.
+   - Access Key — The machine user API key. These keys typically start with `hmak_` or `baak_`.
+4. Select Add Instance.
+
+On success, the viewer's backend discovers projects and clusters from the HM instance, and those clusters appear on the home page within seconds.
+
+## Adding a Loki instance
+
+Follow these steps to add a standalone Loki endpoint:
+
+1. Open the Configure Instances page.
+2. Select Add New.
+3. Complete the form:
+   - Type — Loki.
+   - Name — A descriptive label, for example `Dev Loki`.
+   - Base URL — The Loki HTTP endpoint, for example `http://loki.internal:3100`.
+   - Authorization — Optional. A bearer token or other authorization header value, if your Loki endpoint requires one.
+4. Select Add Instance.
+
+For Loki instances, the viewer creates a single stub project and cluster, and all Loki sessions appear under it.
+
+## Removing an instance
+
+Select the Delete button on an instance row on the Configure page to remove the instance. A confirmation popover appears. On confirmation, the viewer removes the instance record, its cached session data, and its sync watermarks.
+
+Removal is irreversible. Re-adding the instance requires resyncing its history from upstream.
+
+## Resyncing an instance
+
+Force a full resync when upstream data was corrected or backfilled, when the cache looks inconsistent, or when the cache database was lost. The backend caches session summaries for fast retrieval.
+
+1. On the Configure page, locate the instance row.
+2. Select the Resync button (the sync icon).
+3. The backend clears the instance's cached data and begins a full background sync.
+
+The instance shows its sync status as Syncing (with a spinner), Done (with a session count), or Error (with a message). The resync runs in the background, so you can continue using the viewer while it completes. For details on how syncing works, see [Architecture and data flow](https://www.enterprisedb.com/docs/agent-governance/latest/architecture/#reading-telemetry-in-the-viewer-backend).
+
+> **Note**
+>
+> The Resync button is only visible when developer tools are enabled. Otherwise the backend syncs automatically on first access to a cluster.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

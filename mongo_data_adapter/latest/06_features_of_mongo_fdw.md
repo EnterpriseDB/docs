@@ -1,0 +1,176 @@
+---
+title: Key features
+product: Mongo Foreign Data Wrapper
+version: "5"
+url: https://www.enterprisedb.com/docs/mongo_data_adapter/latest/06_features_of_mongo_fdw/
+lastModified: 2025-10-13T12:43:05+02:00
+---
+
+# Key features
+
+<div id="features_of_mongo_fdw" class="registered_link"></div>
+
+These are the key features of the MongoDB Foreign Data Wrapper.
+
+## Writable FDW
+
+The MongoDB Foreign Data Wrapper lets you modify data on a MongoDB server. You can insert, update, and delete data in the remote MongoDB collections by inserting, updating, and deleting data locally in foreign tables.
+
+For more information, see:
+
+- [Example: Using the MongoDB Foreign Data Wrapper](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/08_example_using_the_mongo_data_adapter/)
+
+- [Data type mappings](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/configuring/#data-type-mappings)
+
+## WHERE clause pushdown
+
+MongoDB Foreign Data Wrapper allows the pushdown of the `WHERE` clause only when clauses include the comparison expressions that have a column and a constant as arguments. `WHERE` clause pushdown isn't supported where the constant is an array. From version 5.5.0 and later, MongoDB Foreign Data Wrapper supports recursive operator expressions, Boolean expressions, relabel types, and vars on both sides of an operator.
+
+For more information, see [Example: WHERE clause pushdown](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/08c_example_where_pushdown/).
+
+## Join pushdown
+
+MongoDB Foreign Data Wrapper supports pushdown for inner joins, left joins, and right joins. Currently, joins involving only relational and arithmetic operators in join clauses are pushed down to avoid any potential join failures.
+
+For more information, see [Example: Join pushdown](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/08a_example_join_pushdown/).
+
+## Aggregate pushdown
+
+MongoDB Foreign Data Wrapper supports aggregate pushdown. It pushes the aggregates to the remote MongoDB server instead of fetching all of the rows and aggregating them locally. This gives a very good performance boost for the cases where aggregates can be pushed down. The pushdown is currently limited to aggregate functions min, max, sum, avg, and count, to avoid pushing down the functions that are not present on the MongoDB server. The aggregate filters, orders, variadic and distinct are not pushed down.
+
+For more information, see [Example: Aggregate pushdown](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/08b_example_aggregate_pushdown/).
+
+## ORDER BY pushdown
+
+MongoDB Foreign Data Wrapper supports `ORDER BY` pushdown. If possible, push the `ORDER BY` clause to the remote server. This approach provides the ordered result set from the foreign server, which can help to have an efficient merge join. NULLs behavior is opposite on the MongoDB server. To get an equivalent result, push down `ORDER BY` with either `ASC NULLS FIRST` or `DESC NULLS LAST`. As MongoDB sorts only on fields, only column names in `ORDER BY` expressions are pushed down.
+
+For more information, see [Example: ORDER BY pushdown](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/example_order_by_push_down/).
+
+## LIMIT OFFSET pushdown
+
+MongoDB Foreign Data Wrapper supports `LIMIT`/`OFFSET` pushdown. Wherever possible, perform `LIMIT` and `OFFSET` operations on the remote server. This reduces network traffic between local Postgres and remote MongoDB servers.
+
+For more information, see [Example: LIMIT OFFSET pushdown](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/example_limit_offset_push_down/).
+
+## Connection pooling
+
+The MongoDB Foreign Data Wrapper establishes a connection to a foreign server during the first query that uses a foreign table associated with the foreign server. This connection is kept and reused for subsequent queries in the same session.
+
+## Automated cleanup
+
+The MongoDB Foreign Data Wrapper allows the cleanup of foreign tables in a single operation using the `DROP EXTENSION` command. This feature is especially useful when a foreign table was created for a temporary purpose. The syntax of a `DROP EXTENSION` command is:
+
+`DROP EXTENSION mongo_fdw CASCADE;`
+
+For more information, see [DROP EXTENSION](https://www.postgresql.org/docs/current/sql-dropextension.html).
+
+## Full-document retrieval
+
+This feature lets you retrieve documents along with all their fields from collection without any knowledge of the fields in the BSON document available in MongoDB's collection. Those retrieved documents are in JSON format.
+
+You can retrieve all available fields in a collection residing in MongoDB Foreign Data Wrapper as explained in the following example.
+
+### Example
+
+```text
+> db.warehouse.find();
+{ "_id" : ObjectId("58a1ebbaf543ec0b90545859"), "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : ISODate("2014-12-12T07:12:10Z") }
+{ "_id" : ObjectId("58a1ebbaf543ec0b9054585a"), "warehouse_id" : 2, "warehouse_name" : "Laptop", "warehouse_created" : ISODate("2015-11-11T08:13:10Z") }
+```
+
+To retrieve the document:
+
+1. Create a foreign table with a column name `__doc`. The type of the column can be json, jsonb, text, or varchar.
+
+   ```sql
+   CREATE FOREIGN TABLE test_json(__doc json) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse'); 
+   ```
+
+2. Retrieve the document.
+
+   ```sql
+   SELECT * FROM test_json ORDER BY __doc::text COLLATE "C";
+   ```
+
+   The following is the output:
+
+   ```sql
+   edb=#SELECT * FROM test_json ORDER BY __doc::text COLLATE "C";
+   ```
+
+   ```output title="Output"
+                                                                         __doc                                                                  ---------------------------------------------------------------------------------------------------------------------------------------------------------
+   { "_id" : { "$oid" : "58a1ebbaf543ec0b90545859" }, "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : { "$date" : 1418368330000 } }
+   { "_id" : { "$oid" : "58a1ebbaf543ec0b9054585a" }, "warehouse_id" : 2, "warehouse_name" : "Laptop", "warehouse_created" : { "$date" : 1447229590000 } }
+   (2 rows)
+   ```
+
+## Accessing nested fields
+
+MongoDB Foreign Data Wrapper allows you to access individual fields in nested JSON documents by mapping the nested structure to columns in a foreign table.
+This works by mapping the nested structure of the MongoDB document to relational columns in the foreign table definition, using dot notation (key2.subkey21) to reference nested fields.
+You can retrieve these fields from a collection as shown in the following example.
+
+### Example
+
+```text
+db1> db.test_sub_json.find()
+[
+  {
+    _id: ObjectId('658040214890799d6e0173d0'),
+    key1: 'hello',
+    key2: {
+      subkey21: 'hello-sub1',
+      subkey22: 'hello-sub2',
+      subtstmp: ISODate('2022-12-16T19:16:17.801Z')
+    }
+  }
+]
+```
+
+To retrieve subfields from the document:
+
+1. Create a foreign table. To access a subfield, use the dot (".") in the column name:
+
+   ```sql
+   CREATE FOREIGN TABLE ft_nested_json_test(
+       _id NAME,
+       key1 varchar,
+       "key2.subkey21"   varchar,
+       "key2.subkey22"   varchar,
+       "key2.subtstmp"   timestamp
+   )SERVER mongo_server
+   OPTIONS (database 'db1', collection 'test_sub_json');
+   ```
+
+2. Retrieve the document with subfields:
+
+   ```sql
+   SELECT * FROM ft_nested_json_test;
+   ```
+
+   ```output title="Output"
+              _id            | key1  | key2.subkey21 | key2.subkey22 |     key2.subtstmp      
+   --------------------------+-------+---------------+---------------+------------------------
+    658040214890799d6e0173d0 | hello | hello-sub1    | hello-sub2    | 16-DEC-22 19:16:17.801
+   ```
+
+3. Retrieve an individual field:
+
+   ```sql
+   SELECT "key2.subkey21" FROM ft_nested_json_test;
+   ```
+
+   ```output title="Output"
+    key2.subkey21 
+   ---------------
+    hello-sub1
+   ```
+
+## Remote query logging
+
+Starting from version 5.5.3, MongoDB Foreign Data Wrapper has a new `log_remote_query` GUC parameter, which, when enabled, logs the remote query executed on the MongoDB server directly to the PostgreSQL server logs. This feature is designed exclusively for debugging purposes, aiding in troubleshooting and development by providing visibility into the exact queries sent to MongoDB at a session level. By default, this parameter is set to false.
+
+For more information, see [Example: remote query logging](https://www.enterprisedb.com/docs/mongo_data_adapter/latest/example_remote_query_logging/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

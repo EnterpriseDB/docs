@@ -1,0 +1,281 @@
+---
+title: Invoking Migration Toolkit
+description: Learn how to perform a migration with the Migration Toolkit.
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/
+lastModified: 2024-09-26T09:11:13+02:00
+---
+
+# Invoking Migration Toolkit
+
+<div id="invoking_mtk" class="registered_link"></div>
+
+After installing Migration Toolkit and specifying connection properties for the source and target databases in the [toolkit.properties file](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/), Migration Toolkit is ready to perform migrations.
+
+> **Note**
+>
+> Ensure the operating system user account running the Migration Toolkit is the owner of the `toolkit.properties` file with a minimum of read permission on the file. See [Invalid file permissions](https://www.enterprisedb.com/docs/migration_toolkit/latest/09_mtk_errors/#invalid-file-permissions) for more information.
+
+The Migration Toolkit executable is named `runMTK.sh` on Linux systems and `runMTK.bat` on Windows systems. On a Linux system, the executable is located in:
+
+`/usr/edb/migrationtoolkit/bin`
+
+On Windows, the executable is located in:
+
+`C:\Program Files\edb\mtk\bin`
+
+See [Migration Toolkit command options](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/) for information on controlling details of the migration.
+
+## Importing character data with embedded binary zeros (NULL characters)
+
+Migration Toolkit supports importing a column with a value of NULL. However, Migration Toolkit doesn't support importing NULL character values (embedded binary zeros 0x00) with the JDBC  connection protocol. If you're importing data that includes the NULL character, use the `-replaceNullChar` option to replace the NULL character with a single, non-NULL, replacement character.
+
+> **Note**
+>
+> - MTK implicitly replaces NULL characters with an empty string.
+> - The `-replaceNullChar` option doesn't work with the `-copyViaDBLinkOra` option.
+
+Once the data is migrated, use a SQL statement to replace the character specified by `-replaceNullChar` with binary zeros.
+
+## Migrating schemas
+
+When migrating schemas from the source database specified in the [toolkit.properties file](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/), you have to provide the `<schema_scope>` for the migration. You have these options:
+
+- To migrate a single schema, specify the schema name.
+- To migrate multiple schemas, provide a comma-delimited list of schema names.
+- To migrate all the schemas, use the `-allSchemas` option.
+
+These examples display how to execute the command depending on your operating system and schema scope.
+
+|                  | On Linux                                                     | On Windows                                                    |
+| ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------- |
+| Single schema    | `$ ./runMTK.sh <schema_name>`                                | `> .\runMTK.bat <schema_name>`                                |
+| Multiple schemas | `$ ./runMTK.sh <schema_name1>,<schema_name2>,<schema_name3>` | `> .\runMTK.bat <schema_name1>,<schema_name2>,<schema_name3>` |
+| All schemas      | `$ ./runMTK.sh -allSchemas`                                  | `> .\runMTK.bat -allSchemas`                                  |
+
+### Migrating schemas from Oracle
+
+Unless specified in the command line, Migration Toolkit expects the source database to be Oracle and the target database to be EDB Postgres Advanced Server. To migrate schemas, navigate to the executable and invoke the following command.
+
+On Linux:
+
+```shell
+$ ./runMTK.sh <schema_scope>
+```
+
+On Windows:
+
+```shell
+> .\runMTK.bat <schema_scope>
+```
+
+Where `<schema_scope>` is the [scope of schemas](#migrating-schemas) to migrate which can be a single schema, multiple schemas, or all schemas from the specified database.
+
+<details>
+
+<summary>
+
+Single schema example
+
+</summary>
+
+The following example migrates a schema (table definitions and table content) named `HR` from an Oracle database to an EDB Postgres Advanced Server database.
+
+On Linux:
+
+```shell
+$ ./runMTK.sh HR
+```
+
+On Windows:
+
+```shell
+> .\runMTK.bat HR
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+Multiple schemas example
+
+</summary>
+
+The following example migrates multiple schemas (named HR and ACCTG) from an Oracle database to a PostgreSQL database.
+
+On Linux:
+
+```shell
+$ ./runMTK.sh -targetdbtype postgres HR,ACCTG
+```
+
+On Windows:
+
+```shell
+> .\runMTK.bat -targetdbtype postgres HR,ACCTG
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+All schemas example
+
+</summary>
+
+The following example migrates all schemas from the Oracle database specified in the [toolkit.properties file](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/) to an EDB Postgres Advanced Server database.
+
+On Linux:
+
+```shell
+$ ./runMTK.sh -allSchemas
+```
+
+On Windows:
+
+```shell
+> .\runMTK.bat -allSchemas
+```
+
+</details>
+
+<br/>
+
+> **Note: Notes**
+>
+> - When the default database user of a migrated schema is automatically migrated, the custom profile of the default database user is also migrated if a custom profile exists. A custom profile is a user-created profile. For example, custom profiles exclude Oracle profiles `DEFAULT` and `MONITORING_PROFILE`.
+> - PostgreSQL default rows are limited to 8 KB in size. This means that each table row must fit into a single 8 KB block, Otherwise, an error occurs indicating, for example, that we can create a table with 1600 columns of INT and insert data for all the columns. However, we can't do the same with BIGINT columns because INT is stored as 4 bytes, but each BIGINT requires more space (8 bytes). For more information, see [PostgreSQL Limits](https://www.postgresql.org/docs/14/limits.html) in the PostgreSQL documentation.
+
+<div id="migrate_non_oracle" class="registered_link"></div>
+
+### Migrating schemas from a non-Oracle source database
+
+If you don't specify a source database type and a target database type, Postgres assumes the source database is Oracle and the target database is EDB Postgres Advanced Server.
+
+To invoke Migration Toolkit, open a command window, navigate to the executable, and invoke the following command:
+
+```shell
+$ ./runMTK.sh -sourcedbtype <source_type> -targetdbtype <target_type> [options, …] <schema_scope>;
+```
+
+`-sourcedbtype <source_type>`
+
+`<source_type>` specifies the server type of the source database. `<source_type>` isn't case sensitive. By default, `<source_type>` is oracle. `source_type` can be one of the following values:
+
+| To migrate from:             | Specify:                   |
+| ---------------------------- | -------------------------- |
+| Oracle                       | oracle (the default value) |
+| MySQL                        | mysql                      |
+| SQL Server                   | sqlserver                  |
+| Sybase                       | sybase                     |
+| PostgreSQL                   | postgres or postgresql     |
+| EDB Postgres Advanced Server | enterprisedb               |
+
+`-targetdbtype <target_type>`
+
+`<target_type>` specifies the server type of the target database. `<target_type>` isn't case sensitive. By default, `<target_type>` is `enterprisedb`. `<target_type>` can be one of the following values:
+
+| To migrate to:               | Specify:               |
+| ---------------------------- | ---------------------- |
+| EDB Postgres Advanced Server | enterprisedb           |
+| PostgreSQL                   | postgres or postgresql |
+
+`<schema_scope>`
+
+Where `<schema_scope>` is the [scope of schemas](#migrating-schemas) to migrate which can be a single schema, multiple schemas, or all schemas from the specified database.
+
+<details>
+
+<summary>
+
+Single schema example
+
+</summary>
+
+The following example migrates a schema (table definitions and table content) named `HR` from a MySQL database on a Linux system to an EDB Postgres Advanced Server host. The command includes the `‑sourcedbtype` and `-targetdbtype` options.
+
+On Linux:
+
+```shell
+$ ./runMTK.sh -sourcedbtype mysql -targetdbtype enterprisedb HR
+```
+
+On Windows:
+
+```shell
+> .\runMTK.bat -sourcedbtype mysql -targetdbtype enterprisedb HR
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+Multiple schemas example
+
+</summary>
+
+The following example migrates multiple schemas (named HR and ACCTG) from a MySQL database to a PostgreSQL database.
+
+On Linux:
+
+```shell
+$ ./runMTK.sh -sourcedbtype mysql -targetdbtype postgres HR,ACCTG
+```
+
+On Windows:
+
+```shell
+> .\runMTK.bat -sourcedbtype mysql -targetdbtype postgres HR,ACCTG
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+All schemas example
+
+</summary>
+
+The following example migrates all schemas from a PostgreSQL database specified in the [toolkit.properties file](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/) to an EDB Postgres Advanced Server database.
+
+> **Note**
+>
+> The `-allSchemas` parameter is supported only for Oracle, EDB Postgres Advanced Server, and PostgreSQL source databases.
+
+On Linux:
+
+```shell
+$ ./runMTK.sh -sourcedbtype postgres -allSchemas
+```
+
+On Windows:
+
+```shell
+> .\runMTK.bat -sourcedbtype postgres -allSchemas
+```
+
+</details>
+
+<br/>
+
+- [Command options](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/): To control details of the migration, append migration options when you run Migration Toolkit. For example, to migrate all schemas in a database, append the -allSchemas option to the command:
+- [Specifying options using a file](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/mtk_command_options_in_file/): EDB supports using a text file to specify several database migration options instead of manually entering them at the command line. This is particularly helpful when:
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

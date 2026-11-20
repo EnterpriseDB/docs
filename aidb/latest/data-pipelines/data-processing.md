@@ -1,0 +1,87 @@
+---
+title: Creating pipelines
+description: How to define an AI pipeline using aidb.create_pipeline() — configuring the source, transformation steps, and destination.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/data-processing/
+lastModified: 2026-09-30T22:23:49+05:30
+---
+
+# Creating pipelines
+
+A pipeline defines how data moves from a source, through one or more transformation steps, to an AI-ready destination.
+Creating a pipeline is the first step in making your data searchable — without one, there is no process to generate embeddings or keep your knowledge base in sync with your source data.
+
+Use `aidb.create_pipeline()` to define a pipeline. Its parameters fall into four groups:
+
+| Parameter group   | Parameters                                                  | More information                                                                                                                                                                        |
+| ----------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Source**        | `source`, `source_key_column`, `source_data_column`         | This page                                                                                                                                                                               |
+| **Steps**         | `step_1` … `step_10`, `step_N_options`                      | [Pipeline steps](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/)                                                                                          |
+| **Orchestration** | `auto_processing`, `background_sync_interval`, `batch_size` | [Orchestration](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/)                                                                                            |
+| **Destination**   | `destination`                                               | `destination_key_column` and `destination_data_column` are not inputs — they're reported back in the function's return value, derived automatically from the destination type and steps |
+
+## Table sources
+
+To read from a Postgres table, set the `source` parameter to the table name, `source_key_column` to the unique key column, and `source_data_column` to the column containing the data to process:
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'my_pipeline',
+    source             => 'my_table',
+    source_key_column  => 'id',
+    source_data_column => 'content',
+    step_1             => 'KnowledgeBase',
+    step_1_options     => aidb.knowledge_base_config('my_model', 'Text')
+);
+```
+
+## Volume sources (PGFS)
+
+To process files stored in external cloud storage (S3, GCS, or Azure), pipelines use [Postgres File System (PGFS)](https://www.enterprisedb.com/docs/pg_extensions/pgfs/).
+PGFS mounts external object storage as a volume that the pipeline can scan for files. For more information on volumes, see [Volumes section](https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/).
+
+### Step 1: Create a storage location
+
+Define the external storage connection using `pgfs.create_storage_location`:
+
+```sql
+SELECT pgfs.create_storage_location(
+    name     => 'my_s3_location',
+    url      => 's3://my-bucket/my-folder',
+    options  => '{"region": "us-east-1"}'
+);
+```
+
+### Step 2: Create a volume
+
+Create an [AIDB volume](https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/) that references the storage location. The pipeline will scan this volume for new or changed files:
+
+```sql
+SELECT aidb.create_volume(
+    name        => 'my_volume',
+    server_name => 'my_s3_location',
+    path        => '/',
+    data_format => 'Pdf'
+);
+```
+
+### Step 3: Reference the volume as the pipeline source
+
+Set the `source` parameter to the volume name:
+
+```sql
+SELECT aidb.create_pipeline(
+    name       => 'my_pdf_pipeline',
+    source     => 'my_volume',
+    step_1     => 'ParsePdf',
+    step_2     => 'KnowledgeBase',
+    step_2_options => aidb.knowledge_base_config('my_model', 'Text')
+);
+```
+
+For full PGFS reference, see [PGFS documentation](https://www.enterprisedb.com/docs/pg_extensions/pgfs/).
+
+For a complete walkthrough combining a table source, pipeline steps, and retrieval, see [Example](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

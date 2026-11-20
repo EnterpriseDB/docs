@@ -1,0 +1,115 @@
+---
+title: Recommended Settings
+description: Recommendations & rationale for pgBackRest configuration settings
+product: pgBackRest
+url: https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/04-recommended_settings/
+lastModified: 2024-06-07T11:00:48+01:00
+---
+
+# Recommended Settings
+
+This section walks you through the recommended settings while using pgBackRest.
+
+### Encryption
+
+Use the following settings to encrypt the files in the repository `repo1`:
+
+```ini
+repo1-cipher-pass=FIXME
+repo1-cipher-type=aes-256-cbc
+```
+
+The `cipher-pass` should be **base64** encoded. For example, to generate a random passphrase use the following setting:
+
+```bash
+$ openssl rand -base64 48
+```
+
+### Maximum Number of Processes
+
+Use the following setting to set the maximum number of processes for compression usage and file transfer:
+
+```ini
+process-max=FIXME
+```
+
+Each process will perform compression and transfer to make the command run faster, but do not set `process-max` so high that it impacts server load and performance.
+
+### Backup Fast Start
+
+Use the `start-fast=y` setting to force a checkpoint to start the backup quickly. This is achieved inside pgBackRest by passing **true** to the fast parameter of the **pg\_start\_backup()** database function. The backup will then begin immediately rather than waiting for the next regular checkpoint triggered by the database server itself.
+
+### Delta
+
+Use the `delta=y` setting to restore or backup using checksums.
+
+During a restore, the data and tablespaces directories are expected to be present, but empty. This option performs a delta restore using checksums.
+
+During a backup, this option will use checksums instead of timestamps to determine if files will be copied.
+
+### Log Levels
+
+The output of each command will be printed in the console and a log file.
+
+Use the following `log-level-console` and `log-level-file` settings to apply the log level:
+
+- **off**;
+- **error**;
+- **warn**;
+- **info**;
+- **detail**;
+- **debug**;
+- **trace**.
+
+**CAUTION:** Trace-level logging may expose secrets such as keys and passwords.
+
+To add more output in the log file in case the executed command encounters an error and to avoid re-executing the command for more information, use the following settings:
+
+```ini
+log-level-console=info
+log-level-file=debug
+```
+
+### EDB Postgres Advanced Server 15 compatibility
+
+PostgreSQL forks may update the pg\_control version or WAL headers without affecting the structures that pgBackRest depends on. The [pg-version-force](https://github.com/pgbackrest/pgbackrest/commit/740c2258e36613b1b4e76bab452d0e610a399e7f) option has been added in [v2.45](https://github.com/pgbackrest/pgbackrest/releases/tag/release/2.45) to force pgBackRest to treat a cluster as the specified version when it cannot be automatically identified.
+
+When using **EDB Postgres Advanced Server** 15 or above, you might see this kind of error:
+
+```
+WARN: unable to check pg1: [VersionNotSupportedError] unexpected control version = 1501 and catalog version = 202209061
+      HINT: is this version of PostgreSQL supported?
+```
+
+To solve this problem, add `pg-version-force=15` into your configuration, in the stanza section (where `15` is the major release version used).
+
+### EDB Transparent Data Encryption support
+
+Transparent data encryption (TDE) is an optional feature supported by EDB Postgres Advanced Server and EDB Postgres Extended Server.
+
+To enable this feature in pgBackRest , add the following settings to the `[global]` section:
+
+```ini
+archive-header-check=n
+checksum-page=n
+```
+
+The `archive-header-check` option checks the WAL header against the database version and system identifier to ensure that the WAL is being copied to the correct stanza. This is an extra protection and disabling it is fairly safe in this case.
+
+The `page-header-check` option has been introduced in the [2.46](https://github.com/pgbackrest/pgbackrest/commit/f5e6bc26983396ec51c6579aade37db39807f3a5) release. It helps reduce page checksum verification errors when the page is encrypted and the checksum is calculated on the encrypted page. Unfortunately, this isn't the case with EDB Transparent Data Encryption. So, the data page checksums validation (while backing up a cluster) has to be disabled using the `checksum-page` option.
+
+### Glossary
+
+#### pgBackRest
+
+- [`archive-header-check`](https://pgbackrest.org/configuration.html#section-maintainer/option-archive-header-check)
+- [`checksum-page`](https://pgbackrest.org/configuration.html#section-backup/option-checksum-page)
+- [`delta`](https://pgbackrest.org/configuration.html#section-general/option-delta)
+- [`log-level-console`](https://pgbackrest.org/configuration.html#section-log/option-log-level-console)
+- [`log-level-file`](https://pgbackrest.org/configuration.html#section-log/option-log-level-file)
+- [`page-header-check`](https://pgbackrest.org/configuration.html#section-maintainer/option-page-header-check)
+- [`process-max`](https://pgbackrest.org/configuration.html#section-general/option-process-max)
+- [`repo-cipher-pass`](https://pgbackrest.org/configuration.html#section-repository/option-repo-cipher-pass)
+- [`repo-cipher-type`](https://pgbackrest.org/configuration.html#section-repository/option-repo-cipher-type)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

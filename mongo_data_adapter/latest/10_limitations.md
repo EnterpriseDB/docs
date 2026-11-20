@@ -1,0 +1,20 @@
+---
+title: Limitations
+product: Mongo Foreign Data Wrapper
+version: "5"
+url: https://www.enterprisedb.com/docs/mongo_data_adapter/latest/10_limitations/
+lastModified: 2026-06-29T10:28:21+05:30
+---
+
+# Limitations
+
+<div id="limitations" class="registered_link"></div>
+
+The following limitations apply to MongoDB Foreign Data Wrapper:
+
+- If the BSON document key contains uppercase letters or occurs in a nested document, MongoDB Foreign Data Wrapper requires the corresponding column names to be declared in double quotes.
+- PostgreSQL limits column names to 63 characters by default. You can increase the `NAMEDATALEN` constant in `src/include/pg_config_manual.h`, compile, and reinstall when column names exceed 63 characters.
+- MongoDB Foreign Data Wrapper returns an error on BSON field that isn't listed in the known types (for example, byte, arrays). It returns this error: `Cannot convert BSON type to column type`.
+- Column names with a dollar sign (`$`) at the start or immediately following a dot, for example, `$field` or `nested.$field`, aren't supported. However, `$` is permitted in other positions, such as `field$name`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

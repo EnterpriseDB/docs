@@ -1,0 +1,150 @@
+---
+title: ALTER VIEW
+product: WarehousePG
+version: 6.27.6
+url: https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/sql_commands/ALTER_VIEW/
+lastModified: 2026-10-14T08:34:33Z
+---
+
+# ALTER VIEW
+
+<a id="topic1"></a><a id="am137232"></a><a id="sql_command_desc"></a>
+
+Changes properties of a view.
+
+<a id="section2">
+
+</a>
+
+## Synopsis
+
+<a id="sql_command_synopsis"></a>
+
+```
+ALTER VIEW [ IF EXISTS ] <name> ALTER [ COLUMN ] <column_name> SET DEFAULT <expression>
+
+ALTER VIEW [ IF EXISTS ] <name> ALTER [ COLUMN ] <column_name> DROP DEFAULT
+
+ALTER VIEW [ IF EXISTS ] <name> OWNER TO <new_owner>
+
+ALTER VIEW [ IF EXISTS ] <name> RENAME TO <new_name>
+
+ALTER VIEW [ IF EXISTS ] <name> SET SCHEMA <new_schema>
+
+ALTER VIEW [ IF EXISTS ] <name> SET ( <view_option_name> [= <view_option_value>] [, ... ] )
+
+ALTER VIEW [ IF EXISTS ] <name> RESET ( <view_option_name> [, ... ] )
+```
+
+<a id="section3">
+
+</a>
+
+## Description
+
+`ALTER VIEW` changes various auxiliary properties of a view. (If you want to modify the view's defining query, use `CREATE OR REPLACE VIEW`.
+
+To run this command you must be the owner of the view. To change a view's schema you must also have `CREATE` privilege on the new schema. To alter the owner, you must also be a direct or indirect member of the new owning role, and that role must have `CREATE` privilege on the view's schema. These restrictions enforce that altering the owner does not do anything you could not do by dropping and recreating the view. However, a superuser can alter ownership of any view.
+
+<a id="section4">
+
+</a>
+
+## Parameters
+
+### name
+
+The name (optionally schema-qualified) of an existing view.
+
+### IF EXISTS
+
+Do not throw an error if the view does not exist. A notice is issued in this case.
+
+### SET/DROP DEFAULT
+
+These forms set or remove the default value for a column. A view column's default value is substituted into any `INSERT` or `UPDATE` command whose target is the view, before applying any rules or triggers for the view. The view's default will therefore take precedence over any default values from underlying relations.
+
+### new\_owner
+
+The new owner for the view.
+
+### new\_name
+
+The new name of the view.
+
+### new\_schema
+
+The new schema for the view.
+
+### SET | RESET
+
+```
+SET ( view_option_name [= view_option_value] [, ... ] )
+RESET ( view_option_name [, ... ] )
+```
+
+Sets or resets a view option. Currently supported options are:
+
+- `check_option` (string)
+
+  Changes the check option of the view. The value must be `local` or `cascaded`.
+
+- `security_barrier` (boolean)
+
+  Changes the security-barrier property of the view. The value must be a Boolean value, such as `true` or `false`.
+
+<a id="fixme">
+
+</a>
+
+## Notes
+
+For historical reasons, `ALTER TABLE` can be used with views, too; however, the only variants of `ALTER TABLE` that are allowed with views are equivalent to the statements shown above.
+
+Rename the view `myview` to `newview`:
+
+```
+ALTER VIEW myview RENAME TO newview;
+```
+
+<a id="examples">
+
+</a>
+
+## Examples
+
+To rename the view `foo` to `bar`:
+
+```
+ALTER VIEW foo RENAME TO bar;
+```
+
+To attach a default column value to an updatable view:
+
+```
+CREATE TABLE base_table (id int, ts timestamptz);
+CREATE VIEW a_view AS SELECT * FROM base_table;
+ALTER VIEW a_view ALTER COLUMN ts SET DEFAULT now();
+INSERT INTO base_table(id) VALUES(1);  -- ts will receive a NULL
+INSERT INTO a_view(id) VALUES(2);  -- ts will receive the current time
+```
+
+<a id="section6">
+
+</a>
+
+## Compatibility
+
+`ALTER VIEW` is a WarehousePG extension of the SQL standard.
+
+<a id="section7">
+
+</a>
+
+## See Also
+
+[CREATE VIEW](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/sql_commands/CREATE_VIEW/#cj20941), [DROP VIEW](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/sql_commands/DROP_VIEW/#dn20941) in the _WarehousePG Utility Guide_
+
+**Parent topic:** [SQL Commands](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/sql_commands/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

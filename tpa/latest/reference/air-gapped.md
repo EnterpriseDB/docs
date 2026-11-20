@@ -1,0 +1,128 @@
+---
+title: Managing clusters in a disconnected or air-gapped environment
+description: How to manage clusters in a disconnected or air-gapped environment
+product: Trusted Postgres Architect
+version: 23.45.0
+url: https://www.enterprisedb.com/docs/tpa/latest/reference/air-gapped/
+lastModified: 2026-06-10T17:25:34+02:00
+---
+
+# Managing clusters in a disconnected or air-gapped environment
+
+In a security controlled environment where no direct connection to the
+Internet is allowed, it is necessary to provide all packages needed by
+TPA to complete the deployment. This can be done via a local-repo on
+each node in the cluster. TPA supports the addition of custom
+repositories on each node via a
+[local-repo](https://www.enterprisedb.com/docs/tpa/latest/reference/local-repo/) and the required packages can be downloaded
+using the [download-packages](https://www.enterprisedb.com/docs/tpa/latest/reference/tpaexec-download-packages/) command.
+
+## Preparation
+
+Choose an internet connected machine where you can install TPA and
+follow the instructions below to either copy an existing cluster
+configuration or create a new cluster.
+
+> **Note**
+>
+> If the air-gapped server does not already have TPA installed,
+> follow the instructions
+> [here](https://www.enterprisedb.com/docs/tpa/latest/INSTALL/#installing-tpa-without-internet-or-network-access-air-gapped)
+> to install it.
+
+If you have an existing cluster in a disconnected environment, all you
+need on the internet connected host is the config.yml. Create a
+directory and copy that file into it then run `tpaexec relink` on that
+directory to generate the remaining files that would normally be created
+by `tpaexec configure`.
+
+Alternatively, to create a new configuration for an environment where
+the target instances will not have network access, configure a new
+cluster with this option:
+
+```
+tpaexec configure --use-local-repo-only …
+```
+
+This will do everything that `--enable-local-repo` does, and disable the
+configuration for all other package repositories. On RedHat instances,
+this also includes disabling access to subscription-based services.
+
+In an existing cluster, you can set `use_local_repo_only: yes` in
+`config.yml`:
+
+```yaml
+cluster_vars:
+    use_local_repo_only: yes
+```
+
+Note: that you do not need separate cluster configurations for internet
+connected and disconnected environments, the options below work in both.
+
+More info on [using local-repo for distributing packages](https://www.enterprisedb.com/docs/tpa/latest/reference/local-repo/)
+
+## Downloading packages
+
+On the internet connected machine, ensure that you
+have [docker installed](https://www.enterprisedb.com/docs/tpa/latest/platform-docker/) and run:
+
+```shell
+tpaexec download-packages cluster-dir --os <OS> --os-version <version>
+```
+
+See detailed description for
+the [package downloader](https://www.enterprisedb.com/docs/tpa/latest/reference/tpaexec-download-packages/).
+
+## Copying packages to the target environment
+
+The resulting repository will be contained in the
+`cluster-dir/local-repo` directory. This is a complete package repo for
+the target OS. Copy this directory, from the connected controller to the
+disconnected controller that will be used to deploy the cluster. Place
+the directory in the same place, beneath the cluster directory. TPA
+will then copy packages to the instances automatically when `deploy` is
+run.
+
+## Deploying in a disconnected environment
+
+Ensure that the cluster config.yml has been configured as above in
+[Preparation](#preparation). Run `tpaexec provision` and `deploy` as you
+would normally.
+
+## Updating in a disconnected environment
+
+You can use the [upgrade](https://www.enterprisedb.com/docs/tpa/latest/tpaexec-upgrade/) command to
+perform updates in an air-gapped environment. Prior to running this
+command you must follow the steps below.
+
+### Updating local repository content with direct access to internet on TPA node
+
+If the air-gapped environment has internet access, we can safely rely on `tpaexec download-packages`
+to download the new packages, check the [download section](https://www.enterprisedb.com/docs/tpa/latest/reference/air-gapped/#downloading-packages) to
+know its usage.
+
+### Updating local repository content without direct access to internet on TPA node
+
+There are two ways of performing the updating an internet-disconnected local repository:
+Recreate the local repository manually following the correct [steps](https://www.enterprisedb.com/docs/tpa/latest/reference/local-repo/#populating-the-repository-and-generating-metadata)
+depending on the distribution of your choice; or use `--refresh-repository` option in
+`tpaexec download-packages` after placing the new packages on the local repository.
+Check the [documentation](https://www.enterprisedb.com/docs/tpa/latest/reference/tpaexec-download-packages/#regenerate-local-repository-metadata) for more information
+(Docker must be available, alongside the corresponding Docker image to the TPA nodes cluster).
+
+Once the changes are saved, we can execute `tpaexec upgrade cluster-dir` and
+the packages will be updated.
+
+## Cross-version Shared Barman
+
+When a single Barman host backs up Postgres instances running
+different major version from the initial cluster managing the shared
+barman node, the additional major client packages must be
+present in the Barman cluster's `local-repo`. The default `tpaexec
+download-packages` run is only aware of the cluster's version and won't pre-fetch
+additional version from other clusters using the shared barman instance.
+See [Backing up nodes at different PostgreSQL
+versions](https://www.enterprisedb.com/docs/tpa/latest/reference/barman/#backing-up-nodes-at-different-postgresql-versions)
+for the recommended workflow.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

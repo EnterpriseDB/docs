@@ -1,0 +1,78 @@
+---
+title: Unlocking a locked account
+description: Describes how to use specific clauses in the ALTER USER|ROLE command to lock or unlock a user role
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/epas_security_guide/04_profile_management/05_unlocking_a_locked_account/
+lastModified: 2026-08-20T19:05:27+05:30
+---
+
+# Unlocking a locked account
+
+<div id="unlocking_a_locked_account" class="registered_link"></div>
+
+A database superuser can use clauses of the `ALTER USER|ROLE...` command to lock or unlock a role. The syntax is:
+
+```sql
+ALTER USER|ROLE <name>
+       ACCOUNT {LOCK|UNLOCK}
+       LOCK TIME '<timestamp>'
+```
+
+Include the `ACCOUNT LOCK` clause to lock a role immediately. When locked, a role’s `LOGIN` functionality is disabled. When you specify the `ACCOUNT LOCK` clause without the `LOCK TIME` clause, the state of the role doesn't change until a superuser uses the `ACCOUNT UNLOCK` clause to unlock the role.
+
+Use the `ACCOUNT UNLOCK` clause to unlock a role.
+
+Use the `LOCK TIME 'timestamp'` clause to set the account to `LOCKED(TIMED)` status immediately, regardless of whether `timestamp` is in the past or future. The timestamp sets `rollockdate`, which determines when the lock _expires_. The account remains locked until `rollockdate` plus the `PASSWORD_LOCK_TIME` parameter of the profile associated with this role has elapsed. This clause exists primarily so `pg_dump` and `pg_dumpall` can faithfully reproduce a role's `LOCKED(TIMED)` state during dump/restore or upgrade operations.
+
+> **Note**
+>
+> Supplying a future timestamp doesn't defer the lock. The account is locked immediately. It stays locked until the future date plus `PASSWORD_LOCK_TIME`. In other words, the lock expires at (future date + `PASSWORD_LOCK_TIME`), not at the future date itself. To restore access immediately, use `ACCOUNT UNLOCK`.
+
+Combine the `LOCK TIME 'timestamp'` clause with the `ACCOUNT LOCK` clause to lock an account immediately and keep it locked until a superuser explicitly runs `ACCOUNT UNLOCK`. The timestamp value is still recorded, but it has no effect on the lock's expiry. Only a manual unlock will lift it.
+
+## Parameters
+
+`name`
+
+The name of the role that's being locked or unlocked.
+
+`timestamp`
+
+The timestamp used to calculate when the lock set by `LOCK TIME` expires (`timestamp` plus `PASSWORD_LOCK_TIME`). It doesn't delay when the lock takes effect. The role is locked immediately when the command runs. When specifying a value for `timestamp`, enclose the value in single quotes.
+
+> **Note**
+>
+> This command (available only in EDB Postgres Advanced Server) is implemented to support Oracle-styled profile management.
+
+## Examples
+
+This example uses the `ACCOUNT LOCK` clause to lock the role named `john`. The account remains locked until the account is unlocked with the `ACCOUNT UNLOCK` clause.
+
+```sql
+ALTER ROLE john ACCOUNT LOCK;
+```
+
+This example uses the `ACCOUNT UNLOCK` clause to unlock the role named `john`:
+
+```sql
+ALTER ROLE john ACCOUNT UNLOCK;
+```
+
+This example uses the `LOCK TIME 'timestamp'` clause to lock the role named `john` immediately, with the lock set to expire based on September 4, 2015:
+
+```sql
+ALTER ROLE john LOCK TIME 'September 4 12:00:00 2015';
+```
+
+The role is locked as soon as the command runs and remains locked until September 4, 2015, plus the length of time specified by the `PASSWORD_LOCK_TIME` parameter.
+
+This example combines the `LOCK TIME 'timestamp'` clause and the `ACCOUNT LOCK` clause to lock the role named `john` immediately:
+
+```sql
+ALTER ROLE john LOCK TIME 'September 4 12:00:00 2015' ACCOUNT LOCK;
+```
+
+The role remains locked until a database superuser uses the `ACCOUNT UNLOCK` command to unlock the role, regardless of the `LOCK TIME` timestamp.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

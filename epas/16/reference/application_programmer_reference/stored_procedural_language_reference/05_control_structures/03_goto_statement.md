@@ -1,0 +1,102 @@
+---
+title: GOTO statement
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/application_programmer_reference/stored_procedural_language_reference/05_control_structures/03_goto_statement/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# GOTO statement
+
+<div id="goto_statement" class="registered_link"></div>
+
+The `GOTO` statement causes the point of execution to jump to the statement with the specified label.
+
+## Syntax
+
+The syntax of a `GOTO` statement is:
+
+```sql
+GOTO <label>
+```
+
+`label` is a name assigned to an executable statement. `label` must be unique in the scope of the function, procedure, or anonymous block.
+
+To label a statement, use this syntax:
+
+```text
+<<label>> <statement>
+```
+
+`statement` is the point of execution that the program jumps to.
+
+## Statements eligible for labeling
+
+You can label assignment statements, any SQL statement (like `INSERT`, `UPDATE`, and `CREATE`), and selected procedural language statements. The procedural language statements that can be labeled are:
+
+- `IF`
+- `EXIT`
+- `RETURN`
+- `RAISE`
+- `EXECUTE`
+- `PERFORM`
+- `GET DIAGNOSTICS`
+- `OPEN`
+- `FETCH`
+- `MOVE`
+- `CLOSE`
+- `NULL`
+- `COMMIT`
+- `ROLLBACK`
+- `GOTO`
+- `CASE`
+- `LOOP`
+- `WHILE`
+- `FOR`
+
+`exit` is considered a keyword and you can't use it as the name of a label.
+
+## Restrictions
+
+`GOTO` statements can't transfer control into a conditional block or sub-block. However, they can transfer control from a conditional block or sub-block.
+
+`GOTO` statements have the following restrictions:
+
+- A `GOTO` statement can't jump to a declaration.
+- A `GOTO` statement can't transfer control to another function, or procedure.
+- Don't place a `label` at the end of a block, function, or procedure.
+
+## Example
+
+This example verifies that an employee record contains a name, job description, and employee hire date. If any piece of information is missing, a `GOTO` statement transfers the point of execution to a statement that prints a message that the employee isn't valid.
+
+```sql
+CREATE OR REPLACE PROCEDURE verify_emp (
+    p_empno         NUMBER
+)
+IS
+    v_ename         emp.ename%TYPE;
+    v_job           emp.job%TYPE;
+    v_hiredate      emp.hiredate%TYPE;
+BEGIN
+    SELECT ename, job, hiredate
+        INTO v_ename, v_job, v_hiredate FROM emp
+        WHERE empno = p_empno;
+    IF v_ename IS NULL THEN
+        GOTO invalid_emp;
+    END IF;
+    IF v_job IS NULL THEN
+        GOTO invalid_emp;
+    END IF;
+    IF v_hiredate IS NULL THEN
+        GOTO invalid_emp;
+    END IF;
+    DBMS_OUTPUT.PUT_LINE('Employee ' || p_empno ||
+        ' validated without errors.');
+    RETURN;
+    <<invalid_emp>> DBMS_OUTPUT.PUT_LINE('Employee ' || p_empno ||
+        ' is not a valid employee.');
+END;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

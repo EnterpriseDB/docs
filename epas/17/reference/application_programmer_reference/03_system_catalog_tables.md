@@ -1,0 +1,124 @@
+---
+title: System catalog tables
+description: Provides descriptions of the supported system catalog tables
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/reference/application_programmer_reference/03_system_catalog_tables/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# System catalog tables
+
+<div id="system_catalog_tables" class="registered_link"></div>
+
+The following system catalog tables contain definitions of database objects. The layout of the system tables is subject to change. If you're writing an application that depends on information stored in the system tables, use an existing catalog view or create a catalog view to isolate the application from changes to the system table.
+
+## dual
+
+`dual` is a single-row, single-column table that's provided only for compatibility with Oracle databases.
+
+| Column  | Type          | Modifiers | Description                      |
+| ------- | ------------- | --------- | -------------------------------- |
+| `dummy` | `VARCHAR2(1)` |           | Provided for compatibility only. |
+
+## edb\_dir
+
+The `edb_dir` table contains one row for each alias that points to a directory created with the `CREATE DIRECTORY` command. A directory is an alias for a pathname that allows a user limited access to the host file system.
+
+You can use a directory to fence a user into a specific directory tree in the file system. For example, the `UTL_FILE` package offers functions that allow a user to read and write files and directories in the host file system. However, it allows access only to paths that the database administrator has granted access to by way of a `CREATE DIRECTORY` command.
+
+| Column     | Type        | Modifiers  | Description                                                                 |
+| ---------- | ----------- | ---------- | --------------------------------------------------------------------------- |
+| `dirname`  | `"name"`    | `not null` | The name of the alias.                                                      |
+| `dirowner` | `oid`       | `not null` | The `OID` of the user that owns the alias.                                  |
+| `dirpath`  | `text`      |            | The directory name to which access is granted.                              |
+| `diracl`   | `aclitem[]` |            | The access control list that determines the users who can access the alias. |
+
+## edb\_password\_history
+
+The `edb_password_history` table contains one row for each password change. The table is shared across all databases in a cluster.
+
+| Column                  | Type          | References      | Description                                                 |
+| ----------------------- | ------------- | --------------- | ----------------------------------------------------------- |
+| `passhistroleid`        | `oid`         | `pg_authid.oid` | The `ID` of a role.                                         |
+| `passhistpassword`      | `text`        |                 | Role password encrypted according to `password_encryption`. |
+| `passhistpasswordsetat` | `timestamptz` |                 | The time the password was set.                              |
+
+## edb\_policy
+
+The `edb_policy` table contains one row for each policy.
+
+| Column              | Type         | Modifiers  | Description                                                                                                        |
+| ------------------- | ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `policyname`        | `name`       | `not null` | The policy name.                                                                                                   |
+| `policygroup`       | `oid`        | `not null` | Currently unused.                                                                                                  |
+| `policyobject`      | `oid`        | `not null` | The `OID` of the table secured by this policy (the `object_schema` plus the `object_name`).                        |
+| `policykind`        | `char`       | `not null` | The kind of object secured by this policy: 'r' for a table, 'v' for a view, = for a synonym. Currently always 'r'. |
+| `policyproc`        | `oid`        | `not null` | The `OID` of the policy function (`function_schema` plus `policy_function`).                                       |
+| `policyinsert`      | `boolean`    | `not null` | True if the policy is enforced by `INSERT` statements.                                                             |
+| `policyselect`      | `boolean`    | `not null` | True if the policy is enforced by `SELECT` statements.                                                             |
+| `policydelete`      | `boolean`    | `not null` | True if the policy is enforced by `DELETE` statements.                                                             |
+| `policyupdate`      | `boolean`    | `not null` | True if the policy is enforced by `UPDATE` statements.                                                             |
+| `policyindex`       | `boolean`    | `not null` | Currently unused.                                                                                                  |
+| `policyenabled`     | `boolean`    | `not null` | True if the policy is enabled.                                                                                     |
+| `policyupdatecheck` | `boolean`    | `not null` | True if rows updated by an `UPDATE` statement must satisfy the policy.                                             |
+| `policystatic`      | `boolean`    | `not null` | Currently unused.                                                                                                  |
+| `policytype`        | `integer`    | `not null` | Currently unused.                                                                                                  |
+| `policyopts`        | `integer`    | `not null` | Currently unused.                                                                                                  |
+| `policyseccols`     | `int2vector` | `not null` | The column numbers for columns listed in `sec_relevant_cols`.                                                      |
+
+## edb\_profile
+
+The `edb_profile` table stores information about the available profiles. `edb_profiles` is shared across all databases in a cluster.
+
+| Column                    | Type      | References        | Description                                                                                                                                                                                         |
+| ------------------------- | --------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oid`                     | `oid`     |                   | Row identifier (hidden attribute. Must be explicitly selected).                                                                                                                                     |
+| `prfname`                 | `name`    |                   | The name of the profile.                                                                                                                                                                            |
+| `prffailedloginattempts`  | `integer` |                   | The number of failed login attempts allowed by the profile. -1 indicates to use the value from the default profile. -2 indicates no limit on failed login attempts.                                 |
+| `prfpasswordlocktime`     | `integer` |                   | The password lock time associated with the profile, in seconds. -1 indicates to use the value from the default profile. -2 indicates to lock the account permanently.                               |
+| `prfpasswordlifetime`     | `integer` |                   | The password lifetime associated with the profile, in seconds. -1 indicates to use the value from the default profile. -2 indicates that the password never expires.                                |
+| `prfpasswordgracetime`    | `integer` |                   | The password grace time associated with the profile, in seconds. -1 indicates to use the value from the default profile. -2 indicates that the password never expires.                              |
+| `prfpasswordreusetime`    | `integer` |                   | The number of seconds that a user must wait before reusing a password. -1 indicates to use the value from the default profile. -2 indicates that the old passwords can never be reused.             |
+| `prfpasswordreusemax`     | `integer` |                   | The number of password changes that have to occur before a password can be reused. -1 indicates to use the value from the default profile. -2 indicates that the old passwords can never be reused. |
+| `prfpasswordallowhashed`  | `integer` |                   | Specifies whether an encrypted password is allowed for use. The possible values are `true/on/yes/1`, `false/off/no/0`, and `DEFAULT`.                                                               |
+| `prfpasswordverifyfuncdb` | `oid`     | `pg_database.oid` | The `OID` of the database in which the password verify function exists.                                                                                                                             |
+| `prfpasswordverifyfunc`   | `oid`     | `pg_proc.oid`     | The `OID` of the password verify function associated with the profile.                                                                                                                              |
+
+## edb\_variable
+
+The `edb_variable` table contains one row for each package level variable (each variable declared in a package).
+
+| Column       | Type       | Modifiers  | Description                                                                                                                                                                                                               |
+| ------------ | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `varname`    | `"name"`   | `not null` | The name of the variable.                                                                                                                                                                                                 |
+| `varpackage` | `oid`      | `not null` | The `OID` of the `pg_namespace` row that stores the package.                                                                                                                                                              |
+| `vartype`    | `oid`      | `not null` | The `OID` of the `pg_type` row that defines the type of the variable.                                                                                                                                                     |
+| `varaccess`  | `"char"`   | `not null` | `+` if the variable is visible outside of the package. `-` if the variable is visible only in the package. Note: Public variables are declared in the package header. Private variables are declared in the package body. |
+| `varsrc`     | `text`     |            | Contains the source of the variable declaration, including any default value expressions for the variable.                                                                                                                |
+| `varseq`     | `smallint` | `not null` | The order in which the variable was declared in the package.                                                                                                                                                              |
+
+## pg\_synonym
+
+The `pg_synonym` table contains one row for each synonym created with the `CREATE SYNONYM` command or `CREATE PUBLIC SYNONYM` command.
+
+| Column         | Type     | Modifiers  | Description                                                                                    |
+| -------------- | -------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| `synname`      | `"name"` | `not null` | The name of the synonym.                                                                       |
+| `synnamespace` | `oid`    | `not null` | Replaces `synowner`. Contains the `OID` of the `pg_namespace` row where the synonym is stored. |
+| `synowner`     | `oid`    | `not null` | The `OID` of the user that owns the synonym.                                                   |
+| `synobjschema` | `"name"` | `not null` | The schema in which the referenced object is defined.                                          |
+| `synobjname`   | `"name"` | `not null` | The name of the referenced object.                                                             |
+| `synlink`      | `text`   |            | The optional name of the database link in which the referenced object is defined.              |
+
+## product\_component\_version
+
+The `product_component_version` table contains information about feature compatibility. An application can query this table during installation or at runtime to verify that features used by the application are available with this deployment.
+
+| Column    | Type                     | Description                        |
+| --------- | ------------------------ | ---------------------------------- |
+| `product` | `character varying (74)` | The name of the product.           |
+| `version` | `character varying (74)` | The version number of the product. |
+| `status`  | `character varying (74)` | The status of the release.         |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

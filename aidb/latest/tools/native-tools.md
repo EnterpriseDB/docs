@@ -1,0 +1,200 @@
+---
+title: Native tools
+description: AIDB's built-in catalog of native tools that agents can call, organized by category.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/
+lastModified: 2026-11-02T20:04:14+05:30
+---
+
+# Native tools
+
+AIDB ships with a large built-in catalog of native tools — mostly thin wrappers around existing AIDB functionality, so an agent can operate on pipelines, knowledge bases, models, and volumes the same way you would from SQL directly. This is one of three tool types AIDB supports — see [Tools](https://www.enterprisedb.com/docs/aidb/latest/tools/) for the full catalog, including [custom SQL tools](https://www.enterprisedb.com/docs/aidb/latest/tools/custom-sql-tools/) and [MCP tools](https://www.enterprisedb.com/docs/aidb/latest/tools/mcp-tools/). `sleep` is always available to every agent regardless of its configured `tools` list — unless the backing model caps how many tools a request can carry and the agent's other configured tools already fill that cap — since it backs the reasoning loop's own ability to pause and resume. Every other native tool must be explicitly listed in `tools` to be usable.
+
+A tool's exact parameters are always visible with `SELECT params FROM aidb.tools WHERE name = '<name>'`; the tables below give the one-line description and read-only status for each.
+
+A native tool call runs under a purpose's resolved role if the calling agent has one configured. That role must have `EXECUTE` permissions on the tool function before the agent can call it. See [Governance](https://www.enterprisedb.com/docs/aidb/latest/governance/) for what an explanation of what a purpose is and what grants its resolved role needs.
+
+## Ad hoc SQL
+
+| Tool            | Read-only | Description                                                                                                                                                                                                                                                                |
+| --------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run_sql_query` | Yes       | Run a read-only SQL query against the database and return its rows as JSON. Refuses a query that reads user mappings, for example through `pg_user_mappings`.                                                                                                              |
+| `explain_query` | Yes       | Return the query plan for one `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `MERGE` statement as JSON. Pass `analyze => true` to run the statement and include real timing and row counts; this fails for a write statement. Without `analyze`, the statement isn't executed. |
+
+## Catalog discovery
+
+Introspection of the database catalog: these tools let an agent discover what schemas, tables, views, and functions exist, without having to construct `information_schema`/`pg_catalog` queries itself.
+
+They're related to the [semantic knowledge base tools](#semantic-knowledge-bases) below, but the two are complementary rather than interchangeable:
+
+- Catalog discovery tools do live, exact lookups against the Postgres catalog. They need no setup, always reflect the current state of the database, and match by exact name or SQL `LIKE` pattern.
+- Semantic knowledge base tools run semantic (vector) search over a crawled snapshot of the schema. They require a pre-built, opt-in knowledge base (and a re-crawl to pick up structural changes), but can answer natural-language questions like "which table holds customer contact info?" that exact catalog lookups can't.
+
+A typical agent uses both: semantic search to find the right table from a vague description, then catalog discovery to get its exact, current columns and foreign keys.
+
+All six tools are privilege-aware — they only return objects the calling user can actually see. Listings hide Postgres and AIDB internal schemas as well as installed extensions' schemas and objects by default (`catalog_get_object_details` deliberately doesn't hide extension objects: explicitly naming one is asking for it). Listings are capped at 200 rows; every row carries a `truncated` flag that's `true` when more rows exist, signaling the caller to narrow the search with `schema` or `name_pattern`. Optional text parameters treat an empty string the same as an omitted argument.
+
+| Tool                         | Read-only | Description                                                                                                                                  |
+| ---------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `catalog_list_schemas`       | Yes       | List schemas in the current database. Hides Postgres/AIDB internal schemas and installed extensions' schemas unless `include_system` is set. |
+| `catalog_list_objects`       | Yes       | List tables, views, materialized views, foreign tables, and/or functions. Narrow with `schema`, `object_type`, and/or `name_pattern`.        |
+| `catalog_get_object_details` | Yes       | Get full detail on one object by name: columns, primary/unique/foreign keys for relations; arguments and return type for functions.          |
+| `catalog_list_relations`     | Yes       | List foreign-key relationships — every FK in a schema, or only edges touching one specific table, in either direction.                       |
+| `catalog_list_sequences`     | Yes       | List sequences, optionally in one schema. Sequences aren't included in `catalog_list_objects`.                                               |
+| `catalog_list_extensions`    | Yes       | List installed extensions with name, version, whether it's relocatable, and its comment.                                                     |
+
+## Database health
+
+| Tool                | Read-only | Description                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `analyze_db_health` | Yes       | Run health checks and return the findings as JSON, keyed by check name. Pass `checks` to run a subset: `index`, `connection`, `vacuum`, `sequence`, `replication`, `buffer`, `constraint`. Omit it, or pass `all`, to run every check. Results only cover objects the caller can see. The `connection` count and some `replication` details need the `pg_monitor` or `pg_read_all_stats` role. |
+
+`analyze_db_health` is also available as a SQL function:
+
+```sql
+SELECT aidb.analyze_db_health(ARRAY['index', 'vacuum']);
+```
+
+## Semantic knowledge bases
+
+Schema-search knowledge bases to allow semantic search based discovery of tables, columns, and other DB objects. Distinct from the knowledge bases for user data that pipelines can create.
+
+| Tool                                 | Read-only      | Description                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_semantic_kb`                 | No             | Create a semantic knowledge base over one or more schemas for natural-language schema search.                                                                                                                                                                                                                                    |
+| `delete_semantic_kb`                 | No             | Delete a semantic knowledge base by name.                                                                                                                                                                                                                                                                                        |
+| `list_semantic_kbs`                  | Yes            | List all registered semantic knowledge bases.                                                                                                                                                                                                                                                                                    |
+| `get_semantic_kb`                    | Yes            | Get a registered semantic knowledge base's configuration by name.                                                                                                                                                                                                                                                                |
+| `refresh_semantic_kb`                | No             | Re-crawl a semantic knowledge base's schemas to pick up structural changes.                                                                                                                                                                                                                                                      |
+| `update_semantic_kb_auto_processing` | No             | Change a semantic knowledge base's auto-processing mode.                                                                                                                                                                                                                                                                         |
+| `get_column_definitions`             | Yes            | Search a semantic knowledge base for matching column/table definitions.                                                                                                                                                                                                                                                          |
+| `get_metadata`                       | Yes            | Search a semantic knowledge base's full schema metadata (columns, tables, comments).                                                                                                                                                                                                                                             |
+| `get_entity_definitions`             | Yes            | Search a semantic knowledge base for matching table/view definitions.                                                                                                                                                                                                                                                            |
+| `semantic_kb_search`                 | Yes            | Run a composite semantic search over a knowledge base, returning one ranked list of matching tables, views, columns, relationships, aliases, and query history with a source-type discriminator. Set `include_proposed` to also return relationships that are still `proposed`.                                                  |
+| `search_by_comment`                  | Yes            | Search a semantic knowledge base's schema/table/column comments by similarity.                                                                                                                                                                                                                                                   |
+| `semantic_kb_stats`                  | Yes            | Get row/entity counts for a semantic knowledge base.                                                                                                                                                                                                                                                                             |
+| `list_relationships`                 | Yes            | List the [relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/) recorded for a knowledge base, optionally filtered to one relation, kind, source, or status.                                                                                                                     |
+| `find_join_path`                     | Yes            | Find a ranked route between two tables that don't share a direct foreign key.                                                                                                                                                                                                                                                    |
+| `suggest_joins`                      | Yes            | List the relationships one hop from a given table, in both directions.                                                                                                                                                                                                                                                           |
+| `semantic_kb_subgraph`               | Yes            | Seed from a natural-language search and return the relationships around the matched entities.                                                                                                                                                                                                                                    |
+| `relationship_candidates`            | Yes            | List relationship candidates derived from imported query history, not yet accepted.                                                                                                                                                                                                                                              |
+| `list_query_history`                 | Yes            | List normalized statements recorded by `import_query_history`, with their referenced objects and join predicates. Callers see only the statements run by roles they're a member of, unless they hold `pg_read_all_stats`.                                                                                                        |
+| `list_proposed_comments`             | Yes            | List object descriptions queued for review under [comment curation](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/curation/#reviewing-before-its-live).                                                                                                                                                 |
+| `relationship_drift`                 | Yes (see note) | Detect and mark stale any relationship added by hand whose columns were renamed or dropped. Note: flagged read-only in the catalog, but the function writes on every call — treat it as a write regardless of the flag.                                                                                                          |
+| `add_relationship`                   | No             | Record a relationship an agent has discovered. Always records `source = 'agent'`. Note: despite the shared name, this tool calls `aidb.add_relationship_as_agent()`, not the SQL function `aidb.add_relationship()` — the two aren't interchangeable.                                                                            |
+| `delete_relationship`                | No             | Delete a relationship by ID, or by its endpoints and columns.                                                                                                                                                                                                                                                                    |
+| `accept_relationship_candidates`     | No             | Accept one or more relationship candidates by ID, making them routable. Optional `cardinality` and `is_nullable` arguments override the proposed shape.                                                                                                                                                                          |
+| `import_query_history`               | No             | Read `pg_stat_statements`, store the statements that join tables in the knowledge base's schemas, and derive relationship candidates from the joins it finds. Statements from [excluded roles](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/query-history/#excluding-an-applications-sql) are skipped. |
+| `add_comment_to_object`              | No             | Write or edit a table, view, column, or constraint description, reconciling every knowledge base that indexes it.                                                                                                                                                                                                                |
+| `remove_comment`                     | No             | Remove a table, view, column, or constraint description.                                                                                                                                                                                                                                                                         |
+
+The following functions are intentionally not native tools:
+
+| SQL function                             | Why it's SQL-only                                                                                                                                                                                                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aidb.add_relationship`                  | For a person to add by hand (`source => 'manual'`); the agent-facing equivalent is the `add_relationship` tool above, which calls `aidb.add_relationship_as_agent` instead.                                                                                                                 |
+| `aidb.resolve_object_comment`            | Approves or rejects a proposed comment. Deliberately excluded: an agent holding it could approve its own proposal.                                                                                                                                                                          |
+| `aidb.update_semantic_kb_history_filter` | Sets the roles whose statements [query history](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/query-history/#excluding-an-applications-sql) doesn't learn from. Deliberately excluded: an agent holding it could change the list that governs what it learns from. |
+| `aidb.classify_query_history_statement`  | Explains why a statement would or wouldn't be kept by `import_query_history`. SQL-only, for a person debugging an import.                                                                                                                                                                   |
+| `aidb.update_semantic_kb_curation`       | Turns the comment review queue on or off. Deliberately excluded: an agent holding it could switch off the review that governs it.                                                                                                                                                           |
+| `aidb.semantic_kb_audit`                 | Reads the audit log of semantic KB operations; for a superuser or the extension owner.                                                                                                                                                                                                      |
+| `aidb.semkb_audit_prune`                 | Deletes old audit records for one knowledge base; run by an operator or a scheduled job such as `pg_cron`.                                                                                                                                                                                  |
+
+## Models
+
+See [Integrating models](https://www.enterprisedb.com/docs/aidb/latest/integrating-models/) and [Model credentials](https://www.enterprisedb.com/docs/aidb/latest/integrating-models/credentials/). Assign the credential tools only to agents that manage credentials. The `create_credential` and `update_credential` tools take the secret as an argument, so the secret passes through the agent's model and is visible to it.
+
+| Tool                | Read-only | Description                                                                            |
+| ------------------- | --------- | -------------------------------------------------------------------------------------- |
+| `list_models`       | Yes       | List all registered models.                                                            |
+| `get_model`         | Yes       | Get a registered model's configuration by name.                                        |
+| `create_model`      | No        | Register a new model with a provider, configuration, and credential.                   |
+| `delete_model`      | No        | Delete a registered model by name.                                                     |
+| `list_credentials`  | Yes       | List model credentials. Never returns a secret.                                        |
+| `create_credential` | No        | Create a model credential.                                                             |
+| `update_credential` | No        | Change a credential's secret, endpoint, or sharing.                                    |
+| `delete_credential` | No        | Delete a model credential.                                                             |
+| `sync_hcp_models`   | No        | Sync models available from the configured Hybrid Manager (HM) into the model registry. |
+| `list_hcp_models`   | Yes       | List models already synced from HM.                                                    |
+| `get_hcp_models`    | Yes       | List models available from HM, synced or not.                                          |
+| `create_hcp_model`  | No        | Register a model from HM under a local name.                                           |
+
+## Volumes
+
+See [External storage](https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/).
+
+| Tool                  | Read-only | Description                                      |
+| --------------------- | --------- | ------------------------------------------------ |
+| `list_volumes`        | Yes       | List all registered volumes.                     |
+| `create_volume`       | No        | Register a new volume backed by an object store. |
+| `delete_volume`       | No        | Delete a volume by name.                         |
+| `list_volume_content` | Yes       | List the files stored in a volume.               |
+| `read_volume_file`    | Yes       | Read a file's contents from a volume.            |
+| `write_volume_data`   | No        | Write data to a file in a volume.                |
+| `delete_volume_file`  | No        | Delete a file from a volume.                     |
+
+## Embedding and document processing
+
+See [SQL functions](https://www.enterprisedb.com/docs/aidb/latest/sql-functions/).
+
+| Tool                               | Read-only | Description                                                              |
+| ---------------------------------- | --------- | ------------------------------------------------------------------------ |
+| `encode_text`                      | Yes       | Compute a text embedding vector for document/search-index storage.       |
+| `encode_text_query`                | Yes       | Compute a text embedding vector tuned for querying (vs. indexing).       |
+| `encode_image`                     | Yes       | Compute an image embedding vector.                                       |
+| `generate_text`                    | Yes       | Generate text from a language model.                                     |
+| `get_model_description`            | Yes       | Get a human-readable description of a model.                             |
+| `list_model_providers`             | Yes       | List the model providers available for registering models.               |
+| `rerank_text`                      | Yes       | Rerank a list of candidate texts against a query using a reranker model. |
+| `get_adapter_embedding_dimensions` | Yes       | Get a model's output embedding dimensionality for text or image input.   |
+| `chunk_text`                       | Yes       | Split text into chunks suitable for embedding.                           |
+| `parse_html`                       | Yes       | Parse HTML into plaintext or markdown.                                   |
+| `parse_pdf`                        | Yes       | Extract text from a PDF, one row per page.                               |
+| `pdf_to_image`                     | Yes       | Render a PDF's pages to images, one row per page.                        |
+| `perform_ocr`                      | Yes       | Run OCR over an image or scanned document.                               |
+| `summarize_text`                   | Yes       | Summarize text using a language model.                                   |
+
+## Agent management
+
+See [Managing agents](https://www.enterprisedb.com/docs/aidb/latest/agents/creating-agents/). Letting an agent create or reconfigure other agents (including itself) is a powerful, self-modifying capability — grant these tools deliberately.
+
+| Tool           | Read-only | Description                                                                                                                                                                                                                                 |
+| -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_agents`  | Yes       | List all registered agents.                                                                                                                                                                                                                 |
+| `create_agent` | No        | Create a new agent. Returns a single row with an `error` column (`NULL` on success).                                                                                                                                                        |
+| `update_agent` | No        | Update an existing agent's configuration. Only fields explicitly passed are changed.                                                                                                                                                        |
+| `delete_agent` | No        | Delete an agent by name. Returns a single row with an `error` column (`NULL` on success).                                                                                                                                                   |
+| `sleep`        | Yes       | Pause reasoning for a number of seconds, then automatically resume. Always available to every agent, regardless of its configured tool list, unless the model's own tool-count cap is already filled by the agent's other configured tools. |
+
+## Agent memory
+
+See [Agent memory](https://www.enterprisedb.com/docs/aidb/latest/agent-memory/). Agent memory is a preview capability.
+
+| Tool            | Read-only | Description                                                                         |
+| --------------- | --------- | ----------------------------------------------------------------------------------- |
+| `memory_add`    | No        | Add a conversation or event to agent memory, so that the agent can recall it later. |
+| `memory_search` | Yes       | Find the memories most relevant to a natural-language query.                        |
+
+## Pipelines
+
+See [AI pipelines](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/).
+
+| Tool                      | Read-only | Description                                                                       |
+| ------------------------- | --------- | --------------------------------------------------------------------------------- |
+| `search_pipelines`        | Yes       | List all registered data pipelines.                                               |
+| `get_pipeline`            | Yes       | Get a registered data pipeline's configuration by name.                           |
+| `delete_pipeline`         | No        | Delete a registered data pipeline by name.                                        |
+| `run_pipeline`            | No        | Manually run a pipeline once, processing any pending source rows.                 |
+| `get_pipeline_metrics`    | Yes       | Get a pipeline's processing status and row counts.                                |
+| `get_error_logs`          | Yes       | List a pipeline's record-level processing errors, optionally filtered.            |
+| `clear_error_logs`        | No        | Delete specific pipeline error log entries by id.                                 |
+| `requeue_pipeline_errors` | No        | Mark specific pipeline errors' source rows dirty so the next run retries them.    |
+| `get_error_log_summary`   | Yes       | Get error counts for a pipeline, grouped by step, operation, and category.        |
+| `get_all_error_summaries` | Yes       | Get error counts across every pipeline, grouped by step, operation, and category. |
+
+> **Note**
+>
+> Pipeline authoring (`aidb.create_pipeline`/`aidb.update_pipeline`) has no native tool. Those functions take up to 30 parameters across step/step-options pairs — impractical for a single generic tool call — so multi-step pipeline authoring isn't currently something an agent can do on its own.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,66 @@
+---
+title: Uninstalling EDB Postgres Advanced Server on Linux
+description: Describes how to uninstall EDB Postgres Advanced Server on Linux
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/installing/uninstalling/linux_uninstall/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# Uninstalling EDB Postgres Advanced Server on Linux
+
+> **Note**
+>
+> After uninstalling EDB Postgres Advanced Server, the cluster data files remain intact, and the service user persists. You can manually remove the cluster `data` and service user from the system.
+
+## Uninstalling on RHEL/AlmaLinux/Rocky Linux
+
+You can use  `dnf` command to remove installed packages. Removing a package doesn't damage the EDB Postgres Advanced Server `data` directory.
+
+Include the `-e` option when invoking the `rpm` command to remove an installed package:
+
+```text
+rpm -e <package_name>
+```
+
+Where `package_name` is the name of the package that you want to remove.
+
+You can use the `dnf remove` command to remove a package installed by dnf. To remove a package, at the command line, assume superuser privileges, and enter:
+
+````
+```text
+dnf remove <package_name>
+```
+````
+
+Where `package_name` is the name of the package that you want to remove.
+
+yum and rpm don't remove a package that's required by another package. If you attempt to remove a package that satisfies a package dependency, yum or rpm provides a warning.
+
+> **Note**
+>
+> In RHEL or Rocky Linux or AlmaLinux 8 or 9, removing a package also removes all its dependencies that aren't required by other packages. To override this default behavior of RHEL or Rocky Linux or AlmaLinux 8 or 9, disable the `clean_requirements_on_remove` parameter in the `/etc/yum.conf` file.
+
+To uninstall EDB Postgres Advanced Server and its dependent packages, enter:
+
+```text
+dnf remove edb-as<xx>-server*
+```
+
+Where `<xx>` is the EDB Postgres Advanced Server version number.
+
+## Uninstalling on Debian or Ubuntu
+
+- To uninstall EDB Postgres Advanced Server, invoke the following command. The configuration files and data directory remains intact.
+
+  ```text
+  apt-get remove edb-as<xx>-server*
+  ```
+
+- To uninstall EDB Postgres Advanced Server, configuration files, and data directory, invoke the following command:
+
+  ```text
+  apt-get purge edb-as<xx>-server*
+  ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

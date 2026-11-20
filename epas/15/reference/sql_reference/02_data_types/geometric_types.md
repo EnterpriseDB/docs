@@ -1,0 +1,28 @@
+---
+title: Geometric types
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/reference/sql_reference/02_data_types/geometric_types/
+lastModified: 2024-02-13T13:05:31-05:00
+---
+
+# Geometric types
+
+| Name      | Native | Alias | Description                                                                              |
+| --------- | ------ | ----- | ---------------------------------------------------------------------------------------- |
+| `POINT`   | ✅      |       | Point on a plane, 16 bytes storage, represented as `(x,y)`                               |
+| `LINE`    | ✅      |       | Infinite line, 32 bytes storage, represented as `{A,B,C}`                                |
+| `LSEG`    | ✅      |       | Finite line segment, 32 bytes storage, represented as `((x1,y1),(x2,y2))`                |
+| `BOX`     | ✅      |       | Rectangular box, 32 bytes storage, represented as `((x1,y1),(x2,y2))`                    |
+| `PATH`    | ✅      |       | Closed path (similar to polygon), 16 + 16n bytes storage, represented as `((x1,y1),...)` |
+| `PATH`    | ✅      |       | Open path, 16 + 16n bytes storage, represented as `[(x1,y1),...]`                        |
+| `POLYGON` | ✅      |       | Polygon (similar to closed path), 40 + 16n bytes storage, represented as `((x1,y1),...)` |
+| `CIRCLE`  | ✅      |       | Circle, 24 bytes storage, represented as `<(x,y),r>` (center point and radius)           |
+
+## Overview
+
+Geometric data types represent two-dimensional spatial objects.
+
+For more information on geometric data types, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/datatype-geometric.html).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,315 @@
+---
+title: AutoPartition
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/autopartition/
+lastModified: 2026-09-23T08:47:20+01:00
+---
+
+# AutoPartition
+
+AutoPartition allows you to split tables into several partitions. For more information, see
+[Automating table partitioning](https://www.enterprisedb.com/docs/pgd/latest/partitioning/).
+
+> **Tip**
+>
+> AutoPartition also maintains two internal catalogs, `bdr.autopartition_rules` for each table's
+> configuration and `bdr.autopartition_partitions` for the partitions it creates. See
+> [Internal catalogs and views](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/catalogs-internal/)
+> for details.
+
+### `bdr.autopartition`
+
+The `bdr.autopartition` function configures automatic partitioning of a table, using either RANGE
+or HASH partitioning.
+
+#### Synopsis
+
+```sql
+bdr.autopartition(relation regclass,
+		partition_increment text DEFAULT NULL,
+		partition_initial_lowerbound text DEFAULT NULL,
+		partition_min_upperbound text DEFAULT NULL,
+		partition_autocreate_expression text DEFAULT NULL,
+		minimum_advance_partitions integer DEFAULT 2,
+		maximum_advance_partitions integer DEFAULT 5,
+		data_retention_period interval DEFAULT NULL,
+		managed_locally boolean DEFAULT true,
+		enabled boolean DEFAULT true,
+		analytics_offload_period interval DEFAULT NULL,
+		drop_after_retention_period boolean DEFAULT true);
+```
+
+Use this second signature to configure HASH partitioning instead:
+
+```sql
+bdr.autopartition(relation regclass,
+		hash_partitions_total integer DEFAULT 24,
+		managed_locally boolean DEFAULT true,
+		enabled boolean DEFAULT true);
+```
+
+#### Parameters
+
+The following parameters apply to the RANGE signature. `relation`, `managed_locally`, and
+`enabled` are shared with the HASH signature. `hash_partitions_total` applies only to the HASH
+signature and is described separately following this list.
+
+- `relation` — Name or OID of a table.
+- `partition_increment` — Interval or increment to next partition creation. For a partition
+  key of type `timestamp` or `date`, the value must be a valid `interval` constant, such as `1 day`,
+  and each new partition spans that interval. For an `integer` or `numeric` partition key, the value
+  must be a constant of the same data type, and each new partition spans that many values. A
+  partition key backed by a `snowflakeid`, `timeshard`, or `ksuuid` sequence also requires an
+  `interval` value. The default value is `NULL`, but you must set this parameter.
+- `partition_initial_lowerbound` — If the table has no partitions yet, the value
+  determines how far into the past the first partitions reach, with `partition_increment`
+  spanning each one. If omitted, AutoPartition starts from the current partition instead,
+  based on the partition column type and `partition_increment`. For example, a
+  `partition_increment` of `1 Day` starts from the current date, and `1 Hour` starts from the
+  current hour of the current date. AutoPartition can't derive a starting point for a
+  `partition_increment` of `1 month`, so you must set `partition_initial_lowerbound` explicitly
+  in that case.
+- `partition_min_upperbound` — The value AutoPartition uses to determine how many future
+  partitions should always exist.
+- `partition_autocreate_expression` — The expression AutoPartition evaluates to decide
+  whether it's time to create a new partition. It's evaluated every time a check is performed.
+
+  - For a `date` partition key, an expression of `DATE_TRUNC('day', CURRENT_DATE)` combined
+    with a `partition_increment` of `1 Day` and `minimum_advance_partitions` of `2` creates
+    new partitions until the upper bound of the last partition is less than
+    `DATE_TRUNC('day', CURRENT_DATE) + '2 Days'::interval`.
+  - For an `integer`, `smallint`, or `bigint` partition key with no expression given, it
+    defaults to `max(partcol)` evaluated against the partitioned table. Index the partition
+    key column so this check runs efficiently.
+- `minimum_advance_partitions` — Minimum number of advance partitions that triggers the
+  creation of new partitions. AutoPartition creates more partitions once the number of existing
+  advance partitions drops below this value.
+- `maximum_advance_partitions` — Maximum number of partitions AutoPartition creates each
+  time a check finds the number of advance partitions below `minimum_advance_partitions`.
+- `data_retention_period` — Interval until older partitions are dropped, if
+  defined. This value must be greater than `migrate_after_period`. Supported only for
+  timestamp-based (and related) partition keys, and calculated from each partition's upper
+  bound. Partitions are dropped at the same time new ones are added, to minimize locking. Leave
+  `data_retention_period` unset to drop partitions manually.
+- `managed_locally` — **Deprecated**. AutoPartition now always manages partitions locally
+  on each node rather than coordinating creation and retention across the replication group, so
+  this parameter has no effect regardless of the value passed. Calling `bdr.autopartition()` with
+  it set returns a notice that it's accepted only for backward compatibility and is planned for
+  removal in a future version. The built-in
+  [`bdr.conflict_history`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/catalogs-visible/#bdrconflict_history) table is one example of a
+  locally managed table, retained with a 30-day default.
+- `enabled` — Allows activity to be disabled or paused and later resumed or reenabled.
+  AutoPartition performs no activity on a rule unless `enabled` is `true`.
+- `analytics_offload_period` — The age at which a partition is offloaded to the analytics
+  tier. See [Implementing tiered tables](https://www.enterprisedb.com/docs/pgd/latest/tiered-storage/tiered-tables/) for details.
+- `drop_after_retention_period` — Allows a partition to be detached instead of dropped. Set the value to `false` to detach instead of drop.
+
+For the HASH signature:
+
+- `hash_partitions_total` — Number of hash partitions to create. The default value is `24`.
+  AutoPartition creates all of a HASH-partitioned table's partitions immediately and doesn't
+  drop them.
+
+> **Note**
+>
+> AutoPartition requires a table that's RANGE partitioned on a single column, or HASH partitioned,
+> to manage it. It raises an error for a table that uses a multi-column partition key.
+>
+> AutoPartition rejects DDL that tries to create a `DEFAULT` partition on a table it manages.
+>
+> AutoPartition can't manage a table with a `GENERATED ALWAYS AS IDENTITY` column. Postgres rejects
+> attaching a new partition that contains an identity column, which stops AutoPartition from
+> creating any further partitions for the table.
+>
+> Manually creating or dropping partitions on a table that AutoPartition manages can make its
+> metadata inconsistent and cause it to fail.
+
+#### Examples
+
+Create a table partitioned by `RANGE`, then configure AutoPartition to create daily partitions and keep data for one month:
+
+```sql
+CREATE TABLE measurement (
+logdate date not null,
+peaktemp int,
+unitsales int
+) PARTITION BY RANGE (logdate);
+
+bdr.autopartition('measurement', '1 day', data_retention_period := '30 days');
+```
+
+Partition a numeric order ID key into ranges of 1 billion values each, keeping at least two
+advance partitions ready and creating up to five more at a time when the count drops below that
+minimum.
+
+```sql
+bdr.autopartition('orders', '1000000000',
+		partition_initial_lowerbound := '0',
+		minimum_advance_partitions := 2,
+		maximum_advance_partitions := 5
+     );
+```
+
+### `bdr.drop_autopartition`
+
+Use `bdr.drop_autopartition()` to drop the autopartitioning rule for the
+given relation. All pending work items for the relation are deleted, and no new
+work items are created.
+
+```sql
+bdr.drop_autopartition(relation regclass);
+```
+
+#### Parameters
+
+- `relation` — Name or OID of a table.
+
+### `bdr.autopartition_wait_for_partitions`
+
+Partition creation is an asynchronous process. AutoPartition provides a set of
+functions to wait for the partition to be created, locally or on all
+nodes.
+
+Use [`bdr.autopartition_wait_for_partitions()`](#bdrautopartition_wait_for_partitions_on_all_nodes) to wait for the creation of
+partitions on the local node. The function takes the partitioned table name and
+a partition key column value and waits until the partition that holds that
+value is created.
+
+The function waits only for the partitions to be created locally. It doesn't guarantee
+that the partitions also exist on the remote nodes.
+
+To wait for the partition to be created on all PGD nodes, use the
+`bdr.autopartition_wait_for_partitions_on_all_nodes()` function. This function
+internally checks local as well as all remote nodes and waits until the
+partition is created everywhere.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_wait_for_partitions(relation regclass, upperbound text DEFAULT NULL);
+```
+
+#### Parameters
+
+- `relation` — Name or OID of a table.
+- `upperbound` — Partition key column value. The default value is `NULL`, but you must set this parameter.
+
+### `bdr.autopartition_wait_for_partitions_on_all_nodes`
+
+#### Synopsis
+
+```sql
+bdr.autopartition_wait_for_partitions_on_all_nodes(relation regclass, upperbound text DEFAULT NULL);
+```
+
+#### Parameters
+
+- `relation` — Name or OID of a table.
+- `upperbound` — Partition key column value. The default value is `NULL`, but you must set this parameter.
+
+### `bdr.autopartition_find_partition`
+
+Use the `bdr.autopartition_find_partition()` function to find the partition for the
+given partition key value. If a partition to hold that value doesn't exist, then
+the function returns NULL. Otherwise it returns the partition as a `regclass` value.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_find_partition(relation regclass, value text);
+```
+
+#### Parameters
+
+- `relation` — Name of the partitioned table.
+- `value` — Partition key value to search.
+
+### `bdr.autopartition_enable`
+
+Use `bdr.autopartition_enable` to enable AutoPartitioning on the given table.
+If AutoPartitioning is already enabled, then no action occurs. See
+[`bdr.autopartition_disable`](#bdrautopartition_disable) to disable AutoPartitioning on the given table.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_enable(relname regclass);
+```
+
+#### Parameters
+
+- `relname` — Name of the relation to enable AutoPartitioning.
+
+### `bdr.autopartition_disable`
+
+Use `bdr.autopartition_disable` to disable AutoPartitioning on the given table.
+If AutoPartitioning is already disabled, then no action occurs.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_disable(relname regclass);
+```
+
+#### Parameters
+
+- `relname` — Name of the relation to disable AutoPartitioning.
+
+### Internal functions
+
+### `bdr.autopartition_create_partition`
+
+AutoPartition uses an internal function
+`bdr.autopartition_create_partition` to create a standalone
+partition on the parent table.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_create_partition(relname regclass,
+                          	   partname name,
+                                 lowerb text,
+                                 upperb text,
+                                 nodes oid[]);
+```
+
+#### Parameters
+
+- `relname` — Name or OID of the parent table to attach to.
+- `partname` — Name of the new AutoPartition.
+- `lowerb` — Lower bound of the partition.
+- `upperb` — Upper bound of the partition.
+- `nodes` — List of nodes that the new partition resides on.
+  This parameter is internal to PGD and reserved for future use.
+
+> **Note**
+>
+> `bdr.autopartition_create_partition` is an internal function used by AutoPartition for partition
+> management. We recommend that you don't use the function directly.
+
+### `bdr.autopartition_drop_partition`
+
+AutoPartition uses an internal function
+`bdr.autopartition_drop_partition` to drop a partition that's no longer
+required, as per the data-retention policy. If the partitioned
+table was successfully dropped, the function returns `true`.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_drop_partition(relname regclass)
+```
+
+#### Parameters
+
+- `relname` — The name of the partitioned table to drop.
+
+> **Note**
+>
+> This function places a DDL lock on the parent table before using `DROP TABLE` on the
+> chosen partition table. This function is an internal function used by
+> AutoPartition for partition management. We recommend that you don't
+> use the function directly.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

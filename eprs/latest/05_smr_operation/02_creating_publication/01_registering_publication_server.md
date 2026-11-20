@@ -1,0 +1,91 @@
+---
+title: Registering a publication server
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/
+lastModified: 2024-06-26T11:18:59-04:00
+---
+
+# Registering a publication server
+
+<div id="registering_publication_server" class="registered_link"></div>
+
+When you register a publication server, you're identifying the network location, admin user name, and password of a specific, running, publication server instance. You want to use this instance to manage all aspects of the publications you create subordinate to it.
+
+It's important that you record the login information for the publication server. You must always use this same publication server instance to manage all publications created subordinate to it as represented in the Replication Server console replication tree.
+
+1. Start the publication server if it's not already running.
+
+   > **Note**
+   >
+   > If you're using Oracle publication or subscription databases, and the publication server wasn't restarted since copying the Oracle JDBC driver to the `lib/jdbc` subdirectory of your Replication Server installation, restart the publication server.
+
+   **For Linux only:** You can verify the publication server is running by using the `systemctl` command for RHEL/Rocky Linux/AlmaLinux 8.x or later, and the service command for previous Linux versions.
+
+   Use the following command for Rocky Linux 8 or AlmaLinux 8 or RHEL 8:
+
+   ```shell
+   systemctl status edb-xdbpubserver
+   ```
+
+   For previous Linux versions:
+
+   ```shell
+   service edb-xdbpubserver status
+   ```
+
+   If the publication server is running and you want to restart it, use the `restart` option.
+
+   For RHEL/Rocky Linux/AlmaLinux 8.x or later:
+
+   ```shell
+   systemctl restart edb-xdbpubserver
+   ```
+
+   For previous Linux versions:
+
+   ```shell
+   service edb-xdbpubserver restart
+   ```
+
+   If the publication server isn't running, use the `start` option.
+
+   For RHEL/Rocky Linux/AlmaLinux 8.x or later:
+
+   ```shell
+   systemctl start edb-xdbpubserver
+   ```
+
+   For previous Linux versions:
+
+   ```shell
+   service edb-xdbpubserver start
+   ```
+
+   Similarly, use the `stop` option to stop the publication server.
+
+   **For Windows only:** Open **Control Panel > System and Security > Administrative Tools > Services**. The publication server runs as a service named Publication Service for Replication Server. Use the **Start** or **Restart** link for the service.
+
+   If the publication server doesn't start, see [Publication and subscription server startup failures](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/02_resolving_problems/02_where_to_look_for_errors/#pub_and_sub_startup_failures).
+
+2. Register the publication server. Open the Replication Server console from the system’s application menu. For Replication Server installed from an Replication Server RPM package, invoke the script `XDB_HOME/bin/runRepConsole.sh` to start the Replication Server console.
+
+3. Select the top-level Replication Servers node. Select **File > Publication Server > Register Server**.
+
+   In the Register Publication Server dialog box, enter the values you supplied while installing Replication Server unless otherwise specified.
+
+   - **Host**. Network IP address of the host running the publication server. This is the network IP address used for `pub_ipaddr` in the `pg_hba.conf` file in [Postgres server authentication](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/01_prerequisites/06_verifying_host_accessibility/#postgres_server_auth). (Don't use `localhost` for this field.)
+   - **Port**. Port number the publication server is using. You can find the port number in the `xdbReplicationServer-xx.config` file. See [Installation details](https://www.enterprisedb.com/docs/eprs/latest/installing/installation_details/) for the location of the file.
+   - **User Name**. Admin user name used to authenticate your use of this publication server. You can find the user name in the `edb-repl.conf` file. See [Installation details](https://www.enterprisedb.com/docs/eprs/latest/installing/installation_details/) for the location of the file.
+   - **Password**. Password of the admin user given in the **User Name** field.
+   - **Save login information**. Select this box if you don't want to register the publication server each time you open the Replication Server console. See [Saving server login information](https://www.enterprisedb.com/docs/eprs/latest/04_intro_xdb_console/#saving_server_login_info) for additional information on the advantages and disadvantages of saving server login information.
+
+   > **Note**
+   >
+   > The user name and password combination you enter is authenticated against the admin user name and password in the Replication Server configuration file residing on the host with the IP address you enter in the **Host** field.
+
+   After you fill in the fields, select **Register**. A Publication Server node appears in the replication tree of the Replication Server console. Expand the Publication Server node to expose the SMR and MMR type nodes.
+
+   Continue to build the single-master replication system under the SMR type node.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

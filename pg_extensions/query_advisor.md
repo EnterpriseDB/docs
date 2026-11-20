@@ -1,0 +1,51 @@
+---
+title: EDB Query Advisor
+product: EDB Query Advisor
+url: https://www.enterprisedb.com/docs/pg_extensions/query_advisor/
+lastModified: 2026-11-05T10:57:56+05:30
+---
+
+# EDB Query Advisor
+
+EDB Query Advisor is a Postgres extension that includes the [Index Advisor](#index-advisor) and the [Statistics Advisor](#statistics-advisor).
+
+## Index Advisor
+
+The Index Advisor provides index recommendations by keeping statistics on predicates found in WHERE statements, JOIN clauses, and workload queries. It analyzes the cost-benefit to actual workload queries by replanning them with the hypothetical index. Hypothetical indexes are created based on the predicates collected from the workload queries.
+
+This extension is useful if you want to analyze the most useful indexes that can benefit the workload queries without creating all possible indexes.
+
+The predicate collection works by looking for known patterns in queries. These patterns include:
+
+- Binary OpExpr — At least one side is a column from a table. Whenever possible, the predicate is swapped so that `CONST OP VAR` expressions are turned into `VAR COMMUTED_OP CONST`. AND and OR expression members are counted as separate entries, for example, `WHERE column1 = 2, WHERE column1 = column2, WHERE 3 = column3`.
+
+- ScalarArrayOpExpr — The left side is a VAR, and the right side is an array constant. Those are counted one time per element in the array. For example, `WHERE column1 IN (2, 3)` is counted as two occurrences for the `(column1, '=')` operator pair.
+
+- BooleanTest —  The expression is a simple Boolean column reference, for example, `WHERE column1 IS TRUE`. Clauses like `WHERE columns1, WHERE NOT column1` aren't currently processed.
+
+The extension saves the first query text, as is, for each distinct queryid executed in the workload table.
+
+The gathered data isn't saved when the Postgres server is restarted.
+
+See [Using EDB Query Advisor](https://www.enterprisedb.com/docs/pg_extensions/query_advisor/using/#query_advisor_index_recommendationsmin_filter-min_selectivity) for a description of the `query_advisor_index_recommendations` function you use to generate the index recommendation.
+
+## Statistics Advisor
+
+Statistics play a crucial role in determining the quality of query execution plans chosen by the database query optimizer. Sometimes there are dependencies between columns, and unless combined statistics are created using extended statistics, the optimizer assumes these columns are independent. This assumption often leads to incorrect cardinality estimates, which in turn, results in a poor execution plan, negatively impacting query performance.
+
+To address this, Statistics Advisor monitors queries where multiple-column filters are applied and checks for any selectivity estimation errors. If such errors are detected,those multi-column filters are treated as potential candidates for extended statistics.
+
+Whenever extended statistics recommendations are generated, Statistics Advisor processes those candidates by exploring various combinations of columns, especially when more than two columns are involved in the filters. Since estimation errors alone don’t definitively indicate which columns are dependent, Statistic Advisor tries all possible combinations. Currently, to limit the candidate pool, the focus on statistics is for no more than two columns at a time.
+
+Weights are also assigned to each candidate, prioritized based on how many queries would benefit from those extended statistics and the execution cost of the queries.
+
+See [Using EDB Query Advisor](https://www.enterprisedb.com/docs/pg_extensions/query_advisor/using/#query_advisor_statistics_recommendationsmin_err_estimate_num-min_err_estimate_ratio) for a description of the `query_advisor_statistics_recommendations` function you can use to generate the statistics recommendation.
+
+## Limitations
+
+- Only single and two-column indexes and statistics are considered.
+- Statistics aren't collected for utility commands.
+- The number of predicates and workload entries are static. A change requires a restart.
+- EDB Query Advisor isn't available on Windows.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,35 @@
+---
+title: Compatibility matrix
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/compatibility_matrix/
+lastModified: 2026-11-10T13:53:54+01:00
+---
+
+# Compatibility matrix
+
+edbctl is distributed as a standalone package with its own independent versioning lifecycle. Consequently, its version numbers do not mirror those of the Hybrid Manager (HM).
+
+The following matrix defines the supported compatibility between specific edbctl releases and HM versions to ensure system stability and feature availability.
+
+| edbctl version | HM version                    | Notes                                                                             |
+| -------------- | ----------------------------- | --------------------------------------------------------------------------------- |
+| 1.11.0         | v1.4.x (LTS) & 2026.11 (IR)   | Supports the 1.4 LTS and 2026.11 IR releases of HM.                               |
+| 1.10.0         | v1.4.x (LTS) & 2026.10.1 (IR) | Supports the 1.4 LTS and 2026.10.1 IR releases of HM.                             |
+| 1.9.0          | v1.4.x (LTS) & 2026.9 (IR)    | Supports the 1.4 LTS and 2026.9 IR releases of HM.                                |
+| 1.8.1          | v1.4.x (LTS) & 2026.8 (IR)    | Supports the 1.4 LTS and 2026.8 IR releases of HM.                                |
+| 1.8.0          | v1.4.x (LTS) & 2026.7 (IR)    | Supports the 1.4 LTS and 2026.7 IR releases of HM.                                |
+| 1.7.0          | v1.4.x (LTS)                  | Supports the 1.4 LTS release of HM.                                               |
+| 1.6.0          | v1.3.x (LTS) & 2026.5 (IR)    | Supports the 1.3 LTS and 2026.5 IR releases of HM.                                |
+| 1.5.0          | v1.3.x (LTS) & 2026.4 (IR)    | Supports the 1.3 LTS and 2026.4 IR releases of HM.                                |
+| 1.4.1          | v1.3.x (LTS) & 2026.4 (IR)    | Patch release with improvements and bug fixes.                                    |
+| 1.4.0          | v1.3.x (LTS) & 2026.4 (IR)    | Supports the 1.3 LTS and 2026.4 IR releases of HM.                                |
+| 1.3.1          | v1.3.x (LTS) & 2026.3 (IR)    | Supports the 1.3 LTS and 2026.3 IR releases of HM.                                |
+| 1.3.0          | v1.3.x (LTS) & 2026.3 (IR)    | Supports the 1.3 LTS and 2026.3 IR releases of HM.                                |
+| 1.2.1          | v1.3.x (LTS) & 2026.2 (IR)    | Supports the 1.3 LTS and 2026.2 IR releases of HM.                                |
+| 1.2.0          | v1.3.x (LTS) & 2026.2 (IR)    | Supports the 1.3 LTS and 2026.2 IR releases of HM.                                |
+| 1.1.1          | v1.3.x (LTS)                  | Patch release with improvements and bug fixes.                                    |
+| 1.1.0          | v1.3.0 (LTS)                  | First version compatible with HM v1.3.0+. It also has support for multi-location. |
+| 1.0.0          | Up to v1.2.0 (LTS)            | HM v1.3.0+ require edbctl 1.1.0+.                                                 |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

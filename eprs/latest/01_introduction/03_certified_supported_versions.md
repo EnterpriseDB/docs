@@ -1,0 +1,39 @@
+---
+title: Certified and supported product versions
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/01_introduction/03_certified_supported_versions/
+lastModified: 2025-11-25T21:54:48+05:30
+---
+
+# Certified and supported product versions
+
+You can use the following database product versions with Replication Server:
+
+- PostgreSQL versions 14, 15, 16, 17, and 18
+- EDB Postgres Advanced Server versions 14, 15, 16, 17, and 18
+- Oracle 11g Release 2 version 11.2.0.2.0 is explicitly certified. Newer minor versions in the 11.2 line are supported as well.
+- Oracle 12c version 12.1.0.2.0 is explicitly certified. Newer minor versions in the 12.1 line are supported as well.
+- Oracle 18c version 18.1.0.2.0 is explicitly certified. Newer minor versions in the 18.1 line are supported as well.
+- Oracle 19c version 19.1.0.2.0 is explicitly certified. Newer minor versions in the 19.1 line are supported as well.
+- SQL Server 2014 version 12.0.5000.0 is explicitly certified. Newer minor versions in the 12.0 line are supported as well.
+
+> **Note**
+>
+> All PostgreSQL and EDB Postgres Advanced Server versions available as EDB Postgres AI Cloud Service single-node and primary/standby high-availability cluster types are also supported for SMR configurations. See the Cloud Service [documentation](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/) for more information about Cloud Service’s [supported cluster types](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/references/supported_cluster_types/). See the [database version policy documentation](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/references/supported_database_versions/) for the versions of PostgreSQL and EDB Postgres Advanced Server available in Cloud Service.
+>
+> EDB Postgres Distributed (PGD) v5.3.0 is explicitly certified as a Publishing database for trigger mode and as Subscription database for both trigger and wal modes.
+
+As of Replication Server 7.1.0:
+
+- SQL Server 2016 version 13.00.5026 is explicitly certified. Newer minor versions in the 13.0 line are supported as well.
+- SQL Server 2017 version 14.0.1000.169 is explicitly certified. Newer minor versions in the 14.0 line are supported as well.
+- SQL Server 2019 version 15.0.2000.5 is explicitly certified. Newer minor versions in the 15.0 line are supported as well.
+
+Contact your EnterpriseDB Account Manager or <sales@enterprisedb.com> if you require support for other platforms.
+
+> **Note**
+>
+> Replication server isn't tested and isn't officially supported for use with Oracle RAC and Exadata, but it might work when connected to a single persistent node. To determine its ability to work with RAC or Exadata, contact your EDB representative.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

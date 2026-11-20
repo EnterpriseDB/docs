@@ -1,0 +1,45 @@
+---
+title: Creating a new table
+description: Describes how to create a new table
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/fundamentals/sql_fundamentals/02_sql_tutorial/02_creating_a_new_table/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# Creating a new table
+
+<div id="creating_a_new_table" class="registered_link"></div>
+
+Create a new table by specifying the table name, along with all column names and their types. The following is a simplified version of the `emp` sample table with the minimal information needed to define a table.
+
+```sql
+CREATE TABLE emp (
+    empno           NUMBER(4),
+    ename           VARCHAR2(10),
+    job             VARCHAR2(9),
+    mgr             NUMBER(4),
+    hiredate        DATE,
+    sal             NUMBER(7,2),
+    comm            NUMBER(7,2),
+    deptno          NUMBER(2)
+);
+```
+
+You can enter this code into PSQL with line breaks. PSQL recognizes that the command isn't terminated until the semicolon.
+
+You can use white space (spaces, tabs, and newlines) in SQL commands. You can align the command as you want or even put all the text all on one line.
+
+Two dashes ("--") introduce comments. Whatever follows them is ignored up to the end of the line. In addition, SQL is not case sensitive about key words and identifiers, except when identifiers are double-quoted to preserve the case.
+
+`VARCHAR2(10)` specifies a data type that can store arbitrary character strings up to 10 characters in length. `NUMBER(7,2)` is a fixed-point number with precision 7 and scale 2. `NUMBER(4)` is an integer number with precision 4 and scale 0.
+
+EDB Postgres Advanced Server supports the usual SQL data types: `INTEGER`, `SMALLINT`, `NUMBER`, `REAL`, `DOUBLE PRECISION`, `CHAR`, `VARCHAR2`, `DATE`, and `TIMESTAMP` as well as various synonyms for these types.
+
+If you don’t need a table or want to recreate it, you can remove it using the following command:
+
+```sql
+DROP TABLE tablename;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

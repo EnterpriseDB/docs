@@ -1,0 +1,31 @@
+---
+title: Defining the parent/child relationship
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/fundamentals/sql_fundamentals/03_advanced_concepts/05_hierarchical_queries/01_defining_the_parent_child_relationship/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# Defining the parent/child relationship
+
+<div id="defining_the_parent_child_relationship" class="registered_link"></div>
+
+To determine the children for any given row:
+
+1. Evaluate `parent_expr` on the given row.
+
+2. Evaluate `child_expr` on any other row resulting from the evaluation of `table_expression`.
+
+3. If `parent_expr = child_expr`, then this row is a child node of the given parent row.
+
+4. Repeat the process for all remaining rows in `table_expression`. All rows that satisfy the equation in step 3 are the children nodes of the given parent row.
+
+> **Note**
+>
+> The evaluation process to determine if a row is a child node occurs on every row returned by `table_expression` before the `WHERE` clause is applied to `table_expression`.
+
+Iteratively repeating this process, treating each child node found in the prior steps as a parent, constructs an inverted tree of nodes. The process is complete when the final set of child nodes has no children of its own. These are the leaf nodes.
+
+A `SELECT` command that includes a `CONNECT BY` clause typically includes the `START WITH` clause. The `START WITH` clause determines the rows that are to be the root nodes, that is, the rows that are the initial parent nodes upon which to apply the algorithm.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

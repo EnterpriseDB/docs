@@ -1,0 +1,75 @@
+---
+title: EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.2 release notes
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/rel_notes/1_1_2_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.2 release notes
+
+Released: 25 July 2025
+
+## Highlights
+
+- _New PGD Version Support:_ PGD version 5.8 is now supported
+- _New PG4K operator Version Support:_ PG4K operator v1.26.0 is now supported
+
+## Supported versions
+
+- Kubernetes: 1.33, 1.32, 1.31, and 1.30
+
+- Latest PGD with PostgreSQL: 17, 16, 15, 14, and 13
+
+  PostgreSQL 17.5 is the default image
+
+  PostgreSQL 13 support ends on November 12, 2025
+
+- PG4K: v1.25.0, v1.25.1, v1.25.2, v1.26.0
+
+## Default images
+
+- PGD: `docker.enterprisedb.com/k8s/postgresql-pgd:17.5-pgd581-ubi9`
+- PGD proxy: `docker.enterprisedb.com/k8s/edb-pgd-proxy:5.8.1-ubi9`
+
+This release of EDB Postgres® AI for CloudNativePG™ Global Cluster includes the following:
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>initDB Options for PGDGroup</summary><p>Supports defining initDB options to pass specific parameters to initdb during
+PGDGroup setup.</p></details></td><td>#1302</td></tr>
+<tr><td><details><summary>Major version In-place Upgrade for PGDGroup</summary><p>Enables cross-branch major version upgrades for PGDGroup. Major version
+In-place Upgrade requires operator v1.1.2, working in conjunction with PG4K
+v1.26.0, PGD v5.8.1, and above.</p></details></td><td></td></tr>
+<tr><td><details><summary>DiscoveryJob Retry Settings</summary><p>Allows configuration of retry, delay, and timeout parameters for the
+discoveryJob.</p></details></td><td>#1377</td></tr>
+<tr><td><details><summary>Reconciliation Loop Control</summary><p>Adds an annotation to disable reconciliation for PGDGroup, providing more
+control over group management.</p></details></td><td>#1241</td></tr>
+<tr><td><details><summary>Physical Join Enhancement</summary><p>Enables physical joining to nodes with TDE enabled, enhancing security
+options.</p></details></td><td>#1258</td></tr>
+<tr><td><details><summary>Barman Cloud Plugin Integration</summary><p>Supports using the barman-cloud plugin for backup, restore, and WAL archiving.
+The plugin must be installed in the pg4k operator namespace as a prerequisite.</p></details></td><td>#1068</td></tr>
+<tr><td><details><summary>Flexible PGDGroup Creation</summary><p>Allows PGDGroup creation with only a single data node.</p></details></td><td>#1200</td></tr>
+<tr><td><details><summary>Enhanced Operator Image Build</summary><p>Improves the build process with baking. Now, images are signed with cosign,
+and OCI attestations—including the Software Bill of Materials (SBOM) and
+provenance data—are generated.</p></details></td><td>#1115</td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Inherited Metadata for Scheduled Backups</summary><p>Ensures that scheduled backups inherit metadata from their associated
+PGDGroup.</p></details></td><td>#1346</td></tr>
+<tr><td><details><summary>LoadBalancer Class Rendering</summary><p>Correctly renders LoadBalancerClass for LoadBalancer services.</p></details></td><td>#1290</td></tr>
+<tr><td><details><summary>Cleanup of Completed Jobs</summary><p>Automatically cleans up jobs once the PGDGroup is healthy.</p></details></td><td>#1368</td></tr>
+<tr><td><details><summary>Scheduling Backups Post-Health Check</summary><p>Delays scheduled backups until the PGDGroup is fully healthy.</p></details></td><td>#1276</td></tr>
+<tr><td><details><summary>Raft Status Check</summary><p>Checks the global Raft status instead of subgroup-specific status before
+performing a physical join.</p></details></td><td>#1274</td></tr>
+<tr><td><details><summary>Backup Node Selection</summary><p>Filters out replica clusters when assigning backup nodes, avoiding
+misassignments.</p></details></td><td>#1263</td></tr>
+<tr><td><details><summary>First Recoverability Points</summary><p>Ensures that firstRecoverabilityPoints reflect values from backups taken by
+any method.</p></details></td><td>#1250</td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

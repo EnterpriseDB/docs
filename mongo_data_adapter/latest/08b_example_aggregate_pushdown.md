@@ -1,0 +1,141 @@
+---
+title: "Example: Aggregate function pushdown"
+product: Mongo Foreign Data Wrapper
+version: "5"
+url: https://www.enterprisedb.com/docs/mongo_data_adapter/latest/08b_example_aggregate_pushdown/
+lastModified: 2023-07-17T13:51:45-04:00
+---
+
+# Example: Aggregate function pushdown
+
+MongoDB Foreign Data Wrapper supports pushdown for the following aggregate functions:
+
+- AVG - Calculates the average of a set of values.
+- COUNT - Counts rows in a specified table or view.
+- MIN - Gets the minimum value in a set of values.
+- MAX - Gets the maximum value in a set of values.
+- SUM - Calculates the sum of values.
+
+Postgres data set:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION mongo_fdw;
+
+-- create server object
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address 'localhost', port '27017');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mongo_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (_id NAME, eid INTEGER, deptid INTEGER) SERVER mongo_server OPTIONS (database 'edb', collection 'emp');
+
+-- insert into table
+INSERT INTO emp VALUES (0, 100, 10);
+INSERT INTO emp VALUES (0, 110, 10);
+INSERT INTO emp VALUES (0, 120, 20);
+INSERT INTO emp VALUES (0, 130, 30);
+```
+
+Enable/disable GUC for aggregate pushdown queries at the session level, table level, or server level:
+
+```sql
+-- Session level
+edb=# SET mongo_fdw.enable_aggregate_pushdown to true;
+SET
+-- Table level
+edb=# ALTER FOREIGN TABLE emp OPTIONS (ADD enable_aggregate_pushdown 'true');
+Table altered
+-- Server level
+edb=# ALTER SERVER mongo_server OPTIONS (ADD enable_aggregate_pushdown 'true');
+altered
+```
+
+Query with aggregate pushdown:
+
+```sql
+-- COUNT function
+edb# EXPLAIN VERBOSE SELECT COUNT(*) FROM emp;
+```
+
+```output title="Output"
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=8)
+   Output: (count(*))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+```
+
+```sql
+-- SUM function
+edb# EXPLAIN VERBOSE SELECT SUM(deptid) FROM emp;
+```
+
+```output title="Output"
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=8)
+   Output: (sum(deptid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+```
+
+```sql
+-- AVG function
+edb# EXPLAIN VERBOSE SELECT AVG(deptid) FROM emp;
+```
+
+```output title="Output"
+                    QUERY PLAN                     
+---------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=32)
+   Output: (avg(deptid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+```
+
+```sql
+-- MAX function
+edb# EXPLAIN VERBOSE SELECT MAX(eid) FROM emp;
+```
+
+```output title="Output"
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=4)
+   Output: (max(eid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+```
+
+```sql
+-- MIN function
+edb# EXPLAIN VERBOSE SELECT MIN(eid) FROM emp;
+```
+
+```output title="Output"
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=4)
+   Output: (min(eid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+```
+
+```sql
+-- MIN and SUM functions with GROUPBY
+edb# EXPLAIN VERBOSE SELECT MIN(deptid), SUM(eid) FROM emp GROUP BY deptid HAVING MAX(eid) > 120;
+```
+
+```output title="Output"
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=200 width=16)
+   Output: (min(deptid)), (sum(eid)), deptid
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

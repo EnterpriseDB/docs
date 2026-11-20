@@ -1,0 +1,15 @@
+---
+title: Selecting the root nodes
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_ora_dev_guide/03_advanced_concepts/05_hierarchical_queries/02_selecting_the_root_nodes/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# Selecting the root nodes
+
+<div id="selecting_the_root_nodes" class="registered_link"></div>
+
+The `START WITH` clause determines the rows selected by `table_expression` to use as the root nodes. All rows selected by `table_expression` where `start_expression` evaluates to true become a root node of a tree. Thus, the number of potential trees in the result set is equal to the number of root nodes. As a consequence, if the `START WITH` clause is omitted, then every row returned by `table_expression` is a root of its own tree.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

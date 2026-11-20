@@ -1,0 +1,215 @@
+---
+title: edbctl image
+description: Use the edbctl utility to manage and sync images for Hybrid Manager.
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_image/
+lastModified: 2026-08-20T15:30:38+05:30
+---
+
+# edbctl image
+
+This command helps managing the images for Hybrid Manager (HM). With this command, you can sync or list container images from EDB's repository to a local registry, manage artifacts for internet-disconnected OpenShift environments, and clean up unused images from the HM registry.
+
+## Credential models
+
+`edbctl image` commands authenticate one of two ways:
+
+| Auth model                                                         | Commands                                                                                                                           | Notes                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HM access-key credential (`-c/--credential`, `context_credential`) | `list-image-tags`                                                                                                                  | Requires a provisioned, running HM instance. Import a credential first with `edbctl credential import-access-key`.                                                                                                            |
+| Direct credentials passed on the command line                      | `sync-to-local-registry`, `export-to-archive`, `import-from-archive` (registry credentials); `cleanup-registry` (User credentials) | No stored credential needed. `sync-to-local-registry`, `export-to-archive`, and `import-from-archive` are usable before HM is installed. `cleanup-registry` still requires a running HM instance with an accessible registry. |
+
+If you're preparing for an air-gapped install and haven't provisioned HM yet, use `sync-to-local-registry`, `export-to-archive`, or `import-from-archive`. `list-image-tags` isn't usable at that stage — it requires a running HM and will fail with "No credential found" if none is configured.
+
+## Commands
+
+`edbctl image` command has the following options:
+
+- [edbctl image cleanup-registry](#edbctl-image-cleanup-registry) — Clean up unused images from the HM registry to free up space.
+- [edbctl image export-to-archive](#edbctl-image-export-to-archive) — Export container images from EDB Repos 2.0 to a portable archive.
+- [edbctl image import-from-archive](#edbctl-image-import-from-archive) — Import container images from a portable archive into a target registry.
+- [edbctl image list-image-tags](#edbctl-image-list-image-tags) — Displays a list of all the available images for provisioning.
+- [edbctl image sync-to-local-registry](#edbctl-image-sync-to-local-registry) — Syncs container images from EDB Repos 2.0 to a local registry.
+
+### edbctl image cleanup-registry
+
+Cleans up unused images from an HM registry to free up space after an upgrade. The command determines which images are no longer needed by comparing the image lists of the current and previous HM versions, excludes any image still referenced by a running pod, deletes the remaining manifests from the registry, and then triggers a garbage collection (GC) to reclaim the underlying storage.
+
+Currently, only the HM registry is supported.
+
+> **Warning**
+>
+> Do not sync images to the registry while this command is running. The GC step may otherwise delete newly synced images and leave the registry in an inconsistent state.
+
+> **Note**
+>
+> If the delete or GC step fails, it's safe to re-run this command. Image deletion is safe to repeat — images that were already removed are skipped — so a retry simply resumes the cleanup. If an image is deleted that should have been kept, restore it by re-syncing the images with `edbctl image sync-to-local-registry`.
+
+```
+edbctl image cleanup-registry --hm-registry-name <registry-name> [options]
+```
+
+Where `options` are:
+
+```
+    --hm-registry-name string          The name of the HM registry to clean up (required).
+    --hm-registry-local-port int       The local port used to access the HM registry when performing cleanup (default 5000).
+    --previous-hm-version string       The previous version of HM, used to determine which images to delete. If not provided,
+                                       the command tries to detect the previous version from the HM instance in the cluster.
+                                       If detection fails, no images are deleted and a warning is printed.
+    --edb-cloudsmith-username string   Username for EDB Cloudsmith, used to retrieve the image list for the previous HM version.
+    --edb-cloudsmith-password string   Password for EDB Cloudsmith, used to retrieve the image list for the previous HM version.
+    --dry-run                          Perform a dry run of the cleanup operation without deleting any images.
+-y, --yes                              Auto-confirm all confirmations.
+-h, --help                             Help for cleanup-registry.
+```
+
+This example shows how to clean up images from the HM registry:
+
+```
+edbctl image cleanup-registry --hm-registry-name <registry-name> --previous-hm-version <previous-hm-version> --edb-cloudsmith-username <username> --edb-cloudsmith-password <password>
+```
+
+### edbctl image export-to-archive
+
+Downloads every image for a Hybrid Manager release and bundles them into a single OCI image-layout tarball that you can later load into a local registry with `edbctl image import-from-archive`. Any existing file at `--archive-path` is overwritten.
+
+```
+edbctl image export-to-archive [options]
+```
+
+Where `options` are:
+
+```
+    --source-registry string                Override the source container registry URI (default "docker.enterprisedb.com/pgai-platform").
+    --source-images-list-url string         Override the full URL used to download the images list.
+    --source-registry-username string       Source registry username (required).
+    --source-registry-password string       Source registry password (required).
+    --version string                        Hybrid Manager release version (required).
+    --archive-path string                   Path to the archive file to write (required).
+    --sign-by-sigstore-private-key string   Path to the Sigstore private key.
+    --sign-passphrase-file string           Path to the file containing the passphrase for the Sigstore private key.
+-w, --workers int                           Number of parallel workers to use when downloading images (default 3).
+    --cpu int                               Set CPU (max OS threads for Go runtime, must be your CPU core count or lower).
+    --verify-signature                      Requires every image fetched from the source registry to carry a valid cosign signature from a baked-in EDB key.
+    --verify-key-path stringArray            Path to a PEM public key file to accept for signature verification, in addition to the baked-in EDB keys. Passing this implies `--verify-signature`. May be repeated.
+    --verify-key-only                       Accept only `--verify-key-path` values; drop the baked-in EDB keys. Implies `--verify-signature`.
+-y, --yes                                   Auto-confirm all confirmations.
+-h, --help                                  Help for export-to-archive.
+```
+
+This example shows how to export images to an archive:
+
+```
+edbctl image export-to-archive --source-registry-username <username> --source-registry-password <password> --version <version> --archive-path bundle.tar
+```
+
+### edbctl image import-from-archive
+
+Unpacks an OCI image-layout tarball previously produced by `edbctl image export-to-archive` and pushes every image it contains to a target registry. Intended for air-gapped installs where the archive was transported out-of-band.
+
+```
+edbctl image import-from-archive [options]
+```
+
+Where `options` are:
+
+```
+    --archive-path string                     Path to the archive file to read (required).
+    --destination-registry-uri string         Destination registry URI (required).
+    --destination-registry-username string    Destination registry username (optional).
+    --destination-registry-password string    Destination registry password (optional).
+    --sign-by-sigstore-private-key string     Path to the Sigstore private key.
+    --sign-passphrase-file string             Path to the file containing the passphrase for the Sigstore private key.
+-w, --workers int                             Number of parallel workers to use when uploading images (default 3).
+    --cpu int                                 Set CPU (max OS threads for Go runtime, must be your CPU core count or lower).
+    --insecure-destination-registry           Allow insecure (HTTP) connections to the destination registry.
+    --verify-signature                        Requires every image being pushed to carry a valid cosign signature from a baked-in EDB key. Only meaningful when the archive was produced with signatures.
+    --verify-key-path stringArray              Path to a PEM public key file to accept for signature verification, in addition to the baked-in EDB keys. Passing this implies `--verify-signature`. May be repeated.
+    --verify-key-only                         Accept only `--verify-key-path` values; drop the baked-in EDB keys. Implies `--verify-signature`.
+-y, --yes                                     Auto-confirm all confirmations.
+-h, --help                                    Help for import-from-archive.
+```
+
+This example shows how to import images from an archive:
+
+```
+edbctl image import-from-archive --archive-path bundle.tar --destination-registry-uri <registry> --destination-registry-username <username> --destination-registry-password <password>
+```
+
+### edbctl image list-image-tags
+
+Retrieves and displays a list of all available image tags used for provisioning. The output includes detailed metadata for each image tag, such as:
+
+- Image tag ID
+- Name
+- SHA
+- Version
+- Compressed size
+- Architecture
+- Creation time
+- Ingestion time
+- Location
+- Associated tags
+
+```
+edbctl image list-image-tags [options]
+```
+
+Where `options` are:
+
+```
+    --location-id string        Location ID (required). Specify the location ID to filter images.
+    --pg-type string            Filter images by Postgres type. Examples: 'epas', 'postgres', 'pgextended'.
+    --major-version string      Filter images by major version. Examples: '17', '16'.
+    --pg-architectures string   Filter images by cluster architectures. Examples: 'pgd', 'aha', 'psr', 'analytics'.
+-c, --credential string         The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-o, --output string             [table json yaml xml json-raw] (default "table")
+-h, --help                      Help for list-image-tags.
+```
+
+This example shows how to list the image:
+
+```
+edbctl image list-image-tags --location-id "managed-devspatcher"
+```
+
+### edbctl image sync-to-local-registry
+
+Syncs container images from EDB Repos 2.0 to a local registry for managing a local HM installation.
+
+```
+edbctl image sync-to-local-registry [options]
+```
+
+Where `options` are:
+
+```
+    --source-registry string                 Override the source container registry URI (default "docker.enterprisedb.com/pgai-platform").
+    --source-images-list-url string          Override the full URL used to download the images list.
+    --source-registry-username string        Source registry username (required).
+    --source-registry-password string        Source registry password (required).
+    --destination-registry-uri string        Destination registry URI (required).
+    --destination-registry-username string   Destination registry username (optional).
+    --destination-registry-password string   Destination registry password (optional).
+    --version string                         Hybrid Manager release version (required).
+    --sign-by-sigstore-private-key string    Path to the Sigstore private key.
+    --sign-passphrase-file string            Path to the file containing the passphrase for the Sigstore private key.
+-w, --workers int                            Number of parallel workers to use for syncing images. (default 3).
+    --cpu int                                Set CPU (max OS threads for Go runtime, must be your CPU core count or lower).
+    --insecure-destination-registry          Allow insecure (HTTP) connections to the destination registry.
+    --verify-signature                       Requires every image to carry a valid cosign signature from a baked-in EDB key.
+    --verify-key-path stringArray             Path to a PEM public key file to accept for signature verification, in addition to the baked-in EDB keys. Passing this implies `--verify-signature`. May be repeated.
+    --verify-key-only                        Accept only `--verify-key-path` values; drop the baked-in EDB keys. Implies `--verify-signature`.
+-y, --yes                                    Auto-confirm all confirmations.
+-h, --help                                   Help for sync-to-local-registry.
+```
+
+This example shows how to sync the EDB Repo 2.0 to the local registry:
+
+```
+edbctl image sync-to-local-registry --source-registry-username <username> --source-registry-password <password> --destination-registry-uri <registry> --destination-registry-username <username> --destination-registry-password <password> --version <version>
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

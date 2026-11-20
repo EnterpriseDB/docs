@@ -1,0 +1,66 @@
+---
+title: Installing on Linux using a local repository
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/installing/linux_install_details/installing_epas_using_local_repository/
+lastModified: 2024-06-26T10:43:05-04:00
+---
+
+# Installing on Linux using a local repository
+
+You can create a local repository to act as a host for the EDB Postgres Advanced Server native packages if the server on which you wish to install EDB Postgres Advanced Server (or supporting components) cannot directly access the EDB repository. This is a high-level listing of the steps requires; modify the process for your individual network.
+
+To create and use a local repository, you must:
+
+- Use `yum` or `dnf` to install the `epel-release`, `yum-utils`, and `createrepo` packages.
+
+  On RHEL or CentOS 7.x:
+
+  ```bash
+  yum install epel-release
+  yum install yum-utils
+  yum install createrepo
+  ```
+
+  On RHEL or Rocky Linux or AlmaLinux 8.x:
+
+  ```bash
+  dnf install epel-release
+  dnf install yum-utils
+  dnf install createrepo
+  ```
+
+- Create a directory in which to store the repository:
+
+  ```text
+  mkdir /srv/repos
+  ```
+
+- Copy the RPM installation packages to your local repository. You can download the individual packages or use a tarball to populate the repository. The packages are available from the EDB repository at <https://repos.enterprisedb.com/>.
+
+- Sync the RPM packages and create the repository.
+
+  ```text
+  reposync -r edbas14 -p /srv/repos
+  createrepo /srv/repos
+  ```
+
+- Install your preferred webserver on the host that acts as your local repository, and ensure that the repository directory is accessible to the other servers on your network.
+
+- On each isolated database server, configure `yum` or `dnf` to pull updates from the mirrored repository on your local network. For example, you might create a repository configuration file called `/etc/yum.repos.d/edb-repo` with connection information that specifies:
+
+  ```text
+  [edbas14]
+  name=EnterprisEDB Postgres Advanced Server 14
+  baseurl=https://yum.your_domain.com/edbas14
+  enabled=1
+  gpgcheck=0
+  ```
+
+After specifying the location and connection information for your local repository, you can use `dnf` commands to install EDB Postgres Advanced Server and its supporting components on the isolated servers. For example:
+
+```text
+dnf -y install edb-as14-server
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

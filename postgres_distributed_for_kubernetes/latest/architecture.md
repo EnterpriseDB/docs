@@ -1,0 +1,214 @@
+---
+title: Architecture
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 2.2.0
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/architecture/
+lastModified: 2026-07-23T14:41:41+02:00
+---
+
+# Architecture
+
+Consider these main architectural aspects
+when deploying EDB Postgres Distributed in Kubernetes.
+
+EDB Postgres® AI for CloudNativePG™ Global Cluster is a
+[Kubernetes operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/)
+designed to deploy and manage EDB Postgres Distributed clusters
+running in private, public, hybrid, or multi-cloud environments.
+
+## Relationship with EDB Postgres Distributed
+
+[EDB Postgres Distributed (PGD)](https://www.enterprisedb.com/docs/pgd/latest/)
+is a multi-master  implementation of Postgres designed
+for high performance and availability.
+PGD generally requires deployment using
+[Trusted Postgres Architect (TPA)](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-tpa/),
+a tool that uses [Ansible](https://www.ansible.com) to provision and
+deploy PGD clusters.
+
+EDB CloudNativePG Global Cluster offers a different way of deploying PGD clusters,
+leveraging containers and Kubernetes. The advantages are that the resulting architecture:
+
+- Is self-healing and robust.
+- Is managed through declarative configuration.
+- Takes advantage of the vast and growing Kubernetes ecosystem.
+
+## Relationship with EDB Postgres AI for CloudNativePG
+
+A PGD cluster consists of one or more _PGD groups_, each having one or more _PGD
+nodes_. A PGD node is a Postgres database.
+EDB CloudNativePG Global Cluster internally
+manages each PGD node using the `Cluster` resource as defined by EDB Postgres
+for Kubernetes, specifically a cluster with a single instance (that is, no
+replicas).
+
+![Relationship with PG4K operator](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgres_distributed_for_kubernetes/2/images/relationship_pg4k.png)
+
+You can configure the single PostgreSQL instance created by each `Cluster` in the
+[`.spec.cnp` section](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/pg4k-pgd.v1beta1/#cnpconfiguration)
+of the PGD Group spec.
+
+In EDB CloudNativePG Global Cluster, as in PG4K, the underlying database implementation
+is responsible for data replication. However, it's important to note that failover and
+switchover work differently, entailing Raft election and nominating new write leaders.
+PG4K handles only the deployment and healing of data nodes.
+
+## Managing PGD using EDB CloudNativePG Global Cluster
+
+The EDB CloudNativePG Global Cluster operator can manage
+the complete lifecycle of PGD clusters.
+As such, in addition to PGD nodes (represented as single-instance `Clusters`), it
+needs to manage other objects associated with PGD.
+
+PGD relies on the Raft algorithm for distributed consensus to manage node
+metadata, specifically agreement on a _write leader_. Consensus among data
+nodes is also required for operations such as generating new global sequences
+or performing distributed DDL.
+
+These considerations force additional actors in PGD above database nodes.
+
+EDB CloudNativePG Global Cluster manages the following:
+
+- Data nodes. A node is a database and is managed by PG4K, creating
+  a `Cluster` with a single instance.
+- [Witness nodes](https://www.enterprisedb.com/docs/pgd/latest/nodes/witness_nodes/)
+  are basic database instances that don't participate in data
+  replication. Their function is to guarantee that consensus is possible in
+  groups with an even number of data nodes or after network partitions. Witness
+  nodes are also managed using a single-instance `Cluster` resource.
+
+### Connection manager and routing
+
+PGD groups assume full mesh connectivity of PGD nodes. Each node must be able to
+connect to every other node using the appropriate connection string (a
+`libpq`-style DSN). Write operations don't need to be sent to every node. PGD
+takes care of replicating data after it's committed to one node.
+
+For performance, we often recommend sending write operations mostly to a
+single node, the  _write leader_. Raft is used to identify which node is the
+write leader. PGD connection managers are used to
+transparently route writes to write leaders and to quickly pivot to the new
+write leader in case of switchover or failover. Connection managers run
+on all data nodes and listen on a different port.
+
+It's possible to configure _Raft subgroups_, each of which can maintain a
+separate write leader.
+
+Two kinds of routing are available with PGD connection managers:
+
+- Global routing uses the top-level Raft group and maintains one global write
+  leader.
+- Local routing uses subgroups to maintain separate write leaders. Local
+  routing is often used to achieve geographical separation of writes.
+
+In EDB CloudNativePG Global Cluster, local routing is used by default,
+and a configuration option is available to select global routing.
+
+For more information on routing with connection managers, see
+[Connection Manager](https://www.enterprisedb.com/docs/pgd/latest/connection-manager/overview/#about-connection-manager).
+
+### PGD architectures and high availability
+
+EDB proposes several recommended architectures to make good use of PGD's
+distributed multi-master
+capabilities and to offer high availability.
+
+The PGD deployment patterns are built from either one group in a single location
+or two groups in two separate locations.
+See [Choosing your deployment pattern](https://www.enterprisedb.com/docs/pgd/latest/planning/deployment-patterns/) in the PGD documentation
+for more information.
+
+## Deploying PGD on Kubernetes
+
+EDB CloudNativePG Global Cluster leverages Kubernetes to deploy
+and manage PGD clusters. As such, some adaptations are necessary
+to translate PGD into the Kubernetes ecosystem.
+
+### Images and operands
+
+You can configure PGD to run one of three Postgres distributions. See the
+[PGD documentation](https://www.enterprisedb.com/docs/pgd/latest/planning/choosing_server/)
+to understand the features of each distribution.
+
+To function in Kubernetes, containers are provided for each Postgres
+distribution. These are the _operands_.
+In addition, the operator images are kept in those same repositories.
+
+See [EDB private image registries](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/private_edb_registries/)
+for details on accessing the images.
+
+### Kubernetes architecture
+
+Some of the points of the
+[PG4K document on Kubernetes architecture](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/architecture/)
+are reproduced here. See the PG4K documentation for details.
+
+Kubernetes natively provides the possibility to span separate physical locations.
+These physical locations are also known as data centers, failure zones,
+or, more frequently, _availability zones_.
+They are connected to each other by way of redundant,
+low-latency, private network connectivity.
+
+Being a distributed system, the recommended minimum number of availability zones
+for a _Kubernetes cluster_ is three. This minimum makes the control plane
+resilient to the failure of a single zone. This means that each data center is
+active at any time and can run workloads simultaneously.
+
+You can install EDB CloudNativePG Global Cluster in a
+[single Kubernetes cluster](#single-kubernetes-cluster)
+or across
+[multiple Kubernetes clusters](#multiple-kubernetes-clusters).
+
+### Single Kubernetes cluster
+
+A multi-availability-zone Kubernetes architecture is typical of Kubernetes
+services managed by cloud providers.
+Such an architecture enables the EDB CloudNativePG Global Cluster
+and the PG4K operators to schedule workloads
+and nodes across availability zones, considering all zones active.
+
+![Kubernetes cluster spanning over 3 independent data centers](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgres_distributed_for_kubernetes/2/images/k8s-architecture-3-az.png)
+
+PGD clusters can be deployed in a single Kubernetes cluster and take advantage
+of Kubernetes availability zones to enable high-availability architectures,
+including the Always On recommended architectures.
+
+PGD clusters can be deployed in a single Kubernetes cluster that spans multiple availability zones to enable high-availability architectures with a single location.
+
+To learn more about the pros and cons of a single location deployment pattern, refer to the [PGD deployment patterns documentation](https://www.enterprisedb.com/docs/pgd/latest/planning/deployment-patterns/).
+
+![Always On Single Region](https://raw.githubusercontent.com/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgres_distributed_for_kubernetes/2/images/always_on_1x3.svg)
+
+The EDB CloudNativePG Global Cluster operator can control the scheduling
+of pods (that is, which pods go to which data center) using affinity,
+tolerations, and node selectors, as is the case with PG4K.
+Individual scheduling controls are available for proxies as well as nodes.
+
+See the
+[Kubernetes documentation on scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/),
+and [Scheduling](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/scheduling/)
+in the PG4K documentation for more information.
+
+### Effective Implementation of PGBouncer
+
+Effective application-side connection pooling is critical for optimizing application thread efficiency, limiting the overhead of creating new connections for servicing atomic requests. While application stacks with robust, integrated pooling (e.g., the JDBC Pool in a JVM) are ideal, many applications require an external solution. In these cases, PgBouncer serves as an excellent application-side connection pooler.
+
+However, the deployment strategy for PgBouncer is crucial. A conventional approach often places it as a centralized, database-side tier fronting the Postgres cluster. In a highly-available architecture like PGD, this centralized model is an anti-pattern because it creates a single point of failure (SPOF) and a potential performance bottleneck.  A more resilient and scalable approach is to deploy PgBouncer in a sidecar pattern, application-side, creating a one-to-one association with each application instance. This strategy offers several advantages:
+
+- Fault Isolation: The failure of a single PgBouncer instance only impacts its associated application instance, not the entire system.
+- Horizontal Scalability: Pooling resources scale naturally with the application, eliminating the need to manage a separate, auto-scaling pooling tier.
+- Simplified Configuration: The application connects to a stable local endpoint (e.g., localhost:6432), abstracting away the database topology.
+
+Within the EDB CloudNativePG Global Cluster ecosystem, it's vital to distinguish the roles of different components. PGD Proxy is the mandatory, intelligent entry point for routing and load balancing; it understands the PGD cluster's state and directs connections appropriately. The newer PGD Connection Manager is also PGD-aware and adds important functions, including some pooling capability.  By contrast, PgBouncer is not embedded with PGD logic; it is not clustered or cluster-aware. This lack of integration reinforces its value as an application-side component, where it can manage connection efficiency without interfering with the PGD-aware routing and high-availability managed by PGD connection manager.
+
+[![PGBouncer in context](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgres_distributed_for_kubernetes/2/images/pg4k-pgd_reference-architecture-diagram_v0.3.jpg)](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgres_distributed_for_kubernetes/2/images/pg4k-pgd_reference-architecture-diagram_v0.3.jpg)
+
+### Multiple Kubernetes clusters
+
+EDB Postgres Distributed (PGD) can be deployed in a multi-cluster topology, spanning distinct Kubernetes clusters across different regions or availability zones. This architecture necessitates reliable, underlying network connectivity between all participating clusters. The fundamental requirement is that every PGD service, identified by its -node or -group suffix, must be discoverable and routable from all other clusters in the distributed system. While PGD for Kubernetes supports the full range of [deployment patterns](https://www.enterprisedb.com/docs/pgd/latest/planning/deployment-patterns/), addressing the cross-cluster networking challenge can be achieved by exposing services through network load balancers.
+
+Depicted here is a reference architecture with three PGD Data Groups (A, B, and C), each containing three PGD Nodes, distributed across nine data centers in three cities to maximize availability. The diagram is simplified to highlight the crucial detail that internode communication across the Kubernetes cluster boundaries is facilitated by standard TCP network load balancers, with each PGD service endpoint being resolved via a unique FQDN.  This service exposure strategy effectively decouples the networking domains of each Kubernetes cluster, preserving their operational independence without requiring a complex network fabric or service mesh.
+
+[![Cross-region reference architecture](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgres_distributed_for_kubernetes/2/images/pg4k-pgd_reference-architecture-diagram_v0.1.jpg)](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/postgres_distributed_for_kubernetes/2/images/pg4k-pgd_reference-architecture-diagram_v0.1.jpg)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

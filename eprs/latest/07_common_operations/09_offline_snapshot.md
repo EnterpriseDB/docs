@@ -1,0 +1,180 @@
+---
+title: Loading tables from an external data source (offline snapshot)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/09_offline_snapshot/
+lastModified: 2024-09-19T15:29:00-04:00
+---
+
+# Loading tables from an external data source (offline snapshot)
+
+<div id="offline_snapshot" class="registered_link"></div>
+
+You might want to initially load your target tables (subscription tables of a single-master replication system, or non-MDN nodes of a multi-master replication system) using a method other than the snapshot replication functionality of Replication Server. This method is referred to as using an offline snapshot.
+
+For example, you might at first load the tables by running the Migration Toolkit from the command line or by using a backup from an external data source. When you load the target tables using an offline snapshot, you must take into account special preparations for the following deviations from the default target table creation and loading process:
+
+- In the typical default scenario, Replication Server creates the target table definitions when you define the subscription in a single-master replication system or add another primary node in a multi-master replication system. When using an offline snapshot, creating the target table definitions is your responsibility. You must therefore prevent Replication Server from creating the target table definitions.
+- In the typical default scenario, Replication Server performs synchronization replication using batches of SQL statements. If any statement in a batch results in an error, all statements in the batch are rolled back. When using an offline snapshot, the external data source used to load the target tables might already have transactions applied to it that are also recorded in the shadow tables of the source tables. In this case, you must perform the first synchronization replication in non-batch mode. This condition can result in a statement failure in certain cases.
+
+> **Note**
+>
+> You can use Migration Toolkit in parallel with Replication Server only to perform offline snapshots. We don't recommend using Migration Toolkit in parallel with Replication Server for online snapshots.
+
+<div id="non_batch_mode_sync" class="registered_link"></div>
+
+## Non-batch mode synchronization
+
+Synchronization replications are done in batches of updates, each batch committed in a separate transaction. If any single update in a batch fails, all the updates in the batch are rolled back.
+
+This process has the following implications.
+
+Prior to and during the time when the offline snapshot is in progress, there might be updates to the source tables, which are recorded in the source tables’ shadow tables. After the offline snapshot completes, there might be more updates to the source tables that are also recorded in the shadow tables.
+
+Since Replication Server does not know about the external data source used to load the target tables, Replication Server doesn't know whether any of the updates made to the source tables during or after the offline snapshot were already included in the data used to load the target tables.
+
+As a result, the shadow tables might include a mixture of duplicate updates that were already applied to the target tables as well as new updates that weren't applied to the target tables.
+
+If you then perform synchronization replication, the publication server attempts to apply all updates recorded in the shadow tables in batches.
+
+If one of the updates was inserting a new row and this new row is already in the target table loaded from the offline snapshot, a duplicate key error results when the publication server attempts to apply the batch containing the `INSERT` statement for this row. The duplicate key error forces the rollback of the entire batch. This causes the exclusion of updates in the batch that might not yet have been carried over to the target tables. The source tables and target tables are now inconsistent, since there were updates to the source tables that weren't applied to the target tables.
+
+> **Note**
+>
+> The effects of applying `UPDATE` and `DELETE` statements in the batch to a target table that was already changed by these updates doesn't cause the same problem as repeated application of `INSERT` statements. The `UPDATE` statement changes the row to the same values a second time. When a `DELETE` statement doesn't affects any rows, this isn't considered an error by the database server. No rollback of the batch occurs.
+
+The solution to the potential rollback of a batch is to apply the shadow table updates in non-batch mode. That is, commit each SQL statement individually. In that way, if inserting a row fails due to a duplicate key error, that statement alone is rolled back. The error doesn't affect the other shadow table updates that must be applied since all updates are enclosed in their own, individual transactions.
+
+The `batchInitialSync` configuration option controls whether the first synchronization replication occurs in batch or non-batch mode. Suppose you're using an offline snapshot in an active replication system where updates are occurring to the source tables. Transactions are thus accumulating in the shadow tables for the trigger-based method. In this case, we recommend setting `batchInitialSync` to `false` to perform the first synchronization replication in non-batch mode.
+
+> **Note**
+>
+> You can't use an offline snapshot to add a subscription or a primary node to an active replication system that uses the log-based method. For the log-based method, you can use offline snapshots only to first configure the system. You can't use them to update the system with additional nodes after the publication database or primary node is actively receiving transactions.
+
+Suppose you're using offline snapshots to first create the entire replication system that has yet to be activated. The content of the offline snapshots are all assumed to be consistent for the source and target tables. You can then leave `batchInitialSync` with its default setting of `true`. It is assumed that the first synchronization replication will not apply any duplicate updates.
+
+## Offline snapshot configuration options
+
+The following are the configuration options that you need to modify when using an offline snapshot.
+
+> **Note**
+>
+> These options apply only to the publication server.
+
+`offlineSnapshot`
+
+You must set the `offlineSnapshot` to `true` before creating the subscription for a single-master replication system or before adding the primary node for a multi-master replication system.
+
+`offlineSnapshot={true | false}`
+
+The default value is `false`.
+
+When set to `true`, the `offlineSnapshot` option prevents the usual creation of the subscription schema and table definitions when the subscription is defined in a single-master replication system. It is assumed that you're creating the subscription table definitions and loading them from an external source other than the publication.
+
+When adding the primary node in a multi-master replication system, leave the **Replicate Publication Schema** and **Perform Initial Snapshot** boxes cleared (see [Creating more primary nodes](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes)).
+
+When `offlineSnapshot` is set to `true`, this configuration has the direct effect in the control schema by setting column `has_initial_snapshot` to a value of `O`. This setting indicates an offline snapshot is used for the target subscription or primary node represented by the row. Column `has_initial_snapshot` is set in table \_edb\_replicator\_pub.xdb\_publication\_subscriptions for a single-master replication system and in table \_edb\_replicator\_pub.xdb\_mmr\_pub\_group for a multi-master replication system.
+
+After the first replication completes to the target subscription or primary node, `has_initial_snapshot` is changed to `Y` by Replication Server.
+
+The setting of `has_initial_snapshot` influences the behavior of the `batchInitialSync` option.
+
+`batchInitialSync`
+
+The `batchInitialSync` option controls whether the first synchronization after loading the target tables from an offline snapshot is done in batch mode (the default) or non-batch mode.
+
+Set the `batchInitialSync` option to `false` to perform synchronization replication in non-batch mode.
+
+You must set the `offlineSnapshot` configuration option to `true` prior to creating the subscription or adding another primary node. A non-batch mode synchronization occurs only if `batchInitialSync` is `false` and the `has_initial_snapshot` column in the control schema is set to a value of `O` as described for the `offlineSnapshot` option.
+
+`batchInitialSync={true | false}`
+
+The default value is `true`.
+
+<div id="smr_repln_offline_snapshot" class="registered_link"></div>
+
+## Single-master replication offline snapshot
+
+You can use an offline snapshot to first load the subscription tables of a single-master replication system. For a publication that's intended to have multiple subscriptions, you can create some of the subscriptions using the default Replication Server snapshot replication process as described in [Performing snapshot replication](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/04_on_demand_replication/01_perform_replication/#perform_replication). You can create other subscriptions from an offline snapshot.
+
+### Preparing the publication and subscription server configuration
+
+Before creating any subscriptions:
+
+1. Register the publication server, add the publication database definition, and create the publication as described in [Creating a publication](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/#creating_publication).
+
+2. Register the subscription server and add the subscription database definition as described in [Registering a subscription server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/01_registering_subscription_server/#registering_subscription_server) and [Adding a subscription database](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database).
+
+3. Modify the publication server configuration file if these options aren't already set as described by the following:
+
+   - Change the `offlineSnapshot` option to `true`. When you restart the publication server or reload the publication server's configuration via reloadconf, `offlineSnapshot` set to `true` has two effects. One is that creating a subscription doesn't create the schema and subscription table definitions in the subscription database as is done with the default setting. The other is that creating a subscription sets a column in the control schema indicating an offline snapshot is used to load this subscription.
+   - Set the `batchInitialSync` option to the appropriate setting for your situation as discussed at the end of [Non-batch mode synchronization](#non_batch_mode_sync).
+
+4. If you modified the publication server configuration, reload the configuration. See [Reloading the publication or subscription server configuration file (reloadconf)](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/52_reload_conf_file/).
+
+### Creating subscription servers
+
+Perform these steps for each subscription you want to create from an offline snapshot.
+
+> **Note**
+>
+> See [Adding a subscription database](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/02_adding_subscription_database/) for the rules for how Replication Server creates the subscription definitions from the publication for each database type. Follow these conventions when you create the target definitions manually.
+
+1. Add the subscription as described in [Adding a subscription](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/03_adding_subscription/). The subscription database user name you use when you add the subscription must have full privileges over the database objects you plan to create in the subscription database.
+
+2. In the subscription database, create the schema and the subscription table definitions, and load the subscription tables from your offline data source.
+
+   > **Note**
+   >
+   > Ensure you don't load the offline data source from the source publication database until after you finish creating a subscription. Otherwise, certain changes from the source database won't be replicated.
+
+3. Perform an on-demand synchronization replication. See [Performing synchronization replication](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/04_on_demand_replication/02_perform_sync_replication/#perform_sync_replication) to learn how to perform an on-demand synchronization replication.
+
+4. If you aren't planning to load any other subscriptions using an offline snapshot at this time, change the `offlineSnapshot` option back to `false` and the `batchInitialSync` option to `true` in the publication server configuration file.
+
+5. If you modified the publication server configuration, reload the configuration file.
+
+## Multi-master replication offline snapshot
+
+You can use an offline snapshot to first load the primary nodes of a multi-master replication system. You can load some of the primary nodes using the Replication Server snapshot replication functionality when defining the primary node as described in [Creating more primary nodes](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes) or by using an on-demand snapshot as described in [Performing snapshot replication](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/05_on_demand_replication_mmr/#perform_snapshot_replication_mmr). You can load other primary nodes from an offline snapshot.
+
+> **Note**
+>
+> Offline snapshots aren't supported for a multi-master replication system that's actively in use. Any changes on an active primary node are lost during the offline snapshot process of dumping or restoring the data of another node.
+
+### Preparing the publication and subscription server configurations
+
+Before adding primary nodes:
+
+1. Register the publication server, add the primary definition node, and create the publication as described in [Creating a publication](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/02_creating_publication_mmr/).
+
+2. Be sure there's no schedule defined on the replication system. If there is, remove the schedule until you complete this process. See [Removing a schedule](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/03_managing_schedule/#remove_schedule) for details.
+
+3. Modify the publication server configuration file so the options are set as follows:
+
+   - Set the `offlineSnapshot` option to `true`. When you restart the publication server or reload the publication server's configuration via reloadconf, this setting has the effect that adding a primary node sets a column in the control schema indicating an offline snapshot is used to load this primary node.
+   - Set the `batchInitialSync` option to the appropriate setting for your situation as discussed at the end of [Non-batch mode synchronization](#non_batch_mode_sync).
+
+4. If you modified the publication server configuration file, reload the configuration. See [Reloading the publication or subscription server configuration file (reloadconf)](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/52_reload_conf_file/).
+
+### Adding primary nodes
+
+Perform these steps for each primary node you want to add from an offline snapshot.
+
+1. Add the primary node as described in [Creating more primary nodes](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/03_creating_primary_nodes/) with the options **Replicate Publication Schema** and **Perform Initial Snapshot** cleared.
+
+2. In the database to use as the new primary node, create the schema and the table definitions, and load the tables from your offline data source.
+
+   > **Note**
+   >
+   > Ensure you don't load the offline data source from the source publication database until after you add the target node in the MMR cluster. Otherwise, certain changes from the source database won't be replicated.
+
+3. Perform an initial on-demand synchronization. See [Performing synchronization replication](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/05_on_demand_replication_mmr/#perform_synchronization_replication_mmr).
+
+4. If you aren't planning to load any other primary nodes using an offline snapshot at this time, change the `offlineSnapshot` option back to `false` and the `batchInitialSync` option to `true` in the publication server configuration file.
+
+5. If you modified the publication server configuration, reload the configuration file.
+
+6. Add the schedule again if you removed it. See [Creating a schedule](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/02_creating_schedule/#creating_schedule) to learn how to create a schedule.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

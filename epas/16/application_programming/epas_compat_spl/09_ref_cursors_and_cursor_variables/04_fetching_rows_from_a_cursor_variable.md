@@ -1,0 +1,37 @@
+---
+title: Fetching rows From a cursor variable
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/application_programming/epas_compat_spl/09_ref_cursors_and_cursor_variables/04_fetching_rows_from_a_cursor_variable/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# Fetching rows From a cursor variable
+
+<div id="fetching_rows_from_a_cursor_variable" class="registered_link"></div>
+
+After you open a cursor variable, you can retrieve rows from the result set using the `FETCH` statement. For details, see [Fetching rows from a cursor](https://www.enterprisedb.com/docs/epas/16/application_programming/epas_compat_spl/08_static_cursors/03_fetching_rows_from_a_cursor/#fetching_rows_from_a_cursor).
+
+This example uses a `FETCH` statement to cause the result set to be returned into two variables and then displayed. You can also use the cursor attributes used to determine cursor state of static cursors with cursor variables. For details, see [Cursor attributes](https://www.enterprisedb.com/docs/epas/16/application_programming/epas_compat_spl/08_static_cursors/06_cursor_attributes/#cursor_attributes).
+
+```sql
+CREATE OR REPLACE PROCEDURE emp_by_dept (
+    p_deptno        emp.deptno%TYPE
+)
+IS
+    emp_refcur      SYS_REFCURSOR;
+    v_empno         emp.empno%TYPE;
+    v_ename         emp.ename%TYPE;
+BEGIN
+    OPEN emp_refcur FOR SELECT empno, ename FROM emp WHERE deptno = p_deptno;
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    LOOP
+        FETCH emp_refcur INTO v_empno, v_ename;
+        EXIT WHEN emp_refcur%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE(v_empno || '     ' || v_ename);
+    END LOOP;
+        ...
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

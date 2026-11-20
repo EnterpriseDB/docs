@@ -1,0 +1,334 @@
+---
+title: Configuring the Chat Agent
+description: Prerequisites, model setup, supported providers, and model selection guidance for configuring the Hybrid Manager Chat Agent.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/configure/
+lastModified: 2026-11-02T16:15:32+01:00
+---
+
+# Configuring the Chat Agent
+
+The EDB Hybrid Manager (HM) Chat Agent is delivered with HM and powered by one or more large language models (LLMs) that you provide. As an HM administrator, you supply the connection details for models that already run elsewhere. After that, anyone in your organization can use Chat Agent from the HM console.
+
+This page is for HM administrators. To learn how to use Chat Agent, see the [overview](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/).
+
+## Before you begin
+
+Confirm these prerequisites:
+
+- HM 2026.11 or later is installed and reachable.
+- The `chatbot` scenario is enabled in your HM deployment. The sparkle icon stays hidden when the scenario isn't installed. To enable it, list `chatbot` under `scenarios` in your `HybridControlPlane` manifest. See [HM installation scenarios](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/#choosing-an-installation-scenario) for details.
+- You have the connection details for at least one LLM, either a third-party API or a self-hosted endpoint. See [Supported model providers](#supported-model-providers).
+- The LLM supports a **context window of at least 128K tokens**. Chat Agent loads skill instructions, tool schemas, and conversation history on every turn. Models with smaller context windows don't have enough context.
+- You can run `edbctl` against the Kubernetes cluster that hosts HM. The `edbctl` command needs `--version` set to 2026.11 or later.
+
+> **Note: Chat Agent in earlier releases**
+>
+> In HM 2026.9 and earlier, Chat Agent was part of the `ai` scenario. It used HM AI Factory model serving and inference services for its models. HM 2026.10 removed the `ai` scenario, the model serving that came with it, and Chat Agent. From 2026.11, Chat Agent returns as its own `chatbot` scenario. It doesn't need the `ai` scenario, HM AI Factory, or an inference service. It connects directly to the endpoints you configure.
+
+> **Important**
+>
+> Chat Agent answers questions about your live HM estate. Choose a provider whose data-handling policy matches your organization's requirements. Self-hosted models keep prompts and responses inside your infrastructure.
+
+## Configuring the models
+
+Configure Chat Agent models as part of the HM installation, with `edbctl`. For each model, you provide a unique ID, the model name, and the endpoint URL. An API key is optional, so endpoints that don't need a key work too.
+
+1. Gather these details for each model. The examples use Google Gemini:
+
+   | Detail   | Description                                                                                                    | Example                                     |
+   | -------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+   | ID       | A unique identifier that you choose for the model.                                                             | `gemini-flash`                              |
+   | Name     | The model name that the endpoint expects.                                                                      | `gemini-3.5-flash-lite`                     |
+   | URL      | The base URL of the endpoint.                                                                                  | `https://generativelanguage.googleapis.com` |
+   | API key  | The key for the endpoint. Optional for endpoints that don't need one.                                          | Your Gemini API key                         |
+   | API type | `openai` (the default), `anthropic`, or `gemini`. See [Supported model providers](#supported-model-providers). | `gemini`                                    |
+
+2. Create the model secret. The `<version>` must be 2026.11 or later. Run the command and answer the prompts.
+
+   ```shell
+   edbctl hybrid-manager create-install-secrets --version <version> --scenario chatbot
+   ```
+
+   For automated installations, pass the same details as `EDB_CHATBOT_MODEL_*` environment variables. See [Customizing Chat Agent model secrets](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/customizing_secrets/chatbot_secrets/).
+
+3. Install HM with `chatbot` in `spec.scenarios`.
+
+### Adding more than one model
+
+Chat Agent supports several models at the same time. Chat Agent lists every configured model in the model picker, and the first model is the default. For example, configure a stronger model for cluster management and a lighter model for documentation questions.
+
+To add more than one model, do one of the following:
+
+- In interactive mode, answer **yes** when `edbctl` asks whether to add another model, and enter the details for each one.
+- With environment variables, number the settings by position. Use `EDB_CHATBOT_MODEL_ID1` and `EDB_CHATBOT_MODEL_ID2`, and so on. Each model needs a unique ID.
+
+For a complete example with two Gemini models, see [Adding more than one model](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/customizing_secrets/chatbot_secrets/#adding-more-than-one-model).
+
+### Changing the models after installation
+
+To add, replace, or remove models, run the same `edbctl` command again with the `--force` flag and the complete list of models you want. The new list replaces the old one, including capability settings. HM restarts Chat Agent automatically to pick up the change. See [Changing the models later](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/customizing_secrets/chatbot_secrets/#changing-the-models-later).
+
+## Setting model capabilities
+
+Chat Agent detects the strength of recognized models automatically. You can override detection, or describe a model that isn't recognized, with these optional settings. Provide them when you create the model secret, as prompts or `EDB_CHATBOT_MODEL_<SETTING><N>` variables, where `<N>` is the model's position.
+
+| Setting                | Variable suffix          | Values                                                                  | Purpose                                               |
+| ---------------------- | ------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------- |
+| Tier                   | `TIER`                   | `S`, `M`, `L`, or `XL`                                                  | Overrides the detected strength tier.                 |
+| Context window         | `CONTEXT_WINDOW`         | A number followed by `k` or `m`, for example `128k`                     | Tells Chat Agent how much context the model supports. |
+| Thinking levels        | `THINKING_LEVELS`        | Any of `low`, `medium`, `high`, `xhigh`, and `max`, separated by commas | Lists the reasoning levels the model accepts.         |
+| Default thinking level | `DEFAULT_THINKING_LEVEL` | One of the thinking levels you listed                                   | Sets the model's default reasoning effort.            |
+
+Set thinking levels only on models that support thinking or reasoning modes. When you set thinking levels, you must also set a default, and the default must be one of the listed levels. If you don't set them, the model uses its own default thinking level. That default works well for most tasks. Raise it for more complex tasks, or lower it to speed up responses.
+
+> **Warning**
+>
+> Some reasoning models don't accept a per-request thinking-level setting. On those models, setting a thinking level causes the model to return an error and Chat Agent stops responding. Confirm the model accepts your chosen level before you set it.
+
+Set a tier only when your model isn't on the [recognized list](#recognized-models). See [Assigning a tier to an unrecognized model](#assigning-a-tier-to-an-unrecognized-model) for the procedure.
+
+## Verifying your configuration
+
+1. In the HM console, sign in as a user that belongs to at least one project.
+2. Select the sparkle icon at the top right.
+3. Confirm the panel opens with the header **HM AI** and the placeholder **Ask me anything...** in the input.
+4. If you configured more than one model, select the **model** picker and confirm your models appear.
+5. Send a quick prompt, such as: _What can you do?_
+6. Confirm a streamed response begins within a few seconds.
+
+If the sparkle icon is missing or the panel can't be opened, see [Troubleshooting](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/troubleshooting/).
+
+## Accessing the Chat Agent
+
+Chat Agent is available on every authenticated page in the HM console.
+
+1. Look for the rainbow sparkle icon at the top right of the HM header.
+2. Select the icon to open Chat Agent.
+
+If the icon is missing or disabled, see [Troubleshooting](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/troubleshooting/).
+
+Chat Agent opens in two layouts:
+
+- **Full screen** — The default. The conversations list appears on the left.
+- **Floating panel** — A compact, draggable panel docked at the bottom right of the HM console. Use the expand or shrink button to switch between modes.
+
+## Using the Chat Agent
+
+### Ask a question
+
+1. Select **Model** from the picker if your administrator configured more than one. The model determines which capabilities are available — see [Model-dependent capabilities](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/#model-dependent-capabilities).
+2. Type your question in the **Ask me anything** input and press **Enter**.
+3. Use **Shift+Enter** to add a line break within your message.
+4. Chat Agent streams a response in the chat window. Documentation answers include inline citations so you can open the source page directly.
+5. Select the stop button to interrupt generation early.
+
+If Chat Agent needs more information before completing your request — for example, which project to target or a connection password — it pauses and presents a structured form. Fill in the form to continue, or cancel it (or type an unrelated message) to dismiss it.
+
+### Use page context
+
+When you open Chat Agent from a cluster, project, or other resource page, it picks up that page's context automatically. The project and cluster IDs appear as small tags above the input, so you can ask about that resource without naming it — for example, _Show me the active alerts_ applies to the cluster you're currently viewing.
+
+### Manage conversations
+
+Each conversation is saved to your HM organization so you can return to it later. Select **New Chat** to start a fresh conversation, or open the sidebar with the menu icon to return to an earlier one.
+
+Chat Agent gives each new conversation a short auto-generated title. From the sidebar you can also **Rename** a conversation or **Delete** one — deletion can't be undone.
+
+For conversation privacy details, see [Conversation storage and isolation](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/security_and_data/#conversation-storage-and-isolation).
+
+## Recommendations
+
+- Start with a Large model — Large is the lowest tier that covers Postgres Cluster lifecycle management with structured forms and the full set of Medium-tier capabilities. `gemini-2.5-pro`, `gpt-5`, and `gpt-oss-120b` sit in this tier.
+- Pick a self-hosted model if your prompts contain regulated or proprietary data — This choice keeps Chat Agent prompts and responses inside your infrastructure.
+- Configure more than one model to let users pick a tier per conversation — For example, add a Small model for documentation lookups and a Large model for cluster-creation flows.
+
+## Supported model providers
+
+Chat Agent communicates with models through three API protocols. Any provider — third-party or self-hosted — that speaks one of these protocols works. Set the protocol with the API type when you create the model secret. For Gemini, use the base URL `https://generativelanguage.googleapis.com`. For OpenAI-compatible endpoints, include the version path, for example `https://llm.example/v1`. EDB doesn't build or ship AI models.
+
+| API type and protocol            | Compatible providers and runtimes                                                                                                                  |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openai` (OpenAI v1)             | OpenAI, Azure OpenAI, NVIDIA NIM containers, Amazon Bedrock (via OpenAI-compatible gateway), vLLM, and other OpenAI-compatible self-hosted servers |
+| `anthropic` (Anthropic Messages) | Anthropic API, Anthropic-compatible gateways and proxies that preserve the Messages API surface                                                    |
+| `gemini` (Google Gemini)         | Google AI Studio (Gemini API), Vertex AI with the Gemini API surface                                                                               |
+
+## Model strength tiers
+
+Chat Agent classifies every configured model into a **strength tier** — Small, Medium, Large, or Extra Large — based on the model's capability. A model's tier determines which Chat Agent skills are available when that model is selected.
+
+### Strength tiers
+
+The tiers correspond to approximate model scale and capability:
+
+- Small — Roughly 7–30B parameter class.
+- Medium — Roughly 30–100B parameter class.
+- Large — `gpt-4.1`, `gemini-2.5-pro`, `gpt-5`, and `gpt-oss-120b` class.
+- Extra Large — Current flagship models: the Claude 4.5+ family (including `claude-haiku-4-5`), `gpt-5.6` and later, `gpt-5.3-codex`, `gemini-3.1-pro-preview`, and comparable frontier models.
+
+> **Note**
+>
+> `claude-fable-5` requires the underlying inference provider account to have 30-day (nonzero) data retention enabled. This is a platform- or account-level setting (Amazon Bedrock, Google Vertex AI, Microsoft Foundry, or the direct Anthropic API) outside of HM's control. Accounts configured for zero data retention will see every `claude-fable-5` request fail with a 400 error regardless of HM configuration.
+
+A model that isn't on the recognized list below defaults to Small.
+
+### Recognized models
+
+| Model                                              | Tier        |
+| -------------------------------------------------- | ----------- |
+| gpt-4o-mini                                        | Small       |
+| gpt-oss-20b                                        | Small       |
+| gpt-5.4-nano                                       | Medium      |
+| gpt-4.1-mini                                       | Medium      |
+| gpt-5.4-mini                                       | Large       |
+| gpt-4.1                                            | Large       |
+| gpt-4o                                             | Small       |
+| gpt-oss-120b                                       | Large       |
+| gpt-5.6-luna                                       | Extra Large |
+| gpt-5.6-sol                                        | Extra Large |
+| gpt-5.6-terra                                      | Extra Large |
+| gpt-5.5-pro                                        | Extra Large |
+| gpt-5.5                                            | Extra Large |
+| gpt-5.4-pro                                        | Extra Large |
+| gpt-5.4                                            | Extra Large |
+| gpt-5.2                                            | Extra Large |
+| gpt-5.3-codex-spark                                | Extra Large |
+| gpt-realtime-2.1                                   | Extra Large |
+| o1                                                 | Extra Large |
+| o1-pro                                             | Extra Large |
+| o3-mini                                            | Large       |
+| gpt-6-astra                                        | Extra Large |
+| gpt-6-luna                                         | Extra Large |
+| gpt-6.1-sol                                        | Extra Large |
+| claude-haiku-4-5                                   | Extra Large |
+| claude-sonnet-4-5                                  | Extra Large |
+| claude-sonnet-4-6                                  | Extra Large |
+| claude-opus-4-5                                    | Extra Large |
+| claude-opus-4-6                                    | Extra Large |
+| claude-opus-4-7                                    | Extra Large |
+| claude-opus-4-8                                    | Extra Large |
+| claude-sonnet-5                                    | Extra Large |
+| claude-fable-5                                     | Extra Large |
+| claude-opus-5                                      | Extra Large |
+| claude-fable-5-1                                   | Extra Large |
+| claude-haiku-5-5                                   | Extra Large |
+| claude-opus-5-5                                    | Extra Large |
+| claude-sonnet-5-5                                  | Extra Large |
+| gemini-3.1-flash-lite                              | Small       |
+| gemini-3-flash-preview                             | Large       |
+| gemini-3.1-pro-preview                             | Extra Large |
+| gemini-3.5-flash                                   | Extra Large |
+| gemini-3.5-flash-lite                              | Large       |
+| gemini-3.6-flash                                   | Extra Large |
+| gemini-3.7-flash                                   | Extra Large |
+| deep-research-max-preview-04-2026                  | Extra Large |
+| deep-research-preview-04-2026                      | Extra Large |
+| gemini-2.5-computer-use-preview-10-2025            | Large       |
+| gemini-3.1-flash-lite-image                        | Extra Large |
+| gemini-3.1-flash-live-preview                      | Large       |
+| gemini-3.1-pro-preview-customtools                 | Extra Large |
+| gemma-4-26b-a4b-it                                 | Small       |
+| gemma-4-31b-it                                     | Small       |
+| gemini-3.8-flash                                   | Large       |
+| gemini-4-argon                                     | Extra Large |
+| nvidia/llama-3.3-nemotron-super-49b-v1             | Small       |
+| nvidia/llama-3.3-nemotron-super-49b-v1.5           | Small       |
+| nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16 | Small       |
+| nvidia/Nemotron-Cascade-2-30B-A3B                  | Small       |
+| nvidia/llama-3.1-nemotron-ultra-253b-v1            | Large       |
+| nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16      | Large       |
+| nvidia/cosmos-reason2-8b                           | Small       |
+| nvidia/llama-3.1-nemotron-70b-instruct             | Medium      |
+| nvidia/llama-3.1-nemotron-nano-8b-v1               | Small       |
+| nvidia/llama-3.1-nemotron-nano-vl-8b-v1            | Small       |
+| nvidia/nemotron-3-ultra-550b-a55b                  | Medium      |
+| nvidia/nemotron-3.5-lightning-30b-a3b              | Small       |
+| nvidia/nemotron-mini-4b-instruct                   | Small       |
+| nvidia/nemotron-nano-12b-v2-vl                     | Small       |
+| nvidia/nemotron-voicechat                          | Small       |
+| nvidia/nvidia-nemotron-nano-9b-v2                  | Small       |
+| nvidia/nemotron-3-nano-30b-a3b                     | Small       |
+| nvidia/nemotron-3.5-super-vl-120b-a12b             | Small       |
+| deepseek-ai/deepseek-v4-flash                      | Extra Large |
+| deepseek-ai/deepseek-v4-pro                        | Extra Large |
+| deepseek-ai/deepseek-v4.1-flash                    | Extra Large |
+| qwen/qwen3-next-80b-a3b-instruct                   | Medium      |
+| qwen/qwen3-next-80b-a3b-thinking                   | Medium      |
+| qwen/qwen3.5-122b-a10b                             | Large       |
+| qwen/qwen3.5-397b-a17b                             | Extra Large |
+| qwen/qwen3-coder-480b-a35b-instruct                | Extra Large |
+| meta/llama-4-maverick-17b-128e-instruct            | Extra Large |
+| meta/llama-3.2-11b-vision-instruct                 | Small       |
+| meta/llama-3.2-1b-instruct                         | Small       |
+| meta/llama-3.2-90b-vision-instruct                 | Medium      |
+| meta/muse-glimmer-30b                              | Medium      |
+| meta/llama-3.1-70b-instruct                        | Medium      |
+| minimaxai/minimax-m2.7                             | Extra Large |
+| minimaxai/minimax-m3                               | Extra Large |
+| z-ai/glm5                                          | Extra Large |
+| z-ai/glm-5.1                                       | Extra Large |
+| z-ai/glm-5.2                                       | Large       |
+| z-ai/glm-5.3-flash                                 | Extra Large |
+| z-ai/glm-5.3                                       | Extra Large |
+
+The following aliases are recognized as the same canonical model:
+
+- Anthropic models on Amazon Bedrock — Cross-region prefixes (`us.`, `eu.`, `jp.`, `au.`, `global.`) and provider-prefixed variants (`anthropic.<model>-<date>-v1:0`).
+- OpenAI `gpt-oss-20b` and `gpt-oss-120b` — Provider-prefixed variants `openai/<model>`, `openai.<model>-1:0`, `gpt-oss:<size>`.
+
+### Assigning a tier to an unrecognized model
+
+Models whose names don't match any row in the table above (and aren't covered by the alias rules) default to Small. Many of the more advanced skills are unavailable as a result.
+
+To override this setting, set the model's tier when you create the model secret. Use the `TIER` prompt or the `EDB_CHATBOT_MODEL_TIER<N>` variable with one of these values:
+
+| Tier value | Tier        |
+| ---------- | ----------- |
+| `S`        | Small       |
+| `M`        | Medium      |
+| `L`        | Large       |
+| `XL`       | Extra Large |
+
+Use the value that best matches your model's actual capability. After you update the secret and Chat Agent restarts, it honors the tier you set instead of defaulting to Small.
+
+### Skills available at each tier
+
+A skill is available when the selected model's tier is at or above the skill's minimum tier. Higher tiers add capabilities without removing the existing ones.
+
+| Skill / capability                                                                                           | Minimum tier |
+| ------------------------------------------------------------------------------------------------------------ | ------------ |
+| HM documentation Q\&A (concepts, architecture, how-to, with citations)                                       | Small        |
+| Browse and manage estate, projects, organization users, project users, organization roles, and project roles | Medium       |
+| Project and organization activity feeds                                                                      | Medium       |
+| Iceberg and Lakehouse catalog inventory (list and inspect, read-only)                                        | Medium       |
+| Kubernetes workload observability — Grafana data sources, Prometheus queries, Loki queries                   | Medium       |
+| Cluster realtime and historical metrics, charts, and available metric metadata                               | Medium       |
+| Active alerts (per cluster, per project), aggregated health scores                                           | Medium       |
+| Configuration, index, statistics, and security recommendations                                               | Medium       |
+| Data Migration Service status — sources, destinations, mappings, errors, assessments                         | Medium       |
+| Oracle-to-Postgres SQL translation                                                                           | Medium       |
+| Resource-usage analytics (compute, memory, and storage consumption)                                          | Medium       |
+| Postgres Cluster lifecycle management                                                                        | Medium       |
+| AI Factory inventory — models, inference services, knowledge bases, pipelines, and flows                     | Large        |
+| Image library and deployable Postgres versions per location                                                  | Large        |
+| Read-only database, schema, and cluster-configuration inspection                                             | Large        |
+| Cluster health reports — list, fetch, analyze, compare                                                       | Large        |
+| Postgres Cluster lifecycle management with structured follow-up questions                                    | Large        |
+| Schema design recommendations driven by top running queries                                                  | Extra Large  |
+
+A Small model offers only HM documentation Q\&A. Postgres Cluster lifecycle management starts at the Medium tier, with structured follow-up questions added at Large and above. Cluster health reports need a Large model, and schema design recommendations need an Extra Large model. For a full breakdown of what each tier supports, see [What the Chat Agent can do](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/capabilities/).
+
+## Disabling Chat Agent for an organization
+
+If the `chatbot` scenario is installed but no model is configured, the sparkle icon is shown but disabled. A tooltip tells users that the administrator needs to configure an available model.
+
+To remove the sparkle icon entirely, leave `chatbot` out of `spec.scenarios` at install time. See [HM installation scenarios](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/#choosing-an-installation-scenario).
+
+## Next steps
+
+- [What the Chat Agent can do](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/capabilities/) — The capability catalog users see, organized by area.
+- [Security and data handling](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/security_and_data/) — The authorization model, audit, and data treatment.
+- [Troubleshooting](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/chat_agent/troubleshooting/) — Common configuration issues and how to resolve them.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

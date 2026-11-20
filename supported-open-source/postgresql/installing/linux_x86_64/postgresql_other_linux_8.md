@@ -1,0 +1,63 @@
+---
+title: Installing PostgreSQL on AlmaLinux 8 or Rocky Linux 8 x86_64
+product: PostgreSQL
+url: https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/linux_x86_64/postgresql_other_linux_8/
+lastModified: 2026-10-15T09:52:53+05:30
+---
+
+# Installing PostgreSQL on AlmaLinux 8 or Rocky Linux 8 x86\_64
+
+## Prerequisites
+
+Before you begin the installation process:
+
+- Set up the EDB repository.
+
+  > **Note**
+  >
+  > Rather than use the EDB repository, you can obtain PostgreSQL installers and installation packages from the [PostgreSQL community downloads page](https://www.postgresql.org/download/).
+
+  Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+  To determine if your repository exists, enter:
+
+  `dnf repolist | grep enterprisedb`
+
+  If no output is generated, the repository is installed.
+
+  To set up the EDB repository:
+
+  1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+
+  2. Select the button that provides access to the EDB repository.
+
+  3. Select the platform and software that you want to download.
+
+  4. Follow the instructions for setting up the EDB repository.
+
+- Install the EPEL repository:
+
+  ```shell
+  sudo dnf -y install epel-release
+  ```
+
+- Enable additional repositories to resolve dependencies:
+
+  ```shell
+  sudo dnf config-manager --set-enabled powertools
+  ```
+
+- Disable the built-in PostgreSQL module:
+  ```shell
+  sudo dnf -qy module disable postgresql
+  ```
+
+## Install the package
+
+```shell
+sudo dnf -y install postgresql<xx>-server postgresql<xx>-contrib
+```
+
+Where `<xx>` is the version of PostgreSQL you are installing. For example, if you are installing version 18, the package name would be `postgresql18-server postgresql18-contrib`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

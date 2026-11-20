@@ -1,0 +1,303 @@
+---
+title: Preparing your environment
+description: "Step through preparing your environment for Hybrid Manager installation, including: syncing images to your local registry, configuring secrets, setting up any advanced features, and finalizing your HM configuration."
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/environment_prep/
+lastModified: 2026-10-16T14:45:20+02:00
+---
+
+# Preparing your environment
+
+## Overview
+
+> **Role focus:** Site reliability engineer (SRE) / Infrastructure Engineer
+
+### Prerequisites
+
+- [Phase 1: Planning your architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/planning_arch/) (Completed)
+- [Phase 2: Gathering your system requirements](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/sys_reqs/) (Completed)
+- [Phase 3: Deploying your Kubernetes cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/k8s_install/) (Completed & Running)
+
+### Outcomes
+
+- _A Kubernetes cluster configured with necessary secrets (TLS, Auth, Storage, other necessary secrets)_
+
+- _Any chosen advanced features configured (IDP, multi-location, KMS for TDE)_
+
+- _A finalized and validated configuration ready for Hybrid Manager (HM) installation—a `HybridControlPlane` Custom Resource manifest_
+
+> **Note**
+>
+> **EDB Support Context:** Final preparation for Hybrid Manager is primarily the **customer's responsibility** (except for [Sovereign Systems](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/system/)), as is the cluster's lifecycle operation.
+> **Professional Services** can be engaged via a Statement of Work (SoW), and **Support** can offer assistance through knowledge base articles.
+
+**Next phase:** Phase 5: [Install Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/installing/install_hm/)
+
+### Phase 4 guide
+
+Now that your Kubernetes cluster is running, you must prepare it for the HM platform.
+
+This involves:
+
+1. establishing administrative access through a remote management workstation.
+2. staging required artifacts and secrets into the cluster,
+3. translating your architectural decisions into the final configuration file.
+
+## Creating secrets
+
+### Create image pull secret
+
+Use [`edbctl`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI, to create the `ImagePullSecret`. Doing this gives your Kubernetes cluster access to the EDB registry to pull images required for the installation.
+
+```shell
+edbctl image-pull-secret create
+```
+
+For more CLI options, see [edbctl image-pull-secret](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_image_pull_secret/).
+
+### Create component secrets
+
+Use `edbctl` to create the secrets required by the components in your selected [installation scenarios](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/planning_arch/#choosing-an-installation-scenario). Pass the same scenarios you listed in `spec.scenarios` using `--scenario`, and always include `core`. If you omit `--scenario`, `edbctl` creates secrets for all scenarios.
+
+```shell
+edbctl hybrid-manager create-install-secrets --version <version> --scenario <scenario1> --scenario <scenario2>
+```
+
+Only the `core`, `ai`, `analytics`, and `migration` scenarios have install secrets. `edbctl` doesn't add dependency scenarios, and you don't need to pass the scenarios with no install secrets, such as `dbaas` and `marketplace`.
+
+`edbctl` supports scenarios without install secrets for these versions: `dbaas` in `edbctl` version 1.7.0 and `marketplace` in 1.9.0. Earlier versions fail on them. From 1.10.0, `edbctl` skips any scenario without install secrets and prints a warning.
+
+To review what a version requires before creating anything, run [`list-install-secrets`](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_hybrid_manager/#edbctl-hybrid-manager-list-install-secrets) with the same `--version`.
+
+For more CLI options, see [edbctl hybrid-manager](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_hybrid_manager/). To customize your component's secrets, see [Customizing secrets](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/customizing_secrets/).
+
+### Create object storage secret
+
+To implement the [object storage requirement](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/sys_reqs/#7-object-storage), you must create the `edb-object-storage` Kubernetes secret in the `default` namespace before installation. For provider-specific configuration and a full parameter reference, see [Configuring object storage](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/object_storage/).
+
+## Implementing TLS
+
+You must implement the TLS strategy chosen during the [Gathering your system requirements](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/sys_reqs/) phase.
+Some TLS strategoes require secrets to be created.
+
+[**SOP: Implementing TLS certificates**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/cert-man/) describes the implementation options.
+
+## Configuring advanced features
+
+### Configuring multi-location architecture
+
+Deploying HM across multiple locations (multi-DC) requires significant preparation to ensure the primary and secondary clusters can communicate securely.
+
+You must establish trust domains, sync storage secrets, and configure the HM-internal beacon agent to register the secondary location.
+
+**Preparation checklist:**
+
+1. **Network:** Ensure connectivity on ports `8444` (SPIRE) and `9445` (Beacon) between clusters.
+2. **Storage:** Synchronize the `edb-object-storage` secret across all clusters.
+3. **Identity:** Configure SPIRE federation to allow cross-cluster trust.
+4. **Configuration:** Define unique `beacon_location_id` values and trust domains in your HM configuration.
+
+- [**SOP: Configuring multiple data centers for Hybrid Manager**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/multi_dc/)
+  - _Guidance: Detailed steps for setting up SPIRE federation and cross-DC wiring._
+
+### Implementing KMS for TDE
+
+If you require encryption at rest for your databases (TDE), you should enable the Key Management Service (KMS) provider and create your keys now.
+
+- [**SOP: Adding KMS support**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/kms_for_tde/adding_kms_support/)
+
+Depending on the KMS you are using, refer to the guides below to create the corresponding key.
+
+- [HashiCorp Vault](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/kms_for_tde/hashicorp/)
+- [AWS Key Management Service (KMS)](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/kms_for_tde/aws_kms/)
+- [Google Cloud Key Management Service (Cloud KMS)](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/kms_for_tde/google_cloud_kms/)
+
+## Completing environmental preparation
+
+### Name your backup folder
+
+1. Create a new folder to store the HM backups for disaster recovery.
+2. Assign a unique folder name (e.g., using a UUID generator) and provide it in your HM configuration under `spec.globalParameters.internal_backup_folder`.
+3. The string must be 12 characters comprised of letters and numbers i.e. `internal_backup_folder: "a7462dbc7106"`.
+
+### Add required component configuration
+
+The following component-specific parameters should be added to your HM configuration under `spec.componentsParameters`:
+
+```yaml
+spec:
+  componentsParameters:
+    edb-migration-portal:
+      enable_pdb: "false"
+    upm-api-pnxt-metric:
+      log_level: "info"
+      tsdb_host: "thanos-query.monitoring.svc.cluster.local"
+      tsdb_port: "9090"
+    upm-api-pnxt-pd:
+      log_level: "info"
+    upm-beaco-ff-base:
+      aes_key_rotation_interval: 2160h
+      usage_generator_interval: 24h
+    upm-beaco-usages:
+      usage_generator_interval: "24h"
+    upm-beacon:
+      beacon_location_id: <your-location-id>
+      server_host: <your-beacon-server-host>
+    upm-istio-gateway:
+      enable_server_session: "true"
+      openshift_console_domain_name: <your-openshift-console-domain>
+    upm-prometheus:
+      memory: "4Gi"
+    upm-thanos:
+      memcached_cpu: "500m"
+      memcached_memory: "2Gi"
+      query_frontend_cpu: "200m"
+      query_frontend_memory: "120Mi"
+    upm-trust-manager:
+      cert_manager_namespace: "cert-manager"
+```
+
+### Configure the beacon agent operand set
+
+The following `operandSetVersions` parameter should be added to your HM configuration under `spec.beaconAgent.provisioning`:
+
+```yaml
+spec:
+  beaconAgent:
+    provisioning:
+      operandSetVersions:
+        - <operand-set-regex>
+```
+
+Replace `<operand-set-regex>` with the value matching your target HM version:
+
+| HM version                                         | Operand-set regex |
+| -------------------------------------------------- | ----------------- |
+| HM 1.3 LTS                                         | `1\.0\.[0-9]+`    |
+| HM 1.4 LTS, and IRs before 2026.7 (2025.11-2026.6) | `1\.1\.[0-9]+`    |
+| IRs from 2026.7 onward                             | `1\.2\.[0-9]+`    |
+
+For example, for HM 1.4 LTS:
+
+```yaml
+spec:
+  beaconAgent:
+    provisioning:
+      operandSetVersions:
+        - 1\.1\.[0-9]+
+```
+
+> **Note**
+>
+> This value changes with every new HM release. Confirm the current operand-set regex for your target version in its release notes before installing.
+>
+> If you're upgrading an existing HM installation rather than performing a fresh install, you may need to whitelist both the previous and new operand-set regexes at once during the migration window. See [Upgrading Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/upgrading_hm/) for version-specific upgrade guidance.
+
+---
+
+## Finalizing the cluster configuration
+
+You now construct or update the final configuration for your HM installation.
+
+This configuration references your **system requirements** from Phase 2 and the environment settings and feature configurations you prepared here in Phase 4.
+
+### Create the HybridControlPlane Custom Resource
+
+Configure your Hybrid Manager installation as a `HybridControlPlane` Custom Resource, used with the `edb-hcp-operator` chart. It provides version management and Kubernetes-native resource handling.
+
+- [**SOP: Install with the Operator**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/installing/install_hm/#example-hybridcontrolplane-manifest) guide for a complete HybridControlPlane manifest template and field mapping reference.
+
+## Validating the configuration file, secrets, LoadBalancer, and cluster readiness
+
+Before proceeding to deployment, validate both your configuration file and the runtime environment.
+
+### Validate configuration syntax
+
+Validate your configuration file before proceeding.
+
+Use `kubectl` dry-run to validate your `HybridControlPlane` manifest:
+
+```bash
+kubectl apply --dry-run=client -f hybridmanager.yaml
+```
+
+If this command completes without error, your manifest syntax is valid.
+
+> **Note**
+>
+> This dry-run resolves the `HybridControlPlane` kind through the cluster's API discovery, so it requires the operator's Custom Resource Definitions (CRDs) to already be installed. The operator installs those CRDs in [Phase 5](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/installing/install_hm/); until then the command fails with `error: unable to recognize ... no matches for kind "HybridControlPlane"`. Run this validation **after** installing the operator (Phase 5) and before applying the manifest for real. To check only YAML syntax at this phase, use a YAML linter such as `yq . hybridmanager.yaml`.
+
+**Bootstrap method:** Ensure your `values.yaml` can be processed by Helm.
+
+First, run `add` and `update` the Helm repository:
+
+```bash
+helm repo add enterprisedb-edbpgai "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
+helm repo update
+```
+
+Then validate your `values.yaml` against the Helm chart:
+
+```bash
+helm template edbpgai-bootstrap enterprisedb-edbpgai/edbpgai-bootstrap \
+  --values values.yaml \
+  --version <target-helm-version> > /dev/null
+```
+
+If this command completes without error, your YAML syntax is valid.
+
+### Validate secrets
+
+Ensure the secrets referenced in your configuration exist in the cluster. To list the image pull secrets:
+
+```shell
+edbctl image-pull-secret list
+```
+
+To list the component secrets that are present, query the labels `create-install-secrets` applies to everything it creates:
+
+```shell
+kubectl get secret -A -l app.kubernetes.io/managed-by=edbctl
+```
+
+Add `-l app.kubernetes.io/component=<scenario>` to narrow the results to one scenario. Secrets you created by hand rather than through `edbctl` do not carry these labels.
+
+To check that against what your target version needs, print the requirements and compare:
+
+```shell
+edbctl hybrid-manager list-install-secrets --version <version>
+```
+
+> **Note**
+>
+> `list-install-secrets` reads a catalog compiled into `edbctl`. It does not query the cluster, so its output is identical whether or not the secrets exist — it tells you what to prepare, not what is present.
+>
+> Its rows are also labels for individual values, not names of Kubernetes secrets, and the mapping is not one to one: a single row can be written into several secrets. Comparing its row count against `kubectl get secrets` is not a meaningful check. See [Understanding the output](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_hybrid_manager/#understanding-the-output) for how to read each column.
+
+### Validate LoadBalancer
+
+Verify that your cluster can provision an external load balancer service (required for ingress).
+
+```bash
+kubectl create service loadbalancer test-lb --tcp=80:80
+kubectl get svc test-lb
+```
+
+- **Success:** If the load balancer controller is functioning, the test-lb service will be assigned an external IP or hostname.
+- **Cleanup:** `kubectl delete svc test-lb`
+
+### Collect diagnostics if you have problems
+
+If you run into problems during or after installation, you can use the EDB Diagnostic plugin to collect diagnostic data for troubleshooting or to send to EDB Support.
+
+- [Collecting diagnostic data for EDB Support](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/collect_diagnostics/)
+- Knowledge base article (EDB account required): [**SOP: Use kubectl-edb-diagnostic**](https://knowledge.enterprisedb.com/hc/en-us/articles/20574035583260-How-to-use-kubectl-edb-diagnostic-to-collect-Hybrid-Manager-cluster-diagnostics)
+
+## Next phase
+
+Now that your management workstation is ready, images are synced, secrets are created, advanced features are configured, your HM configuration is finalized, and your configuration file is validated, you are ready to install HM.
+
+**[Proceed to Phase 5: Installing Hybrid Manager →](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/installing/install_hm/)**
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

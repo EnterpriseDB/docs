@@ -1,0 +1,102 @@
+---
+title: Connecting to a SQL database over JDBC
+description: Configure PXF to read and write data in an external SQL database over JDBC, and query it from WarehousePG.
+product: PXF for WarehousePG
+version: "6"
+url: https://www.enterprisedb.com/docs/pxf/latest/connecting/jdbc/
+lastModified: 2026-08-12T09:50:14Z
+---
+
+# Connecting to a SQL database over JDBC
+
+Configure a server for your SQL database, then read and write its data through external tables over JDBC.
+
+## Configuring the server
+
+Create a server that connects to an external SQL database over JDBC.
+
+1. Create the server directory and copy the `jdbc-site.xml` template into it:
+
+   ```bash
+   mkdir -p $PXF_BASE/servers/jdbcsrvcfg
+   cp $PXF_HOME/templates/jdbc-site.xml $PXF_BASE/servers/jdbcsrvcfg
+   ```
+
+2. Edit `jdbc-site.xml` with your connection details. For example, to connect to a WHPG database named `gpadmin` using the bundled PostgreSQL JDBC driver:
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <configuration>
+       <property>
+           <name>jdbc.driver</name>
+           <value>org.postgresql.Driver</value>
+       </property>
+       <property>
+           <name>jdbc.url</name>
+           <value>jdbc:postgresql://<host>:<port>/gpadmin</value>
+       </property>
+       <property>
+           <name>jdbc.user</name>
+           <value><username></value>
+       </property>
+       <property>
+           <name>jdbc.password</name>
+           <value><password></value>
+       </property>
+   </configuration>
+   ```
+
+   PXF bundles the PostgreSQL and Hive JDBC drivers. For any other database, copy the vendor's JDBC driver JAR to `$PXF_BASE/lib` before applying the change.
+
+   `jdbc-site.xml` also has commented-out properties for connection pooling, batch and fetch sizes, session and connection-level settings, and user impersonation. Uncomment and set only the ones you need. See [Configuration templates](https://www.enterprisedb.com/docs/pxf/latest/reference/configuration-templates/#jdbc-sitexml) for the full list.
+
+3. Sync the change to every segment host, then restart PXF to apply it:
+
+   ```bash
+   pxf cluster sync
+   pxf cluster restart
+   ```
+
+## Reading data
+
+Read data from the external database by creating a readable external table with the `jdbc` profile. For example, to read the `test` table from the `gpadmin` database configured above:
+
+```sql
+CREATE EXTERNAL TABLE jdbc_read_example (id int)
+    LOCATION ('pxf://public.test?PROFILE=jdbc&SERVER=jdbcsrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_import');
+
+SELECT * FROM jdbc_read_example;
+```
+
+The path in `LOCATION` is `<schema>.<table>`. This same pattern works against any JDBC-compliant database, not only WHPG, once you point `jdbc.url` and `jdbc.driver` at that database and provide its driver JAR.
+
+The data still lives in the source database. You can load it into a local table with `CREATE TABLE AS`:
+
+```sql
+CREATE TABLE test_local AS SELECT * FROM jdbc_read_example;
+```
+
+## Writing data
+
+Create a writable external table with the same `jdbc` profile to insert data into the external database:
+
+```sql
+CREATE WRITABLE EXTERNAL TABLE jdbc_write_example (id int)
+    LOCATION ('pxf://public.test?PROFILE=jdbc&SERVER=jdbcsrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export');
+
+INSERT INTO jdbc_write_example SELECT * FROM some_local_table;
+```
+
+To query the data, create a separate readable external table at the same location:
+
+```sql
+CREATE EXTERNAL TABLE pxf_read_back (id int)
+    LOCATION ('pxf://public.test?PROFILE=jdbc&SERVER=jdbcsrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_import');
+
+SELECT * FROM pxf_read_back;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

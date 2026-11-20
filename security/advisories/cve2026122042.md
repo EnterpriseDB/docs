@@ -1,0 +1,80 @@
+---
+title: CVE-2026-122042 - WarehousePG gpfdist out-of-bounds write from unchecked segment headers
+product: EDB Security
+url: https://www.enterprisedb.com/docs/security/advisories/cve2026122042/
+lastModified: 2026-11-18T11:07:48Z
+---
+
+# CVE-2026-122042 - WarehousePG gpfdist out-of-bounds write from unchecked segment headers
+
+First Published: 2026/11/18
+
+Last Updated: 2026/11/18
+
+## Summary
+
+WarehousePG (WHPG) 6.27.1 through 6.27.7 and 7.2.1 through 7.6.1 are affected by an out-of-bounds write vulnerability (CWE-787) in gpfdist, the file server used to load and unload external tables. When gpfdist attaches a request to a session, it sizes two internal arrays from the client-supplied X-GP-SEGMENT-COUNT header and writes to them at the index given by the X-GP-SEGMENT-ID header, without checking that the index is non-negative and smaller than the count (CWE-129). gpfdist does not authenticate callers unless gpfdists is used with client certificate verification, so an attacker who can reach the gpfdist port can crash it with a single HTTP request, failing every external table load or unload that uses that gpfdist instance. gpfdist is normally reachable only from the cluster's internal network.
+
+## Vulnerability details
+
+CVE-ID: [CVE-2026-122042](https://nvd.nist.gov/vuln/detail/CVE-2026-122042)
+
+CVSS Base Score: 7.1 High
+
+CVSS Temporal Score: Undefined
+
+CVSS Environmental Score: Undefined
+
+CVSS Vector: CVSS:4.0/AV:A/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N
+
+## Affected products and versions
+
+- Affected Product: WarehousePG
+- Affected Versions: WarehousePG 6.27.1 through 6.27.7, and WarehousePG 7.2.1 through 7.6.1
+
+## Remediation/fixes
+
+Impacted users must upgrade to a fixed version of WarehousePG and restart any running gpfdist processes.
+
+| Product     | VRMF                  | Remediation/First Fix                 |
+| ----------- | --------------------- | ------------------------------------- |
+| WarehousePG | 6.27.1 through 6.27.7 | Update to WarehousePG 6.27.8 or later |
+| WarehousePG | 7.2.1 through 7.6.1   | Update to WarehousePG 7.6.2 or later  |
+
+> **Warning: Immediate mitigation for existing deployments**
+>
+> Until you can upgrade, limit who can reach gpfdist:
+>
+> - Allow connections to the gpfdist port (8080 unless set with `-p`) only from the cluster's segment hosts, using a host or network firewall.
+> - Where possible, use gpfdists (start gpfdist with `--ssl`). gpfdists rejects a client without a valid cluster certificate before the vulnerable code runs. In WarehousePG 6 it always verifies client certificates. In WarehousePG 7 it does so by default; do not set `--ssl_verify_peer off`.
+> - Run gpfdist only while loads or unloads are in progress.
+>
+> These measures reduce exposure but do not fix the vulnerability; upgrade as soon as possible.
+
+## References
+
+- [CVSS Calculator v4.0](https://www.first.org/cvss/calculator/4.0)
+- [CWE-787 Out-of-bounds Write](https://cwe.mitre.org/data/definitions/787.html)
+- [CWE-129 Improper Validation of Array Index](https://cwe.mitre.org/data/definitions/129.html)
+- [warehouse-pg/warehouse-pg#370](https://github.com/warehouse-pg/warehouse-pg/pull/370) (WarehousePG 7)
+- [warehouse-pg/warehouse-pg#371](https://github.com/warehouse-pg/warehouse-pg/pull/371) (WarehousePG 6)
+
+## Related information
+
+- [EnterpriseDB](https://www.enterprisedb.com/)
+- [WarehousePG](https://github.com/warehouse-pg/warehouse-pg)
+- [EDB Blogs link](https://enterprisedb.com/blog/)
+
+## Acknowledgement
+
+Source: Reported by kta1kri through the EDB Vulnerability Disclosure Program.
+
+## Change history
+
+- 2026/11/18: Original Copy Published
+
+## Disclaimer
+
+This document is provided on an "as is" basis and does not imply any kind of guarantee or warranty, including the warranties of merchantability or fitness for a particular use. Your use of the information on the document is at your own risk. EDB reserves the right to change or update this document at any time. Customers are therefore recommended to always view the latest version of this document.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

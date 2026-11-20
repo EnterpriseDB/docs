@@ -1,0 +1,36 @@
+---
+title: EDB Postgres Distributed 4.4.2 release notes
+product: EDB Postgres Distributed (PGD)
+version: 4.4.2
+url: https://www.enterprisedb.com/docs/pgd/4.4/rel_notes/pgd_4.4.2_rel_notes/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# EDB Postgres Distributed 4.4.2 release notes
+
+Released: 19 November 2026
+
+PGD 4.4.2 is a minor release of PGD 4 for customers on an Extended Life Support contract. The release includes a number of bug fixes.
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Component</th><th>Version</th><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>Fixed a walsender crash during a configuration reload.</summary><p>The walsender process crashed with a segmentation fault when it reloaded its configuration from <code>pgl_wait_for_standby_confirmation()</code>. PGD now overrides the pglogical GUCs only when it runs in a pglogical worker.</p>
+</details></td><td>42100</td></tr>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>Fixed <code>bdr.replication_set_remove_table()</code> crashing when the node isn't part of a node group.</summary><p>The function dereferenced the node's node group without checking for <code>NULL</code>, crashing the backend when called before the node had joined a node group, such as during Autopartition's early setup. It now reports a clear error instead of crashing.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>Fixed a walsender crash loop caused by an interrupted partition detach.</summary><p>Logical replication entered an infinite crash loop if a <code>DETACH PARTITION CONCURRENTLY</code> command was interrupted. The walsender failed with the error <code>relation has no parent because it's being detached</code> when it decoded WAL for a partition with <code>inhdetachpending = true</code>.</p>
+</details></td><td>53628, 59291</td></tr>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>PGD reads <code>node_uuid</code> values in <code>bdr.node</code> correctly on clusters upgraded from PGD 4.3.</summary><p>On clusters created with PGD 4.3 and upgraded to PGD 4.4, PGD returns the correct value for the <code>node_uuid</code> column of <code>bdr.node</code>. An upgrade to PGD 6 relies on that value to name its replication slots. Upgrade to PGD 4.4.2 before upgrading to PGD 6.</p>
+</details></td><td>64012</td></tr>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>Fixed <code>bdr.alter_sequence_set_kind</code> ignoring start values for <code>galloc</code> sequences.</summary><p>Changing a sequence kind to <code>galloc</code> silently discarded the provided <code>start_value</code>. Also fixed a bug where a <code>startval</code> of <code>0</code> was lost during WAL replication.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>Fixed stale <code>galloc</code> sequence allocation entries after <code>DROP</code> and <code>CREATE</code>.</summary><p><code>sequence_alloc</code> entries persisted after a <code>galloc</code> sequence was dropped and recreated. The fix ensures the cleanup propagates across the cluster, including witness nodes.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>Fixed a segmentation fault during <code>COPY</code> commands when <code>pgaudit.role</code> is set to a non-default value.</summary><p>Postgres crashed with a segmentation fault when running a <code>COPY</code> command while the <code>pgaudit.role</code> configuration was set to a non-default value.</p>
+</details></td><td>58060</td></tr>
+<tr><td>BDR</td><td>4.4.2</td><td><details><summary>Fixed a potential crash in the local node lookup.</summary><p>An internal lookup of the local node could crash the backend instead of returning cleanly when the database had the BDR extension installed but no local node, for example before <a href="https://www.enterprisedb.com/docs/pgd/4.4/bdr/nodes/#bdrcreate_node"><code>bdr.create_node()</code></a> or after the node was parted. No known user operation reached this code path. The lookup is now safe for such callers.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,363 @@
+---
+title: Troubleshooting
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/troubleshooting/
+lastModified: 2026-09-29T20:47:12+05:30
+---
+
+# Troubleshooting
+
+<div id="Troubleshooting" class="registered_link"></div>
+
+## Known installation and configuration issues
+
+### Conflict with existing mod\_wsgi
+
+If you have a conflicting version of mod\_wsgi on your system, the following error appears while installing the PEM server on RHEL, Rocky, Alma or Oracle Linux:
+
+```text
+[root@etpgxlt firstuser]# dnf install edb-pem
+Updating Subscription Management repositories.
+Last metadata expiration check: 0:01:33 ago on Wed 30 Mar 2022 01:28:16 AM EDT.
+Error: 
+ Problem: problem with installed package python3-mod_wsgi-4.6.4-4.el8.s390x
+  - package python39-mod_wsgi-4.7.1-4.module+el8.4.0+9822+20bf1249.s390x conflicts with python3-mod_wsgi provided by python3-mod_wsgi-4.6.4-4.el8.s390x
+  - package python39-mod_wsgi-4.7.1-4.module+el8.4.0+9822+20bf1249.s390x conflicts with python3-mod_wsgi provided by python3-mod_wsgi-4.6.4-3.el8.s390x
+  - package edb-pem-server-8.4.0-7.rhel8.s390x requires python39-mod_wsgi >= 4.7, but none of the providers can be installed
+  - package edb-pem-8.4.0-7.rhel8.s390x requires edb-pem-server = 8.4.0-7.rhel8, but none of the providers can be installed
+  - cannot install the best candidate for the job
+(try to add '--allowerasing' to command line to replace conflicting packages or '--skip-broken' to skip uninstallable packages or '--nobest' to use not only best candidate packages)
+[root@etpgxlt firstuser]# 
+```
+
+To resolve the issue, remove the `python3-mod_wsgi` package and try installing PEM again.
+
+```shell
+dnf remove python3-mod_wsgi
+```
+
+### Errors from JIT
+
+If JIT is enabled on the PEM backend Postgres instances, you may see this error in the worker.log after configuring the PEM server on RHEL, Rocky, Alma or Oracle Linux.
+
+```text
+Tue Nov 28 03:02:19 2023 WARNING: Error clearing zombies: ERROR:  failed to JIT module: Added modules have incompatible data layouts: E-m:e-i1:8:16-i8:8:16-i64:64-f128:64-a:8:16-n32:64 (module) vs E-m:e-i1:8:16-i8:8:16-i64:64-f128:64-v128:64-a:8:16-n32:64 (jit)
+CONTEXT:  SQL statement "WITH running_agent_job AS (
+		SELECT j.jobid, j.agent_id
+		FROM pem.job j LEFT JOIN pem.joblog jl ON (j.jobid = jl.jlgjobid)
+		WHERE jl.jlgstatus = 'r' AND agent_id = $1 AND j.jobarid != agent_runtime_id
+		ORDER BY j.jobid, jl.jlgjobid
+		FOR UPDATE SKIP LOCKED
+	), joblog_status_update AS (
+		UPDATE pem.joblog jl SET jlgstatus='d'
+		FROM running_agent_job r
+		WHERE r.jobid = jl.jlgjobid AND jl.jlgstatus='r'
+		RETURNING r.agent_id, jl.jlgjobid, jl.jlgid
+	), jobsteplog_status_update AS (
+		UPDATE pem.jobsteplog js SET jslstatus='d'
+		FROM joblog_status_update jl
+		WHERE js.jsljlgid = jl.jlgid AND js.jslstatus='r'
+		RETURNING jl.agent_id, jl.jlgjobid AS job_id
+	)
+	UPDATE pem.job j SET jobprocessid=NULL, jobnextrun=NULL, jobarid=NULL
+	FROM (SELECT DISTINCT agent_id, job_id FROM jobsteplog_status_update) js
+	WHERE js.job_id = j.jobid"
+PL/pgSQL function pem.clear_job_zombies(integer) line 8 at SQL statement
+```
+
+To resolve the error, set the `jit` parameter to `off` in `postgresql.conf` file of the backend database server:
+
+```ini
+jit=off
+```
+
+Restart the backend database server.
+
+### Crash due to bug in RHEL Python 3.9 standard library
+
+If your RHEL 9, Rocky 9, Alma 9, or Oracle Linux 9 server is running an impacted Python 3.9 version, an error appears during PEM configuration that ends with:
+
+```text
+TypeError: realpath() got an unexpected keyword argument 'strict'
+```
+
+You can resolve the error by updating to the latest Python 3.9 packages.
+We have verified the issue isn't present in the latest release of
+Python 3.9.21 as of October 2025. However, it was present in some earlier
+releases of 3.9.21 as well as earlier Python versions.
+
+```shell
+dnf upgrade python3
+```
+
+Retry PEM configuration.
+
+### Blocking TRACK/TRACE Methods in Apache HTTPD
+
+> **Note: Version and configuration compatibility**
+>
+> This configuration is pre-configured by default in the following versions of PEM:
+>
+> - PEM 9 — Version 9.8.1 and later
+> - PEM 10 — Version 10.3.0 and later
+>
+> In versions prior to those listed above, the configuration string exists within the file but is positioned incorrectly. It must be manually moved into the specific `VirtualHost` block governing the PEM HTTPS endpoint to take effect.
+
+To enhance security, disable the TRACK and TRACE HTTP methods in Apache HTTPD by adding the following configuration to the SSL VirtualHost section:
+
+```shell
+<VirtualHost _default_:8443>
+    # Rewrite rule for disable the request
+    <IfModule mod_rewrite.c>
+        RewriteEngine on
+        RewriteCond %{REQUEST_METHOD} ^(TRACE|TRACK|OPTIONS)
+        RewriteRule .* - [F]
+    </IfModule>
+</VirtualHost>
+```
+
+- For Apache on Ubuntu, Debian, or SLES15, update the `/etc/apache2/sites-enabled/edb-ssl-pem.conf` file.
+
+- For HTTPD on RHEL, update the `/etc/httpd/conf.d/edb-ssl-pem.conf` file.
+
+## Reconfiguring the PEM server
+
+In some situations, you might need to uninstall the PEM server, reinstall it, and then configure the server again. To do so:
+
+1. Remove the PEM server configuration and uninstall:
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh -un
+   ```
+
+2. Remove the PEM packages:
+
+   ```shell
+   yum erase edb-pem-server
+   ```
+
+3. Drop the `pem` database:
+
+   ```sql
+   DROP DATABASE pem
+   ```
+
+4. Move the certificates from `/root/.pem/` to another location:
+
+   ```shell
+   mv /root/.pem/* <new_location>
+   ```
+
+5. Move the `agent.cfg` file from `/usr/edb/pem/agent/etc/agent.cfg` to another location:
+
+   ```shell
+   mv /usr/edb/pem/agent/etc/agent.cfg <new_location>
+   ```
+
+6. Move the configuration data directory to another location:
+
+   ```shell
+   mv /var/lib/pemhome/.pem <new_location>
+   ```
+
+7. Then, configure the PEM server again:
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh
+   ```
+
+## PEM web application not loading
+
+If the PEM web application isn't loading, [check the web services are running](https://www.enterprisedb.com/docs/pem/latest/managing_pem_server/#controlling-the-web-server-on-linux).
+If they are running, check the web server and application error logs.
+
+If you are using NGINX as the web server, the web server logs are located at `/var/log/nginx/error.log` and the application logs are at `/var/log/edb-uwsgi/pem.log`
+
+If you are using Apache HTTPD The log is located at `/var/log/httpd/error_log`.
+This file contains both web server and application error messages.
+
+If you are using Apache HTTPD as the web server, and see the following message in the log:
+
+```text
+Truncated or oversized response headers received from daemon process 'edbpem': /usr/edb/pem/web/pem.wsgi
+```
+
+Add the following statement at the bottom of the Apache `httpd.conf` file located in the `/etc/httpd/conf` folder:
+
+```shell
+WSGIApplicationGroup %{GLOBAL}
+```
+
+Restart the HTTPD server after adding the statement:
+
+```shell
+sudo systemctl restart httpd.service
+```
+
+If you see the following message in the log instead, indicating an undefined symbol error for `PQchangePassword`:
+
+```text
+File "/usr/edb/pem/web/venv/lib/python3.12/site-packages/psycopg/pq/__init__.py", line 108, in import_from_libpq
+    raise ImportError(f"""\
+ImportError: no pq wrapper available.
+Attempts made:
+- couldn't import psycopg 'c' implementation: /usr/edb/pem/web/venv/lib/python3.12/site-packages/psycopg_c/pq.cpython-312-x86_64-linux-gnu.so: undefined symbol: PQchangePassword
+```
+
+This affects PEM 10.5 and later. PEM's `psycopg_c` package is built against libpq 17 or later, which introduced the `PQchangePassword` function. If a PostgreSQL server package earlier than version 17 is also installed on the host (for example, `postgresql16-libs`), that package can incorrectly report that it satisfies a `libpq5 >= 17` requirement without actually providing it, leaving an older, incompatible `libpq5` library on the system.
+
+To resolve the issue, install a `libpq5` package version 17 or later, then restart the PEM web service:
+
+```shell
+# RHEL, Rocky, Alma, or Oracle Linux
+dnf install libpq5
+
+# SLES
+zypper install libpq5
+
+# Debian or Ubuntu
+apt install libpq5
+```
+
+```shell
+# If you're using Apache HTTPD
+sudo systemctl restart httpd.service
+
+# If you're using NGINX
+sudo systemctl restart edb-uwsgi.service
+```
+
+## Error connecting to PostgreSQL server
+
+When connecting to a PostgreSQL server, you might get one of these error messages. Review the message carefully. Each error message attempts to incorporate the information you need to resolve the problem.
+
+- **Connection to the server has been lost**: This error message indicates that the connection attempt took longer than the specified threshold. There might be a problem with the connection properties provided on the Server dialog box, network connectivity issues, or the server might not be running.
+
+- **Could not connect to Server: Connection refused**: There are two possible reasons for this error:
+
+  - The database server isn't running. Start the server.
+  - The server isn't configured to accept TCP/IP requests on the address shown.
+
+    For security reasons, a PostgreSQL server "out of the box" doesn't listen on TCP/IP ports. Instead, you must enable it to listen for TCP/IP requests. Add `tcpip = true` to the `postgresql.conf` file for Versions 7.3.x and 7.4.x. Add `listen_addresses='*'` for Version 8.0.x and above. These additions make the server accept connections on any IP interface.
+
+    For more information, refer to the PostgreSQL documentation about [runtime configuration](http://www.postgresql.org/docs/current/interactive/runtime-config.html).
+
+- **FATAL: no pg\_hba.conf entry**: If PEM displays this message when connecting, your server can be contacted correctly over the network, but it isn't configured to accept your connection. Your client wasn't detected as a legal user for the database.
+
+  To connect to a server, configure the `pg_hba.conf` file on the database server to accept connections from the host of the PEM client. Modify the `pg_hba.conf` file on the database server host, and add an entry in the form:
+
+  - `host template1 postgres 192.168.0.0/24 md5` for an IPV4 network
+  - `host template1 postgres ::ffff:192.168.0.0/120 md5` for an IPV6 network
+
+    For more information, see the PostgreSQL documentation about [client authentication](http://www.postgresql.org/docs/current/interactive/client-authentication.html).
+
+- **FATAL: password authentication failed**: The `password authentication failed for user` error message indicates there might be a problem with the password you entered. Retry the password to confirm you entered it correctly. If the error message returns, make sure that you have the correct password, that you are authorized to access the server, and that the access was correctly configured in the server's `postgresql.conf` configuration file.
+
+## PEM web server connectivity check
+
+Run this command to check whether your client can reach the PEM server and obtain a response:
+
+```shell
+curl https://<SERVER_ADDR>:8443/pem/misc/ping -k -i
+```
+
+```output title="Output"
+PING
+```
+
+Where `<SERVER_ADDR>` is the IP address of your PEM server. The output `PING` confirms the PEM web server is up and running.
+
+## SQL Error - column "ssl" of relation "server" does not exist
+
+An incompatibility between specific PEM agent and PEM server versions can cause server registration via pemworker to fail with a "missing column" SQL error.
+
+**Affected Scenarios:**
+
+- PEM agent 10.3 paired with any PEM server earlier than 10.3.
+
+- PEM agent 10.1.1 paired with PEM server 10.1.1 (Note — version 10.1.2 is unaffected).
+
+This issue is most frequent during staged upgrades where agents are updated before the central server.
+
+**Recommended Resolutions:**
+
+- Complete the upgrade — Ensure both the PEM server and agent are updated to matching versions (10.3 or later) before registering new servers.
+
+- Use the Web UI — Register the server through the PEM web interface instead of the command line.
+
+- Temporary downgrade — Revert the PEM agent to an older version to perform the registration, then proceed with the agent upgrade.
+
+## BART warning when a PEM 10.6 server pairs with an older agent
+
+PEM 10.6 removes BART (EDB Backup and Recovery Tool) support entirely — the database schema, the agent's BART code, and the related web UI. If an agent isn't yet upgraded to 10.6 while the server it monitors is, the agent's built-in BART check fails on restart with warnings like:
+
+```text
+WARNING:  [Query#7][DBConnection] Query failed (PGRES_FATAL_ERROR): ERROR:  relation "pem.bart_config" does not exist
+LINE 1: SELECT value FROM pem.bart_config bc, pem.bart b WHERE b.id ...
+
+WARNING: [BART][IsBARTInstalled]: [BART][IsBARTInstalled]: Failed to get bart bart_installation_path from pem.bart_config table : ERROR:  relation "pem.bart_config" does not exist
+LINE 1: SELECT value FROM pem.bart_config bc, pem.bart b WHERE b.id ...
+```
+
+**Cause**
+
+On every restart, the agent checks for BART as part of the capability information it reports to the server. An agent older than 10.6 still runs this check even though BART is no longer a product feature. On a 10.6 server, the `pem.bart_config` table this check queries has already been dropped, so the query fails and the agent logs the warning above once, at restart.
+
+**Affected scenarios**
+
+- A PEM server upgraded to 10.6, but a monitoring PEM agent still on 10.5 or earlier.
+
+**Resolution**
+
+No code change is planned for this warning — it's expected whenever an older agent connects to a 10.6 server, and it doesn't affect monitoring or job execution. Upgrade the affected agent to PEM 10.6 to clear it.
+
+## SSL Error - Incomplete sslutils upgrade
+
+If the sslutils system package is upgraded to version 1.4 but the corresponding database extension remains on an earlier version, agent registration will fail with the following OpenSSL error — `Error_setting_validity_before_time`.
+
+-**Resolution** — To synchronize the database extension with the system package, run the following command on the PEM backend database:
+
+```sql
+ALTER EXTENSION sslutils UPDATE TO '1.4';
+```
+
+## Nginx SSL\_read() failure errors
+
+If you see the following error in the Nginx error log, it indicates that a client closed the connection before the server could send a response. This is typically a client-side issue and not a problem with the PEM server itself.
+
+```text
+SSL_read() failed (SSL: error:0A000126:SSL routines::unexpected eof while reading) while keepalive
+```
+
+**Cause**
+
+This issue occurs when a client initiates a request to the PEM server but then closes the TLS connection without sending a `close_notify` alert. The Nginx error log captures this as an SSL read failure due to an unexpected end of file (EOF) while reading.
+
+It affects environments where:
+
+- The OpenSSL version is 1.1.1e or 3.0.x
+- The Nginx version is earlier than 1.21.2
+
+**Resolution**
+
+Upgrade Nginx to version 1.21.2 or later, which includes a fix for this issue. If you are using the Nginx package provided by your Linux distribution, check for updates that include this version.
+
+This example shows how to install a compatible Nginx version (1.24.0) on an EL9-based system and restart the service:
+
+```shell
+# Install newer Nginx and related packages
+dnf install -y --allowerasing \
+  https://pkgs.sysadmins.ws/el9/modular/x86_64/nginx/nginx-cp-1.24.0-1.el9.x86_64.rpm \
+  https://pkgs.sysadmins.ws/el9/modular/x86_64/nginx/nginx-cp-filesystem-1.24.0-1.el9.noarch.rpm \
+  https://pkgs.sysadmins.ws/el9/modular/x86_64/nginx/lua-resty-core-0.1.26-1.el9.noarch.rpm  \
+  https://pkgs.sysadmins.ws/el9/modular/x86_64/nginx/lua-resty-lrucache-0.13-1.el9.noarch.rpm \
+  https://pkgs.sysadmins.ws/el9/base/x86_64/luajit2-2.1.0-20220915.2.el9.0.1.x86_64.rpm
+
+# Restart Nginx to apply changes
+systemctl restart nginx
+```
+
+After upgrading and restarting Nginx, the `SSL_read()` failure errors should no longer occur when clients close connections prematurely.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

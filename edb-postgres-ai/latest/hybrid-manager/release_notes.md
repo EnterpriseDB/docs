@@ -1,0 +1,41 @@
+---
+title: Hybrid Manager Innovation Release Notes
+description: Release notes provides information on what is new in each release of Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/
+lastModified: 2026-11-02T16:15:32+01:00
+---
+
+# Hybrid Manager Innovation Release Notes
+
+> **Note: Release cadence update**
+>
+> HM now follows a dual release strategy: **LTS** and **Innovation Releases**. For details on this new model, see [Hybrid Manager dual release strategy](#hybrid-manager-dual-release-strategy).
+
+The EDB Hybrid Manager (HM) documentation describes the latest version of HM, including minor releases and patches. The release notes provide information on what was new in each release. For new functionality introduced in a minor or patch release, the content also indicates the release that introduced the feature.
+
+The HM operator is released independently of HM, with its own version numbers and release cadence. See the [operator release notes](https://www.enterprisedb.com/docs/hm-operator/latest/rel_notes/) for what changed in each operator release, and the [operator compatibility matrix](https://www.enterprisedb.com/docs/hm-operator/latest/compatibility_matrix/) for which operator version to run with your HM version.
+
+| Version                                                                                                                    | Release date |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| [2026.11.0](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.11.0_rel_notes/) | 12 Nov 2026  |
+| [2026.10.1](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.10.1_rel_notes/) | 15 Oct 2026  |
+| [2026.9.0](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.9.0_rel_notes/)   | 10 Sep 2026  |
+| [2026.8.0](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.8.0_rel_notes/)   | 13 Aug 2026  |
+| [2026.7.0](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.7.0_rel_notes/)   | 23 Jul 2026  |
+
+## Hybrid Manager dual release strategy
+
+With Hybrid Manager (HM) 2025.11, we adopted a new release strategy designed to deliver new capabilities and stability improvements to you faster and more predictably.
+
+Notice that in addition to the traditional release scheme (with semantic versioning such as 1.4.0), we added a date-based release scheme (with version numbering such as 2026.7), which we are calling our Innovation Releases.
+This change supports our commitment to continuous delivery and clearer release cadences:
+
+- **Innovation releases (monthly):** These releases, such as 2026.7, are delivered monthly. They focus on continuous platform hardening, workflow improvements, stability, reliability and the introduction of smaller, iterative features. They’re great for customers and teams that want to be on the leading edge of development, and see where we’re taking the product.
+
+- **Long-term support (LTS) releases (bi-annual):** These releases, such as 1.4.0, are delivered twice a year. They consolidate the contents of previous Innovation Releases into a stable foundation for deployments requiring an extended support commitment. These LTS releases are supported for 15 months from their release date, with monthly patch releases, such as 1.4.1, that include bug and security fixes.
+
+For up-to-date platform compatibility of Hybrid Manager, please refer to our [Platform Compatibility page](https://www.enterprisedb.com/resources/platform-compatibility#hybrid%20management%20).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,41 @@
+---
+title: EDB Postgres® AI for CloudNativePG™ Global Cluster 1.0.0 release notes
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/rel_notes/1_0_0_rel_notes/
+lastModified: 2026-08-19T13:21:26-07:00
+---
+
+# EDB Postgres® AI for CloudNativePG™ Global Cluster 1.0.0 release notes
+
+Released: 24 April 2024
+
+This is the first major stable release of CNPG-GC, a Kubernetes operator to
+deploy and manage EDB Postgres Distributed clusters.
+
+The operator implements the `PGDGroup` custom resource in the API group
+`pgd.k8s.enterprisedb.io`. This resource can be used to create and manage EDB
+Postgres Distributed clusters inside Kubernetes.
+
+The CNPG-GC operator leverages [EDB Postgres for Kubernetes
+(PG4K)](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/) and
+inherits many of that project's capabilities. CNPG-GC version 1.0 is based,
+specifically, on release 1.22 of PG4K. Please refer to the [PG4K release
+notes](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/rel_notes/)
+for more details.
+
+This release of EDB Postgres® AI for CloudNativePG™ Global Cluster includes the following:
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td>Deployment of EDB Postgres Distributed clusters with versions 5 and later</td></tr>
+<tr><td>Additional self-healing capability on top of that of Postgres Distributed, such as recovery and restart of failed PGD nodes</td></tr>
+<tr><td>Definition of the services to connect applications to the write leader of each PGD group</td></tr>
+<tr><td>Implementation of Raft subgroups</td></tr>
+<tr><td>TLS connections and client certificate authentication</td></tr>
+<tr><td>Continuous backup to an S3 compatible object store</td></tr>
+<tr><td>Pause and resume a PGD cluster, saving computational resources by temporarily removing database pods while keeping the database PVCs.</td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

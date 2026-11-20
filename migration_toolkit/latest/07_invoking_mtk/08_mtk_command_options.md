@@ -1,0 +1,1146 @@
+---
+title: Migration Toolkit command options
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/
+lastModified: 2025-12-02T17:52:56+05:30
+---
+
+# Migration Toolkit command options
+
+<div id="mtk_command_options" class="registered_link"></div>
+
+To control details of the migration, append migration options when you run Migration Toolkit. For example, to migrate all schemas in a database, append the `-allSchemas` option to the command:
+
+`./runMTK.sh -allSchemas`
+
+> **Note**
+>
+> - The `-allSchemas` parameter is supported only for the Oracle, EDB Postgres Advanced Server, and PostgreSQL source database. It isn't supported for Sybase, MS SQL Server, and MySQL source databases.
+> - Migration Toolkit disables the user-created triggers while migrating the data. However, as PostgreSQL/EDB Postgres Advanced Server doesn't allow disabling inherited child partition triggers using the `DISABLE TRIGGER USER` clause in `ALTER TABLE`, the triggers activate during data migration on partition tables, which can cause unexpected results.
+
+The command options that work with Migration Toolkit are grouped by their behavior, as shown in the table.
+
+| Feature                                                                                                                            | Relevant options                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Offline migration options](#offline-migration-options)                                                                            | -offlineMigration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| [Import options](#import-options)                                                                                                  | -sourcedbtype, -targetdbtype, -schemaOnly, -dataOnly                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| [Schema creation options](#schema-creation-options)                                                                                | -dropSchema, -targetSchema                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| [Schema object selection options](#schema-object-selection-options)                                                                | -allTables, -tables, -excludeTables,<br /><br />-constraints, -ignoreCheckConstFilter,<br /><br />-skipCKConst, -skipFKConst,<br /><br />-skipColDefaultClause,<br /><br />-indexes, -triggers,<br /><br />-allViews, -views, -excludeViews,<br /><br />-allSequences, -sequences, -excludeSequences,<br /><br />-allProcs, -procs, -excludeProcs,<br /><br />-allFuncs, -funcs, -excludeFuncs,<br /><br />-checkFunctionBodies,<br /><br />-allPackages, -packages, -excludePackages,<br /><br />-allDomains, -domains,<br /><br />-allQueues, -queues, -excludeQueues,<br /><br />-allRules,<br /><br />-allgroups, -groups,<br /><br />-privileges |
+| [Migration options](#migration-options)                                                                                            | -truncLoad, -enableConstBeforeDataLoad,<br /><br />-retryCount, -safeMode, -fastCopy,<br /><br />-analyze, vacuumAnalyze, -replaceNullChar,<br /><br />-copyDelimiter, -batchSize,<br /><br />-cpBatchSize, -lobBatchSize,<br /><br />-fetchSize, -filterProp,<br /><br />-customColTypeMapping, -customColTypeMappingFile,<br /><br />-mapVirtualToRegular                                                                                                                                                                                                                                                                                           |
+| [Connection retry options](#connection-retry-options)                                                                              | -connRetryCount, -connRetryInterval, -abortOnConnFailure                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| [Oracle-specific options](#oracle-specific-options)                                                                                | -allUsers, -users,<br /><br />-allProfiles, -profiles,<br /><br />-importPartitionAsTable,<br /><br />-objectTypes,<br /><br />-copyViaDBLinkOra, -allDBLinks,<br /><br />-allSynonyms, -allPublicSynonyms, -excludeSynonyms,<br /><br />-allPrivateSynonyms, -useOraCase,<br /><br />-skipUserSchemaCreation                                                                                                                                                                                                                                                                                                                                         |
+| [Miscellaneous options](#miscellaneous-options)                                                                                    | -help, -logDir, -logFileCount, -logFileSize, -logBadSQL -verbose, -version                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| [Migration options for parallel data loading](#migration-options-for-parallel-data-loading)                                        | -loaderCount, -parallelLoadRowLimit, -tableLoaderLimit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| [Specify options in file](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/mtk_command_options_in_file/) | -optionsFile                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+<div id="offline_migration" class="registered_link"></div>
+
+> **Note**
+>
+> If you're using several options for a migration or have to specify a long list of objects for an option, consider using the `-optionsFile` option to specify the values in a separate text file. See [Specifying options using a file](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/mtk_command_options_in_file/) for more information.
+
+## Offline migration options
+
+If you specify the `-offlineMigration` option in the command line, Migration Toolkit performs an offline migration. During an offline migration, Migration Toolkit reads the definition of each selected object and creates an SQL script that, when executed later, replicates each object in Postgres.
+
+> **Note**
+>
+> The following examples invoke Migration Toolkit in Linux. To invoke Migration Toolkit in Windows, use the `runMTK.bat` command instead of the `runMTK.sh` command.
+
+To perform an offline migration of both schema and data, specify the `‑offlineMigration` keyword, followed by the [schema scope](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/#migrating-schemas):
+
+```shell
+./runMTK.sh -offlineMigration <schema_scope>
+```
+
+Each database object definition is saved in a separate file with a name derived from each schema name and object type in your home folder. To specify an alternative file destination, include a directory name after the `‑offlineMigration` option:
+
+```shell
+./runMTK.sh -offlineMigration <file_dest> <schema_scope>
+```
+
+To perform an offline migration of only schema objects (creating empty tables), specify the `‑schemaOnly` keyword in addition to the `‑offlineMigration` keyword when invoking Migration Toolkit:
+
+```shell
+./runMTK.sh -offlineMigration -schemaOnly <schema_scope>
+```
+
+To perform an offline migration of only data, omitting any schema object definitions, specify the `‑dataOnly` keyword and the `‑offlineMigration` keyword when invoking Migration Toolkit:
+
+```shell
+./runMTK.sh -offlineMigration -dataOnly <schema_scope>
+```
+
+By default, data is written in COPY format. To write the data in a plain SQL format, include the `‑safeMode` keyword:
+
+```shell
+./runMTK.sh -offlineMigration -dataOnly -safeMode <schema_scope>
+```
+
+By default, when you perform an offline migration that contains table data, a separate file is created for each table. To create a single file that contains the data from multiple tables, specify the `‑singleDataFile` keyword:
+
+```shell
+./runMTK.sh -offlineMigration -dataOnly -singleDataFile -safeMode <schema_scope>
+```
+
+> **Note**
+>
+> The `-singleDataFile` option is available only when migrating data in a plain SQL format. You must include the `-safeMode` keyword if you include the `‑singleDataFile` option.
+
+<div id="execute_offline_migration" class="registered_link"></div>
+
+### Executing offline migration scripts
+
+You can use the edb-psql or psql command line to execute the scripts generated during an offline migration. The following example describes restoring a schema (named hr) into a new database (named acctg) stored in EDB Postgres Advanced Server.
+
+1. Use the `createdb` command to create the acctg database, into which you'll restore the migrated database objects:
+
+   ```shell
+   createdb -U enterprisedb acctg
+   ```
+
+2. Connect to the new database with edb-psql:
+
+   ```shell
+   edb-psql -U enterprisedb acctg
+   ```
+
+3. Use the `\i` meta-command to invoke the migration script that creates the object definitions:
+
+   ```shell
+   acctg=# \i ./mtk_hr_ddl.sql
+   ```
+
+4. If the `-offlineMigration` command included the `‑singleDataFile` keyword, the `mtk_hr_data.sql` script will contain the commands required to re-create all of the objects in the new target database. Populate the database with the command:
+
+   ```shell
+   acctg=# \i ./mtk_hr_data.sql
+   ```
+
+<div id="import_options" class="registered_link"></div>
+
+## Import options
+
+By default, Migration Toolkit assumes the source database is Oracle and the target database is EDB Postgres Advanced Server. Include the `‑sourcedbtype` and `-targetdbtype` keywords to specify a nondefault source or target database.
+
+By default, Migration Toolkit imports both the data and the object definition when migrating a schema. Alternatively, you can choose to import either the data or the object definitions.
+
+### `-sourcedbtype <source_type>`
+
+The `-sourcedbtype` option specifies the source database type. For `source_type`, use one of the following values: `mysql`, `oracle`, `sqlserver`, `sybase`, `postgresql` or `enterprisedb`. `source_type` isn't case sensitive. By default, `source_type` is `oracle`.
+
+### `-targetdbtype <target_type>`
+
+The `-targetdbtype` option specifies the target database type. For `target_type`, use one of the following values: `enterprisedb`, `postgres`, or `postgresql`. `target_type` isn't case sensitive. By default, `target_type` is `enterprisedb`.
+
+### `-schemaOnly`
+
+This option imports the schema definition and creates all selected schema objects in the target database. You can't use this option with the `‑dataOnly` option.
+
+### `-dataOnly`
+
+This option copies only the data. When used with the `-tables` option, Migration Toolkit imports data only for the selected tables. You can't use this option with the `-schemaOnly` option.
+
+<div id="schema_options" class="registered_link"></div>
+
+## Schema creation options
+
+By default, Migration Toolkit imports the source schema objects or data into a schema of the same name. If the target schema doesn't exist, Migration Toolkit creates a schema. Alternatively, you can specify a custom schema name by using the `‑targetSchema` option. You can choose to drop the existing schema and create a new schema using the following option:
+
+### `-dropSchema [true|false]`
+
+With this option set to `true`, Migration Toolkit drops the existing schema and any objects in that schema and creates a new schema. By default, `-dropSchema` is `false`.
+
+### `-targetSchema <schema_name>`
+
+Use the `-targetSchema` option to specify the name of the migrated schema. If you're migrating multiple schemas, specify a name for each schema in a comma-separated list with no intervening space characters. Without the `-targetSchema` option, the name of the new schema is the same as the name of the source schema.
+
+You can't specify `information-schema`, `dbo`, `sys`, or `pg_catalog` as target schema names. These schema names are reserved for metadata storage in EDB Postgres Advanced Server.
+
+<div id="schema_select" class="registered_link"></div>
+
+## Schema object selection options
+
+Use the following options to select specific schema objects to migrate.
+
+### `-allTables`
+
+Import all tables from the source schema.
+
+### `-tables <table_list>`
+
+Import the selected tables from the source schema. `table_list` is a comma-separated list of table names with no intervening space characters.
+
+For example: `-tables emp,dept,acctg`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the table name must be schema-qualified.
+
+For example: `-allSchemas -tables comp_schema.emp,comp_schema.dept,finance_schema.acctg`
+
+### `-excludeTables <table_list>`
+
+Exclude the selected tables from migration. The `table_list` is a comma-separated list of table names with no intervening space characters. This option applies when all tables from a schema are selected for migration using the `-allTables` option.
+
+For example: `-allTables -excludeTables emp,jobhist`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the excluded table name must be schema-qualified.
+
+For example: `-allSchemas -allTables -excludeTables comp_schema.emp,finance_schema.jobhist`
+
+### `-constraints`
+
+Import the table constraints. This option is valid only when importing an entire schema or when you specify the `-allTables` or `-tables <table_list>` options.
+
+### `-ignoreCheckConstFilter`
+
+By default, Migration Toolkit doesn't implement migration of check constraints and default clauses from a Sybase database. To migrate constraints and default clauses from a Sybase database, include the `‑ignoreCheckConstFilter` parameter when specifying the `-constraints` parameter.
+
+### `-skipCKConst`
+
+Omit the migration of check constraints. This option is useful when migrating check constraints that are based on built-in functions in the source database that aren't supported in the target database.
+
+This option is valid only when importing an entire schema or when the `-allTables` or `-tables <table_list>` options are specified.
+
+### `-skipFKConst`
+
+Omit migrating foreign-key constraints. This option is valid only when importing an entire schema or when the `-allTables` or `-tables <table_list>` options are specified.
+
+### `-skipColDefaultClause`
+
+Omit migrating the column `DEFAULT` clause.
+
+### `-indexes`
+
+Import the table indexes. This option is valid when importing an entire schema or when the `-allTables` or `-tables <table_list>` option is specified.
+
+### `-triggers`
+
+Import the table triggers. This option is valid when importing an entire schema or when the `allTables` or `-tables <table_list>` option is specified.
+
+### `-allViews`
+
+Import the views from the source schema. This option migrates dynamic and materialized views from the source. Oracle and Postgres materialized views are supported.
+
+### `-views <view_list>`
+
+Import the specified materialized or dynamic views from the source schema. Oracle and Postgres materialized views are supported. `view_list` is a comma-separated list of view names with no intervening space characters.
+
+For example: `-views all_emp,mgmt_list,acct_list`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the view name must be schema-qualified.
+
+For example: `-allSchemas -views comp_schema.all_emp,comp_schema.mgmt_list,finance_schema.acct_list`
+
+### `-excludeViews <view_list>`
+
+Exclude the selected views from migration. The `view_list` is a comma-separated list of view names with no intervening space characters. This option applies when all views from a schema are selected for migration using the `-allViews` option.
+
+For example: `-allViews -excludeViews all_emp,acct_list`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the excluded view name must be schema-qualified.
+
+For example: `-allSchemas -allViews -excludeViews comp_schema.all_emp,finance_schema.acct_list`
+
+### `-allSequences`
+
+Import all sequences from the source schema.
+
+### `-sequences <sequence_list>`
+
+Import the selected sequences from the source schema. `<sequence_list>` is a comma-separated list of sequence names with no intervening space characters.
+
+For example: `-sequences my_sequence,my_sequence_with_increment`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the sequence name must be schema-qualified.
+
+For example: `-allSchemas -sequences comp_schema.my_sequence,finance_schema.my_sequence_with_increment`
+
+### `-excludeSequences <sequence_list>`
+
+Exclude selected sequences from the migration.
+The `sequence_list` is a comma-separated list of sequence names with no intervening space characters.
+This option applies when all sequences from a schema are selected for migration using the `-allSequences` option.
+
+For example: `-allSequences -excludeSequences my_sequence,my_sequence_with_increment`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the excluded sequence name must be schema-qualified.
+
+For example: `-allSchemas -allSequences -excludeSequences comp_schema.my_sequence,finance_schema.my_sequence_with_increment`
+
+### `-allProcs`
+
+Import all stored procedures from the source schema.
+
+### `-procs <procedures_list>`
+
+Import the selected stored procedures from the source schema. `procedures_list` is a comma-separated list of procedure names with no intervening space characters.
+
+For example: `-procs show_notice,show_custom_notice`
+
+When migrating multiple schemas or all schemas (with the `-allSchema` option), the procedure name must be schema-qualified.
+
+For example: `-allSchema -procs comp_schema.show_notice,finance_schema.show_custom_notice`
+
+### `-excludeProcs <procedures_list>`
+
+Exclude selected procedures from migration.
+The `procedures_list` is a comma-separated list of procedure names with no intervening space characters.
+This option applies when all procedures from a schema are selected for migration using the `-allProcs` option.
+
+For example: `-allProcs -excludeProcs show_notice,show_custom_notice`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the excluded procedure name must be schema-qualified.
+
+For example: `-allSchemas -allProcs -excludeProcs comp_schema.show_notice,finance_schema.show_custom_notice`
+
+### `-allFuncs`
+
+Import all functions from the source schema.
+
+### `-funcs <function_list>`
+
+Import the selected functions from the source schema. `function_list` is a comma-separated list of function names with no intervening space characters.
+
+For example: `-funcs calculate_average_salary,add_two_numbers`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the function name must be schema-qualified.
+
+For example: `-allSchemas -funcs comp_schema.calculate_average_salary,finance_schema.add_two_numbers`
+
+### `-excludeFuncs <function_list>`
+
+Exclude selected functions from migration.
+The `function_list` is a comma-separated list of function names with no intervening space characters.
+This option applies when all functions from a schema are selected for migration using the `-allFuncs` option.
+
+For example: `-allFuncs -excludeFuncs calculate_average_salary,add_two_numbers`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the excluded function name must be schema-qualified.
+
+For example: `-allSchemas -allFuncs -excludeFuncs comp_schema.calculate_average_salary,finance_schema.add_two_numbers`
+
+### `-checkFunctionBodies [true/false]`
+
+When `false`, disables validation of the function body during function creation. Disabling this validation avoids errors if the function contains forward references. The default value is `true`.
+
+### `-allPackages`
+
+Import all packages from the source schema.
+
+### `-packages <package_list>`
+
+Import the selected packages from the source schema. `package_list` is a comma-separated list of package names with no intervening space characters.
+
+For example: `-packages my_package1, mypackage2`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the package name must be schema-qualified.
+
+For example: `-allSchemas -packages comp_schema.my_package1,finance_schema.mypackage2`
+
+### `-excludePackages <package_list>`
+
+Exclude selected packages from migration.
+The `package_list` is a comma-separated list of package names with no intervening space characters.
+This option applies when all packages from a schema are selected for migration using the `-allPackages` option.
+
+Example: `-allPackages -excludePackages my_package1, mypackage2`
+
+When migrating multiple schemas or all schemas (with the `-allSchemas` option), the excluded package name must be schema-qualified.
+
+For example: `-allSchemas -allPackages -excludePackages comp_schema.my_package1,finance_schema.mypackage2`
+
+### `-domains <domain_list>`
+
+Import the selected domain, enumeration, and composite types from the source database. `<domain_list>` is a comma-separated list of domain names with no intervening space characters.
+This option is valid only when the source database is either PostgreSQL, EDB Postgres Advanced Server, or Microsoft SQL Server and the target database is PostgreSQL or EDB Postgres Advanced Server.
+
+> **Note**
+>
+> Composite user-defined types or UDTs aren't supported in migrations from Microsoft SQL Server. Only simple UDTs are supported.
+>
+> Composite types hold multiple fields, a table, or structured data, whereas simple types represent a single value.
+
+### `-allDomains`
+
+Import all domain, enumeration, and composite types from the source database. This option is valid only when the source database is either PostgreSQL, EDB Postgres Advanced Server, or Microsoft SQL Server and the target database is PostgreSQL or EDB Postgres Advanced Server.
+
+### `-allQueues`
+
+Import all queues from the source schema. These are queues created and managed by the DBMS\_AQ and DBMS\_AQADM built-in packages. When Oracle is the source database, you must also specify the `-objectTypes` option. When EDB Postgres Advanced Server is the source database, you must also specify the `-allDomains` and `-allTables` options. Oracle and EDB Postgres Advanced Server queues are supported.
+
+### `-queues <queue_list>`
+
+Import the selected queues from the source schema. `queue_list` is a comma-separated list of queue names with no intervening space characters. These are queues created and managed by the DBMS\_AQ and DBMS\_AQADM built-in packages. When Oracle is the source database, you must also specify the `-objectTypes`. When EDB Postgres Advanced Server is the source database, you must also specify `-allDomains` and `-allTables`. Oracle and EDB Postgres Advanced Server queues are supported.
+
+### `-excludeQueues <queue_list>`
+
+Exclude selected queues from migration.
+The `queue_list` is a comma-separated list of queue names with no intervening space characters.
+This option applies when all queues from a schema are selected for migration using the `-allQueues` option.
+
+Example: `-allQueues -excludeQueues EMP_QUEUE1,EMP_QUEUE2`
+
+### `-allRules`
+
+Import all rules from the source database. This option is valid only when both the source and target are stored on a Postgres host.
+
+### `-allGroups`
+
+Import all groups from the source database.
+
+### `-groups <group_list>`
+
+The selected groups from the source database. The `<group_list>` is a comma-separated list of group names e.g. `-groups acct_emp,mkt_emp`.
+
+### `-privileges`
+
+Imports user privileges (permissions) for schema and table usage. This option is valid only when importing an entire schema, or when using the `--allTables` or `--tables <table_list>` options.
+
+Supported for migrations between PostgreSQL and EDB Postgres Advanced Server databases only.
+
+<div id="migration_options" class="registered_link"></div>
+
+## Migration options
+
+Use the migration options to control the details of the migration process.
+
+### `-truncLoad`
+
+Truncate the data from the table before importing new data. Use this option with the `-dataOnly` option.
+
+> **Note**
+>
+> If `-truncLoad` is specified, all indexes and constraints are dropped before data load and recreated afterwards. Hence, if the data load fails, it may lead to a lack of indexes, constraints and triggers. Manual intervention might be necessary, depending on the situation.
+
+### `-enableConstBeforeDataLoad`
+
+Include the `-enableConstBeforeDataLoad` option if a nonpartitioned source table is mapped to a partitioned table. This option enables all triggers on the target table, including any triggers that redirect data to individual partitions, before the data migration. `-enableConstBeforeDataLoad` is valid only if you also specify the `-truncLoad` parameter.
+
+### `-retryCount [<value>]`
+
+If you're performing a multiple-schema migration, objects that fail to migrate during the first migration attempt due to cross-schema dependencies might successfully migrate during a later migration. Use the `-retryCount` option to specify the number of attempts for Migration Toolkit to make to migrate an object that failed during an initial migration attempt. Specify a value greater than 0. The default value is 2.
+
+### `-safeMode`
+
+If you include the `-safeMode` option, Migration Toolkit commits each row as migrated. If the migration fails to transfer all records, rows inserted prior to the point of failure remain in the target database.
+
+### `-fastCopy`
+
+Including the `-fastCopy` option specifies for Migration Toolkit to bypass WAL logging to perform the COPY operation in an optimized way. It is disabled by default. If you choose to use the `-fastCopy` option, you might not be able to recover the migrated data in the target database if the migration is interrupted.
+
+### `-replaceNullChar <value>`
+
+The Migration Toolkit supports importing a column with a value of NULL. However, the Migration Toolkit doesn't support importing NULL character values (embedded binary zeros 0x00) with the JDBC connection protocol. If you're importing data that includes the NULL character, use the `-replaceNullChar` option to replace the NULL character with a single, non-NULL replacement character. Don't enclose the replacement character in quotes or apostrophes.
+
+Once the data is migrated, use a SQL statement to replace the character specified by `-replaceNullChar` with binary zeros.
+
+### `-analyze`
+
+Include the `-analyze` option to invoke the Postgres `ANALYZE` operation against a target database. The optimizer consults the statistics collected by the `ANALYZE` operation, using the information to construct efficient query plans.
+
+### `-vacuumAnalyze`
+
+Include the `-vacuumAnalyze` option to invoke both the `VACUUM` and `ANALYZE` operations against a target database. The optimizer consults the statistics collected by the `ANALYZE` operation, using the information to construct efficient query plans. The `VACUUM` operation reclaims any storage space occupied by dead tuples in the target database.
+
+### `-copyDelimiter`
+
+Specify a single character to use as a delimiter in the COPY command when loading table data. The default value is `'\t'` (tab).
+
+### `-batchSize`
+
+Specify the batch size of bulk inserts. Valid values are 1 to 1000. The default batch size is 1000. Reduce the value of `-batchSize` if Out of Memory exceptions occur.
+
+### `-cpBatchSize`
+
+Specify the batch size in MB to use in the COPY command. Any value greater than 0 is valid. The default batch size is 8MB.
+
+### `-lobBatchSize`
+
+Specify the number of rows to load in a batch for LOB data types. The data migration for a table containing a large object type (LOB) column, such as `BYTEA`, `BLOB`, or `CLOB`, is performed one row at a time by default. This is to avoid an out-of-heap-space error in case an individual LOB column holds hundreds of megabytes of data. In case the LOB column average data size is at a lower end, you can customize the LOB batch size by specifying the number of rows in each batch with any value greater than 0.
+
+### `-fetchSize`
+
+Use the `-fetchSize` option to specify the number of rows fetched in a result set. If the designated `-fetchSize` is too large, you might encounter Out of Memory exceptions. Include the `-fetchSize` option to avoid this pitfall when migrating large tables. The default fetch size is specific to the JDBC driver implementation and varies by database.
+
+MySQL users note: By default, the MySQL JDBC driver fetches all of the rows in a table into the Migration Toolkit in a single network round trip. This behavior can easily exceed available memory for large tables. If you encounter an out-of-heap-space error, specify `-fetchSize 1` as a command line argument to force Migration Toolkit to load the table data one row at a time.
+
+### `-filterProp <file_name>`
+
+`<file_name>` specifies the name of a file that contains constraints in key=value pairs. Each record read from the database is evaluated against the constraints. Those that satisfy the constraints are migrated.
+
+The left side of the pair lists a table name:
+
+- The table name must not be schema qualified.
+- Oracle table names aren't case sensitive, but Oracle defaults to uppercase. Postgres, on the other hand, defaults to lowercase. When migrating Oracle data, ensure the case you're using matches the case in Oracle. Otherwise, Migration Toolkit can't match it and ignores the constraint.
+
+The right side specifies a condition that must be true for each row migrated.
+
+For example, this code migrates only those countries with a `COUNTRY_ID` value that isn't equal to `AR`:
+
+`COUNTRIES=COUNTRY_ID<>'AR'`
+
+This constraint applies to the COUNTRIES table.
+
+You can also specify conditions for multiple tables. However, the condition for each table must be on a new line in the property file.
+
+Example:
+
+The following entries in the properties file migrate only the relevant data from EMPLOYEES and the DEPARTMENTS tables:
+
+`EMPLOYEES=(LAST_NAME IN ('Grant','Weiss') AND PHONE_NUMBER LIKE '650%')`
+
+`DEPARTMENTS=(DEPARTMENT_ID BETWEEN 10 AND 30)`
+
+### `-customColTypeMapping <column_list>`
+
+Use custom type mapping to change the data type of migrated columns. The left side of each pair specifies the columns with a regular expression. The right side of each pair names the data type for that column to assume. You can include multiple pairs in a semi-colon-separated list for `<column_list>`. For example, to map any column whose name ends in `ID` to type `INTEGER`, use the following custom mapping entry:
+
+`.*ID=INTEGER`
+
+Custom mapping is applied to all table columns that match the criteria unless the column is table qualified.
+
+The `'\\'` characters act as an escape string. Since `'.'` is a reserved character in regular expressions, on Linux use `'\\.'` to represent the `'.'` character. For example, to use custom mapping to select rows from the `EMP_ID` column in the `EMP` table, specify the following custom mapping entry:
+
+`EMP\\.EMP_ID=INTEGER`
+
+On Windows, use `'\.'` to represent the `'.'` character:
+
+`EMP\.EMP_ID=INTEGER`
+
+Alternatively, you can include multiple custom type mappings in a `<property_file>`:
+
+### `-customColTypeMappingFile <property_file>`
+
+Specify each entry in the file on a separate line in a key=value pair. The left side of each pair selects the columns with a regular expression. The right side of each pair names the data type for that column to assume. When used in the `<property_file>`, the `'\\'` characters act as an escape string in any operating system.
+
+<div id="parallel_loading" class="registered_link"></div>
+
+### `-mapVirtualToRegular`
+
+Include the `-mapVirtualToRegular` option to migrate virtual, computed, or generated columns in the source database to regular columns in the target database.
+
+Turning virtual columns to regular columns is helpful when the expression used to compute the values in the source database column isn't supported in the target database or can't be translated into an expression supported by the target database. With this option, you can still migrate the column's values to the target, but the values will no longer be computed dynamically, as they're stored in a regular column.
+
+For schema migrations, including the option results in all virtual columns in the source database being migrated to regular columns in the target database.
+
+For data migrations, including the option extracts the computed values from all computed columns in the source database and inserts those values into regular columns in the target database.
+
+In the following example, a column `FullName` is computed from other two columns called `FirstName` and `LastName` in the source database. This column is migrated as a regular column called `FullName` in the target database.
+
+```
+./runMTK.sh -sourcedbtype sqlserver -targetdbtype enterprisedb -mapVirtualToRegular -allTables <schema_scope>
+```
+
+In the target, this column is no longer dynamically generated but displays the `FullName` value the source database had at the time the migration was performed.
+
+## Connection retry options
+
+Whenever there's a connection failure with the target database during a data migration, Migration Tookit attempts to reconnect to the
+target database to ensure the migration completes without skipping any tables. When the connection is reestablished,
+Migration Toolkit restarts or resumes the data copy for the table that was being migrated when the connection was lost. It then performs the data copy for the remaining tables.
+
+Migration Toolkit resumes the migration based on the mode that it was using to migrate the data:
+
+- If Migration Toolkit was using Copy API to migrate the data, it continues copying data from the last failed row.
+  Copy API is compatible with PostgreSQL and EDB Postgres Advanced Server as target databases.
+
+- In other data migration modes, Migration Toolkit truncates the data on the target table and recopies the entire failed table.
+
+> **Note: Scope and limitations**
+>
+> Database scope: The connection retry capability allows Migration Toolkit to reconnect to the target database.
+> Retry attempts for issues with the source database aren't supported.
+>
+> Migration scope: This capability allows Migration Toolkit to retry migrating data.
+> Retry attempts for issues with the schema migration aren't supported.
+>
+> Modality scope: This reconnection capability is available with the data migration mode (`-dataOnly`).
+> It's also available when you run a migration without specifying either the `-dataOnly` or `-schemaOnly` options.
+
+You can specify several connection retry options:
+
+### `-connRetryCount [<connection_attempts>]`
+
+Use the `-connRetryCount` option to specify the number of retry attempts to perform if the target database connection fails.
+The `[<connection_attempts>]` value must be a number between 0 and 50. The default is 3 retry attempts.
+
+Since the retry applies to the migration of data, it isn't compatible with the `-schemaOnly` option.
+
+Example:
+
+```
+./runMTK.sh -connRetryCount 2 -dataOnly -tables dept,emp,jobhist public
+```
+
+### `-connRetryInterval [<seconds>]`
+
+Use the `-connRetryInterval` option to specify the seconds to wait before each subsequent reconnection attempt
+if the target database connection fails.
+The `[<seconds>]` value must be a number between 0 and 900. The default is 30 seconds.
+
+Since the retry applies to the migration of data, it isn't compatible with the `-schemaOnly` option.
+
+Example:
+
+```
+./runMTK.sh -connRetryCount 2 -connRetryInterval 50 -dataOnly -tables dept,emp,jobhist public
+```
+
+### `-abortConnOnFailure` \[true/false]\`
+
+Specify whether to abort the migration if all the reconnection attempts failed.
+
+To skip migrating the failed table and proceed to the next table, set the `-abortConnOnFailure` to `false`.
+The default is `true`, which aborts the session if the connection fails after the specified `-connRetryCount` threshold.
+
+Since the retry applies to the migration of data, it isn't compatible with the `-schemaOnly` option.
+
+Example:
+
+```
+./runMTK.sh -connRetryCount 2 -connRetryInterval 50 -abortConnOnFailure false -dataOnly -tables dept,emp,jobhist public
+```
+
+### `-pgIdleTxSessionTimeOut [<seconds>]`
+
+Specify the PostgreSQL or EDB Postgres Advanced Server `idle_in_transaction_session_timeout`, which defines the time after which
+the database terminates the session when a migration transaction is in idle state.
+`[<seconds>]` is a value greater than 0. The default is 180 seconds.
+
+Example:
+
+```
+runMTK.sh -connRetryCount 2 -connRetryInterval 50 -pgIdleTxSessionTimeOut 90 -dataOnly -tables dept,emp,jobhist public
+```
+
+## Migration options for parallel data loading
+
+When dealing with a relatively large number of tables or large tables, normal data migration takes a long time. As a solution to this problem, Migration Toolkit has a parallel data loading algorithm that allows migrating data in parallel at the schema level and at the table level.
+
+Parallel data migration at the schema level uses multiple threads to migrate several tables at the same time. Parallel data loading at the table level uses multiple threads to migrate a single table from the source database to the target database more efficiently and in a shorter time.
+
+> **Note: Notes**
+>
+> - Parallel loading is useful only for large tables. For small tables, parallel threads might take more time. Thus we recommend using parallel data loading at the table level for relatively large tables.
+>
+> - Parallel data loading doesn't apply to tables without a primary/unique key.
+>
+> - You can't use the`fastCopy` parameter with parallel data loading.
+>
+> - Parallel loading functionality applies only to the source Oracle, EDB Postgres Advanced Server, and PostgreSQL databases.
+
+> **Warning: Migrations from Oracle databases**
+>
+> Because parallel data loading uses Oracle Flashback queries to perform data loading, ensure the user performing the migration has `FLASHBACK` and `READ` / `SELECT` privileges to the table objects to migrate. To allow queries on all tables, grant the `FLASHBACK ANY TABLE` privilege.
+
+The following options control the way MTK migrates data in parallel.
+
+### `-loaderCount [<value>]`
+
+Use the `-loaderCount` option to specify the number of parallel threads available in the pool to perform data load in parallel. This option is particularly useful if the host system that's running Migration Toolkit has high-end CPU and RAM resources. While `value` can be any nonzero, positive number, we recommend that value not exceed the number of CPU cores. For example, a dual-core CPU has an optimal value of `2`. The default is `1`.
+
+The number of table-level threads can introduce overhead on the source database server depending on the table size and certain memory configurations, like `shared_buffers` and `work_mem` (memory configuration should be set to optimal values for the database server). It is recommended that for very large tables you try the lower `-loaderCount` option value, according to the total cores available on the machine, to calculate the optimal `-loaderCount` value.
+
+> **Note**
+>
+> When multiple threads are used, depending on the actual number of threads and table data size, you might need to adjust the memory heap size for the Migration Toolkit.
+
+### `-parallelLoadRowLimit [<value>]`
+
+Use the `-parallelLoadRowLimit` option to specify the minimum number of rows required in a table to perform data load in parallel at the table level. The `<value>` parameter must be greater than 0. The default is 100,000.
+
+For example, if the value of `-parallelLoadRowLimit` is 10,000, only tables with the number of rows 10,000 and greater are loaded in parallel at the table level. The other tables migrate in sequential mode or at the schema level.
+
+### `-tableLoaderLimit [<value>]`
+
+Use the `-tableLoaderLimit` option to specify the maximum number of threads to assign from the thread pool to load a single table data in parallel chunks at the table level. The `<value>` parameter must not be greater than the value of `-loaderCount`. The default value is equal to the value of the `-loaderCount` option. This option is implicitly changed based on the nondefault custom value of `-loaderCount`.
+
+For example, if the `-loaderCount` is set to `4` and `-tableLoaderLimit` isn't specified, the `-tableLoaderLimit` is also set to `4`. Hence, if all threads aren't meant to be used for a single table load, reduce the `-tableLoaderLimit` to a lower value.
+
+### High-level overview of the parallel data-loading algorithm
+
+The algorithm works in three steps:
+
+1. A list of tables and table chunks is created from the ordered list of tables to migrate, sorted by the table name. The list is created based on the `-parallelLoadRowLimit` and `-tableLoaderLimit` option values.
+
+2. A thread pool is created based on the `-loaderCount` option value.
+
+3. The parallel data-loading algorithm creates tasks for each table/chunk from the list of tables and table chunks and executes them in the thread pool. As many tasks as the number of threads are executed in parallel. As soon as a task execution completes, its thread starts executing the next task from the list. Parallel data loading completes as soon as the last task from the list completes.
+
+#### Example
+
+In this scenario, migrate four tables—`tab1, tab2, tab3, tab4`—with parallel data loading:
+
+```text
+./runMTK.sh -sourcedbtype enterprisedb -targetdbtype enterprisedb -loaderCount 4 -parallelLoadRowLimit 10000 -tableLoaderLimit 2 -tables tab1,tab2,tab3,tab4 public
+```
+
+Table `tab1` has 50,000 rows, table `tab2` has 9,500 rows, table `tab3` has 50,001 rows and table `tab4` has 9,999 rows. The list of tables for step 1 is `tab1, tab2, tab3`, and `tab4`.
+
+Only tables `tab1` and `tab3` qualify for parallel loading on table level (`-parallelLoadRowLimit 10000`).
+
+Since the value of the `-tableLoaderLimit` option is `2`, table `tab1` is loaded in two chunks, `tab1_chunk1` and `tab1_chunk2`. The number of rows in each chunk is determined based on the `totalRowCount/tableLoaderLimit`. In this case, both chunks have 25,000 rows (50,000/2).
+
+Table `tab3` is also loaded in two chunks, `tab3_chunk1` and `tab3_chunk2`. As the total number of rows in table `tab3` is odd (`50,001`), the first chunk accommodates an additional row, so `tab3_chunk1` has 25,001 rows, and `tab3_chunk2` has 25,000 rows.
+
+Here's the list of tables and table chunks created:
+
+```text
+tab1_chunk1 		    (25,000 rows)
+tab1_chunk2 		    (25,000 rows)
+tab2	    		    (9500 rows)
+tab3_chunk1	    	    (25,001 rows)
+tab3_chunk2	    	    (25,000 rows)
+tab4		    	    (9999 rows)
+```
+
+Thread pool with the four threads `T1, T2, T3, T4` is created.
+
+Tasks migrating tables/chunks from the list created in step 1 are executed in the thread pool:
+
+```text
+T1 → tab1_chunk1		(25,000 rows)
+T2 → tab1_chunk2		(25,000 rows)
+T3 → tab2			    (9500 rows)
+T4 → tab3_chunk1		(25,001 rows)
+```
+
+Thread `T3` finishes first and starts executing `tab3_chunk2`, the next chunk in the list:
+
+```text
+T1 → tab1_chunk1		(25,000 rows)
+T2 → tab1_chunk2		(25,000 rows)
+T3 → tab3_chunk2		(25,000 rows)
+T4 → tab3_chunk1		(25,001 rows)
+```
+
+Thread `T1` finishes second and starts executing `tab4`:
+
+```text
+T1 → tab4			    (9999 rows)
+T2 → tab1_chunk2		(25,000 rows)
+T3 → tab3_chunk2		(25,000 rows)
+T4 → tab3_chunk1		(25,001 rows)
+```
+
+This way, four threads are used to migrate four tables in parallel at the mixed-schema and table level.
+
+If you change command options to set `-tableLoaderLimit` to `1`, you can have pure schema-level parallelism:
+
+```text
+./runMTK.sh -sourcedbtype enterprisedb -targetdbtype enterprisedb -loaderCount 4 -parallelLoadRowLimit 10000 -tableLoaderLimit 1 -tables tab1,tab2,tab3,tab4 public
+```
+
+Each table is processed simultaneously in one thread:
+
+```text
+T1 → tab1	(50,000 rows)
+T2 → tab2	(9500 rows)
+T3 → tab3 	(50,001 rows)
+T4 → tab4	(9999 rows)
+```
+
+### System resource recommendations and constraints
+
+Choose the number of threads depending on the CPU and RAM resources available on the host system running Migration Toolkit. As there's a certain overhead on the source database in terms of CPU, IO, and disk use, exceeding parallel thread count beyond a certain threshold degrades Migration Toolkit performance.
+
+<div id="oracle_options" class="registered_link"></div>
+
+## Oracle-specific options
+
+The following options apply only when the source database is Oracle.
+
+### `-objectTypes`
+
+Import the user-defined object types from the schema list specified at the end of the `runMTK.sh` command.
+
+### `-allUsers`
+
+Import all users and roles from the source database. The `‑allUsers` option is supported only when migrating from an Oracle database to an EDB Postgres Advanced Server database.
+
+### `-users <user_list>`
+
+Import the selected users or roles from the source Oracle database. `<user_list>` is a comma-separated list of user/role names with no intervening space characters (e.g., `-users MTK, SAMPLE, acctg`). The `-users` option is supported only when migrating from an Oracle database to an EDB Postgres Advanced Server database.
+
+### `-allProfiles`
+
+Import all custom (that is, user-created) profiles from the source database. Other Oracle noncustom profiles such as `DEFAULT` and `MONITORING_PROFILE` aren't imported.
+
+For the imported profiles, only the following password parameters associated with the profiles are imported:
+
+`FAILED_LOGIN_ATTEMPTS`
+
+`PASSWORD_LIFE_TIME`
+
+`PASSWORD_REUSE_TIME`
+
+`PASSWORD_REUSE_MAX`
+
+`PASSWORD_LOCK_TIME`
+
+`PASSWORD_GRACE_TIME`
+
+`PASSWORD_VERIFY_FUNCTION`
+
+All other profile parameters, such as the Oracle resource parameters, aren't imported. The Oracle database user specified by `SRC_DB_USER` must have `SELECT` privilege on the Oracle data dictionary view `DBA_PROFILES`.
+
+> **Note**
+>
+> The `‑allProfiles` option is supported only when migrating from an Oracle database to an EDB Postgres Advanced Server database.
+
+### `-profiles <profile_list>`
+
+Import the selected, custom (that is, user-created) profiles from the source Oracle database. `profile_list` is a comma-separated list of profile names with no intervening space characters (e.g., `-profiles ADMIN_PROFILE,USER_PROFILE`). Oracle noncustom profiles such as `DEFAULT` and `MONITORING_PROFILE` aren't imported.
+
+As with the `-allProfiles` option, only the password parameters are imported. The Oracle database user specified by `SRC_DB_USER` must have `SELECT` privilege on the Oracle data dictionary view `DBA_PROFILES`.
+
+> **Note**
+>
+> The `-profiles` option is supported only when migrating from an Oracle database to an EDB Postgres Advanced Server database.
+
+### `-importPartitionAsTable <table_list>`
+
+Include the `-importPartitionAsTable` parameter to import the contents of a partitioned table that resides on an Oracle host into a single nonpartitioned table. `table_list` is a comma-separated list of table names with no intervening space characters (for example, `-importPartitionAsTable emp,dept,acctg`).
+
+### `-copyViaDBLinkOra`
+
+The `dblink_ora` module provides EDB Postgres Advanced Server-to-Oracle connectivity at the SQL level. `dblink_ora` is bundled and installed as part of the EDB Postgres Advanced Server database installation. `dblink_ora` uses the `COPY API` method to transfer data between databases. This method is considerably faster than the `JDBC COPY` method.
+
+This example uses the `dblink_ora` `COPY API` to migrate all tables from the `HR` schema:
+
+```shell
+./runMTK.sh -copyViaDBLinkOra -allTables HR
+```
+
+The target EDB Postgres Advanced Server database must have `dblink_ora` installed and configured. See [dblink\_ora](https://www.enterprisedb.com/docs/epas/latest/working_with_oracle_data/06_dblink_ora/).
+
+### `-allDBLinks [link_Name_1=password_1,link_Name_2=password_2,...]`
+
+Choose this option to migrate Oracle database links. The password information for each link connection in the source database is encrypted so, unless specified, the dummy password edb is substituted.
+
+To migrate all database links using edb as the dummy password for the connected user:
+
+```shell
+./runMTK.sh -allDBLinks HR
+```
+
+You can alternatively specify the password for each of the database links through a comma-separated list of name=value pairs with no intervening space characters. Specify the link name on the left side of the pair and the password value on the right side.
+
+To migrate all database links with the actual passwords specified on the command line:
+
+```shell
+./runMTK.sh -allDBLinks LINK_NAME1=abc,LINK_NAME2=xyz HR
+```
+
+Migration Toolkit migrates only the database link types that are currently supported by EnterpriseDB. These types include fixed user links of public and private type.
+
+### `-allSynonyms`
+
+Include the `-allSynonyms` option to migrate all public and private synonyms from an Oracle database to an EDB Postgres Advanced Server database. If a synonym with the same name already exists in the target database, the existing synonym is replaced with the migrated version.
+
+### `-allPublicSynonyms`
+
+Include the `-allPublicSynonyms` option to migrate all public synonyms from an Oracle database to an EDB Postgres Advanced Server database. If a synonym with the same name already exists in the target database, the existing synonym is replaced with the migrated version.
+
+### `-excludeSynonyms <synonym_list>`
+
+Exclude selected synonyms from migration.
+The `synonym_list` is a comma-separated list of synonym names with no intervening space characters.
+This option applies when all synonyms from a schema are selected for migration using the `-allSynonyms` option.
+
+Example: `-allSynonyms -excludeSynonyms SYNEMP1,SYNEMP2`
+
+### `-allPrivateSynonyms`
+
+Include the `-allPrivateSynonyms` option to migrate all private synonyms from an Oracle database to an EDB Postgres Advanced Server database. If a synonym with the same name already exists in the target database, the existing synonym is replaced with the migrated version.
+
+### `-useOraCase`
+
+Include the `-useOraCase` option to preserve the Oracle default, uppercase naming convention for all database objects when migrating from an Oracle database to an EDB Postgres Advanced Server database.
+
+The uppercase naming convention is preserved for tables, views, sequences, procedures, functions, triggers, packages, and so on. For these database objects, the uppercase naming convention applies to:
+
+- The names of the database objects
+- The column names, key names, index names, constraint names, and so on, of the tables and views
+- The `SELECT` column list for a view
+- The parameter names that are part of the procedure or function header
+
+> **Note**
+>
+> In the procedural code body of a procedure, function, trigger, or package, you might have to manually edit identifier references for the program to execute without an error. Such corrections are in regard to the proper case conversion of identifier references that might have occurred.
+
+> **Note**
+>
+> When you specify the `-useOraCase` option, you might need to specify the `-skipUserSchemaCreation` option as well. For information, see the description of the `-skipUserSchemaCreation` option.
+
+The default behavior of the Migration Toolkit without the `-useOraCase` option is that database object names are extracted from Oracle without enclosing quotation marks unless the database object was explicitly created in Oracle with enclosing quotation marks. The following is a portion of a table command generated by the Migration Toolkit with the `-offlineMigration` option:
+
+```sql
+CREATE TABLE DEPT (
+    DEPTNO NUMBER(2) NOT NULL,
+    DNAME VARCHAR2(14),
+    LOC VARCHAR2(13)
+);
+ALTER TABLE DEPT ADD CONSTRAINT DEPT_PK PRIMARY KEY (DEPTNO);
+ALTER TABLE DEPT ADD CONSTRAINT DEPT_DNAME_UQ UNIQUE (DNAME);
+```
+
+When you then migrate this table and create it in EDB Postgres Advanced Server, all unquoted object names are converted to lowercase letters, so the table appears in EDB Postgres Advanced Server as follows:
+
+```sql
+Table "edb.dept"
+Column  | Type                  | Modifiers
+--------+-----------------------+-----------
+deptno  | numeric(2,0)          | not null
+dname   | character varying(14) |
+loc     | character varying(13) |
+Indexes:
+    "dept_pk" PRIMARY KEY, btree (deptno)
+    "dept_dname_uq" UNIQUE CONSTRAINT, btree (dname)
+```
+
+If your EDB Postgres Advanced Server applications are referencing the migrated database objects using quoted uppercase identifiers, the applications fail since the database object names are now in lower case:
+
+```sql
+usepostcase=# SELECT * FROM "DEPT";
+ERROR: relation "DEPT" does not exist
+LINE 1: SELECT * FROM "DEPT";
+```
+
+If your application uses quoted uppercase identifiers, perform the migration with the `-useOraCase` option. The DDL encloses all database object names in quotes:
+
+```sql
+CREATE TABLE "DEPT" (
+    "DEPTNO" NUMBER(2) NOT NULL,
+    "DNAME" VARCHAR2(14),
+    "LOC" VARCHAR2(13)
+);
+ALTER TABLE "DEPT" ADD CONSTRAINT "DEPT_PK" PRIMARY KEY ("DEPTNO");
+ALTER TABLE "DEPT" ADD CONSTRAINT "DEPT_DNAME_UQ" UNIQUE ("DNAME");
+```
+
+When you then migrate this table and create it in EDB Postgres Advanced Server, all object names are maintained in uppercase letters, so the table appears in EDB Postgres Advanced Server as follows:
+
+```sql
+Table "EDB.DEPT"
+Column  | Type                  | Modifiers
+--------+-----------------------+-----------
+DEPTNO  | numeric(2,0)          | not null
+DNAME   | character varying(14) |
+LOC     | character varying(13) |
+Indexes:
+    "DEPT_PK" PRIMARY KEY, btree ("DEPTNO")
+    "DEPT_DNAME_UQ" UNIQUE CONSTRAINT, btree ("DNAME")
+```
+
+Applications can then access the object using quoted uppercase names:
+
+```sql
+useoracase=# SELECT * FROM "DEPT";
+DEPTNO  | DNAME      | LOC
+--------+------------+----------
+10      | ACCOUNTING | NEW YORK
+20      | RESEARCH   | DALLAS
+30      | SALES      | CHICAGO
+40      | OPERATIONS | BOSTON
+(4 rows)
+```
+
+### `-skipUserSchemaCreation`
+
+When an Oracle user is migrated, a role (that is, a user name) is created in the target database server for the Oracle user if the role doesn't already exist. The role name is created in lowercase letters. When a new role is created, a schema with the same name is also created in lowercase letters.
+
+Specifying the `-skipUserSchemaCreation` option prevents the automatic schema creation for a migrated Oracle user name. This option is particularly useful when the `-useOraCase` option is specified to prevent creating two schemas with the same name where only the case is different. Specifying the `-useOraCase` option results in creating a schema in the Oracle naming convention of uppercase letters for the source schema specified following the options list when Migration Toolkit is invoked.
+
+Thus, if the `-useOraCase` option is specified without the `-skipUserSchemaCreation` option, the target database results in having two identically named schemas with one in lowercase letters and the other in uppercase letters. If the `-useOraCase` option is specified along with the `-skipUserSchemaCreation` option, the target database has only the schema in uppercase letters.
+
+<div id="misc_options" class="registered_link"></div>
+
+## Miscellaneous options
+
+Use these migration options to view Migration Toolkit help and version information. You can also use these options to control Migration Toolkit feedback and logging options.
+
+### `-help`
+
+Display the application command-line usage information.
+
+### `-logDir <log_path>`
+
+Include this option to specify where to write the log files. `<log_path>` is the location for saving log files. By default, on Linux log files are written to:
+
+`$HOME/.enterprisedb/migration-toolkit/logs`
+
+On Windows, the log files are saved to:
+
+`%HOMEDRIVE%%HOMEPATH%\.enterprisedb\migration-toolkit\logs`
+
+### `-logFileCount <file_count>`
+
+Include this option to specify the number of files used in log file rotation. Specify a value of `0` to disable log file rotation and create a single log file. This file is truncated when it reaches the value specified using the `logFileSize` option. `<file_count>` must be greater than or equal to 0. The default is 20.
+
+### `-logFileSize <file_size>`
+
+Include this option to specify the maximum file size limit in MB before rotating to a new log file. `file_size` must be greater than 0. The default is 50.
+
+### `-logBadSQL`
+
+Include this option to save the schema definition (DDL script) of any failed objects to a file. The file is saved under the same path used for the error logs and is named in the format:
+
+`mtk_bad_sql_<schema_name_timestamp>.sql`
+
+Where `schema_name` is the name of the schema and `timestamp` is the timestamp of the Migration Toolkit run.
+
+### `-verbose [on|off]`
+
+Display application log messages on standard output. By default, verbose is on.
+
+### `-version`
+
+Display the Migration Toolkit version.
+
+<div id="example" class="registered_link"></div>
+
+## Example
+
+This example performs a migration from Oracle to EDB Postgres Advanced Server.
+
+The following is the content of the `toolkit.properties` file:
+
+```ini
+SRC_DB_URL=jdbc:oracle:thin:@192.168.2.6:1521:xe
+SRC_DB_USER=edb
+SRC_DB_PASSWORD=password
+
+TARGET_DB_URL=jdbc:edb://localhost:5444/edb
+TARGET_DB_USER=enterprisedb
+TARGET_DB_PASSWORD=password
+```
+
+The following command invokes Migration Toolkit:
+
+```shell
+./runMTK.sh EDB
+```
+
+```output title="Output"
+Running EnterpriseDB Migration Toolkit (Build 48.0.0) ...
+Source database connectivity info...
+conn =jdbc:oracle:thin:@192.168.2.6:1521:xe
+user =edb
+password=*****\*
+Target database connectivity info...
+conn =jdbc:edb://localhost:5444/edb
+user =enterprisedb
+password=*****\*
+Connecting with source Oracle database server...
+Connected to Oracle, version 'Oracle Database 10g Express Edition
+Release 10.2.0.1.0 - Production'
+Connecting with target EnterpriseDB database server...
+Connected to EnterpriseDB, version '9.4.0.0'
+Importing redwood schema EDB...
+Creating Schema...edb
+Creating Sequence: NEXT_EMPNO
+Creating Tables...
+Creating Table: BAD_TABLE
+MTK-15013: Error Creating Table BAD_TABLE
+DB-42704: ERROR: type "binary_double" does not exist at position 58
+-- CREATE TABLE BAD_TABLE (
+-- F1 NUMBER NOT NULL,
+-- Line 3: F2 BINARY_DOUBLE
+-- ^
+Creating Table: DEPT
+Creating Table: EMP
+Creating Table: JOBHIST
+Creating Table: "MixedCase"
+Creating Table: "lowercase"
+Created 5 tables.
+Loading Table Data in 8 MB batches...
+Loading Table: DEPT ...
+[DEPT] Migrated 4 rows.
+[DEPT] Table Data Load Summary: Total Time(s): 0.147 Total Rows: 4
+Loading Table: EMP ...
+[EMP] Migrated 14 rows.
+[EMP] Table Data Load Summary: Total Time(s): 0.077 Total Rows: 14
+Loading Table: JOBHIST ...
+[JOBHIST] Migrated 17 rows.
+[JOBHIST] Table Data Load Summary: Total Time(s): 0.042 Total Rows: 17
+Total Size(MB): 9.765625E-4
+Loading Table: "MixedCase" ...
+["MixedCase"] Table Data Load Summary: Total Time(s): 0.098 Total Rows:0
+Loading Table: "lowercase" ...
+["lowercase"] Table Data Load Summary: Total Time(s): 0.066 Total Rows:0
+Data Load Summary: Total Time (sec): 0.806 Total Rows: 35 Total
+Size(MB): 0.001
+Creating Constraint: DEPT_PK
+Creating Constraint: DEPT_DNAME_UQ
+Creating Constraint: EMP_PK
+Creating Constraint: JOBHIST_PK
+Creating Constraint: SYS_C008958
+MTK-15001: Error Creating Constraint SYS_C008958
+DB-42P01: com.edb.util.PSQLException: ERROR: relation "bad_table" does
+not exist
+Creating Constraint: EMP_REF_DEPT_FK
+Creating Constraint: EMP_SAL_CK
+Creating Constraint: JOBHIST_REF_DEPT_FK
+Creating Constraint: JOBHIST_REF_EMP_FK
+Creating Constraint: JOBHIST_DATE_CHK
+Creating Trigger: USER_AUDIT_TRIG
+Creating Trigger: EMP_SAL_TRIG
+MTK-13009:Warning! Skipping migration of trigger DROP_TRIGGER, currently
+non-table triggers are not supported in target database.
+Creating View: SALESEMP
+Creating Function: EMP_COMP
+Creating Package: EMP_ADMIN
+MTK-16005:Package Body is Invalid, Skipping...
+Schema EDB imported with errors.
+MTK-12001: The user/role migration failed due to insufficient
+privileges.
+Grant the user SELECT privilege on the following Oracle catalogs:
+DBA_ROLES
+DBA_USERS
+DBA_TAB_PRIVS
+DBA_PROFILES
+DBA_ROLE_PRIVS
+ROLE_ROLE_PRIVS
+DBA_SYS_PRIVS
+One or more schema objects could not be imported during the migration
+process. Please review the migration output for more details.
+Migration logs have been saved to
+/home/user/.enterprisedb/migration-toolkit/logs
+******************** Migration Summary ********************
+Sequences: 1 out of 1
+Tables: 5 out of 6
+Constraints: 9 out of 10
+Triggers: 2 out of 3 (skipped 1)
+Views: 1 out of 1
+Functions: 1 out of 1
+Packages: 1 out of 1
+Total objects: 30
+Successful count: 20
+Failed count: 2
+Skipped count: 1
+Invalid count: 7
+List of failed objects
+======================
+Tables
+--------------------
+1. EDB.BAD_TABLE
+Constraints
+--------------------
+1. EDB.BAD_TABLE.SYS_C008958
+List of invalid objects
+=======================
+1. EDB.HIRE_CLERK (FUNCTION)
+2. EDB.NEW_EMPNO (FUNCTION)
+3. EDB.EMP_ADMIN (PACKAGE BODY)
+4. EDB.EMP_QUERY (PROCEDURE)
+5. EDB.EMP_QUERY_CALLER (PROCEDURE)
+6. EDB.LIST_EMP (PROCEDURE)
+7. EDB.SELECT_EMP (PROCEDURE)
+*************************************************************
+```
+
+Skipped and unsupported database objects are omitted. The migration information is summarized in the Migration Summary at the end of the run.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

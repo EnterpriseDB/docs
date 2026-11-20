@@ -1,0 +1,26 @@
+---
+title: Monitoring event history
+product: Postgres Enterprise Manager
+version: "9"
+url: https://www.enterprisedb.com/docs/pem/9/monitoring_event_history/
+lastModified: 2024-02-15T12:21:58+05:30
+---
+
+# Monitoring event history
+
+You can monitor the executed event details in the `pem.event_history` table. It provides the username, execution time of the event, type of the event occurred, and the details regarding the event. The fields in the table are:
+
+> **Note**
+>
+> Currently, `pem.event_history` table records only the alert blackout history.
+
+| Field name     | Description                                                                                                                                                                        |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| recorded\_time | Records the execution time of the event. Displays the date and time along with the fractional seconds.                                                                             |
+| user\_name     | The username of the user who executed or scheduled the event.                                                                                                                      |
+| component      | The event name.                                                                                                                                                                    |
+| operation      | The action taken for the event. For example, if the user has enabled an alert blackout, it displays `enable_alert_blackout`.                                                       |
+| message        | The description of the action taken for the event. For example, if the user has enabled an alert blackout for the server, it displays `Enabled the alert blackout for the server`. |
+| details        | The JSON output of the event that occurred.                                                                                                                                        |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,59 @@
+---
+title: Preparing your environment
+description: Preparing your environment to perform a migration from PSR to PGD.
+product: EDB Postgres Distributed (PGD)
+version: 6.4.0
+url: https://www.enterprisedb.com/docs/pgd/6.4/lifecycle/migrating/migration-psr/1-preparation/
+lastModified: 2026-08-21T09:22:11+02:00
+---
+
+# Preparing your environment
+
+Before beginning the migration from Physical Streaming Replication (PSR) to Postgres Distributed (PGD), you must identify the key roles of your nodes and establish your target topology. This ensures the environment can handle the temporary overhead of the migration and provides a clear path for the cluster transition.
+
+## Choosing a source node
+
+You must choose a source node from your existing cluster to provide the initial data and subsequent updates for the PGD cluster. Because logical replication cannot be cascaded from a standby node, only the current primary node is a viable source.
+
+Consider the following:
+
+- **Resource overhead:** During migration, the source node node must perform additional logical decoding for at least two PGD nodes, requiring extra CPU capacity.
+- **Storage:** The source node will need to retain additional WAL data to keep replicas in sync, necessitating more disk space than standard operations.
+- **Optimization:** If the current primary is underpowered, consider a switchover (promotion) to a more favorable node before starting the migration.
+- **Failover handling:** If the primary node fails during the migration, you must abort and restart the process using a new primary as the source.
+
+## Choosing a seed node
+
+The seed node is a new node selected from the group that will form your PGD cluster. This node serves a unique transitional role during the migration:
+
+1. It receives a full copy of the database from the source node.
+2. It performs the in-place major version upgrade.
+3. It initializes the final PGD cluster.
+
+## Planning your PGD cluster topology
+
+Establish your target topology in advance. Define locations, hostnames, PGD node names, and connection strings (DSNs) before proceeding. This guide assumes a two-node PGD start: the seed node (first node) and one additional node. Adding further nodes follows the same process as the second node.
+
+Use the following table to map the required environment variables for your cluster, ensuring consistency across all configuration scripts.
+
+| Variable                | Description                                          | Example                                          |
+| ----------------------- | ---------------------------------------------------- | ------------------------------------------------ |
+| `${SEED_NODE_PGD_NAME}` | The PGD-specific name assigned to the seed node.     | node-1                                           |
+| `${SEED_NODE_DSN}`      | Connection string to reach the seed node.            | host=node-1 port=5444 dbname=pgddb user=postgres |
+| `${ADD_NODE_PGD_NAME}`  | The PGD-specific name for the second node.           | node-2                                           |
+| `${ADD_NODE_DSN}`       | Connection string to reach the additional node.      | host=node-2 port=5432 dbname=pgddb user=postgres |
+| `${PGD_CLUSTER_NAME}`   | The name of the PGD node group containing all nodes. | pgd\_cluster\_main                               |
+
+## Command environment setup
+
+The migration steps specify which node to use for each command.
+
+To ensure the migration commands execute correctly, verify your environment meets the following requirements:
+
+- **Shell permissions:** Execute all commands as `root` unless the instructions explicitly specify using `su`.
+- **Environment variables:** Ensure `${PGDATA}` is set to your Postgres data directory (e.g., `/var/lib/edb/as14/data` for EPAS 14). You may also need to set `${PGPORT}`.
+- **Target database:** Connect to the specific database to migrate (not the default `postgres` or `edb` databases) by setting `${PGDATABASE}` before running `psql`.
+
+Next step: [Transfer data to the seed node](https://www.enterprisedb.com/docs/pgd/6.4/lifecycle/migrating/migration-psr/2-data-transfer/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

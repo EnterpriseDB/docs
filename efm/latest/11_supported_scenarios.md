@@ -1,0 +1,132 @@
+---
+title: Supported failover and failure scenarios
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/11_supported_scenarios/
+lastModified: 2025-12-04T17:56:19+05:30
+---
+
+# Supported failover and failure scenarios
+
+<div id="supported_scenarios" class="registered_link"></div>
+
+Failover Manager monitors a cluster for failures that might result in failover.
+
+Failover Manager supports a specific and limited set of failover scenarios. Failover can occur:
+
+- If the primary database crashes or is shut down.
+- If the node hosting the primary database crashes or becomes unreachable.
+
+Failover Manager makes every attempt to verify the accuracy of these conditions. If agents can't confirm that the primary database or node has failed, Failover Manager doesn't perform any failover actions on the cluster.
+
+Failover Manager also supports a _no auto-failover_ mode for situations in which Failover Manager monitors and detects failover conditions but doesn't perform an automatic failover to a standby. In this mode, a notification is sent to the administrator when failover conditions are met. To disable automatic failover, modify the cluster properties file, setting the [auto.failover](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#auto_failover) parameter to `false`.
+
+Failover Manager alerts an administrator to situations that require administrator intervention but that don't merit promoting a standby database to primary.
+
+<div id="primary_db_down" class="registered_link"></div>
+
+## Primary database is down
+
+If the agent running on the primary database node detects a failure of the primary database, Failover Manager begins the process of confirming the failure.
+
+![Confirming the failure of the primary database.](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/supported_scenarios_master_db_down.png)
+
+If the agent on the primary node detects that the primary database has failed, all agents attempt to connect directly to the primary database. If an agent can connect to the database, Failover Manager sends a notification about the state of the primary node. If no agent can connect, the primary agent declares database failure and releases the VIP (if applicable).
+
+If no agent can reach the virtual IP address or the database server, Failover Manager starts the failover process. The standby agent on the most up-to-date node runs a fencing script (if applicable), promotes the standby database to primary database, and assigns the virtual IP address to the standby node. Any additional standby nodes are configured to replicate from the new primary unless `auto.reconfigure` is set to `false`. If applicable, the agent runs a post-promotion script.
+
+## Return the node to the cluster
+
+To recover from this scenario without restarting the entire cluster:
+
+1. Restart the database on the original primary node as a standby database.
+2. Invoke the `efm resume` command on the original primary node.
+
+## Return the node to the role of primary
+
+After returning the node to the cluster as a standby, you can easily return the node to the role of primary:
+
+1. If the cluster has more than one standby node, use the `efm set-priority` command to set the node's failover priority to 1.
+2. Invoke the [`efm promote -switchover`](https://www.enterprisedb.com/docs/efm/latest/07_using_efm_utility/#efm_promote) command to promote the node to its original role of primary node.
+
+> **Note**
+>
+> By default, Failover Manager doesn't rebuild a failed primary database to become a standby. Before rebuilding, it's important to determine why the primary failed and ensure that all the data is available on the new primary. Once the server is ready to be reinstated as a standby, you can remove the old data directory and reinstate the server. For more information, see the PostgreSQL documentation on [setting up a standby server](https://www.postgresql.org/docs/current/warm-standby.html#STANDBY-SERVER-SETUP). In some cases, you can also reinstate the server using [pg\_rewind](https://www.postgresql.org/docs/current/app-pgrewind.html).
+>
+> Starting with version 5.1, you can enable a feature so that Failover Manager attempts to rebuild a failed primary database. Use this feature with caution, as it's intended for use cases where you need to bring the failed node back into the cluster and where the cause of the failure is known and predictable. There may be conditions where EFM can't rebuild the failed primary, and manual intervention is still required. For details, see [the auto.rewind cluster property](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#auto_rewind).
+
+<div id="standby_down" class="registered_link"></div>
+
+## Standby database is down
+
+If a standby agent detects a failure of its database, the agent notifies the other agents. The other agents confirm the state of the database.
+
+![Confirming the failure of a standby database.](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/supported_scenarios_standby_db_down.png)
+
+After returning the standby database to a healthy state, invoke the `efm resume` command to return the standby to the cluster.
+
+<div id="primary_agent_exits" class="registered_link"></div>
+
+## Primary agent exits or node fails
+
+If the Failover Manager primary agent crashes or the node fails, a standby agent detects the failure and, if appropriate, initiates a failover.
+
+![Confirming the failure of the primary agent](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/supported_scenarios_master_agent_exits.png)
+
+If an agent detects that the primary agent has left, all agents attempt to connect directly to the primary database. If any agent can connect to the database, an agent sends a notification about the failure of the primary agent. If no agent can connect, the agents attempt to ping the virtual IP address (if applicable) to determine if it was released.
+
+If no agent can reach the virtual IP address or the database server, Failover Manager starts the failover process. The standby agent on the most up-to-date node runs a fencing script (if applicable), promotes the standby database to primary database, and assigns the virtual IP address to the standby node. If applicable, the agent runs a post-promotion script. Any additional standby nodes are configured to replicate from the new primary unless `auto.reconfigure` is set to `false`.
+
+If this scenario occurred because the primary was isolated from the network, the primary agent detects the isolation, releases the virtual IP address, and creates the `recovery.conf` file. Failover Manager performs these same steps on the remaining nodes of the cluster.
+
+To recover from this scenario without restarting the entire cluster:
+
+1. Restart the original primary node.
+2. Bring the original primary database up as a standby node.
+3. Start the service on the original primary node.
+
+> **Note: :**
+>
+> Stopping an agent doesn't signal the cluster that the agent failed.
+
+If a primary Failover Manager process fails, there's no failover protection until the agent restarts. To avoid this case, you can set up the primary node through systemd to cause a failover when the primary agent exits. For more information, see [Configuring for Eager failover](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/06_configuring_for_eager_failover/#configuring_for_eager_failover).
+
+<div id="standby_exits" class="registered_link"></div>
+
+## Standby agent exits or node fails
+
+If a standby agent exits or a standby node fails, the other agents detect that it's no longer connected to the cluster.
+
+![Failure of standby agent](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/supported_scenarios_standby_agent_exits.png)
+
+When the failure is detected, the agents attempt to contact the database that resides on the node. If the agents confirm that there's a problem, Failover Manager sends the appropriate notification to the administrator.
+
+If only one primary and one standby remain, there's no failover protection in the case of a primary node failure. In the case of a primary database failure, the primary and standby agents can agree that the database failed and proceed with failover.
+
+<div id="dedicated_witness_agent" class="registered_link"></div>
+
+## Dedicated witness agent exits/node fails
+
+This scenario details the actions taken if a dedicated witness (a node that isn't hosting a database) fails.
+
+![Confirming the failure of a dedicated witness](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/supported_scenarios_witness_agent_exits.png)
+
+When an agent detects that the witness node can't be reached, Failover Manager notifies the administrator of the state of the witness.
+
+> **Note**
+>
+> If the witness fails and the cluster has only two nodes, then there's no failover protection. The standby node can't know if the primary failed or was disconnected. In a two-node cluster, if the primary database fails but the nodes are still connected, failover still occurs. The standby can confirm the condition of the primary database.
+
+<div id="node_isolated" class="registered_link"></div>
+
+## Nodes become isolated from the cluster
+
+This scenario details the actions taken if one or more nodes (a minority of the cluster) become isolated from the majority of the cluster.
+
+![If members of the cluster become isolated](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/supported_scenarios_node_becomes_isolated.png)
+
+If one or more nodes (but less than half of the cluster) become isolated from the rest of the cluster, the remaining cluster behaves as if the nodes have failed. The agents attempt to discern if the primary node is among the isolated nodes. If it is, the primary fences itself off from the cluster, while a standby node from within the cluster majority is promoted to replace it. Other standby nodes are configured to replicate from the new primary unless `auto.reconfigure` is set to `false`.
+
+Failover Manager then notifies an administrator, and the isolated nodes rejoin the cluster when they can. When the nodes rejoin the cluster, the failover priority might change.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

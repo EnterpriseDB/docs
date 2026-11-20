@@ -1,0 +1,48 @@
+---
+title: EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.0 release notes
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/rel_notes/1_1_0_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.0 release notes
+
+Released: 25 December 2024
+
+## Highlights
+
+- _Support for New PG4K Release:_ Starting with version 1.1.0, the PGD4K operator now supports the new PG4K Long-Term Support (LTS) release, version 1.25.
+- _New PGD Version Support:_ PGD version 5.6.1 is now supported.
+
+## Supported versions
+
+- Kubernetes: 1.32, 1.31, 1.30, and 1.29
+- PostgreSQL: 17, 16, 15, 14, and 13
+- PG4K: v1.22.8, v1.25.0
+
+  Default PGD image: postgresql-pgd 17.2-5.6.1
+
+  Default PGD proxy image: edb-pgd-proxy 5.6.0
+
+  Officially dropped support for PostgreSQL 12
+
+  PostgreSQL 13 support ends on November 12, 2025
+
+This release of EDB Postgres® AI for CloudNativePG™ Global Cluster includes the following:
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>New Operator Architecture Support</summary><p>Added support for linux/arm64 and linux/ppc64le architectures.</p></details></td><td></td></tr>
+<tr><td><details><summary>Configuration Support for cnpg-i Plugin</summary><p>Configuration settings for the cnpg-i plugin have been implemented</p></details></td><td>#929</td></tr>
+<tr><td><details><summary>Avoid unnecessary failure over</summary><p>Avoid unnecessary write lead transfer when <code>reconcilePodSpec</code> is used in PG4K
+cluster</p></details></td><td>#885</td></tr>
+<tr><td><details><summary>Scale Down Write Leader Last</summary><p>The write leader will be the last PGD node to scale down</p></details></td><td>#920</td></tr>
+<tr><td><details><summary>Enhanced Restore Process</summary><p>The restore process has been improved by splitting it into components, and
+using separate jobs for different types of restore and bootstrap operations</p></details></td><td>#817, #852</td></tr>
+<tr><td><details><summary>Webhook Validation enhancement</summary><p>validity of <code>restore.serverNames</code> will be checked via the webhook</p></details></td><td>#932</td></tr>
+<tr><td>Include clusterStatus as part of the PGDGroup status for information on the phase of the managed clusters.</td><td>#875</td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,137 @@
+---
+title: Prerequisites
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/installing/prerequisites/
+lastModified: 2026-11-18T07:03:54Z
+---
+
+# Prerequisites
+
+<div id="prerequisites" class="registered_link"></div>
+
+Before configuring a Failover Manager cluster, you must satisfy these prerequisites.
+
+## Install Java 17 (or later)
+
+Before using Failover Manager, you must first install Java (version 17 or later). Failover Manager is tested and developed with OpenJDK, and we strongly recommend installing that version of Java. [Installation instructions for Java](https://openjdk.java.net/install/) are platform specific.
+
+While we do not formally certify or support specific JDK distributions, EFM is supported on any Java-compatible runtime that meets the minimum version requirements, provided they are Java SE compatible.
+
+Before updating or modifying the version of Java that a Failover Manager agent is using, you should stop the agent and start it again after the update. This applies to OS upgrades as well, which could change the Java installation that the agent is using. Stopping an agent does not affect the running database server unless [eager failover](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/06_configuring_for_eager_failover/) is being used.
+
+If you have more than one Java installation present on your system, see [the troubleshooting page](https://www.enterprisedb.com/docs/efm/latest/13_troubleshooting/#having-multiple-versions-of-java-installed) for information on managing which version Failover Manager uses.
+
+## Provide an SMTP server
+
+You can receive notifications from Failover Manager as specified by a user-defined notification script, by email, or both.
+
+- If you're using email notifications, an SMTP server must be running on each node of the Failover Manager scenario.
+- If you provide a value in the `script.notification` property, you can leave the `user.email` field blank. An SMTP server isn't required.
+
+If an event occurs, Failover Manager invokes the script (if provided) and can also send a notification email to any email addresses specified in the `user.email` parameter of the cluster properties file. For more information about using an SMTP server, see the [Red Hat deployment guide](https://access.redhat.com/site/documentation/en-US/Red_Hat_Enterprise_Linux/6/html/Deployment_Guide/s1-email-mta.html).
+
+## Configure streaming replication
+
+Failover Manager requires that PostgreSQL streaming replication be configured between the primary node and the standby nodes. Failover Manager doesn't support other types of replication.
+
+The `primary_conninfo` and `restore_command` properties are copied from a random standby node to the stopped primary during switchover unless otherwise specified with the `-sourcenode` option.
+
+## Modify pg\_hba.conf
+
+You must modify `pg_hba.conf` on the primary and standby nodes, adding entries that allow communication between all of the nodes in the cluster. This example shows entries you might make to the `pg_hba.conf` file on the primary node:
+
+```shell
+# access for itself
+host fmdb efm 127.0.0.1/32 md5
+# access for standby
+host fmdb efm 192.168.27.1/32 md5
+# access for witness
+host fmdb efm 192.168.27.34/32 md5
+```
+
+Where:
+
+`efm` specifies the name of a valid database user.
+
+`fmdb` specifies the name of a database to which the efm user can connect.
+
+By default, the `pg_hba.conf` file resides in the `data` directory under your Postgres installation. After modifying the `pg_hba.conf` file, for the changes to take effect, you must reload the configuration file on each node. You can use the following command:
+
+`# systemctl reload edb-as-<x>`
+
+Where `x` specifies the Postgres version.
+
+## Using autostart for the database servers
+
+If a primary node restarts, Failover Manager might detect the database is down on the primary node and promote a standby node to the role of primary. If this happens, the Failover Manager agent on the restarted primary node doesn't get a chance to write the `recovery.conf` file, and the `recovery.conf` file prevents the database server from starting. In this case, the rebooted primary node returns to the cluster as a second primary node.
+
+To prevent this condition, ensure that the Failover Manager agent auto starts before the database server. The agent starts in idle mode and checks to see if there's already a primary in the cluster. If there's a primary node, the agent verifies that a `recovery.conf` or `standby.signal` file exists. If neither file exists, the agent creates the `recovery.conf` file.
+
+To instruct the Failover Manager agent to attempt to start monitoring the database after the database server has started, use the [auto.resume.startup.period](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#auto_resume_startup_period) property.
+
+> **Note**
+>
+> There is an exception when using the [auto.rewind](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#auto_rewind) and/or [auto.basebackup](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#auto_basebackup) properties. If either of these is set to true, an agent will attempt to reconfigure the local database at startup if it is not already configured as a standby (i.e. has a standby.signal file). In this case, Failover Manager will start the database and resume monitoring automatically. Having the OS start the database server is unnecessary and may interfere with Failover Manager. When using either of these properties on a primary node, autostart should be disabled.
+
+## Ensure communication through firewalls
+
+If a Linux firewall (that is, iptables) is enabled on the host of a Failover Manager node, you might need to add rules to the firewall configuration that allow tcp communication between the Failover Manager processes in the cluster. For example:
+
+```
+# iptables -I INPUT -p tcp --dport 7800 -j ACCEPT
+/sbin/service iptables save
+```
+
+This command opens the port 7800. Failover Manager connects by way of the port that corresponds to the port specified by `bind.address` in the cluster properties file. The port specified by `admin.port` doesn't need to be open. It's used only for local communication when the efm utility is run.
+
+## Ensure that the database user has sufficient privileges
+
+The database user specified by the `db.user` property in the `efm.properties` file must have sufficient privileges to invoke the following functions on behalf of Failover Manager:
+
+`pg_current_wal_lsn()`
+
+`pg_last_wal_replay_lsn()`
+
+`pg_wal_replay_resume()`
+
+`pg_wal_replay_pause()`
+
+If the `reconfigure.num.sync` or `reconfigure.sync.primary` property is set to `true`, then the `db.user` requires pg\_read\_all\_stats privilege and permissions to run `pg_reload_conf()`.
+
+For detailed information about each of these functions, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/index.html).
+
+If the `update.physical.slots.period` property is used, then the db.user requires the REPLICATION privilege. A database superuser can provide the permissions needed:
+
+```sql
+ALTER USER <user_name> REPLICATION;
+```
+
+The user must also have permissions to read the values of configuration variables. A database superuser can use the PostgreSQL `GRANT` command to provide the permissions needed:
+
+```sql
+GRANT pg_read_all_settings TO <user_name>;
+```
+
+For more information about pg\_read\_all\_settings, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/default-roles.html).
+
+If `auto.rewind` is set to `true`, then the `db.user` requires the pg\_checkpoint role to be granted, as the Failover Manager agent will issue a `CHECKPOINT` command prior to executing `pg_rewind`.
+
+The required privileges are summarized in this table:
+
+| Privilege   | Object                     | Condition                                                                      |
+| ----------- | -------------------------- | ------------------------------------------------------------------------------ |
+| EXECUTE     | `pg_current_wal_lsn()`     | Always required                                                                |
+| EXECUTE     | `pg_last_wal_replay_lsn()` | Always required                                                                |
+| EXECUTE     | `pg_wal_replay_resume()`   | Always required                                                                |
+| EXECUTE     | `pg_wal_replay_pause()`    | Always required                                                                |
+| EXECUTE     | `pg_reload_conf()`         | When `reconfigure.num.sync` or `reconfigure.sync.primary` is `true`            |
+| REPLICATION |                            | When the `update.physical.slots.period` property is in effect (non-zero value) |
+
+| Role                    | Condition                                                           |
+| ----------------------- | ------------------------------------------------------------------- |
+| pg\_read\_all\_settings | Always required                                                     |
+| pg\_read\_all\_stats    | When `reconfigure.num.sync` or `reconfigure.sync.primary` is `true` |
+| pg\_checkpoint          | When `auto.rewind` is set to `true`                                 |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

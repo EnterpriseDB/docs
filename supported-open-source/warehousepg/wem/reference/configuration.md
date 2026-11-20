@@ -1,0 +1,211 @@
+---
+title: Configuration parameters
+description: Complete reference for all WEM and host agent configuration parameters.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Configuration parameters
+
+WEM and the host agent are each configured through a dedicated configuration file on their respective hosts. These parameters cover all supported options, their defaults, and their descriptions.
+
+## WEM parameters
+
+Configure these parameters in `/etc/edb/wem/wem.conf` on the WEM host. Restart WEM with `sudo systemctl restart wem` for changes to take effect. See [Configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/configuring/).
+
+### Target cluster
+
+| Parameter                | Default         | Required | Description                                                                                                                                                                                                                                                            |
+| ------------------------ | --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WHPG_HOST`              | `localhost`     | Yes      | Hostname of the WarehousePG coordinator.                                                                                                                                                                                                                               |
+| `WHPG_PORT`              | `5432`          | Yes      | Port for the WarehousePG coordinator.                                                                                                                                                                                                                                  |
+| `WHPG_DATABASE`          | `wem`           | Yes      | Database on the WHPG cluster to connect to. Any database is valid, but `WHPG_USER` must be a superuser.                                                                                                                                                                |
+| `WHPG_USER`              | `gpadmin`       | Yes      | WarehousePG superuser. Used for setup tasks and as the runtime connection when `WHPG_WEM_USER` isn't configured.                                                                                                                                                       |
+| `WHPG_PASSWORD`          | —               | Yes      | Password for `WHPG_USER`.                                                                                                                                                                                                                                              |
+| `WHPG_SSLMODE`           | `prefer`        | No       | SSL mode for the WHPG connection. Valid values are `disable`, `allow`, `prefer`, `require`, `verify-ca`, and `verify-full`.                                                                                                                                            |
+| `WHPG_WEM_USER`          | —               | No       | Dedicated WarehousePG role that WEM creates automatically during `wem setup` and uses for its runtime connection instead of reusing `WHPG_USER` for every query. WEM falls back to `WHPG_USER`/`WHPG_PASSWORD` if this parameter or `WHPG_WEM_USER_PASSWORD` is unset. |
+| `WHPG_WEM_USER_PASSWORD` | —               | No       | Password for `WHPG_WEM_USER`.                                                                                                                                                                                                                                          |
+| `WHPG_MONITORING_DB`     | `WHPG_DATABASE` | No       | Database WEM uses for monitoring queries, if different from `WHPG_DATABASE`.                                                                                                                                                                                           |
+
+### ClickHouse
+
+WEM queries ClickHouse for all historical metrics and log data. See [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/).
+
+| Parameter        | Default             | Required | Description                                                                                                                                                                                      |
+| ---------------- | ------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CLICKHOUSE_URL` | —                   | Yes      | ClickHouse connection URL. For example, `clickhouse://username:password@<clickhouse-host>:9000`. Don't use `localhost`, because the standby coordinator and coordinator connect to this address. |
+| `CLICKHOUSE_DB`  | `acp_observability` | No       | ClickHouse database that stores the OTel-collected metrics and logs.                                                                                                                             |
+
+### OTel Collector
+
+WEM generates `/etc/edb/otelcol/config.yaml` on every cluster node from these parameters, the [ClickHouse](#clickhouse) and [target cluster](#target-cluster) parameters, and [`WEM_CLUSTER_NAME`](#cluster-identity). See the [OTel Collector configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/otel-collector-config/) for where each one appears in the file.
+
+| Parameter                         | Default        | Required | Description                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OTEL_GATEWAY_ENDPOINT`           | —              | No       | External gateway collector endpoint. When empty, WEM runs the gateway on the standby coordinator, with the coordinator as failover. See [Installing the gateway collector](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/collector/).                                                                                                                  |
+| `OTEL_COLLECTION_INTERVAL`        | `30s`          | No       | Frequency at which each node's OTel Collector gathers host metrics.                                                                                                                                                                                                                                                                                                                         |
+| `OTEL_PROMETHEUS_SCRAPE_ENDPOINT` | `0.0.0.0:8889` | No       | Host and port where the gateway collector exposes metrics in Prometheus scrape format. By default, WEM runs the gateway collector on the standby coordinator, so the endpoint is `<standby-host>:8889`. Restrict access with a firewall. See [Metrics reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/metrics/#whpg-cluster-and-host-metrics). |
+
+### Application state
+
+WEM stores its internal state in its own dedicated `wem` database rather than reusing `WHPG_DATABASE`. Host this database on a Postgres instance separate from the WHPG cluster you're monitoring, so a problem with that cluster doesn't take WEM down with it too. Use these parameters to point WEM at the host and role that own this database. See [Application state](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/#application-state) for the role to create and the trade-offs of reusing the WHPG cluster's own server instead.
+
+| Parameter      | Default     | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------- | ----------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEM_HOST`     | `localhost` | No       | Hostname of the WEM application state database. Doesn't fall back to `WHPG_HOST`, even when `WHPG_HOST` is set explicitly.                                                                                                                                                                                                                                                                                  |
+| `WEM_PORT`     | `5432`      | No       | Port for the WEM application state database. This is a fixed default, independent of `WHPG_PORT` — it isn't derived from it even when `WHPG_PORT` is set explicitly.                                                                                                                                                                                                                                        |
+| `WEM_DATABASE` | `wem`       | No       | Database name for WEM application state. WEM creates this database itself on first start if it doesn't already exist.                                                                                                                                                                                                                                                                                       |
+| `WEM_USER`     | `gpadmin`   | No       | User for the WEM application state database. Must already exist. This is a fixed default, independent of `WHPG_USER` — it isn't derived from it even when `WHPG_USER` is set explicitly. If this database is hosted on the WHPG cluster's own Postgres server, set this to the same value as `WHPG_USER`. Otherwise, precreate a role with `LOGIN` and `CREATEDB` privileges. WEM doesn't create this role. |
+| `WEM_PASSWORD` | —           | No       | Password for `WEM_USER`.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `WEM_SSLMODE`  | `prefer`    | No       | SSL mode for the WEM application state database connection. Valid values are the same as `WHPG_SSLMODE`.                                                                                                                                                                                                                                                                                                    |
+
+### Web server
+
+| Parameter | Default | Required | Description                                    |
+| --------- | ------- | -------- | ---------------------------------------------- |
+| `PORT`    | `8080`  | No       | HTTP port on which the WEM web portal listens. |
+
+### Performance
+
+| Parameter                    | Default | Required | Description                                                                                                                                                                                                                                |
+| ---------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HIGH_LOAD_MODE`             | `false` | No       | Extends WEM's internal timeouts for large clusters. Equivalent to passing the `--high-load` flag.                                                                                                                                          |
+| `LONG_RUNNING_THRESHOLD`     | `10`    | No       | Duration, in minutes, after which a query is flagged as long-running in the **Connection & Query Metrics** section on the **System Metrics** page. Accepts a plain integer, not a duration string. Can also be set from the WEM interface. |
+| `LOG_MIN_DURATION_STATEMENT` | —       | No       | Sets WHPG's `log_min_duration_statement` configuration parameter, in milliseconds. Use `-1` to disable statement logging or `0` to log every statement. Leave unset to leave WHPG's own setting unchanged.                                 |
+
+### Connection pooling
+
+WEM maintains separate connection pools for the WHPG cluster, its own application state database, and the Query Editor. These parameters share the same suffixes across all three prefixes (`WHPG_POOL_`, `WEM_POOL_`, and `QUERY_EDITOR_POOL_`).
+
+| Parameter                         | Default | Required | Description                                                                             |
+| --------------------------------- | ------- | -------- | --------------------------------------------------------------------------------------- |
+| `WHPG_POOL_MAX_CONNS`             | `5`     | No       | Maximum number of pooled connections to the WHPG cluster.                               |
+| `WHPG_POOL_MIN_CONNS`             | —       | No       | Minimum number of pooled connections to the WHPG cluster.                               |
+| `WHPG_POOL_MAX_LIFETIME`          | `30m`   | No       | Maximum lifetime of a pooled WHPG connection before it's recycled.                      |
+| `WHPG_POOL_MAX_IDLE_TIME`         | `5m`    | No       | Maximum time a pooled WHPG connection can sit idle before it's closed.                  |
+| `WHPG_POOL_HEALTH_CHECK`          | `30s`   | No       | Interval at which idle WHPG pool connections are health-checked.                        |
+| `WEM_POOL_MAX_CONNS`              | `4`     | No       | Maximum number of pooled connections to the WEM application state database.             |
+| `WEM_POOL_MIN_CONNS`              | `1`     | No       | Minimum number of pooled connections to the WEM application state database.             |
+| `WEM_POOL_MAX_LIFETIME`           | `30m`   | No       | Maximum lifetime of a pooled WEM application state connection before it's recycled.     |
+| `WEM_POOL_MAX_IDLE_TIME`          | `5m`    | No       | Maximum time a pooled WEM application state connection can sit idle before it's closed. |
+| `WEM_POOL_HEALTH_CHECK`           | `30s`   | No       | Interval at which idle WEM application state pool connections are health-checked.       |
+| `QUERY_EDITOR_POOL_MAX_CONNS`     | `4`     | No       | Maximum number of pooled connections used by the Query Editor.                          |
+| `QUERY_EDITOR_POOL_MIN_CONNS`     | `0`     | No       | Minimum number of pooled connections used by the Query Editor.                          |
+| `QUERY_EDITOR_POOL_MAX_LIFETIME`  | `30m`   | No       | Maximum lifetime of a pooled Query Editor connection before it's recycled.              |
+| `QUERY_EDITOR_POOL_MAX_IDLE_TIME` | `5m`    | No       | Maximum time a pooled Query Editor connection can sit idle before it's closed.          |
+| `QUERY_EDITOR_POOL_HEALTH_CHECK`  | `30s`   | No       | Interval at which idle Query Editor pool connections are health-checked.                |
+| `LOG_POOL_STATS`                  | `false` | No       | Logs periodic connection pool statistics for all three pools.                           |
+| `LOG_POOL_STATS_INTERVAL`         | `60s`   | No       | Frequency at which pool statistics are logged, when `LOG_POOL_STATS` is enabled.        |
+
+Pool utilization is also exposed as [Prometheus metrics](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/metrics/#monitoring-connection-pools) at `/prom/metrics`.
+
+### Session security
+
+| Parameter              | Default | Required | Description                                                                                                                        |
+| ---------------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `WEM_COOKIE_SECRET`    | —       | Yes      | 32-byte secret key for session cookies. Generate with `openssl rand -base64 32`. WEM returns an error at startup if this is unset. |
+| `WEM_INSECURE_COOKIES` | —       | No       | Set to `1` to allow cookies over HTTP. Required when WEM is not served over HTTPS.                                                 |
+
+### Admin credentials
+
+| Parameter                 | Default                   | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------- | ------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEM_ADMIN_PASSWORD`      | Auto-generated at install | No       | Initial admin password. Only used during first-time setup, if the `dashboard_users` table doesn't yet exist. The `wem` service runs `wem setup --non-interactive` on every start as a consistency check, and if that check finds first-time setup still incomplete, for example after restoring or repointing the app-state database, it fails with `admin password pre-flight failed` unless this or `WEM_ADMIN_PASSWORD_FILE` is already set, rather than auto-generating one at that point. |
+| `WEM_ADMIN_PASSWORD_FILE` | —                         | No       | Path to a file containing the admin password. Use instead of `WEM_ADMIN_PASSWORD` for automated deployments.                                                                                                                                                                                                                                                                                                                                                                                   |
+
+### Access control
+
+| Parameter                        | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WEM_ACTION_PERMISSIONS_ENABLED` | `true`  | No       | Enables per-action permission grants, defined in the **Permissions** tab. Set to `false` to fall back to admin-only access for every gated action, regardless of what's granted there, as an emergency rollback. Requires a restart of the WEM service to take effect. See [Defining role-based access control](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/system-access/management/#defining-role-based-access-control). |
+
+### TLS for database connections
+
+These parameters configure client-certificate TLS for WEM's two Postgres connections. They're unrelated to the mutual TLS (mTLS) system WEM uses to authenticate host agents, which is managed automatically through WEM's internal certificate authority. See [Host agent](#host-agent).
+
+| Parameter         | Default | Required | Description                                                                                                                       |
+| ----------------- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `PGSSLCERT`       | —       | No       | Client certificate for the WHPG connection.                                                                                       |
+| `PGSSLKEY`        | —       | No       | Client private key for the WHPG connection.                                                                                       |
+| `PGSSLROOTCERT`   | —       | No       | Root certificate authority (CA) bundle used to verify the WHPG server, for `verify-ca` or `verify-full` values of `WHPG_SSLMODE`. |
+| `WEM_SSLCERT`     | —       | No       | Client certificate for the WEM application state database connection, configured independently from the WHPG connection.          |
+| `WEM_SSLKEY`      | —       | No       | Client private key for the WEM application state database connection.                                                             |
+| `WEM_SSLROOTCERT` | —       | No       | Root CA bundle used to verify the WEM application state database server.                                                          |
+
+### Cluster identity
+
+| Parameter                 | Default | Required | Description                                                                                                                                                                                                                                                 |
+| ------------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEM_CLUSTER_NAME`        | —       | No       | Display name for this cluster, shown in the WEM interface. Also included as a resource tag on the metrics and logs WEM exports through the OTel pipeline, so it's useful for telling clusters apart when several send data to the same ClickHouse instance. |
+| `WEM_CLUSTER_ENVIRONMENT` | —       | No       | Environment label shown in the WEM interface and used to gate confirmation prompts for cluster management actions. Valid values are `dev`, `uat`, and `prod`.                                                                                               |
+
+### Job retention
+
+| Parameter                        | Default | Required | Description                                                                                                                                                                |
+| -------------------------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEM_JOB_RETENTION_HOURS`        | `168`   | No       | How long WEM keeps completed or failed Cluster Management and Safeguard job records before deleting them. A background cleanup task sweeps expired records every 24 hours. |
+| `WEM_BACKUP_JOB_RETENTION_HOURS` | `168`   | No       | How long WEM keeps completed backup and restore job records before deleting them. A background cleanup task sweeps expired records every 24 hours.                         |
+
+### Safeguard
+
+Safeguard backup and disaster-recovery settings (repositories, schedules, DR targets, and so on) are configured through the WEM interface and stored in the WEM application state database, not in `wem.conf`. These parameters only control the background sync of that configuration out to host agents.
+
+| Parameter               | Default | Required | Description                                                                                                                                                                                                                |
+| ----------------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CONFIG_DRIFT_ENABLED`  | `true`  | No       | Enables the periodic check of the Safeguard configuration files on the primary and DR clusters against the configuration WEM stores. When they differ, WEM updates its stored configuration with the values from the host. |
+| `CONFIG_DRIFT_INTERVAL` | `60s`   | No       | Frequency at which the configuration drift check runs, for example `30s` or `1m`.                                                                                                                                          |
+
+### Alert evaluator
+
+WEM evaluates alert rules itself and pushes firing alerts to its bundled Alertmanager. Rules are managed from the **Alert Rules** tab in the WEM interface rather than from static files.
+
+| Parameter                   | Default | Required | Description                                   |
+| --------------------------- | ------- | -------- | --------------------------------------------- |
+| `ALERT_EVALUATOR_ENABLED`   | `true`  | No       | Enables WEM's internal alert rule evaluation. |
+| `ALERT_EVALUATION_INTERVAL` | `15s`   | No       | Frequency at which WEM evaluates alert rules. |
+
+### Query history
+
+| Parameter                  | Default | Required | Description                                                                                                           |
+| -------------------------- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `QUERY_SCAN_INTERVAL`      | `60s`   | No       | Frequency at which WEM scans the logs collected in ClickHouse to build query history. Set to `0` to disable scanning. |
+| `QUERY_LOG_RETENTION_DAYS` | `30`    | No       | Number of days WEM keeps query history rows (`query_log_history`) in ClickHouse. Older rows expire automatically.     |
+
+> **Note**
+>
+> `QUERY_SCAN_INTERVAL` replaces `LOG_SCAN_INTERVAL` and `LOG_SCAN_ENABLED` from earlier versions. To disable the scan, set `QUERY_SCAN_INTERVAL=0`.
+
+### AI Assistant
+
+| Parameter           | Default           | Required | Description                                                                                                                            |
+| ------------------- | ----------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY` | —                 | No       | API key for the integrated AI Assistant. Requires an active Anthropic account. The assistant is disabled when this parameter is unset. |
+| `ANTHROPIC_MODEL`   | `claude-sonnet-5` | No       | Claude model used for AI-powered query plan explanations.                                                                              |
+
+### PXF
+
+WEM never invokes `pxf` itself. The **PXF** tab in **Database Objects** dispatches `pxf cluster` actions to the coordinator's host agent instead, so PXF no longer needs to share a host, or an OS user, with WEM. See [Analyzing data distribution](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/performance/data-analysis/#managing-pxf).
+
+| Parameter                     | Default                         | Required | Description                                                                                                                                                                                                                              |
+| ----------------------------- | ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WHPG_PXF_OP_TIMEOUT_SECONDS` | `60` (`180` with `--high-load`) | No       | How long WEM waits for the coordinator's host agent to finish a `pxf cluster` job. Applies to every action the same way, except restart, which gets double this budget since it's a stop followed by a start. Clamped to 30–600 seconds. |
+
+### Service identity
+
+| Parameter         | Default | Required | Description                                                                                                                                             |
+| ----------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WHPG_ALLOW_ROOT` | —       | No       | Set to `1` to allow the WEM service to run as `root`. By default, WEM refuses to start as `root`. WEM logs a warning on every restart when this is set. |
+
+### Host agent
+
+WEM dispatches jobs to the host agent through its internal job-execution engine, and authenticates every host agent connection with mutual TLS through WEM's internal certificate authority. See [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/).
+
+| Parameter               | Default      | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------- | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEM_AGENT_PORT`        | `PORT` + 1   | No       | Port the host agent connects to for WEM's internal job-execution engine. Leave unset to derive it automatically from `PORT`.                                                                                                                                                                                                                                                                                                                            |
+| `WEM_AGENT_JOIN_SECRET` | — (disabled) | No       | Shared secret that lets host agents skip manual approval. An agent whose `/etc/edb/acp-host-agent/join-token` matches this value is approved automatically. Use 1 to 255 letters, numbers, periods, underscores, or hyphens. Leave unset to approve each agent manually. See [Approving host agents automatically](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/#approving-host-agents-automatically). |
+
+The host agent's callback address for file transfers is derived automatically from `WEM_AGENT_PORT`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

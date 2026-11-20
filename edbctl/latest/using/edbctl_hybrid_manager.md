@@ -1,0 +1,729 @@
+---
+title: edbctl hybrid-manager
+description: Use the edbctl utility for Hybrid Manager management, monitoring, and diagnostics.
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_hybrid_manager/
+lastModified: 2026-11-06T16:50:26+01:00
+---
+
+# edbctl hybrid-manager
+
+The `edbctl hybrid-manager` command manages Hybrid Manager (HM) instances, including lifecycle operations, setup, monitoring access, PostgreSQL diagnostics, and troubleshooting. These commands interact directly with the Kubernetes cluster via `kubectl` context. API credentials are not required.
+
+## Commands
+
+`edbctl hybrid-manager` command has the following options:
+
+- [edbctl hybrid-manager create-install-secrets](#edbctl-hybrid-manager-create-install-secrets) — Create secrets needed to install Hybrid Manager on a Kubernetes cluster.
+- [edbctl hybrid-manager create-object-store](#edbctl-hybrid-manager-create-object-store) — Create the global object storage secret that HM uses.
+- [edbctl hybrid-manager diagnostic-container](#edbctl-hybrid-manager-diagnostic-container) — Launch a diagnostic container.
+- [edbctl hybrid-manager get-pg-activity](#edbctl-hybrid-manager-get-pg-activity) — Display PG cluster activity history.
+- [edbctl hybrid-manager get-pg-all](#edbctl-hybrid-manager-get-pg-all) — Run all PG cluster queries.
+- [edbctl hybrid-manager get-pg-disk](#edbctl-hybrid-manager-get-pg-disk) — Display PG pod disk usage.
+- [edbctl hybrid-manager get-pg-gucs](#edbctl-hybrid-manager-get-pg-gucs) — Display PostgreSQL GUC parameters.
+- [edbctl hybrid-manager get-pg-info](#edbctl-hybrid-manager-get-pg-info) — Display PG cluster overview and instance status.
+- [edbctl hybrid-manager get-pg-owner](#edbctl-hybrid-manager-get-pg-owner) — Display PG cluster owner.
+- [edbctl hybrid-manager list-install-secrets](#edbctl-hybrid-manager-list-install-secrets) — List secrets needed to install Hybrid Manager on a Kubernetes cluster.
+- [edbctl hybrid-manager open-alertmanager](#edbctl-hybrid-manager-open-alertmanager) — Open Alert manager UI.
+- [edbctl hybrid-manager open-grafana](#edbctl-hybrid-manager-open-grafana) — Open Grafana UI.
+- [edbctl hybrid-manager open-prometheus](#edbctl-hybrid-manager-open-prometheus) — Open Prometheus UI.
+- [edbctl hybrid-manager open-thanos](#edbctl-hybrid-manager-open-thanos) — Open Thanos Query UI.
+- [edbctl hybrid-manager parse-operator-logs](#edbctl-hybrid-manager-parse-operator-logs) — Render the Hybrid Manager operator's reconciliation activity.
+- [edbctl hybrid-manager prepare-bootstrap-operator-conversion](#edbctl-hybrid-manager-prepare-bootstrap-operator-conversion) — Prepare a Bootstrap-installed Hybrid Manager for conversion to the Operator method.
+- [edbctl hybrid-manager resume-component](#edbctl-hybrid-manager-resume-component) — Resume a suspended hybrid manager component.
+- [edbctl hybrid-manager retry-component](#edbctl-hybrid-manager-retry-component) — Retry a hybrid manager component that is in error state.
+- [edbctl hybrid-manager status](#edbctl-hybrid-manager-status) — Check the status of Hybrid Manager and its components.
+- [edbctl hybrid-manager suspend-component](#edbctl-hybrid-manager-suspend-component) — Suspend a hybrid manager component.
+- [edbctl hybrid-manager upgrade-operator](#edbctl-hybrid-manager-upgrade-operator) — Install or upgrade the Hybrid Manager Operator to the latest version.
+
+### edbctl hybrid-manager create-install-secrets
+
+Interactively creates secrets on a Kubernetes cluster in preparation for Hybrid Manager bootstrapping. You can also use the `edbctl hm` alias for this command.
+
+The namespace depends on `--version`: for HM 2026.11 or later, the install secrets are created in the `edb-system` namespace, and for earlier versions in `default`. When a secret already exists in `default`, its values are reused.
+
+```
+edbctl hybrid-manager create-install-secrets --version <version> [--scenario <scenarios>] [--force] [options]
+```
+
+Where `options` are:
+
+```
+    --version string      The version of Hybrid Manager to install on the cluster (required).
+                          Use "latest" or "latest-ir" for the latest Innovation Release,
+                          or "latest-lts" for the latest LTS release.
+-s, --scenario strings    The scenarios to install secrets for (all scenarios if not specified).
+                          Scenarios that have no install secrets (such as pgd) or that edbctl
+                          doesn't recognize are skipped with a warning.
+-f, --force               Force update of existing secrets.
+-I, --interactive         Execute command interactively.
+-y, --yes                 Auto-confirm all confirmations.
+-h, --help                Help for create-install-secrets.
+```
+
+These examples show how to create install secrets:
+
+```
+# Interactive mode (default): requires interactive_mode config set to on
+edbctl hm create-install-secrets --version v2026.2.0 --scenario core --scenario ai
+edbctl hm create-install-secrets --version v2026.2.0           # creates secrets for all scenarios
+edbctl hm create-install-secrets --version v2026.2.0 --force   # updates existing secrets
+edbctl hm create-install-secrets --version latest-ir            # resolves to the latest Innovation Release
+edbctl hm create-install-secrets --version latest-lts           # resolves to the latest LTS release
+
+# Skip confirmations: use --yes flag or set confirm_mode config to off
+edbctl hm create-install-secrets --version v2026.2.0 -y
+
+# Non-interactive mode (for CI/CD pipelines): set interactive_mode and confirm_mode config to off,
+# then provide credentials via environment variables (e.g. EDB_CORE_ADMIN_EMAIL1)
+# edbctl config set interactive_mode off
+# edbctl config set confirm_mode off
+# export EDB_CORE_ADMIN_EMAIL1=admin@example.com
+edbctl hm create-install-secrets --version v2026.2.0 --force
+
+# Chatbot models (Hybrid Manager 2026.11 or later): set EDB_CHATBOT_MODEL_ID<N>, _NAME<N> and _URL<N>
+# for N = 1, 2, ... Optional: _API_KEY<N> and _API<N> (openai by default, anthropic, or gemini).
+# Optional capabilities: _TIER<N>, _CONTEXT_WINDOW<N>, _THINKING_LEVELS<N>,
+# and _DEFAULT_THINKING_LEVEL<N>. Set a default when setting thinking levels.
+# export EDB_CHATBOT_MODEL_ID1=model-1
+# export EDB_CHATBOT_MODEL_NAME1=gpt-oss-20b
+# export EDB_CHATBOT_MODEL_URL1=https://llm.example/v1
+# export EDB_CHATBOT_MODEL_API_KEY1=...
+# export EDB_CHATBOT_MODEL_TIER1=L
+# export EDB_CHATBOT_MODEL_CONTEXT_WINDOW1=128k
+# export EDB_CHATBOT_MODEL_THINKING_LEVELS1=low,medium,high
+# export EDB_CHATBOT_MODEL_DEFAULT_THINKING_LEVEL1=medium
+edbctl hm create-install-secrets --version v2026.11.0 --scenario chatbot
+```
+
+### edbctl hybrid-manager create-object-store
+
+Configures the global object storage that HM uses by creating its object storage secret for the given cloud provider. You can also use the `edbctl hm` alias for this command.
+
+HM 2026.11 or later reads the global object storage secret from the `edb-system` namespace, and earlier versions read it from `default`. Pass `--version` to create the secret where the version you're installing reads it. Without `--version`, the secret is created in `default` and a warning is printed.
+
+```
+edbctl hybrid-manager create-object-store --provider {aws|azure|gcp|s3} [--version <version>] [--force] [options]
+```
+
+Where `options` are:
+
+```
+    --version string                                The version of Hybrid Manager that will be installed on the cluster (optional). Use "latest" or "latest-ir" for the latest Innovation Release, or "latest-lts" for the latest LTS release.
+-p, --provider string                               The cloud provider the bucket uses.
+-f, --force                                         Overwrite the object storage secret if it already exists (optional, default false).
+    --aws-bucket-name string                        The name of the storage bucket.
+    --aws-region string                             AWS region of the bucket.
+    --aws-auth-type string                          Authentication type: workloadIdentity (default) or credentials (default "workloadIdentity").
+    --aws-primary-role-arn string                   ARN of the primary AWS role (required when --aws-auth-type=workloadIdentity).
+    --aws-access-key-id string                      AWS access key ID (required when --aws-auth-type=credentials).
+    --aws-secret-access-key-file string             Path to a file containing the AWS secret access key (or set AWS_SECRET_ACCESS_KEY env; required when --aws-auth-type=credentials).
+    --aws-secondary-role-arn string                 ARN of the secondary AWS role.
+    --aws-secondary-role-external-id-file string    External ID used to authenticate with the secondary AWS role (or set AWS_SECONDARY_ROLE_EXTERNAL_ID env).
+    --azure-client-id string                        Client ID of the Azure service principal.
+    --azure-client-secret-file string               Path to a file containing the client secret of the Azure service principal.
+    --azure-region string                           Azure region of the storage account.
+    --azure-resource-group-name string              Name of the Azure resource group, which contains the storage account.
+    --azure-storage-account-container-name string   Name of the Azure storage account container that will be used to access this bucket.
+    --azure-storage-account-key-file string         Path to a file containing the key used to access the storage account.
+    --azure-storage-account-name string             Name of the storage account to use.
+    --azure-subscription-id string                  Azure Subscription ID.
+    --azure-tenant-id string                        Azure Tenant ID.
+    --gcp-bucket-name string                        The name of the storage bucket.
+    --gcp-location-id string                        GCP location where the bucket is located.
+    --gcp-project-id string                         ID of the GCP project that owns the bucket.
+    --gcp-credentials-file string                   Credentials used to authenticate with GCP.
+    --gcp-hmac-access-key-id string                 GCS interoperability (HMAC) access key ID, for S3-compatible clients such as the ClickHouse cold tier.
+    --gcp-hmac-secret-access-key-file string        Path to a file containing the GCS interoperability (HMAC) secret (or set GCP_HMAC_SECRET_ACCESS_KEY env); required with --gcp-hmac-access-key-id.
+    --s3-bucket-name string                         The name of the storage bucket.
+    --s3-access-key-id string                       Access key used to authenticate with the S3 provider.
+    --s3-username string                            Username used to authenticate with the S3 provider (alias for --s3-access-key-id).
+    --s3-ca-bundle-file string                      File containing the CA bundle used to authenticate the S3 server (optional).
+    --s3-disable-server-side-encryption             Disables server-side S3 encryption (optional).
+    --s3-endpoint-url string                        URL Endpoint of the S3 provider.
+    --s3-region string                              Provider region where the bucket is located.
+    --s3-access-key-file string                     Path of a file containing the access key used to authenticate with the S3 provider.
+    --s3-password-file string                       Path of a file containing the password used to authenticate with the S3 provider (alias of --s3-access-key-file).
+-y, --yes                                           Auto-confirm all confirmations.
+-h, --help                                          Help for create-object-store.
+```
+
+This example shows how to create the global object storage secret for an AWS bucket:
+
+```
+edbctl hm create-object-store --provider aws --version v2026.11.0
+```
+
+### edbctl hybrid-manager diagnostic-container
+
+Launches an ephemeral diagnostic container on a target pod or node for troubleshooting. Attaches an interactive TTY session to the debug container. The container is removed when the session ends.
+
+```
+edbctl hybrid-manager diagnostic-container --pod <pod> [--type pod|node] [--namespace <namespace>] [--version <version>] [--registry <registry>] [options]
+```
+
+Where `options` are:
+
+```
+    --pod string        Target pod or node name (required).
+-t, --type string       Target type: pod or node (default: pod).
+-n, --namespace string  Target namespace (required for pod targets).
+-v, --version string    Diagnostic image tag (omit to use the image default).
+-r, --registry string   Container registry URL (default "docker.enterprisedb.com/pgai-platform").
+-h, --help              Help for diagnostic-container.
+```
+
+These examples show how to launch a diagnostic container:
+
+```
+edbctl hybrid-manager diagnostic-container --pod my-pod -n my-namespace
+edbctl hybrid-manager diagnostic-container --pod my-node --type node
+edbctl hybrid-manager diagnostic-container --pod my-pod -n my-namespace --version 2026.2.0
+```
+
+### edbctl hybrid-manager get-pg-activity
+
+Queries the Beacon database for cluster activity records such as create and delete operations.
+
+```
+edbctl hybrid-manager get-pg-activity --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-c, --create            Show CREATE activities only.
+-d, --delete            Show DELETE activities only.
+-t, --timestamp-only    Show timestamps only.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-activity.
+```
+
+These examples show how to display PG cluster activity:
+
+```
+edbctl hybrid-manager get-pg-activity --pg-id p-abc123def
+edbctl hybrid-manager get-pg-activity --pg-id p-abc123def --create
+edbctl hybrid-manager get-pg-activity --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-all
+
+Retrieves all PostgreSQL cluster data in a single invocation: cluster info and instance status, GUC parameters, disk usage per pod, and activity history. Equivalent to running `get-pg-info`, `get-pg-gucs`, `get-pg-disk`, and `get-pg-activity` in sequence.
+
+```
+edbctl hybrid-manager get-pg-all --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-all.
+```
+
+These examples show how to run all PG cluster queries:
+
+```
+edbctl hybrid-manager get-pg-all --pg-id p-abc123def
+edbctl hybrid-manager get-pg-all --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-disk
+
+Shows filesystem usage, base size, temp size, and WAL size for a PostgreSQL pod. Use `--pg-id` to discover pods for a PG cluster automatically, or `--pod` to target a specific pod directly. Exactly one of `--pg-id` or `--pod` must be provided.
+
+```
+edbctl hybrid-manager get-pg-disk [--pg-id <cluster-id> | --pod <pod>] [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID (discovers pods automatically).
+    --pod string        Target a specific pod directly.
+-n, --namespace string  Override namespace (with --pod only; auto-detected if omitted).
+-a, --all               Show disk info for all pods in the cluster (with --pg-id only).
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-I, --interactive       Execute command interactively.
+-h, --help              Help for get-pg-disk.
+```
+
+These examples show how to display PG pod disk usage:
+
+```
+edbctl hybrid-manager get-pg-disk --pg-id p-abc123def
+edbctl hybrid-manager get-pg-disk --pg-id p-abc123def --all
+edbctl hybrid-manager get-pg-disk --pod p-abc123def-a-1
+edbctl hybrid-manager get-pg-disk --pod p-abc123def-a-1 -n custom-namespace
+edbctl hybrid-manager get-pg-disk --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-gucs
+
+Reads GUC (Grand Unified Configuration) parameters from the ClusterWrapper CRD per instance.
+
+```
+edbctl hybrid-manager get-pg-gucs --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-gucs.
+```
+
+These examples show how to display PostgreSQL GUC parameters:
+
+```
+edbctl hybrid-manager get-pg-gucs --pg-id p-abc123def
+edbctl hybrid-manager get-pg-gucs --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-info
+
+Retrieves cluster metadata and per-instance health from ClusterWrapper and CNP Cluster CRDs.
+
+```
+edbctl hybrid-manager get-pg-info --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-info.
+```
+
+These examples show how to display PG cluster overview and instance status:
+
+```
+edbctl hybrid-manager get-pg-info --pg-id p-abc123def
+edbctl hybrid-manager get-pg-info --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager get-pg-owner
+
+Queries the Beacon database to find the user who created the PG cluster.
+
+```
+edbctl hybrid-manager get-pg-owner --pg-id <cluster-id> [options]
+```
+
+Where `options` are:
+
+```
+    --pg-id string      PG cluster ID.
+-o, --output string     [table json yaml xml json-raw] (default "table").
+-h, --help              Help for get-pg-owner.
+```
+
+These examples show how to display PG cluster owner:
+
+```
+edbctl hybrid-manager get-pg-owner --pg-id p-abc123def
+edbctl hybrid-manager get-pg-owner --pg-id p-abc123def -o json
+```
+
+### edbctl hybrid-manager list-install-secrets
+
+Provides a formatted list of secrets required for the given Hybrid Manager version and scenario set. You can also use the `edbctl hm` alias for this command.
+
+```
+edbctl hybrid-manager list-install-secrets --version <version> [--scenario <scenarios>] [options]
+```
+
+Where `options` are:
+
+```
+    --version string      The version of Hybrid Manager to list secrets for (required).
+                          Use "latest" or "latest-ir" for the latest Innovation Release,
+                          or "latest-lts" for the latest LTS release.
+-s, --scenario strings    The scenarios to list secrets for (all scenarios if not specified).
+                          Scenarios that have no install secrets (such as pgd) or that edbctl
+                          doesn't recognize are skipped with a warning.
+-o, --output string       [table json yaml xml json-raw] (default "table").
+-h, --help                Help for list-install-secrets.
+```
+
+These examples show how to list install secrets:
+
+```
+edbctl hm list-install-secrets --version v2026.2.0 --scenario core --scenario ai
+edbctl hm list-install-secrets --version v2026.2.0      # lists secrets for all scenarios
+edbctl hm list-install-secrets --version latest-ir       # resolves to the latest Innovation Release
+edbctl hm list-install-secrets --version latest-lts      # resolves to the latest LTS release
+```
+
+#### Understanding the output
+
+This command reports what the requested version and scenario set _require_. It reads a catalog compiled into `edbctl` and, unlike the other commands on this page, doesn't query your cluster: the output is identical whether or not the secrets exist. Use it as a checklist of what to prepare, not as a check of what is present.
+
+A listing for one scenario looks like this:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Install Secrets                                                                                                                                            │
+├─────────────────────────────┬──────────┬───────────┬───────────┬────────────────────────────────────┬──────────────────────────────────────────────────────┤
+│ Secret                      │ Optional │ Generator │ Validator │ Environment Variable               │ Description                                          │
+├─────────────────────────────┼──────────┼───────────┼───────────┼────────────────────────────────────┼──────────────────────────────────────────────────────┤
+│ HuggingFace Access Token    │ yes      │ no        │ no        │ EDB_AI_HF_TOKEN                    │ Access token for HuggingFace model downloads         │
+│ Langflow Fernet Key         │ no       │ yes       │ yes       │ EDB_AI_LANGFLOW_FERNET             │ Encryption key used by Langflow for internal secrets │
+│ Langflow Superuser Username │ no       │ yes       │ no        │ EDB_AI_LANGFLOW_SUPERUSER          │ Login username for the Langflow admin account        │
+│ Langflow Superuser Password │ no       │ yes       │ no        │ EDB_AI_LANGFLOW_SUPERUSER_PASSWORD │ Login password for the Langflow admin account        │
+│ NVIDIA NGC Key              │ yes      │ no        │ no        │ EDB_AI_NVIDIA_NGC                  │ Key for Nvidia's container registry                  │
+└─────────────────────────────┴──────────┴───────────┴───────────┴────────────────────────────────────┴──────────────────────────────────────────────────────┘
+```
+
+Each column reports the following:
+
+| Column                 | Meaning                                                                                                                                                                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Secret`               | A human-readable label for one value. It is not the name of a Kubernetes secret.                                                                                                                                                                                                                             |
+| `Optional`             | `no` means at least one component in the selected scenarios requires the value. `yes` means every group that uses it is itself optional, so you can skip it. It is calculated across the selected scenarios only, so the same secret can report `no` for one `--scenario` combination and `yes` for another. |
+| `Generator`            | `yes` means `create-install-secrets` always generates the value, without prompting for it or reading its environment variable. `no` means you must supply it.                                                                                                                                                |
+| `Validator`            | `yes` means the value is checked for format when you supply it, such as confirming that an email address is well formed.                                                                                                                                                                                     |
+| `Environment Variable` | The variable `create-install-secrets` reads for this value in non-interactive mode. It's ignored for values with `Generator` set to `yes`.                                                                                                                                                                   |
+| `Description`          | What the value is used for.                                                                                                                                                                                                                                                                                  |
+
+Informational messages, such as warnings about skipped scenarios, go to standard error, so the `json`, `json-raw`, `yaml`, and `xml` output formats stay parseable. This includes when `--version` is an alias such as `latest-ir` or when `--scenario` is omitted.
+
+The list is filtered by version, so two versions can legitimately report different secrets: a value that components no longer need is absent from later releases. Always pass the version you're installing.
+
+> **Note**
+>
+> Rows are individual values, not Kubernetes secrets, and the mapping between them isn't one to one. A row can be one key inside a larger secret, and one row can be written into several secrets. The four `EDB_CORE_SYSTEMDB_PASSWORD_*` rows of the `core` scenario, for example, become seven secrets in the `default` namespace — `db-upm`, `db-dex`, `db-langflow`, `db-lakekeeper`, `db-beacon-app`, `db-transporter`, and `db-superuser` — because several databases share a role password. Comparing this row count against `kubectl get secrets` isn't a meaningful check.
+
+To see which secrets a cluster actually holds, query the labels that `create-install-secrets` applies to everything it creates:
+
+```
+kubectl get secret -A -l app.kubernetes.io/managed-by=edbctl
+kubectl get secret -A -l app.kubernetes.io/component=core
+```
+
+Secrets created by hand rather than through `edbctl` don't carry these labels.
+
+### edbctl hybrid-manager open-alertmanager
+
+Opens the Alertmanager web UI via port-forward and browser. Sets up a port-forward to the `alertmanager-operated` service and opens the web UI in the default browser. Press `Ctrl+C` to stop.
+
+```
+edbctl hybrid-manager open-alertmanager [options]
+```
+
+Where `options` are:
+
+```
+-b, --background    Run port-forward in the background.
+-h, --help          Help for open-alertmanager.
+```
+
+These examples show how to open the Alertmanager UI:
+
+```
+edbctl hybrid-manager open-alertmanager
+edbctl hybrid-manager open-alertmanager --background
+```
+
+### edbctl hybrid-manager open-grafana
+
+Opens the Grafana web UI via port-forward and browser. Sets up a port-forward to the `grafana` service and opens the web UI in the default browser. Press `Ctrl+C` to stop.
+
+```
+edbctl hybrid-manager open-grafana [options]
+```
+
+Where `options` are:
+
+```
+-b, --background    Run port-forward in the background.
+-h, --help          Help for open-grafana.
+```
+
+These examples show how to open the Grafana UI:
+
+```
+edbctl hybrid-manager open-grafana
+edbctl hybrid-manager open-grafana --background
+```
+
+### edbctl hybrid-manager open-prometheus
+
+Opens the Prometheus web UI via port-forward and browser. Sets up a port-forward to the `prometheus-k8s` service and opens the web UI in the default browser. Press `Ctrl+C` to stop.
+
+```
+edbctl hybrid-manager open-prometheus [options]
+```
+
+Where `options` are:
+
+```
+-b, --background    Run port-forward in the background.
+-h, --help          Help for open-prometheus.
+```
+
+These examples show how to open the Prometheus UI:
+
+```
+edbctl hybrid-manager open-prometheus
+edbctl hybrid-manager open-prometheus --background
+```
+
+### edbctl hybrid-manager open-thanos
+
+Opens the Thanos Query web UI via port-forward and browser. Sets up a port-forward to the `thanos-query-frontend` service and opens the web UI in the default browser. Press `Ctrl+C` to stop.
+
+```
+edbctl hybrid-manager open-thanos [options]
+```
+
+Where `options` are:
+
+```
+-b, --background    Run port-forward in the background.
+-h, --help          Help for open-thanos.
+```
+
+These examples show how to open the Thanos Query UI:
+
+```
+edbctl hybrid-manager open-thanos
+edbctl hybrid-manager open-thanos --background
+```
+
+### edbctl hybrid-manager parse-operator-logs
+
+Reads the Hybrid Manager operator logs, strips routine noise, and renders the reconciliation story as either a live deployment dashboard (default) or a chronological timeline (`--timeline`), headed by the `HybridControlPlane` CR status.
+
+When the instance is in a failed phase (or with `--events`) the most recent `HybridControlPlane` CR events are shown, since these often name the underlying cause (image pull failure, admission rejection, quota) that the operator log alone doesn't make obvious.
+
+Logs can also be piped on standard input, in which case the command runs fully offline (no cluster contact) and the CR status and CR events are unavailable.
+
+This command is strictly read-only; it never mutates the cluster or the CR.
+
+```
+edbctl hybrid-manager parse-operator-logs [options]
+```
+
+Where `options` are:
+
+```
+    --tail int              Maximum number of log lines to read from the operator pod (default 2000).
+-f, --follow                Continuously consume new log output (live dashboard on a terminal).
+    --timeline               Render the chronological event timeline instead of the dashboard.
+-v, --verbose                Show extra detail (skipped components, individual postflight checks).
+-n, --namespace string       Operator namespace (auto-detected across the known operator namespaces when unset).
+    --events                 Force-include CR events regardless of phase (otherwise shown only when failed).
+    --wait-for-phase string  Wait until the CR leaves any of the given comma-separated phases before treating them as terminal (useful for orchestrators that have just patched the CR and want to watch the operator react).
+-o, --output string          [table json yaml xml json-raw] (default "table").
+-h, --help                   Help for parse-operator-logs.
+```
+
+These examples show how to render the operator's reconciliation activity:
+
+```
+# Live dashboard against the current cluster (auto-stops when deployed/failed)
+edbctl hybrid-manager parse-operator-logs --follow
+
+# Chronological timeline
+edbctl hybrid-manager parse-operator-logs --timeline
+
+# Parse a captured log offline
+kubectl logs <operator-pod> | edbctl hybrid-manager parse-operator-logs --timeline
+```
+
+> **Note**
+>
+> The `resume-component`, `retry-component`, and `suspend-component` commands prompt for confirmation by default. Use `--yes` (`-y`) to skip the prompt for CI or scripted use. For guidance on when and why to use these commands, see [Managing HM components](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/manage_components/).
+
+### edbctl hybrid-manager resume-component
+
+Resumes a suspended Hybrid Manager component.
+
+```
+edbctl hybrid-manager resume-component <component-name> [options]
+```
+
+Where `options` are:
+
+```
+-y, --yes    Auto-confirm all confirmations.
+-h, --help   Help for resume-component.
+```
+
+This example shows how to resume a component:
+
+```
+edbctl hybrid-manager resume-component upm-istio
+```
+
+### edbctl hybrid-manager retry-component
+
+Retries a Hybrid Manager component that is in an error state.
+
+```
+edbctl hybrid-manager retry-component <component-name> [options]
+```
+
+Where `options` are:
+
+```
+-y, --yes    Auto-confirm all confirmations.
+-h, --help   Help for retry-component.
+```
+
+This example shows how to retry a component:
+
+```
+edbctl hybrid-manager retry-component upm-istio
+```
+
+### edbctl hybrid-manager status
+
+Checks the status of Hybrid Manager and its components.
+
+```
+edbctl hybrid-manager status [options]
+```
+
+Where `options` are:
+
+```
+-o, --output string   [table json yaml xml json-raw] (default "table").
+-h, --help            Help for status.
+```
+
+This example shows how to check the Hybrid Manager status:
+
+```
+edbctl hybrid-manager status
+```
+
+### edbctl hybrid-manager suspend-component
+
+Suspends a Hybrid Manager component.
+
+```
+edbctl hybrid-manager suspend-component <component-name> [options]
+```
+
+Where `options` are:
+
+```
+-y, --yes    Auto-confirm all confirmations.
+-h, --help   Help for suspend-component.
+```
+
+This example shows how to suspend a component:
+
+```
+edbctl hybrid-manager suspend-component upm-istio
+```
+
+### edbctl hybrid-manager prepare-bootstrap-operator-conversion
+
+Prepares a Bootstrap-installed Hybrid Manager for conversion to the Operator installation method. The command does two things in a single run: exports the existing `HybridControlPlane` CR (created by the bootstrap install) to a manifest so it can be re-applied under the operator, and transfers Helm ownership of the existing cluster resources from the bootstrap release to the operator release by deleting the bootstrap controller Deployments and re-annotating CRDs, RBAC, Services, the ServiceAccount, and webhook configurations.
+
+No CRDs or database clusters are deleted. The transfer is idempotent and safe to re-run. Installing the operator chart and applying the exported CR remain manual follow-up steps.
+
+You can also use the `edbctl hm` alias for this command.
+
+```
+edbctl hybrid-manager prepare-bootstrap-operator-conversion [options]
+```
+
+Where `options` are:
+
+```
+-o, --output string              File to write the exported HybridControlPlane CR (default "hybridmanager.yaml").
+-n, --namespace string           Bootstrap namespace (default "edbpgai-bootstrap").
+    --operator-namespace string  Namespace the operator chart will be installed into (default: same as --namespace).
+    --source-release string      Helm release currently owning the resources (default "edbpgai-bootstrap").
+    --target-release string      Helm release to transfer ownership to (default "edb-hcp-operator").
+    --dry-run                    Preview deletions and annotations without changing the cluster.
+-y, --yes                        Auto-confirm all confirmations.
+-h, --help                       Help for prepare-bootstrap-operator-conversion.
+```
+
+These examples show how to prepare a Bootstrap-installed Hybrid Manager for conversion:
+
+```
+# Export the CR and transfer ownership (prompts before the transfer)
+edbctl hm prepare-bootstrap-operator-conversion
+
+# Preview everything without changing the cluster
+edbctl hm prepare-bootstrap-operator-conversion --dry-run
+
+# Write the exported CR to a specific path
+edbctl hm prepare-bootstrap-operator-conversion -o hm.yaml
+```
+
+### edbctl hybrid-manager upgrade-operator
+
+Installs or upgrades the Hybrid Manager (HM) Operator to the latest available LTS version using Helm. Run this command to ensure the operator is up to date before installing or upgrading Hybrid Manager itself.
+
+From the 1.4.0 LTS release (or the 2026.6.0 Innovation release) onwards, operator images are embedded in the HM release and synced with `edbctl image sync-to-local-registry`. As a result, you can install the operator directly from Cloudsmith or from a private registry.
+
+> **Note**
+>
+> When deploying from a private registry, run this command only after you finish syncing images for the target HM version to that registry. Otherwise the operator image may not be present and the upgrade fails.
+
+> **Note**
+>
+> This command uses Helm to install the operator. To uninstall it, run `helm uninstall` against the release.
+
+> **Note**
+>
+> On OpenShift, installing the operator from the OperatorHub certified operator is often a better option than this command.
+
+You can also use the `edbctl hm` alias for this command. This command is also available as `edbctl hm install-operator`.
+
+```
+edbctl hybrid-manager upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> [options]
+```
+
+Where `options` are:
+
+```
+    --registry-uri string        Container registry URI to pull the operator image from (required).
+    --registry-username string   Username for authenticating to the container registry (required).
+    --registry-password string   Password for authenticating to the container registry (required).
+    --registry-insecure          Allow insecure connections to the container registry (for example, self-signed TLS).
+    --release-name string        Helm release name to use for the operator chart (default "edb-hcp-operator").
+    --namespace string           Kubernetes namespace where the operator is or will be installed (default "edb-hcp-operator-system").
+    --set stringArray            Additional Helm chart values to set (for example, --set key=value).
+    --timeout duration           Time to wait for the operator release to become ready before rolling back (default 5m0s).
+    --verbose                    Show verbose Helm output (chart pull, resource creation, and readiness progress).
+-y, --yes                        Auto-confirm all confirmations.
+-h, --help                       Help for upgrade-operator.
+```
+
+These examples show how to install or upgrade the operator:
+
+```
+# Install or upgrade the operator directly from EDB Cloudsmith
+edbctl hm upgrade-operator --registry-uri docker.enterprisedb.com/pgai-platform --registry-username <edb-cloudsmith-username> --registry-password <edb-cloudsmith-password>
+
+# Install or upgrade the operator from a private registry
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password>
+
+# Install into a custom namespace with a custom Helm release name
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --namespace my-operator-ns --release-name my-operator
+
+# Skip TLS verification for a registry with a self-signed certificate
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --registry-insecure
+
+# Override additional chart values and extend the readiness timeout
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --set hmRegistry.enabled=true --timeout 10m
+
+# Auto-confirm the prompt (non-interactive)
+edbctl hm upgrade-operator --registry-uri <registry-uri> --registry-username <username> --registry-password <password> --yes
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

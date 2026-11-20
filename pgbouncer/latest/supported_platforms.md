@@ -1,0 +1,39 @@
+---
+title: Supported platforms
+product: PgBouncer
+version: "1"
+url: https://www.enterprisedb.com/docs/pgbouncer/latest/supported_platforms/
+lastModified: 2026-10-28T22:01:47+05:30
+---
+
+# Supported platforms
+
+The EDB PgBouncer is supported on the same platforms as EDB Postgres Advanced Server. To determine the platform support for the EDB PgBouncer, you can either refer to the platform support for EDB Postgres Advanced Server on the [Platform Compatibility page](https://www.enterprisedb.com/platform-compatibility#epas) on the EDB website or refer to [Installing EDB pgBouncer](https://www.enterprisedb.com/docs/pgbouncer/latest/installing/).
+
+## Supported database versions
+
+This table lists the latest EDB PgBouncer versions and their supported corresponding EDB Postgres Advanced Server (EPAS) versions.
+
+| EDB PgBouncer | EPAS 18 | EPAS 17 | EPAS 16 | EPAS 15 | EPAS 14 |
+| ------------- | ------- | ------- | ------- | ------- | ------- |
+| 1.26          | Y       | Y       | Y       | Y       | Y       |
+| 1.25          | Y       | Y       | Y       | Y       | Y       |
+| 1.24          | N       | Y       | Y       | Y       | Y       |
+| 1.23          | N       | Y       | Y       | Y       | Y       |
+| 1.22          | N       | Y       | Y       | Y       | Y       |
+| 1.21          | N       | Y       | Y       | Y       | Y       |
+| 1.20          | N       | Y       | Y       | Y       | Y       |
+| 1.19          | N       | Y       | Y       | Y       | Y       |
+| 1.18          | N       | Y       | Y       | Y       | Y       |
+| 1.17          | N       | N       | N       | N       | Y       |
+| 1.16          | N       | N       | N       | N       | Y       |
+| 1.15          | N       | N       | N       | N       | N       |
+| 1.14          | N       | N       | N       | N       | N       |
+| 1.13          | N       | N       | N       | N       | N       |
+| 1.12          | N       | N       | N       | N       | N       |
+| 1.9           | N       | N       | N       | N       | N       |
+| 1.7           | N       | N       | N       | N       | N       |
+
+The documented and supported functionality of each version of EDB PgBouncer is the same. The information in this documentation applies to all supported versions of EDB PgBouncer.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

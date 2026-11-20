@@ -1,0 +1,495 @@
+---
+title: WarehousePG Disaster Recovery command reference
+description: Full reference for all whpg-dr subcommands, options, and examples.
+product: WarehousePG Disaster Recovery
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/reference/commands/
+lastModified: 2026-11-09T15:30:56Z
+---
+
+# WarehousePG Disaster Recovery command reference
+
+Run all `whpg-dr` commands as the WarehousePG cluster owner, typically `gpadmin` on the coordinator.
+
+## Global options
+
+All `whpg-dr` commands accept the following options:
+
+| Option                     | Default             | Description                                                     |
+| -------------------------- | ------------------- | --------------------------------------------------------------- |
+| `--log-dir <path>`         | `$HOME/gpAdminLogs` | Directory for log files.                                        |
+| `--log-file-level <level>` | `debug`             | Log file verbosity (`debug`, `info`, `warn`, `error`, `fatal`). |
+
+---
+
+## whpg-dr archiving resume
+
+Resumes WAL archiving after a suspension and reloads the cluster configuration. See [Handling storage outages](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#handling-storage-outages) for the full procedure.
+
+> **Important**
+>
+> After resuming, take a fresh base backup before creating new restore points. WAL generated during the suspension window is permanently lost.
+
+```bash
+whpg-dr archiving resume <cluster_name> [options]
+```
+
+| Option                  | Description                                                                                                                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--restart-mode <mode>` | How the restart stops the cluster when resuming turns `archive_mode` back on. Accepts `smart` (default), `fast`, or `immediate`, described below. A resume that only reloads the configuration ignores this option. |
+
+The `--restart-mode` modes are:
+
+- `smart` (default) waits for client sessions to end. If a session stays connected, `gpstop` waits for its stop timeout (120 seconds by default) and then force-stops the coordinator with SIGQUIT.
+- `fast` ends client sessions, rolls back their transactions, and stops cleanly. Use it when clients might still be connected.
+- `immediate` stops all instances without a clean shutdown, so the cluster runs crash recovery at the next start. The command prints a warning first.
+
+---
+
+## whpg-dr archiving suspend
+
+Suspends WAL archiving on the primary cluster. See [Handling storage outages](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#handling-storage-outages) for the full procedure.
+
+> **Warning**
+>
+> WAL generated while archiving is suspended is permanently lost. The command refuses to run on a cluster that is already suspended or in an inconsistent state.
+
+```bash
+whpg-dr archiving suspend <cluster_name> [options]
+```
+
+| Option            | Description                                                                 |
+| ----------------- | --------------------------------------------------------------------------- |
+| `--reason <text>` | Human-readable explanation for the suspension, recorded in the marker file. |
+
+**Example:**
+
+```bash
+whpg-dr archiving suspend my_cluster --reason "S3 endpoint down since 14:30"
+```
+
+---
+
+## whpg-dr backup
+
+Takes a full physical backup of the coordinator and all primary segment data directories in parallel. See [Taking a base backup](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#performing-a-base-backup) for usage in context.
+
+```bash
+whpg-dr backup <cluster_name> [options]
+```
+
+| Option                      | Description                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--barman-jobs <n>`         | Parallel workers per segment. Defaults to `1`. Overrides [`barman_options.jobs`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/reference/configuration/#backup-configuration-yaml) from the configuration. Raise it to increase parallelism, sizing it as approximately `host_cores / primaries_per_host`. Most impactful for S3 storage, where upload concurrency is often the bottleneck. |
+| `--check-timeout <seconds>` | Wait up to this many seconds for Barman checks to pass before starting the backup. Pass `0` to disable the timeout entirely.                                                                                                                                                                                                                                                                                              |
+| `--dry-run`                 | List targets and commands without executing.                                                                                                                                                                                                                                                                                                                                                                              |
+| `--name <name>`             | Name for the backup. Defaults to a timestamp-based name, for example `20260624T195641_base_backup`.                                                                                                                                                                                                                                                                                                                       |
+
+If a backup fails or is interrupted (for example with Ctrl-C or SIGTERM) after the backup starts, the command reports what the run left in the backup catalog. The report says whether [`whpg-dr create-restore-point`](#whpg-dr-create-restore-point) can make the backup restorable while it's the newest complete backup, or which [`whpg-dr delete`](#whpg-dr-delete) command removes it. It also says whether retention will expire the backup. A backup left incomplete or without a restore point isn't restorable and doesn't count toward retention. If the run failed after the restore point was created, the report says the backup can be restored with `--target-name`. The command doesn't delete anything automatically.
+
+**Example:**
+
+```bash
+whpg-dr backup my_cluster --name before_schema_migration
+```
+
+---
+
+## whpg-dr check
+
+Runs health checks against all segments to verify that WAL archiving is configured and working correctly. Run after [configuring the primary cluster](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/configuring-primary/) to confirm the setup is healthy.
+
+```bash
+whpg-dr check <cluster_name> [options]
+```
+
+| Option                      | Description                                            |
+| --------------------------- | ------------------------------------------------------ |
+| `--check-timeout <seconds>` | Maximum time to wait for each segment check.           |
+| `--jobs <n>`                | Maximum number of concurrent checks. Defaults to `16`. |
+
+**Example:**
+
+```bash
+whpg-dr check my_cluster --check-timeout 60
+```
+
+---
+
+## whpg-dr check-backup
+
+Troubleshooting command only. Diagnoses the status of a specific base backup. The command refuses incomplete and in-progress backups.
+
+Run from a recovery site, the command is read-only. It reads each server's `backup.info` and lists the archived WAL instead of running `barman check-backup`, so it can't change the backup's status in the shared catalog. For a backup marked `FAILED`, the output says whether the mark is stale, meaning every WAL segment is archived, or real. See [Stale FAILED mark on S3 storage](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/troubleshooting/#stale-failed-mark-on-s3-storage).
+
+```bash
+whpg-dr check-backup <cluster_name> [options]
+```
+
+| Option                 | Description                       |
+| ---------------------- | --------------------------------- |
+| `--backup-name <name>` | Name of the base backup to check. |
+
+**Example:**
+
+```bash
+whpg-dr check-backup my_cluster --backup-name 20260601T120000_base_backup
+```
+
+---
+
+## whpg-dr clean-lock-file
+
+Removes a stale lock file left by an interrupted `create-restore-point` command. Only run this command when no other `whpg-dr` process is running for this cluster. See [Restore point failures](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/troubleshooting/#restore-point-failures) for context.
+
+```bash
+whpg-dr clean-lock-file <cluster_name> [options]
+```
+
+| Option      | Description                                   |
+| ----------- | --------------------------------------------- |
+| `--dry-run` | Show what would be cleaned without executing. |
+
+---
+
+## whpg-dr configure backup
+
+Reads the backup YAML, configures WAL archiving on the primary cluster, and distributes Barman configuration to all segment hosts. See [Configuring the primary cluster](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/configuring-primary/) for setup instructions.
+
+```bash
+whpg-dr configure backup <backup_config_file> [options]
+```
+
+| Option                  | Description                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dry-run`             | Print planned actions without executing.                                                                                                                                                                                                                                                                                                                |
+| `--reconfigure`         | Redistribute regenerated Barman configuration files without changing cluster settings or restarting the cluster. Use after an OS migration or SSH key rotation, and after upgrading from a release earlier than 1.1.1.                                                                                                                                  |
+| `--restart-mode <mode>` | How the cluster restart that applies the archive settings stops the cluster ([`gpstop -ar -M <mode>`](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/utility_guide/reference/gpstop/)). Accepts `smart` (default), `fast`, or `immediate`, described below. `--reconfigure` ignores this option because it doesn't restart the cluster. |
+
+The `--restart-mode` modes are:
+
+- `smart` (default) waits for client sessions to end. If a session stays connected, `gpstop` waits for its stop timeout (120 seconds by default) and then force-stops the coordinator with SIGQUIT.
+- `fast` ends client sessions, rolls back their transactions, and stops cleanly. Use it when clients might still be connected.
+- `immediate` stops all instances without a clean shutdown, so the cluster runs crash recovery at the next start. The command prints a warning first.
+
+**Example:**
+
+```bash
+whpg-dr configure backup /home/gpadmin/backup.yaml --reconfigure
+```
+
+---
+
+## whpg-dr configure reset
+
+Removes `whpg-dr` configuration from a cluster. Run on the primary site only.
+
+```bash
+whpg-dr configure reset <cluster_name> [options]
+```
+
+| Option                  | Description                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `--dry-run`             | Print planned actions without executing.                                                               |
+| `--restart-mode <mode>` | How the restart stops the cluster. Accepts `smart` (default), `fast`, or `immediate`, described below. |
+
+The `--restart-mode` modes are:
+
+- `smart` (default) waits for client sessions to end. If a session stays connected, `gpstop` waits for its stop timeout (120 seconds by default) and then force-stops the coordinator with SIGQUIT.
+- `fast` ends client sessions, rolls back their transactions, and stops cleanly. Use it when clients might still be connected.
+- `immediate` stops all instances without a clean shutdown, so the cluster runs crash recovery at the next start. The command prints a warning first.
+
+> **Note**
+>
+> `configure reset` cleans up the backup-side configuration only. It doesn't remove restore-side configuration on the DR cluster.
+
+---
+
+## whpg-dr configure restore
+
+Configures the DR cluster for restore. Reads the restore YAML, checks the WarehousePG version on the coordinator and every segment host, maps source segments to DR hosts, generates Barman restore configuration files, and distributes them to all DR segment hosts. A WarehousePG major version that differs from the backup's returns an error, and an older minor or patch release returns a warning. See [Setting up the DR cluster](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/configuring-dr/) for setup instructions.
+
+```bash
+whpg-dr configure restore <restore_config_file> [options]
+```
+
+| Option                 | Description                                                                                                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--backup-name <name>` | Use a specific base backup from the repository. Defaults to the backup associated with the latest restore point. Omit on the initial configure, then run `whpg-dr list-backup` to see available names and re-run with `--backup-name` if needed. |
+| `--dry-run`            | Print planned actions without executing.                                                                                                                                                                                                         |
+
+**Example:**
+
+```bash
+whpg-dr configure restore /home/gpadmin/restore.yaml --backup-name 20260601T120000_base_backup
+```
+
+---
+
+## whpg-dr cron
+
+Enforces the configured retention policy by expiring old backups and cleaning up their associated restore-point metadata. The cluster doesn't need to be running. See [Managing backup retention](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#managing-backup-retention) for setup instructions.
+
+```bash
+whpg-dr cron <cluster_name> [options]
+```
+
+> **Note**
+>
+> `whpg-dr cron` doesn't run concurrently with `backup`, `delete`, or `create-restore-point`. If another operation holds the cluster lock, it exits immediately. For S3 storage, the S3 endpoint must be reachable from the coordinator and all segment hosts.
+
+| Option      | Description                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------- |
+| `--dry-run` | Print the `barman cron` command and the retention plan without executing or acquiring the lock. |
+
+`whpg-dr` applies retention to whole cluster backups, not to each segment separately. Only restorable backups count toward the policy, meaning backups that are `DONE` on every segment and have a restore point. The command keeps the newest restorable backups that the policy asks for, never fewer than `minimum_redundancy` or one. It deletes every older backup, including failed and partial ones, in the same way as [`whpg-dr delete`](#whpg-dr-delete). Nothing newer is deleted. A backup in `WAITING_FOR_WALS` neither counts toward the policy nor gets deleted until Barman marks it `DONE` or `FAILED`.
+
+After retention, the command reconciles the restore-point metadata with the backup catalog. If it can't read the catalog, or if every restore point is slated for removal, it removes no restore points and exits with a non-zero status. Backups that retention already deleted in that run stay deleted. If the backups were removed outside `whpg-dr`, remove the restore-point directories that the command lists and run it again.
+
+`whpg-dr` doesn't write `retention_policy` into the Barman configuration. Configuration generated by an earlier release still contains it, so the command refuses to run until you regenerate it with `whpg-dr configure backup --reconfigure <config_file>`. Until then, Barman's WAL maintenance also pauses, and on POSIX storage archived WAL waits in each server's `incoming/` directory.
+
+---
+
+## whpg-dr create-restore-point
+
+Creates a cluster-wide consistent restore point. See [Creating a restore point](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#creating-a-restore-point) for usage in context.
+
+```bash
+whpg-dr create-restore-point <cluster_name> [options]
+```
+
+| Option            | Description                                                                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dry-run`       | Show what would be done without executing.                                                                                                |
+| `--suffix <text>` | Appended to the auto-generated timestamp prefix in the restore point name, for example `20260615-143022R_<suffix>`. Must not be `latest`. |
+
+If the latest completed backup has no `segment_configuration.csv`, which happens when a backup fails after it finished on every segment, the command regenerates the file from `gp_segment_configuration`. It does so only when the live primaries still match the configured topology and that topology was recorded before the backup started. Otherwise it skips the backup with a warning and anchors the restore point to the newest older usable backup. `--dry-run` shows the decision first.
+
+**Example:**
+
+```bash
+whpg-dr create-restore-point my_cluster --suffix before_etl_load
+```
+
+---
+
+## whpg-dr delete
+
+Deletes a base backup and all its associated restore points from the storage repository. Run on the primary cluster only. See [Deleting backups](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#deleting-backups) for usage in context.
+
+```bash
+whpg-dr delete <cluster_name> [options]
+```
+
+| Option                 | Description                                                      |
+| ---------------------- | ---------------------------------------------------------------- |
+| `--backup-name <name>` | Name of the base backup to delete. Required.                     |
+| `--dry-run`            | Show what would be deleted without executing.                    |
+| `--jobs <n>`           | Maximum number of concurrent delete operations. Defaults to `8`. |
+
+> **Warning**
+>
+> Deleting a backup removes all restore points associated with it. Retain at least one base backup at all times.
+
+**Example:**
+
+```bash
+whpg-dr delete my_cluster --backup-name 20260513T181327_base_backup
+```
+
+---
+
+## whpg-dr list-backup
+
+Lists all base backups in the storage repository, along with their associated restore points. See [Listing base backups](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#listing-base-backups) for usage in context.
+
+```bash
+whpg-dr list-backup <cluster_name> [options]
+```
+
+| Option          | Description                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| `--detail`      | Show additional metadata for each backup.                                                  |
+| `--from <time>` | Filter backups starting from this date or time, in one of the ISO formats described below. |
+| `--to <time>`   | Filter backups up to this date or time, in the same format as `--from`.                    |
+
+The `--from` and `--to` options accept only ISO formats:
+
+- `YYYY-MM-DD`, optionally followed by `T` or a space and `HH:MM[:SS[.fraction]]`.
+- A value without a zone is read as local time on the host running the command, like the times in the output.
+- To specify another zone, add `Z`, a numeric offset (`+08:00`, `+0800`, or `+08`), or `UTC`/`GMT` after the time.
+- Other forms are refused, including `Oct 14 2026`, `20261014`, Unix seconds, and zone names other than `UTC` or `GMT`.
+
+`whpg-dr list-backup` also shows backups in the `WAITING_FOR_WALS` state. A backup is in this state after its base copy finishes and until all the WAL it needs is archived. The backup moves to `DONE` during a [`whpg-dr cron`](#whpg-dr-cron) run, possibly a later one. Until then, retention doesn't count it. The command also shows the correct WAL size.
+
+**Example:**
+
+```bash
+whpg-dr list-backup my_cluster
+```
+
+```output title="Output"
+Full backup: 20260624T195641_base_backup
+└── Restore Points:
+    ├── 20260624-195718R_whpgdr_full_backup: 2026-06-24 19:57:18
+    ├── 20260624-200623R_delta_test: 2026-06-24 20:06:23
+    └── 20260625-141506R_scheduled: 2026-06-25 14:15:06
+```
+
+---
+
+## whpg-dr list-cluster
+
+Lists all clusters that `whpg-dr` has configuration for on the current host, including clusters that have only a restore configuration. The output shows each cluster's name, storage type, storage path, and the `WHPG_DR_HOME` directory that holds its configuration.
+
+```bash
+whpg-dr list-cluster
+```
+
+```output title="Output"
+CLUSTER NAME  TYPE  STORAGE PATH            WHPG_DR_HOME
+------------  ----  ------------            ------------
+my_cluster    s3    s3://my-dr-bucket/whpg  /home/gpadmin/.whpg-dr
+```
+
+If no clusters are configured, the command prints the `WHPG_DR_HOME` directory it scanned. Use this output to check whether `WHPG_DR_HOME` points to the directory you expect:
+
+```bash
+whpg-dr list-cluster
+```
+
+```output title="Output"
+WHPG_DR_HOME: /home/gpadmin/.whpg-dr
+No configured clusters found.
+```
+
+---
+
+## whpg-dr list-restore
+
+Shows the current restore state of the DR cluster, including the last completed restore point, the base backup used, and the status and replay LSN of each segment.
+
+```bash
+whpg-dr list-restore my_cluster
+```
+
+```output title="Output"
+Latest Completed Restore
+------------------------
+Restore point:  20260615-143022R
+Backup name:    20260601T120000_base_backup
+Restore time:   2026-06-15 15:12:44
+
+Recovery Cluster Segment Status
+--------------------------------
+Content ID   Status                 Replay End LSN  Host   Path
+----------   ------                 --------------  ----   ----
+coordinator  shut down in recovery  0/5A001780      cdw2   /data/coordinator/gpseg-1
+segment 0    shut down in recovery  0/6B001168      sdw1   /data/primary/gpseg0
+segment 1    shut down in recovery  0/6B001168      sdw2   /data/primary/gpseg1
+```
+
+---
+
+## whpg-dr list-restore-point
+
+Lists all restore points in the storage repository. Run on either the primary or the DR coordinator. See [Listing restore points](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#listing-restore-points) for usage in context.
+
+```bash
+whpg-dr list-restore-point <cluster_name> [options]
+```
+
+| Option          | Description                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| `--from <time>` | Filter restore points starting from this date or time, in one of the ISO formats described below. |
+| `--to <time>`   | Filter restore points up to this date or time, in the same format as `--from`.                    |
+
+The `--from` and `--to` options accept only ISO formats:
+
+- `YYYY-MM-DD`, optionally followed by `T` or a space and `HH:MM[:SS[.fraction]]`.
+- A value without a zone is read as local time on the host running the command, like the times in the output.
+- To specify another zone, add `Z`, a numeric offset (`+08:00`, `+0800`, or `+08`), or `UTC`/`GMT` after the time.
+- Other forms are refused, including `Oct 14 2026`, `20261014`, Unix seconds, and zone names other than `UTC` or `GMT`.
+
+The `Base Backup:` line of each group marks a base backup that can't be restored with `[NOT RESTORABLE: <reason>]`. A base backup can't be restored when a segment's backup is `FAILED` or unfinished (`STARTED`, `EMPTY`, or `SYNCING`), when a segment has no backup, or when the backup is no longer in the backup catalog. `whpg-dr check-backup` and `whpg-dr restore` refuse such a backup.
+
+**Example:**
+
+```bash
+whpg-dr list-restore-point my_cluster
+```
+
+```output title="Output"
+Listing restore points...
+
+20260625-151506R_scheduled                June 25 2026, 15:15:06
+20260625-150006R_scheduled                June 25 2026, 15:00:06
+20260625-144507R_scheduled                June 25 2026, 14:45:07
+20260625-143007R_scheduled                June 25 2026, 14:30:07
+20260625-141506R_scheduled                June 25 2026, 14:15:06
+20260624-200623R_delta_test               June 24 2026, 20:06:23
+20260624-195718R_whpgdr_full_backup       June 24 2026, 19:57:18
+    └─ Base Backup: 20260624T195641_base_backup (Full, June 24 2026, 19:56:45)
+```
+
+---
+
+## whpg-dr promote
+
+Promotes the DR cluster from recovery mode to a writable primary. After promotion, the cluster accepts write connections. Run on the DR cluster's coordinator host. See [Cold DR](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/performing-disaster-recovery/cold-dr/), [Warm DR](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/performing-disaster-recovery/warm-dr/), and [Point-in-time recovery](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/performing-disaster-recovery/pitr/) for usage in context.
+
+This command is blocked while the cluster has an unfinished or failed restore state. Inspect the state with `whpg-dr list-restore` and either retry with `whpg-dr restore --resume-failed` or run a new full restore before promoting.
+
+```bash
+whpg-dr promote <cluster_name> [options]
+```
+
+| Option            | Description                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--dry-run`       | Print planned actions without executing.                                                                                                               |
+| `--gphome <path>` | Path to the WarehousePG installation directory. Defaults to `$GPHOME` or `/usr/local/greenplum-db`.                                                    |
+| `--skip-checks`   | Skip the pre-promote segment state check. Only use this option if you understand the risk of promoting a cluster that hasn't fully completed recovery. |
+
+---
+
+## whpg-dr restore
+
+Restores the DR cluster from a base backup and WAL to a named restore point. Run on the DR cluster's coordinator host. See [Cold DR](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/performing-disaster-recovery/cold-dr/), [Warm DR](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/performing-disaster-recovery/warm-dr/), and [Point-in-time recovery](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/performing-disaster-recovery/pitr/) for usage in context.
+
+A full restore requires empty target data directories on the DR cluster. With S3 storage, the per-segment tablespace directories (`<location>/<dbid>` for each tablespace in the backup) must also be empty, because files left by an earlier restore can survive and return incorrect query results. Only `--delta` and `--resume-failed` reuse existing data directories.
+
+Before restoring, the command checks the WarehousePG version on the coordinator and every segment host, and it repeats the check for `--delta` and `--resume-failed`. A different major version returns an error, and an older minor or patch release returns a warning. It also refuses incomplete, in-progress, and `FAILED` backups. For a `FAILED` backup, it reports whether the mark is stale or real. See [Stale FAILED mark on S3 storage](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/troubleshooting/#stale-failed-mark-on-s3-storage).
+
+During a full restore, the command prints a progress line every 30 seconds for the base backup copy (bytes copied per segment, percentage, and speed) and for WAL replay (segments done, distance to the restore point's LSN, and whether replay is using a WAL file or fetching it from the archive). `--delta` and `--resume-failed` also report WAL replay progress.
+
+```bash
+whpg-dr restore <cluster_name> [options]
+```
+
+| Option                            | Description                                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--target-name <name>`            | Name of the restore point to restore to. Use `latest` for the most recent restore point in storage.                                                                                                                                                                                                                                                            |
+| `--delta`                         | Advance the DR cluster from its current restore point to a later one, without applying the base backup from scratch. Requires an existing restored state. Configuration changes such as `barman_options.wal_prefetch` take effect on the next delta run without a new full restore.                                                                            |
+| `--barman-jobs <n>`               | Parallel workers per segment. Defaults to `1`. Overrides [`barman_options.jobs`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/reference/configuration/#restore-configuration-yaml) from the configuration. Raise it to increase parallelism. Most impactful for S3 storage, where download concurrency is often the bottleneck. |
+| `--dry-run`                       | Print the planned restore operations without executing.                                                                                                                                                                                                                                                                                                        |
+| `--force`                         | Skip confirmation when superseding an unresolved restore goal.                                                                                                                                                                                                                                                                                                 |
+| `--gphome <path>`                 | Path to the WarehousePG installation directory. Defaults to `$GPHOME` or `/usr/local/greenplum-db`.                                                                                                                                                                                                                                                            |
+| `--resume-failed`                 | Continue a previously interrupted restore, reusing the original target. Can't be combined with `--target-name`.                                                                                                                                                                                                                                                |
+| `--wal-replay-timeout <duration>` | Timeout for each segment's WAL replay phase. Set to `0` to disable. Accepts a positive integer with a unit suffix (`30s`, `5m`, `1h`).                                                                                                                                                                                                                         |
+
+**Examples:**
+
+```bash
+# Full restore to a specific restore point
+whpg-dr restore my_cluster --target-name 20260615-143022R_before_etl_load
+
+# Full restore to the latest restore point
+whpg-dr restore my_cluster --target-name latest
+
+# Delta restore (advance from current state to latest)
+whpg-dr restore my_cluster --target-name latest --delta
+
+# Resume an interrupted restore
+whpg-dr restore my_cluster --resume-failed
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

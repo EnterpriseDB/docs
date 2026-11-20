@@ -1,0 +1,76 @@
+---
+title: show-camo
+product: EDB Postgres Distributed (PGD)
+version: 4.3.8
+url: https://www.enterprisedb.com/docs/pgd/4/cli/command_ref/pgd_show-camo/
+lastModified: 2025-08-21T21:26:25Z
+---
+
+# show-camo
+
+Shows BDR CAMO (Commit at Most Once) details.
+
+### Synopsis
+
+Shows BDR CAMO (Commit at Most Once) details such as the name of the CAMO
+partner, connection and readiness status, any pending and unresolved CAMO
+transactions, and differences between apply\_lsn and receive\_lsn. This command
+is available only for EDB Postgres Extended Server and EDB Postgres Advanced Server
+(v14 and later).
+
+```sh
+pgd show-camo [flags]
+```
+
+### Examples
+
+```text
+
+  Example 1 (3 node cluster, bdr-a1 and bdr-b1 are CAMO partner but bdr-b1 is down)
+
+  $ pgd show-camo
+
+  Node   CAMO Partner Connected Ready Transactions Resolved Apply LSN  Receive LSN Apply Queue Size
+  ----   ------------ --------- ----- --------------------- ---------  ----------- ----------------
+  bdr-a1 bdr-b1       false     false true                  0/E42C99B0 0/E42C99B0  0
+
+
+  Example 2 (3 node cluster, bdr-b1 was down and it has just been restarted)
+
+  $ pgd show-camo
+
+  Node   CAMO Partner Connected Ready Transactions Resolved Apply LSN  Receive LSN Apply Queue Size
+  ----   ------------ --------- ----- --------------------- ---------  ----------- ----------------
+  bdr-a1 bdr-b1       true      true  true                  0/E533DAB8 0/E533DAB8  0
+  bdr-b1 bdr-a1       true      false true                  3/7AE81A28 3/7AE81A28  0
+
+
+  Example 3 (3 node cluster, all nodes are up and in 'streaming' state)
+
+  $ pgd show-camo
+
+  Node   CAMO Partner Connected Ready Transactions Resolved Apply LSN  Receive LSN Apply Queue Size
+  ----   ------------ --------- ----- --------------------- ---------  ----------- ----------------
+  bdr-a1 bdr-b1       true      true  true                  0/E56AE520 0/E56AE520  0
+  bdr-b1 bdr-a1       true      true  true                  3/7B180BA8 3/7B180BA8  0
+
+```
+
+### Options
+
+```text
+  -h, --help   help for show-camo
+```
+
+### Options inherited from parent commands
+
+```text
+  -f, --config-file string   config file; ignored if 
+                             --dsn flag is present (default "/etc/edb/pgd-config.yml")
+      --dsn string           database connection string
+                             e.g."host=bdr-a1 port=5432 dbname=bdrdb user=postgres "
+  -L, --log-level string     logging level: debug, info, warn, error (default "error")
+  -o, --output string        output format: json, yaml
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,651 @@
+---
+title: Tables, views and functions reference
+description: The complete reference to all tables, views, functions, views, and commands available in EDB Postgres Distributed.
+product: EDB Postgres Distributed (PGD)
+version: 6.4.0
+url: https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/
+lastModified: 2026-10-27T13:40:59+01:00
+---
+
+# Tables, views and functions reference
+
+The reference section is a definitive listing of all functions, views, and commands available in EDB Postgres Distributed.
+
+## [User visible catalogs and views](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/)
+
+- [`bdr.analytics_sync_position`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdranalytics_sync_position)
+- [`bdr.camo_decision_journal`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrcamo_decision_journal)
+- [`bdr.commit_decisions`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrcommit_decisions)
+- [`bdr.commit_scopes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrcommit_scopes)
+- [`bdr.conflict_history`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrconflict_history)
+- [`bdr.conflict_history_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrconflict_history_summary)
+- [`bdr.consensus_kv_data`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrconsensus_kv_data)
+- [`bdr.crdt_handlers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrcrdt_handlers)
+- [`bdr.ddl_replication`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrddl_replication)
+- [`bdr.depend`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrdepend)
+- [`bdr.failover_replication_slots`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrfailover_replication_slots)
+- [`bdr.global_consensus_journal`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrglobal_consensus_journal)
+- [`bdr.global_consensus_journal_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrglobal_consensus_journal_details)
+- [`bdr.global_consensus_response_journal`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrglobal_consensus_response_journal)
+- [`bdr.global_lock`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrglobal_lock)
+- [`bdr.global_locks`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrglobal_locks)
+- [`bdr.group_camo_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrgroup_camo_details)
+- [`bdr.group_lease`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrgroup_lease)
+- [`bdr.group_raft_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrgroup_raft_details)
+- [`bdr.group_replslots_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrgroup_replslots_details)
+- [`bdr.group_subscription_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrgroup_subscription_summary)
+- [`bdr.group_versions_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrgroup_versions_details)
+- [`bdr.leader`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrleader)
+- [`bdr.local_consensus_snapshot`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrlocal_consensus_snapshot)
+- [`bdr.local_consensus_state`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrlocal_consensus_state)
+- [`bdr.local_node`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrlocal_node)
+- [`bdr.local_node_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrlocal_node_summary)
+- [`bdr.local_sync_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrlocal_sync_status)
+- [`bdr.node`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode)
+- [`bdr.node_catchup_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_catchup_info)
+- [`bdr.node_catchup_info_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_catchup_info_details)
+- [`bdr.node_conflict_resolvers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_conflict_resolvers)
+- [`bdr.node_group`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_group)
+- [`bdr.node_group_replication_sets`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_group_replication_sets)
+- [`bdr.node_group_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_group_summary)
+- [`bdr.node_local_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_local_info)
+- [`bdr.node_log_config`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_log_config)
+- [`bdr.node_peer_progress`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_peer_progress)
+- [`bdr.node_replication_rates`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_replication_rates)
+- [`bdr.node_slots`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_slots)
+- [`bdr.node_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrnode_summary)
+- [`bdr.parted_origin_catchup_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrparted_origin_catchup_info)
+- [`bdr.parted_origin_catchup_info_details`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrparted_origin_catchup_info_details)
+- [`bdr.pending_failed_changes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrpending_failed_changes)
+- [`bdr.pending_failed_changes_sql`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrpending_failed_changes_sql)
+- [`bdr.pgd_largeobject`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrpgd_largeobject)
+- [`bdr.pgd_largeobject_metadata`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrpgd_largeobject_metadata)
+- [`bdr.queue`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrqueue)
+- [`bdr.replication_set`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrreplication_set)
+- [`bdr.replication_set_table`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrreplication_set_table)
+- [`bdr.replication_set_ddl`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrreplication_set_ddl)
+- [`bdr.replication_sets`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrreplication_sets)
+- [`bdr.resolved_transactions`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrresolved_transactions)
+- [`bdr.resolved_transactions_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrresolved_transactions_info)
+- [`bdr.schema_changes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrschema_changes)
+- [`bdr.sequence_alloc`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrsequence_alloc)
+- [`bdr.sequences`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrsequences)
+- [`bdr.stat_activity`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_activity)
+- [`bdr.stat_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_commit_scope)
+- [`bdr.stat_commit_scope_state`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_commit_scope_state)
+- [`bdr.stat_connection_manager`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_connection_manager)
+- [`bdr.stat_connection_manager_connections`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_connection_manager_connections)
+- [`bdr.stat_connection_manager_node_stats`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_connection_manager_node_stats)
+- [`bdr.stat_connection_manager_hba_file_rules`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_connection_manager_hba_file_rules)
+- [`bdr.stat_raft_followers_state`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_raft_followers_state)
+- [`bdr.stat_raft_state`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_raft_state)
+- [`bdr.stat_receiver`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_receiver)
+- [`bdr.stat_receiver_transactions`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_receiver_transactions)
+- [`bdr.stat_reconcile_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_reconcile_commit_scope)
+- [`bdr.stat_relation`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_relation)
+- [`bdr.stat_routing_candidate_state`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_routing_candidate_state)
+- [`bdr.stat_routing_state`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_routing_state)
+- [`bdr.stat_subscription`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_subscription)
+- [`bdr.stat_worker`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_worker)
+- [`bdr.stat_writer`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrstat_writer)
+- [`bdr.subscription`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrsubscription)
+- [`bdr.subscription_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrsubscription_summary)
+- [`bdr.subscription_error_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrsubscription_error_status)
+- [`bdr.tables`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrtables)
+- [`bdr.taskmgr_work_queue`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrtaskmgr_work_queue)
+- [`bdr.taskmgr_workitem_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrtaskmgr_workitem_status)
+- [`bdr.taskmgr_local_work_queue`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrtaskmgr_local_work_queue)
+- [`bdr.taskmgr_local_workitem_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrtaskmgr_local_workitem_status)
+- [`bdr.trigger`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrtrigger)
+- [`bdr.triggers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrtriggers)
+- [`bdr.workers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrworkers)
+- [`bdr.writers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrwriters)
+- [`bdr.worker_tasks`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-visible/#bdrworker_tasks)
+
+## [System functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/)
+
+### [Version information functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#version-information-functions)
+
+- [`bdr.bdr_version`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrbdr_version)
+- [`bdr.bdr_version_num`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrbdr_version_num)
+
+### [System information functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#system-information-functions)
+
+- [`bdr.get_relation_stats`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_relation_stats)
+- [`bdr.get_subscription_stats`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_subscription_stats)
+
+### [System and progress information parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#system-and-progress-information-parameters)
+
+- [`bdr.local_node_id`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrlocal_node_id)
+- [`bdr.last_committed_lsn`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrlast_committed_lsn)
+- [`transaction_id`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#transaction_id)
+
+### [Node status functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#node-status-functions)
+
+- [`bdr.is_node_connected`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdris_node_connected)
+- [`bdr.is_node_ready`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdris_node_ready)
+
+### [Consensus function](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#consensus-function)
+
+- [`bdr.consensus_disable`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrconsensus_disable)
+- [`bdr.consensus_enable`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrconsensus_enable)
+- [`bdr.consensus_proto_version`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrconsensus_proto_version)
+- [`bdr.consensus_snapshot_export`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrconsensus_snapshot_export)
+- [`bdr.consensus_snapshot_import`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrconsensus_snapshot_import)
+- [`bdr.consensus_snapshot_verify`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrconsensus_snapshot_verify)
+- [`bdr.get_consensus_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_consensus_status)
+- [`bdr.get_raft_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_raft_status)
+- [`bdr.raft_leadership_transfer`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrraft_leadership_transfer)
+
+### [Utility functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#utility-functions)
+
+- [`bdr.transfer_all_leaderships`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrtransfer_all_leaderships)
+- [`bdr.alter_node_kind`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdralter_node_kind)
+- [`bdr.alter_subscription_skip_changes_upto`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdralter_subscription_skip_changes_upto)
+- [`bdr.connection_manager_refresh_pools`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrconnection_manager_refresh_pools)
+- [`bdr.get_node_sub_apply_lsn`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_node_sub_apply_lsn)
+- [`bdr.get_node_sub_receive_lsn`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_node_sub_receive_lsn)
+- [`bdr.global_lock_table`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrglobal_lock_table)
+- [`bdr.group_lease_override`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrgroup_lease_override)
+- [`bdr.local_group_slot_name`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrlocal_group_slot_name)
+- [`bdr.node_group_type`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrnode_group_type)
+- [`bdr.replicate_ddl_command`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrreplicate_ddl_command)
+- [`bdr.run_on_all_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrrun_on_all_nodes)
+- [`bdr.run_on_group`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrrun_on_group)
+- [`bdr.run_on_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrrun_on_nodes)
+- [`bdr.stat_reset`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrstat_reset)
+- [`bdr.wait_for_apply_queue`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrwait_for_apply_queue)
+- [`bdr.wait_for_xid_progress`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrwait_for_xid_progress)
+- [`bdr.wait_node_confirm_lsn`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrwait_node_confirm_lsn)
+- [`bdr.wait_slot_confirm_lsn`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrwait_slot_confirm_lsn)
+
+### [Global advisory locks](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#global-advisory-locks)
+
+- [`bdr.global_advisory_lock`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrglobal_advisory_lock)
+- [`bdr.global_advisory_unlock`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrglobal_advisory_unlock)
+
+### [Monitoring functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#monitoring-functions)
+
+- [`bdr.monitor_group_versions`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrmonitor_group_versions)
+- [`bdr.monitor_group_raft`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrmonitor_group_raft)
+- [`bdr.monitor_local_replslots`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrmonitor_local_replslots)
+- [`bdr.wal_sender_stats`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrwal_sender_stats)
+- [`bdr.get_decoding_worker_stat`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_decoding_worker_stat)
+- [`bdr.lag_control`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrlag_control)
+
+### [Routing functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#routing-functions)
+
+- [`bdr.routing_leadership_transfer`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrrouting_leadership_transfer)
+
+### [CAMO functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#camo-functions)
+
+- [`bdr.is_camo_partner_connected`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdris_camo_partner_connected)
+- [`bdr.is_camo_partner_ready`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdris_camo_partner_ready)
+- [`bdr.get_configured_camo_partner`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrget_configured_camo_partner)
+- [`bdr.wait_for_camo_partner_queue`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrwait_for_camo_partner_queue)
+- [`bdr.camo_transactions_resolved`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrcamo_transactions_resolved)
+- [`bdr.logical_transaction_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrlogical_transaction_status)
+
+### [Commit Scope functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#commit-scope-functions)
+
+- [`bdr.add_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdradd_commit_scope)
+- [`bdr.create_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrcreate_commit_scope)
+- [`bdr.alter_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdralter_commit_scope)
+- [`bdr.drop_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrdrop_commit_scope)
+- [`bdr.remove_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrremove_commit_scope)
+
+### [Apply error policy functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#apply-error-policy-functions)
+
+- [`bdr.skip_failed_change`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrskip_failed_change)
+- [`bdr.skip_failed_transaction`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrskip_failed_transaction)
+- [`bdr.apply_failed_change`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrapply_failed_change)
+- [`bdr.apply_failed_transaction`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrapply_failed_transaction)
+- [`bdr.modify_failed_change`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrmodify_failed_change)
+- [`bdr.reconstruct_change_sql`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrreconstruct_change_sql)
+- [`bdr.reconstruct_failed_transaction`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrreconstruct_failed_transaction)
+- [`bdr.resolve_failed_transaction`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrresolve_failed_transaction)
+- [`bdr.analyze_skip_impact`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdranalyze_skip_impact)
+- [`bdr.analyze_transaction_skip_impact`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdranalyze_transaction_skip_impact)
+- [`bdr.format_skip_analysis`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdrformat_skip_analysis)
+- [`bdr.alter_subscription_reset_error_counters`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions/#bdralter_subscription_reset_error_counters)
+
+## [PGD settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/)
+
+### [Conflict handling](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#conflict-handling)
+
+- [`bdr.default_conflict_detection`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrdefault_conflict_detection)
+
+### [Global sequence parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#global-sequence-parameters)
+
+- [`bdr.default_sequence_kind`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrdefault_sequence_kind)
+
+### [DDL handling](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#ddl-handling)
+
+- [`bdr.default_replica_identity`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrdefault_replica_identity)
+- [`bdr.ddl_replication`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrddl_replication)
+- [`bdr.role_replication`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrrole_replication)
+- [`bdr.ddl_locking`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrddl_locking)
+- [`bdr.truncate_locking`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtruncate_locking)
+
+### [Global locking](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#global-locking)
+
+- [`bdr.global_lock_max_locks`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_lock_max_locks)
+- [`bdr.global_lock_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_lock_timeout)
+- [`bdr.global_lock_statement_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_lock_statement_timeout)
+- [`bdr.global_lock_idle_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_lock_idle_timeout)
+- [`bdr.lock_table_locking`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrlock_table_locking)
+- [`bdr.predictive_checks`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrpredictive_checks)
+
+### [Node management](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#node-management)
+
+- [`bdr.replay_progress_frequency`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrreplay_progress_frequency)
+
+### [Generic replication](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#generic-replication)
+
+- [`bdr.writers_per_subscription`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrwriters_per_subscription)
+- [`bdr.max_writers_per_subscription`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrmax_writers_per_subscription)
+- [`bdr.xact_replication`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrxact_replication)
+- [`bdr.permit_unsafe_commands`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrpermit_unsafe_commands)
+- [`bdr.batch_inserts`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrbatch_inserts)
+- [`bdr.maximum_clock_skew`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrmaximum_clock_skew)
+- [`bdr.maximum_clock_skew_action`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrmaximum_clock_skew_action)
+- [`bdr.accept_connections`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdraccept_connections)
+- [`bdr.writer_input_queue_size`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrwriter_input_queue_size)
+- [`bdr.writer_output_queue_size`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrwriter_output_queue_size)
+- [`bdr.min_worker_backoff_delay`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrmin_worker_backoff_delay)
+
+### [CRDTs](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#crdts)
+
+- [`bdr.crdt_raw_value`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrcrdt_raw_value)
+
+### [Large objects](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#large-objects)
+
+- [`bdr.override_large_objects`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdroverride_large_objects)
+
+### [Commit scope](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#commit-scope)
+
+- [`bdr.commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrcommit_scope)
+
+### [Commit At Most Once](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#commit-at-most-once)
+
+- [`bdr.camo_local_mode_delay`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrcamo_local_mode_delay)
+- [`bdr.camo_enable_client_warnings`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrcamo_enable_client_warnings)
+
+### [Transaction streaming](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#transaction-streaming)
+
+- [`bdr.default_streaming_mode`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrdefault_streaming_mode)
+
+### [Lag Control](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#lag-control)
+
+- [`bdr.lag_control_min_conforming_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrlag_control_min_conforming_nodes)
+- [`bdr.lag_control_commit_delay_adjust`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrlag_control_commit_delay_adjust)
+- [`bdr.lag_control_sample_interval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrlag_control_sample_interval)
+- [`bdr.lag_control_commit_delay_start`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrlag_control_commit_delay_start)
+
+### [Monitoring and logging](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#monitoring-and-logging)
+
+- [`bdr.debug_level`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrdebug_level)
+- [`bdr.trace_level`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtrace_level)
+- [`bdr.track_subscription_apply`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtrack_subscription_apply)
+- [`bdr.track_relation_apply`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtrack_relation_apply)
+- [`bdr.track_apply_lock_timing`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtrack_apply_lock_timing)
+
+### [Decoding worker](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#decoding-worker)
+
+- [`bdr.enable_wal_decoder`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrenable_wal_decoder)
+- [`bdr.receive_lcr`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrreceive_lcr)
+- [`bdr.lcr_cleanup_interval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrlcr_cleanup_interval)
+
+### [Connectivity settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#connectivity-settings)
+
+- [`bdr.global_connection_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_connection_timeout)
+- [`bdr.global_keepalives`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_keepalives)
+- [`bdr.global_keepalives_idle`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_keepalives_idle)
+- [`bdr.global_keepalives_interval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_keepalives_interval)
+- [`bdr.global_keepalives_count`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_keepalives_count)
+- [`bdr.global_tcp_user_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrglobal_tcp_user_timeout)
+
+### [Topology settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#topology-settings)
+
+- [`bdr.force_full_mesh`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrforce_full_mesh)
+
+### [Analytics settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#analytics-settings)
+
+- [`bdr.prefer_analytics_engine`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrprefer_analytics_engine)
+
+### [Internal settings - Raft timeouts](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#internal-settings---raft-timeouts)
+
+- [`bdr.raft_global_election_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_global_election_timeout)
+- [`bdr.raft_group_election_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_group_election_timeout)
+- [`bdr.raft_response_timeout`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_response_timeout)
+
+### [Internal settings - Other Raft values](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#internal-settings---other-raft-values)
+
+- [`bdr.raft_keep_min_entries`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_keep_min_entries)
+- [`bdr.raft_log_min_apply_duration`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_log_min_apply_duration)
+- [`bdr.raft_log_min_message_duration`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_log_min_message_duration)
+- [`bdr.raft_group_max_connections`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_group_max_connections)
+- [`bdr.raft_vacuum_interval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_vacuum_interval)
+- [`bdr.raft_vacuum_full_interval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_vacuum_full_interval)
+- [`bdr.raft_catalog_read_consistency`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrraft_catalog_read_consistency)
+
+### [Internal settings - Other values](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#internal-settings---other-values)
+
+- [`bdr.backwards_compatibility`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrbackwards_compatibility)
+- [`bdr.track_replication_estimates`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtrack_replication_estimates)
+- [`bdr.lag_tracker_apply_rate_weight`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrlag_tracker_apply_rate_weight)
+- [`bdr.enable_auto_sync_reconcile`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrenable_auto_sync_reconcile)
+- [`bdr.allow_bdr_schema_changes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrallow_bdr_schema_changes)
+- [`bdr.taskmgr_nap_time`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtaskmgr_nap_time)
+- [`bdr.cds_memory_cache_size`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrcds_memory_cache_size)
+- [`bdr.slot_checkpoint_interval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrslot_checkpoint_interval)
+- [`bdr.ddl_queue_retention_period`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrddl_queue_retention_period)
+- [`bdr.temp_directory`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrtemp_directory)
+- [`bdr.shuffle_scheduled_tasks`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/pgd-settings/#bdrshuffle_scheduled_tasks)
+
+## [Node management](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes/)
+
+- [List of node states](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes/#list-of-node-states)
+- [Node-management commands](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes/#node-management-commands)
+  - [`bdr_init_physical`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes/#bdr_init_physical)
+  - [`bdr_config`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes/#bdr_config)
+
+## [Node management interfaces](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/)
+
+- [`bdr.alter_node_group_option`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option)
+- [`bdr.alter_node_interface`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_interface)
+- [`bdr.alter_node_option`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_option)
+- [`bdr.alter_subscription_enable`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdralter_subscription_enable)
+- [`bdr.alter_subscription_disable`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdralter_subscription_disable)
+- [`bdr.create_node`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrcreate_node)
+- [`bdr.create_node_group`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrcreate_node_group)
+- [`bdr.drop_node_group`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrdrop_node_group)
+- [`bdr.join_node_group`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrjoin_node_group)
+- [`bdr.part_node`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrpart_node)
+- [`bdr.promote_node`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrpromote_node)
+- [`bdr.switch_node_group`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrswitch_node_group)
+- [`bdr.sync_node_cancel`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrsync_node_cancel)
+- [`bdr.wait_for_join_completion`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/nodes-management-interfaces/#bdrwait_for_join_completion)
+
+## [Routing functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/routing/)
+
+## [Commit scopes](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/)
+
+- [Commit scope syntax](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit-scope-syntax)
+  - [commit\_scope\_degrade\_operation](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit_scope_degrade_operation)
+- [Commit scope targets](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit-scope-targets)
+  - [ORIGIN\_GROUP](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#origin_group)
+- [Commit scope groups](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit-scope-groups)
+  - [ANY](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#any)
+  - [ANY NOT](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#any-not)
+  - [MAJORITY](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#majority)
+  - [MAJORITY NOT](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#majority-not)
+  - [ALL](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#all)
+  - [ALL NOT](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#all-not)
+- [Confirmation level](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#confirmation-level)
+  - [Received](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#received)
+  - [Replicated](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#replicated)
+  - [Durable](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#durable)
+  - [Visible](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#visible)
+- [Commit Scope kinds](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit-scope-kinds)
+- [SYNCHRONOUS COMMIT](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#synchronous-commit)
+  - [DEGRADE ON parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#degrade-on-parameters)
+  - [commit\_scope\_degrade\_operation](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit_scope_degrade_operation)
+- [QUORUM COMMIT](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#quorum-commit)
+  - [QUORUM COMMIT parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#quorum-commit-parameters)
+  - [QUORUM COMMIT ABORT ON parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#quorum-commit-abort-on-parameters)
+  - [commit\_decision settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit_decision-settings)
+- [CAMO](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#camo)
+  - [DEGRADE ON parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#degrade-on-parameters)
+- [LAG CONTROL](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#lag-control)
+  - [LAG CONTROL parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#lag-control-parameters)
+- [GROUP COMMIT](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#group-commit)
+  - [GROUP COMMIT parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#group-commit-parameters)
+  - [ABORT ON parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#abort-on-parameters)
+  - [DEGRADE ON parameters](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#degrade-on-parameters)
+  - [transaction\_tracking settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#transaction_tracking-settings)
+  - [conflict\_resolution settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#conflict_resolution-settings)
+  - [GROUP COMMIT commit\_decision settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#group-commit-commit_decision-settings)
+  - [commit\_scope\_degrade\_operation settings](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit_scope_degrade_operation-settings)
+
+## [Conflicts](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/)
+
+- [Conflict detection](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#conflict-detection)
+  - [List of conflict types](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#list-of-conflict-types)
+- [Conflict resolution](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#conflict-resolution)
+  - [List of conflict resolvers](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#list-of-conflict-resolvers)
+  - [Default conflict resolvers](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#default-conflict-resolvers)
+  - [List of conflict resolutions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#list-of-conflict-resolutions)
+- [Conflict logging](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#conflict-logging)
+
+## [Conflict functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/)
+
+- [`bdr.alter_table_conflict_detection`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/#bdralter_table_conflict_detection)
+- [`bdr.alter_node_set_conflict_resolver`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/#bdralter_node_set_conflict_resolver)
+- [`bdr.alter_node_set_log_config`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/#bdralter_node_set_log_config)
+
+## [Replication set management](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-management/)
+
+- [`bdr.create_replication_set`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-management/#bdrcreate_replication_set)
+- [`bdr.alter_replication_set`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-management/#bdralter_replication_set)
+- [`bdr.drop_replication_set`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-management/#bdrdrop_replication_set)
+- [`bdr.alter_node_replication_sets`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-management/#bdralter_node_replication_sets)
+
+## [Replication set membership](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-membership/)
+
+- [`bdr.replication_set_add_table`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-membership/#bdrreplication_set_add_table)
+- [`bdr.replication_set_remove_table`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-membership/#bdrreplication_set_remove_table)
+
+## [DDL replication filtering](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-ddl-filtering/)
+
+- [`bdr.replication_set_add_ddl_filter`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-ddl-filtering/#bdrreplication_set_add_ddl_filter)
+- [`bdr.replication_set_remove_ddl_filter`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/repsets-ddl-filtering/#bdrreplication_set_remove_ddl_filter)
+
+## [Testing and tuning commands](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/testingandtuning/)
+
+- [`pgd_bench`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/testingandtuning/#pgd_bench)
+
+## [Global sequence management interfaces](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/)
+
+### [Sequence functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#sequence-functions)
+
+- [`bdr.alter_sequence_set_kind`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdralter_sequence_set_kind)
+- [`bdr.extract_timestamp_from_snowflakeid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_timestamp_from_snowflakeid)
+- [`bdr.extract_nodeid_from_snowflakeid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_nodeid_from_snowflakeid)
+- [`bdr.extract_localseqid_from_snowflakeid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_localseqid_from_snowflakeid)
+- [`bdr.timestamp_to_snowflakeid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrtimestamp_to_snowflakeid)
+- [`bdr.extract_timestamp_from_timeshard`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_timestamp_from_timeshard)
+- [`bdr.extract_nodeid_from_timeshard`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_nodeid_from_timeshard)
+- [`bdr.extract_localseqid_from_timeshard`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_localseqid_from_timeshard)
+- [`bdr.timestamp_to_timeshard`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrtimestamp_to_timeshard)
+- [`bdr.galloc_chunk_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrgalloc_chunk_info)
+
+### [KSUUID v2 functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#ksuuid-v2-functions)
+
+- [`bdr.gen_ksuuid_v2`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrgen_ksuuid_v2)
+- [`bdr.ksuuid_v2_cmp`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrksuuid_v2_cmp)
+- [`bdr.extract_timestamp_from_ksuuid_v2`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_timestamp_from_ksuuid_v2)
+
+### [KSUUID v1 functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#ksuuid-v1-functions)
+
+- [`bdr.gen_ksuuid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrgen_ksuuid)
+- [`bdr.uuid_v1_cmp`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdruuid_v1_cmp)
+- [`bdr.extract_timestamp_from_ksuuid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/sequences/#bdrextract_timestamp_from_ksuuid)
+
+## [Large object functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/)
+
+### [Large object interface](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#large-object-interface)
+
+- [`bdr.lo_creat`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_creat)
+- [`bdr.lo_create`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_create)
+- [`bdr.lo_open`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_open)
+- [`bdr.lo_close`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_close)
+- [`bdr.loread`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrloread)
+- [`bdr.lowrite`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlowrite)
+- [`bdr.lo_lseek`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_lseek)
+- [`bdr.lo_lseek64`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_lseek64)
+- [`bdr.lo_tell`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_tell)
+- [`bdr.lo_tell64`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_tell64)
+- [`bdr.lo_truncate`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_truncate)
+- [`bdr.lo_truncate64`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_truncate64)
+- [`bdr.lo_unlink`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_unlink)
+- [`bdr.lo_import`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_import)
+- [`bdr.lo_import_with_oid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_import_with_oid)
+- [`bdr.lo_export`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_export)
+- [`bdr.lo_get`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_get)
+- [`bdr.lo_get_fragment`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_get_fragment)
+- [`bdr.lo_from_bytea`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_from_bytea)
+- [`bdr.lo_put`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/large-objects/#bdrlo_put)
+
+## [Autopartition](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/)
+
+- [`bdr.autopartition`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition)
+- [`bdr.drop_autopartition`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrdrop_autopartition)
+- [`bdr.autopartition_wait_for_partitions`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition_wait_for_partitions)
+- [`bdr.autopartition_wait_for_partitions_on_all_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition_wait_for_partitions_on_all_nodes)
+- [`bdr.autopartition_find_partition`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition_find_partition)
+- [`bdr.autopartition_enable`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition_enable)
+- [`bdr.autopartition_disable`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition_disable)
+- [Internal functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#internal-functions)
+- [`bdr.autopartition_create_partition`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition_create_partition)
+- [`bdr.autopartition_drop_partition`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/autopartition/#bdrautopartition_drop_partition)
+
+## Stream triggers reference
+
+## [Stream triggers manipulation interfaces](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/interfaces/)
+
+- [`bdr.create_conflict_trigger`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/interfaces/#bdrcreate_conflict_trigger)
+- [`bdr.create_transform_trigger`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/interfaces/#bdrcreate_transform_trigger)
+- [`bdr.drop_trigger`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/interfaces/#bdrdrop_trigger)
+
+## [Stream triggers row functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/)
+
+- [`bdr.trigger_get_row`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/#bdrtrigger_get_row)
+- [`bdr.trigger_get_committs`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/#bdrtrigger_get_committs)
+- [`bdr.trigger_get_xid`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/#bdrtrigger_get_xid)
+- [`bdr.trigger_get_type`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/#bdrtrigger_get_type)
+- [`bdr.trigger_get_conflict_type`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/#bdrtrigger_get_conflict_type)
+- [`bdr.trigger_get_origin_node_id`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/#bdrtrigger_get_origin_node_id)
+- [`bdr.ri_fkey_on_del_trigger`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowfunctions/#bdrri_fkey_on_del_trigger)
+
+## [Stream triggers row variables](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/)
+
+- [`TG_NAME`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_name)
+- [`TG_WHEN`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_when)
+- [`TG_LEVEL`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_level)
+- [`TG_OP`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_op)
+- [`TG_RELID`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_relid)
+- [`TG_TABLE_NAME`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_table_name)
+- [`TG_TABLE_SCHEMA`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_table_schema)
+- [`TG_NARGS`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_nargs)
+- [`TG_ARGV[]`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/streamtriggers/rowvariables/#tg_argv)
+
+## [Internal catalogs and views](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/)
+
+- [`bdr.autopartition_partitions`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrautopartition_partitions)
+- [`bdr.autopartition_rules`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrautopartition_rules)
+- [`bdr.ddl_epoch`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrddl_epoch)
+- [`bdr.event_history`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrevent_history)
+- [`bdr.event_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrevent_summary)
+- [`bdr.local_leader_change`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrlocal_leader_change)
+- [`bdr.node_config`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_config)
+- [`bdr.node_config_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_config_summary)
+- [`bdr.node_group_config`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_group_config)
+- [`bdr.node_group_routing_config_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_group_routing_config_summary)
+- [`bdr.node_group_routing_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_group_routing_info)
+- [`bdr.node_group_routing_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_group_routing_summary)
+- [`bdr.node_peer_progress_mapping`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_peer_progress_mapping)
+- [`bdr.node_routing_config_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrnode_routing_config_summary)
+- [`bdr.prepared_xacts_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrprepared_xacts_summary)
+- [`bdr.reconcile_2pc_requests`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrreconcile_2pc_requests)
+- [`bdr.reconcile_2pc_requests_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrreconcile_2pc_requests_summary)
+- [`bdr.sequence_kind`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrsequence_kind)
+- [`bdr.sync_node_requests`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrsync_node_requests)
+- [`bdr.sync_node_requests_summary`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/catalogs-internal/#bdrsync_node_requests_summary)
+
+## [Internal system functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/)
+
+### [General internal functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#general-internal-functions)
+
+- [`bdr.bdr_get_commit_decisions`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrbdr_get_commit_decisions)
+- [`bdr.bdr_track_commit_decision`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrbdr_track_commit_decision)
+- [`bdr.consensus_kv_fetch`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrconsensus_kv_fetch)
+- [`bdr.consensus_kv_store`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrconsensus_kv_store)
+- [`bdr.decode_message_payload`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrdecode_message_payload)
+- [`bdr.decode_message_response_payload`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrdecode_message_response_payload)
+- [`bdr.difference_fix_origin_create`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrdifference_fix_origin_create)
+- [`bdr.difference_fix_session_reset`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrdifference_fix_session_reset)
+- [`bdr.difference_fix_session_setup`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrdifference_fix_session_setup)
+- [`bdr.difference_fix_xact_set_avoid_conflict`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrdifference_fix_xact_set_avoid_conflict)
+- [`bdr.drop_node`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrdrop_node)
+- [`bdr.get_global_locks`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrget_global_locks)
+- [`bdr.get_node_conflict_resolvers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrget_node_conflict_resolvers)
+- [`bdr.get_slot_flush_timestamp`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrget_slot_flush_timestamp)
+- [`bdr.internal_alter_sequence_set_kind`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrinternal_alter_sequence_set_kind)
+- [`bdr.internal_replication_set_add_table`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrinternal_replication_set_add_table)
+- [`bdr.internal_replication_set_remove_table`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrinternal_replication_set_remove_table)
+- [`bdr.internal_submit_join_request`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrinternal_submit_join_request)
+- [`bdr.isolation_test_session_is_blocked`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrisolation_test_session_is_blocked)
+- [`bdr.local_node_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrlocal_node_info)
+- [`bdr.msgb_connect`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrmsgb_connect)
+- [`bdr.msgb_deliver_message`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrmsgb_deliver_message)
+- [`bdr.node_catchup_state_name`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrnode_catchup_state_name)
+- [`bdr.node_kind_name`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrnode_kind_name)
+- [`bdr.peer_state_name`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrpeer_state_name)
+- [`bdr.pg_xact_origin`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrpg_xact_origin)
+- [`bdr.reconcile_2pc_status_name`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrreconcile_2pc_status_name)
+- [`bdr.request_replay_progress_update`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrrequest_replay_progress_update)
+- [`bdr.reset_relation_stats`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrreset_relation_stats)
+- [`bdr.reset_subscription_stats`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrreset_subscription_stats)
+- [`bdr.resynchronize_table_from_node`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrresynchronize_table_from_node)
+- [`bdr.seq_currval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrseq_currval)
+- [`bdr.seq_lastval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrseq_lastval)
+- [`bdr.seq_nextval`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrseq_nextval)
+- [`bdr.show_subscription_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrshow_subscription_status)
+- [`bdr.show_workers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrshow_workers)
+- [`bdr.show_writers`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrshow_writers)
+- [`bdr.sync_status_name`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrsync_status_name)
+
+### [Task manager functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#task-manager-functions)
+
+- [`bdr.taskmgr_set_leader`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrtaskmgr_set_leader)
+- [`bdr.taskmgr_get_last_completed_workitem`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrtaskmgr_get_last_completed_workitem)
+- [`bdr.taskmgr_work_queue_check_status`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrtaskmgr_work_queue_check_status)
+- [`bdr.get_min_required_replication_slots`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrget_min_required_replication_slots)
+- [`bdr.get_min_required_worker_processes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrget_min_required_worker_processes)
+- [`bdr.stat_last_reset_time`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrstat_last_reset_time)
+- [`bdr.stat_get_activity`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrstat_get_activity)
+- [`bdr.stat_get_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrstat_get_commit_scope)
+- [`bdr.stat_get_commit_scope_proc_wait`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrstat_get_commit_scope_proc_wait)
+- [`bdr.stat_get_reconcile_commit_scope`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrstat_get_reconcile_commit_scope)
+- [`bdr.worker_role_id_name`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrworker_role_id_name)
+- [`bdr.lag_history`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrlag_history)
+- [`bdr.get_raft_instance_by_nodegroup`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrget_raft_instance_by_nodegroup)
+- [`bdr.monitor_camo_on_all_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrmonitor_camo_on_all_nodes)
+- [`bdr.monitor_raft_details_on_all_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrmonitor_raft_details_on_all_nodes)
+- [`bdr.monitor_replslots_details_on_all_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrmonitor_replslots_details_on_all_nodes)
+- [`bdr.monitor_subscription_details_on_all_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrmonitor_subscription_details_on_all_nodes)
+- [`bdr.monitor_version_details_on_all_nodes`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrmonitor_version_details_on_all_nodes)
+- [`bdr.node_group_member_info`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/functions-internal/#bdrnode_group_member_info)
+
+## [Conflict functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/)
+
+- [`bdr.alter_table_conflict_detection`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/#bdralter_table_conflict_detection)
+- [`bdr.alter_node_set_conflict_resolver`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/#bdralter_node_set_conflict_resolver)
+- [`bdr.alter_node_set_log_config`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflict_functions/#bdralter_node_set_log_config)
+
+## [Column-level conflict functions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/clcd/)
+
+- [`bdr.column_timestamps_create`](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/clcd/#bdrcolumn_timestamps_create)
+
+## [Conflicts](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/)
+
+- [Conflict detection](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#conflict-detection)
+  - [List of conflict types](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#list-of-conflict-types)
+- [Conflict resolution](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#conflict-resolution)
+  - [List of conflict resolvers](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#list-of-conflict-resolvers)
+  - [Default conflict resolvers](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#default-conflict-resolvers)
+  - [List of conflict resolutions](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#list-of-conflict-resolutions)
+- [Conflict logging](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/conflicts/#conflict-logging)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,52 @@
+---
+title: "Example: Using a connection file"
+product: MySQL Foreign Data Wrapper
+version: "2"
+url: https://www.enterprisedb.com/docs/mysql_data_adapter/latest/example_connection_file/
+lastModified: 2024-07-10T17:53:22+05:30
+---
+
+# Example: Using a connection file
+
+This example shows how to use the connection file.
+
+```ini
+-- Prepare the default file with the connection details:
+cat /tmp/my.cnf 
+[client]
+host=localhost
+port=3306
+user=edb
+password=edb
+secure_auth=true
+```
+
+```sql
+-- create a server object with mysql_default_file option
+CREATE SERVER mysql_server FOREIGN DATA WRAPPER mysql_fdw 
+  OPTIONS (mysql_default_file '/tmp/my.cnf');
+```
+
+```sql
+-- Create a user mapping without providing username and password options
+CREATE USER MAPPING FOR public SERVER mysql_server;
+```
+
+```sql
+-- Create a foreign table:
+CREATE FOREIGN TABLE f_mysql_file_test(a int, b int) SERVER mysql_server OPTIONS (dbname 'mysql_fdw_regress', table_name 'mysql_test');
+```
+
+```sql
+-- Query the data from the foreign table to check if the connection details are read from the default file:
+SELECT * FROM f_mysql_file_test ORDER BY 1, 2;
+```
+
+```output title="Output"
+ a | b
+---+---
+ 1 | 1
+(1 row)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

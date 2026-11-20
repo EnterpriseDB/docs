@@ -1,0 +1,564 @@
+---
+title: Agents reference
+description: API reference for AIDB agent management, conversations, and structured output helpers.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/reference/agents/
+lastModified: 2026-11-20T11:26:56+05:30
+---
+
+# Agents reference
+
+Reference for agent-related functions, views, and types. For guide-style documentation, see [Agents](https://www.enterprisedb.com/docs/aidb/latest/agents/).
+
+## Catalog views
+
+### `aidb.agents`
+
+Agent configuration. There's no dedicated "list agents" function — query this table directly.
+
+| Column                | Type                   | Description                                                                                                                                                              |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                  | uuid                   | Internal identifier.                                                                                                                                                     |
+| `name`                | text                   | Unique agent name.                                                                                                                                                       |
+| `instructions`        | text                   | The agent's instructions.                                                                                                                                                |
+| `model`               | text                   | The model backing the agent.                                                                                                                                             |
+| `purpose`             | text                   | Named [purpose](https://www.enterprisedb.com/docs/aidb/latest/governance/purposes/) the agent's tool calls run under, if configured. References `aidb.purpose_registry`. |
+| `delegates`           | text\[]                | Names of agents this agent may delegate to.                                                                                                                              |
+| `tools`               | text\[]                | Names of tools this agent may call.                                                                                                                                      |
+| `plugins`             | text\[]                | Names of [agent plugins](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/) attached to this agent, in order.                                                |
+| `output_type`         | jsonb                  | Structured output schema, built with `aidb.output_type()`.                                                                                                               |
+| `input_token_budget`  | integer                | Input token budget per call.                                                                                                                                             |
+| `output_token_budget` | integer                | Output token budget per call.                                                                                                                                            |
+| `max_iterations`      | integer                | Maximum reasoning iterations per call.                                                                                                                                   |
+| `timeout_seconds`     | integer                | Maximum wall-clock time per call.                                                                                                                                        |
+| `budget_strategy`     | `aidb.budget_strategy` | Behavior when a budget is exceeded. See [Types](#types) below.                                                                                                           |
+| `preset`              | text                   | Stored, but not currently resolved to any behavior.                                                                                                                      |
+| `created_at`          | timestamptz            | Creation time.                                                                                                                                                           |
+| `updated_at`          | timestamptz            | Last update time.                                                                                                                                                        |
+
+### `aidb.agent_plugins`
+
+[Agent plugins](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/) and their content. Read-only: create, change, and delete plugins with the [agent plugin functions](#agent-plugin-functions). The view reads from the `aidb.agent_plugins_registry` table.
+
+| Column           | Type        | Description                                                                                                                      |
+| ---------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | bigint      | Internal identifier.                                                                                                             |
+| `name`           | text        | Unique plugin name.                                                                                                              |
+| `description`    | text        | Short summary of what the plugin adds.                                                                                           |
+| `prompt_content` | text        | Guidance that AIDB adds to the system prompt of every agent that uses the plugin.                                                |
+| `tools`          | text\[]     | Names of existing tools (from `aidb.tools`) that the plugin adds to every agent it's attached to. An empty array means no tools. |
+| `created_at`     | timestamptz | Creation time.                                                                                                                   |
+| `updated_at`     | timestamptz | Last update time.                                                                                                                |
+
+For plugins that a [semantic knowledge base](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/) publishes, the view lists the managed `semkb_<kb_name>` plugin like any other.
+
+### `aidb.purpose_registry`
+
+Purposes an agent can hold. Each purpose maps a name to the Postgres role that an agent's tool calls run as. Members of `aidb_users` can read this view. Change it with the [purpose management functions](#purpose-management-functions).
+
+| Column        | Type        | Description                                                             |
+| ------------- | ----------- | ----------------------------------------------------------------------- |
+| `name`        | text        | Unique purpose name.                                                    |
+| `role`        | text        | Postgres role that agents holding this purpose run their tool calls as. |
+| `description` | text        | Free-text description.                                                  |
+| `created_at`  | timestamptz | When the purpose was created.                                           |
+| `updated_at`  | timestamptz | When the purpose was last changed.                                      |
+| `deleted_at`  | timestamptz | When the purpose was deleted. `NULL` for an active purpose.             |
+
+### `aidb.agent_tasks`
+
+One row per `agent_converse` call (a "task"), including its lifecycle status.
+
+| Column                | Type               | Description                                                          |
+| --------------------- | ------------------ | -------------------------------------------------------------------- |
+| `task_id`             | uuid               | Internal task identifier.                                            |
+| `agent_id`            | uuid               | The agent that ran this task (`aidb.agents.id`).                     |
+| `conversation_id`     | uuid               | The conversation this task belongs to.                               |
+| `request_message_id`  | uuid               | The triggering message's id in `aidb.conversation_log`.              |
+| `response_message_id` | uuid               | The resulting answer's id in `aidb.conversation_log`, once complete. |
+| `caller_role`         | text               | Postgres role that invoked `agent_converse`.                         |
+| `status`              | `aidb.task_status` | Current lifecycle status. See [Types](#types) below.                 |
+| `blocking`            | boolean            | Always `true` today — every task runs synchronously.                 |
+| `error`               | text               | Error message, if the task failed.                                   |
+| `created_at`          | timestamptz        | When the task started.                                               |
+| `completed_at`        | timestamptz        | When the task finished, if it has.                                   |
+
+### `aidb.conversation_log`
+
+Every user prompt and agent answer, across every conversation — the same rows `aidb.get_conversation()` returns, unfiltered by `conversation_id`. Tool calls, model requests, and other internal activity aren't included; query `aidb_internal.action_log` directly for the full activity history.
+
+| Column            | Type               | Description                                                            |
+| ----------------- | ------------------ | ---------------------------------------------------------------------- |
+| `id`              | uuid               | Message id.                                                            |
+| `conversation_id` | uuid               | The conversation this message belongs to.                              |
+| `agent_id`        | uuid               | The agent involved.                                                    |
+| `task_id`         | uuid               | The task this message was part of.                                     |
+| `action_type`     | `aidb.action_type` | `user_prompt` or `answer`.                                             |
+| `payload`         | jsonb              | The message's raw payload (a `user_message` or `llm_response` struct). |
+| `created_at`      | timestamptz        | When the message was created.                                          |
+| `completed_at`    | timestamptz        | When it was completed.                                                 |
+
+### `aidb.conversations`
+
+One row per conversation, aggregated from `aidb.conversation_log`.
+
+| Column                   | Type               | Description                                             |
+| ------------------------ | ------------------ | ------------------------------------------------------- |
+| `conversation_id`        | uuid               | The conversation's id.                                  |
+| `agent_id`               | uuid               | The agent involved.                                     |
+| `parent_conversation_id` | uuid               | Always `NULL` — conversation forking isn't implemented. |
+| `forked_from_message_id` | uuid               | Always `NULL` — conversation forking isn't implemented. |
+| `status`                 | `aidb.task_status` | Status of the most recent task in this conversation.    |
+| `message_count`          | bigint             | Number of messages in the conversation.                 |
+| `last_message_id`        | uuid               | Id of the most recent message.                          |
+| `created_at`             | timestamptz        | When the conversation started.                          |
+| `updated_at`             | timestamptz        | When the conversation was last updated.                 |
+
+---
+
+## Agent management functions
+
+### `aidb.create_agent`
+
+Registers a new agent.
+
+#### Parameters
+
+| Parameter             | Type    | Default                       | Description                                                                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                | TEXT    | Required                      | Unique name for the agent.                                                                                                                                                                                                                                                                                                                              |
+| `instructions`        | TEXT    | Required                      | Instructions that define the agent's behavior.                                                                                                                                                                                                                                                                                                          |
+| `model`               | TEXT    | Required                      | Name of the model backing the agent. See [Choosing a model](https://www.enterprisedb.com/docs/aidb/latest/agents/creating-agents/#choosing-a-model).                                                                                                                                                                                                    |
+| `tools`               | TEXT\[] | NULL                          | Names of tools (from `aidb.tools`) the agent may call.                                                                                                                                                                                                                                                                                                  |
+| `delegates`           | TEXT\[] | NULL                          | Names of other agents this agent may delegate to.                                                                                                                                                                                                                                                                                                       |
+| `purpose`             | TEXT    | NULL                          | Named [purpose](https://www.enterprisedb.com/docs/aidb/latest/governance/purposes/) the agent's tool calls run under. Must name a registered purpose. Stored without resolving it to its underlying role or checking membership, which happens at invocation. See [Enforcement](https://www.enterprisedb.com/docs/aidb/latest/governance/enforcement/). |
+| `output_type`         | JSONB   | NULL                          | Structured output schema, built with [`aidb.output_type()`](#aidboutput_type).                                                                                                                                                                                                                                                                          |
+| `input_token_budget`  | INTEGER | NULL (no limit)               | Input token budget per `agent_converse` call.                                                                                                                                                                                                                                                                                                           |
+| `output_token_budget` | INTEGER | NULL (no limit)               | Output token budget per call.                                                                                                                                                                                                                                                                                                                           |
+| `max_iterations`      | INTEGER | NULL                          | Maximum reasoning iterations per call. A hard ceiling of 25 always applies regardless.                                                                                                                                                                                                                                                                  |
+| `timeout`             | INTEGER | NULL (300 applied at runtime) | Maximum wall-clock seconds per call.                                                                                                                                                                                                                                                                                                                    |
+| `budget_strategy`     | TEXT    | `'attempt_complete'`          | One of `'ignore'`, `'error'`, `'summarize'`, `'attempt_complete'`. See [Budgets and limits](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#budgets-and-limits).                                                                                                                                                           |
+| `preset`              | TEXT    | NULL                          | Stored, but not currently resolved to any behavior.                                                                                                                                                                                                                                                                                                     |
+| `plugins`             | TEXT\[] | NULL                          | Names of [agent plugins](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/) to attach, in order. Each must exist, and a name can appear only once.                                                                                                                                                                                          |
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure (never raises for a validation/name-collision failure).
+
+#### Example
+
+```sql
+SELECT aidb.create_agent(
+    name                 => 'db_helper',
+    instructions         => 'You are a helpful assistant that answers questions about this database.',
+    model                => 'my_gpt',
+    tools                => ARRAY['run_sql_query'],  -- optional; tool names from aidb.tools. Default: NULL (no tools)
+    delegates            => NULL,                    -- optional; names of other agents to delegate to. Default: NULL (no delegation)
+    purpose              => NULL,                    -- optional; name of a purpose from aidb.purpose_registry. Default: NULL (tool calls run as the calling role)
+    output_type          => NULL,                    -- optional; structured output schema from aidb.output_type(). Default: NULL (plain-text answer)
+    input_token_budget   => NULL,                    -- optional; input token cap per agent_converse call. Default: NULL (no limit)
+    output_token_budget  => NULL,                    -- optional; output token cap per agent_converse call. Default: NULL (no limit)
+    max_iterations       => NULL,                    -- optional; reasoning-round cap per call. Default: NULL (a hard ceiling of 25 always applies)
+    timeout              => NULL,                    -- optional; wall-clock seconds cap per call. Default: NULL (300 seconds applied at runtime)
+    budget_strategy      => 'attempt_complete',      -- optional; behavior when a budget is exceeded. Default: 'attempt_complete'
+    preset               => NULL,                    -- optional; reserved for future use, has no effect today. Default: NULL
+    plugins              => NULL                     -- optional; names of agent plugins to attach. Default: NULL (no plugins)
+);
+```
+
+---
+
+### `aidb.update_agent`
+
+Updates an existing agent. Every parameter except `name` is optional and defaults to `NULL`, meaning "leave unchanged" — including `budget_strategy`, whose default here is `NULL`, not `'attempt_complete'`.
+
+#### Parameters
+
+Same parameters as `create_agent`, all optional (defaulting to `NULL`) except `name`.
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure (agent not found, invalid field value).
+
+#### Example
+
+```sql
+SELECT aidb.update_agent('db_helper', model => 'my_new_gpt', max_iterations => 15);
+```
+
+---
+
+### `aidb.delete_agent`
+
+Deletes an agent by name.
+
+#### Parameters
+
+| Parameter | Type    | Default      | Description                                                                                                                                                                                                               |
+| --------- | ------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`    | TEXT    | Required     | Name of the agent to delete.                                                                                                                                                                                              |
+| `force`   | BOOLEAN | NULL (false) | If `true`, also deletes the agent's internal task/action-queue records so deletion can proceed even if it has conversation history. The conversation transcript itself (`aidb.conversation_log`) is preserved either way. |
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure, including when the agent has conversation history and `force` wasn't passed.
+
+#### Example
+
+```sql
+SELECT aidb.delete_agent('db_helper', force => true);
+```
+
+---
+
+## Agent plugin functions
+
+Manage [agent plugins](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/). All three functions return `TABLE(error TEXT)`: no rows on success, and a single row with `error` set on failure. They don't raise for a validation failure.
+
+You can't change or delete the managed plugin that a semantic knowledge base publishes with these functions. See [Managing a semantic KB plugin](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/#managing-a-semantic-kb-plugin).
+
+### `aidb.create_agent_plugin`
+
+Registers a new plugin.
+
+#### Parameters
+
+| Parameter        | Type    | Default  | Description                                                                                                                                   |
+| ---------------- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`           | TEXT    | Required | Unique plugin name. It must start with a letter or underscore and can contain letters, numbers, underscores, and hyphens.                     |
+| `description`    | TEXT    | Required | Short summary of what the plugin adds. It can't be empty and can contain up to 1,024 characters.                                              |
+| `prompt_content` | TEXT    | Required | Guidance that AIDB adds to the system prompt of every attached agent on every run. It can't be empty and can contain up to 16,000 characters. |
+| `tools`          | TEXT\[] | NULL     | Names of existing tools from `aidb.tools`. A tool can appear only once. If you omit it or pass `NULL`, AIDB stores an empty array.            |
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure (for example, the name is taken, a field is invalid, or a listed tool doesn't exist).
+
+#### Example
+
+```sql
+SELECT error
+FROM aidb.create_agent_plugin(
+    name           => 'billing_sql',
+    description    => 'Answer billing questions with SQL',
+    prompt_content => 'Use run_sql_query for billing questions. Amounts are stored in cents.',
+    tools          => ARRAY['run_sql_query']
+);
+```
+
+---
+
+### `aidb.update_agent_plugin`
+
+Updates an existing plugin. Every parameter except `name` is optional and defaults to `NULL`, meaning "leave unchanged". Agents pick up the change on their next run.
+
+#### Parameters
+
+| Parameter        | Type    | Default  | Description                                                                                |
+| ---------------- | ------- | -------- | ------------------------------------------------------------------------------------------ |
+| `name`           | TEXT    | Required | Name of the plugin to update.                                                              |
+| `description`    | TEXT    | NULL     | New description, subject to the same rules as `create_agent_plugin`.                       |
+| `prompt_content` | TEXT    | NULL     | New content, subject to the same rules as `create_agent_plugin`.                           |
+| `tools`          | TEXT\[] | NULL     | New list of tools. Replaces the current list. Pass `ARRAY[]::text[]` to remove every tool. |
+
+AIDB rejects a new `tools` list if one of its tools would collide with a delegate of an agent that uses the plugin.
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure (plugin not found, invalid field value, or a managed plugin).
+
+#### Example
+
+```sql
+SELECT error
+FROM aidb.update_agent_plugin('billing_sql', prompt_content => 'Amounts are stored in cents. Ignore rows with deleted_at set.');
+```
+
+---
+
+### `aidb.delete_agent_plugin`
+
+Deletes a plugin by name.
+
+#### Parameters
+
+| Parameter | Type    | Default  | Description                                                                                                                                |
+| --------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`    | TEXT    | Required | Name of the plugin to delete.                                                                                                              |
+| `force`   | BOOLEAN | `NULL`   | Delete the plugin even when agents use it. AIDB detaches it from every agent that lists it, then deletes it. `NULL` is treated as `false`. |
+
+#### Returns
+
+`TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure. Without `force`, deleting a plugin that's attached to an agent fails, and the error names the agents.
+
+#### Example
+
+```sql
+SELECT error FROM aidb.delete_agent_plugin('billing_sql', force => true);
+```
+
+---
+
+## Purpose management functions
+
+Only members of the `aidb_governance` role can call these functions.
+
+### `aidb.create_purpose`
+
+Creates a purpose. If a purpose with this name was deleted earlier, it's reactivated with the new role and description.
+
+#### Parameters
+
+| Parameter     | Type | Default  | Description                                                       |
+| ------------- | ---- | -------- | ----------------------------------------------------------------- |
+| `name`        | TEXT | Required | Unique purpose name.                                              |
+| `role`        | TEXT | Required | Postgres role that agents holding this purpose run tool calls as. |
+| `description` | TEXT | NULL     | Free-text description.                                            |
+
+#### Returns
+
+`VOID`. Raises an error if an active purpose with this name already exists.
+
+#### Example
+
+```sql
+SELECT aidb.create_purpose('sales_reporting', 'reporting_role', 'Read-only access to the sales schema');
+```
+
+---
+
+### `aidb.update_purpose`
+
+Changes a purpose's role or description. The change applies to every agent holding the purpose from its next invocation.
+
+#### Parameters
+
+| Parameter     | Type | Default  | Description                                    |
+| ------------- | ---- | -------- | ---------------------------------------------- |
+| `name`        | TEXT | Required | Name of the purpose to change.                 |
+| `role`        | TEXT | NULL     | New Postgres role. `NULL` leaves it unchanged. |
+| `description` | TEXT | NULL     | New description. `NULL` leaves it unchanged.   |
+
+#### Returns
+
+`VOID`. Raises an error if no active purpose has this name.
+
+#### Example
+
+```sql
+SELECT aidb.update_purpose('sales_reporting', role => 'sales_readonly');
+```
+
+---
+
+### `aidb.delete_purpose`
+
+Deletes a purpose. The row stays in `aidb.purpose_registry` with `deleted_at` set. An agent holding a deleted purpose is refused when invoked.
+
+#### Parameters
+
+| Parameter | Type | Default  | Description                    |
+| --------- | ---- | -------- | ------------------------------ |
+| `name`    | TEXT | Required | Name of the purpose to delete. |
+
+#### Returns
+
+`VOID`. Raises an error if the purpose doesn't exist or is already deleted.
+
+#### Example
+
+```sql
+SELECT aidb.delete_purpose('sales_reporting');
+```
+
+---
+
+## Conversation functions
+
+### `aidb.agent_converse`
+
+Runs an agent's reasoning loop against a prompt and returns its answer.
+
+#### Parameters
+
+| Parameter         | Type    | Default  | Description                                                                                                                                                                 |
+| ----------------- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent_name`      | TEXT    | Required | Name of the agent to converse with.                                                                                                                                         |
+| `prompt`          | TEXT    | Required | The prompt to send.                                                                                                                                                         |
+| `conversation_id` | TEXT    | NULL     | Continue an existing conversation. Omit to start a new one (an id is generated automatically).                                                                              |
+| `read_only`       | BOOLEAN | NULL     | Force [read-only mode](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#read-only-mode) on or off. Auto-enabled on a read replica when omitted. |
+| `output_type`     | JSONB   | NULL     | Overrides the agent's configured [structured output](https://www.enterprisedb.com/docs/aidb/latest/agents/creating-agents/#structured-output) schema for this call only.    |
+| `debug`           | BOOLEAN | NULL     | If `true`, also emit every action as a `NOTICE`. See [Debug mode](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#debug-mode).                 |
+
+#### Returns
+
+`TABLE(message TEXT, conversation_id TEXT, error TEXT)` — one row. Never raises for an agent-logic failure; `error` is populated instead, and `message`/`conversation_id` are `NULL`. `conversation_id` is also `NULL` for any read-only run, since nothing is persisted to attach an id to.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.agent_converse(
+    agent_name      => 'db_helper',
+    prompt          => 'How many rows are in the orders table?',
+    conversation_id => NULL,  -- optional; continue an existing conversation by id. Default: NULL (starts a new conversation)
+    read_only       => NULL,  -- optional; force read-only mode on/off. Default: NULL (auto: on for a read replica, off otherwise)
+    output_type     => NULL,  -- optional; override the agent's structured output schema for this call. Default: NULL (use the agent's own configuration)
+    debug           => NULL   -- optional; also emit every action as a NOTICE. Default: NULL (false)
+);
+```
+
+---
+
+### `aidb.start_agent_session`
+
+Mints a fresh conversation id for a named agent, ahead of the first `agent_converse` call that will use it.
+
+#### Parameters
+
+| Parameter    | Type | Description                         |
+| ------------ | ---- | ----------------------------------- |
+| `agent_name` | TEXT | Name of the agent to converse with. |
+
+#### Returns
+
+`TABLE(conversation_id TEXT)`. Unlike `agent_converse`, this function **raises** (rather than returning an `error` column) if `agent_name` is empty or unknown.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.start_agent_session('db_helper');
+```
+
+---
+
+### `aidb.get_conversation`
+
+Retrieves a conversation's messages — every user prompt and final answer, in chronological order. Excludes tool calls and other internal activity; see `aidb_internal.action_log` for the full activity history.
+
+#### Parameters
+
+| Parameter         | Type | Description            |
+| ----------------- | ---- | ---------------------- |
+| `conversation_id` | TEXT | The conversation's id. |
+
+#### Returns
+
+`TABLE(message_id TEXT, task_id TEXT, action_type TEXT, role TEXT, sender_id TEXT, contents TEXT)` — one row per message. `role` is `"user"` or `"agent"`; `sender_id` is the specific sender (the prompt's own `user` field, or the agent's id). **Raises** (rather than returning an `error` column) if `conversation_id` is empty.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_conversation('8f14e45f-ceea-467e-9575-a3d1a2c1a123');
+```
+
+---
+
+### `aidb.get_message`
+
+Retrieves one message's plain-text contents by id.
+
+#### Parameters
+
+| Parameter    | Type | Description       |
+| ------------ | ---- | ----------------- |
+| `message_id` | TEXT | The message's id. |
+
+#### Returns
+
+`TABLE(message TEXT, error TEXT)` — one row. `error` (not `message`) is populated when no such message exists; doesn't raise.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_message('3fa85f64-5717-4562-b3fc-2c963f66afa6');
+```
+
+---
+
+## Structured output helpers
+
+### `aidb.output_field`
+
+Builds one field of an agent's structured output schema.
+
+#### Parameters
+
+| Parameter     | Type | Default  | Description                                                       |
+| ------------- | ---- | -------- | ----------------------------------------------------------------- |
+| `name`        | TEXT | Required | The field's name.                                                 |
+| `field_type`  | TEXT | Required | The field's type (for example, `'TEXT'`, `'FLOAT'`, `'BOOLEAN'`). |
+| `description` | TEXT | NULL     | Description shown to the model.                                   |
+
+#### Returns
+
+`JSONB` — pass one or more of these to `aidb.output_type()`.
+
+---
+
+### `aidb.output_type`
+
+Builds a complete structured output schema from one or more fields.
+
+#### Parameters
+
+| Parameter | Type              | Description                                |
+| --------- | ----------------- | ------------------------------------------ |
+| `fields`  | VARIADIC JSONB\[] | One or more `aidb.output_field()` results. |
+
+#### Returns
+
+`JSONB` — pass to `create_agent`/`update_agent`'s `output_type` parameter, or `agent_converse`'s.
+
+#### Example
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'sentiment_tagger',
+    instructions => 'Classify the sentiment of the given text.',
+    model        => 'my_gpt',
+    output_type  => aidb.output_type(
+        aidb.output_field('sentiment', 'TEXT', 'One of: positive, negative, neutral'),
+        aidb.output_field('confidence', 'FLOAT')
+    )
+);
+```
+
+---
+
+## Types
+
+### `aidb.budget_strategy`
+
+```sql
+CREATE TYPE aidb.budget_strategy AS ENUM (
+    'ignore',
+    'error',
+    'summarize',
+    'attempt_complete'
+);
+```
+
+See [Budgets and limits](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#budgets-and-limits) for what each value does.
+
+### `aidb.task_status`
+
+```sql
+CREATE TYPE aidb.task_status AS ENUM (
+    'PENDING',
+    'IN_PROGRESS',
+    'RECOVERY',
+    'AWAIT_APPROVAL',
+    'DENIED',
+    'ERROR',
+    'TIMEOUT',
+    'CANCELED',
+    'SUCCESS',
+    'EVALUATING',
+    'COMPLETE'
+);
+```
+
+Surfaced through `aidb.agent_tasks.status` and `aidb.conversations.status`. Since every task today runs synchronously to completion within one `agent_converse` call, a task's terminal status is normally `SUCCESS` or `ERROR`; the remaining values are reserved for asynchronous/approval workflows that aren't implemented yet.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,152 @@
+---
+title: Installing EDB Wait States
+product: EDB Wait States
+url: https://www.enterprisedb.com/docs/pg_extensions/wait_states/installing/
+lastModified: 2026-10-15T14:22:15+05:30
+---
+
+# Installing EDB Wait States
+
+## On all Linux systems except Debian and Ubuntu
+
+To install EDB Wait States on any Linux operating system except Debian or Ubuntu:
+
+1. Enter the following command:
+
+   ```shell
+   sudo <package-manager> -y install <install-package-name>
+   ```
+
+   Where:
+
+   - `<package-manager>`is the package manager used with your operating system.
+
+     | Package manager | Operating system                 |
+     | --------------- | -------------------------------- |
+     | dnf             | RHEL 8/9 and derivatives         |
+     | yum             | RHEL 7 and derivatives, CentOS 7 |
+     | zypper          | SLES                             |
+
+   - `<install-package-name>` is the name of the Postgres distribution you're using. In the package names, `<version>` is the version of the Postgres distribution.
+
+     | Type of Postgres distribution | Install command                             |
+     | ----------------------------- | ------------------------------------------- |
+     | PostgreSQL                    | postgresql`<version>`-edb\_wait\_states     |
+     | EDB Postgres Advanced Server  | edb-as`<version>`-server-edb\_wait\_states  |
+     | EDB Postgres Extended Server  | edb-postgresextended`<version>`-wait-states |
+
+   For example, to install EDB Wait States for EDB Postgres Advanced Server 16 on a RHEL 9 platform:
+
+   ```shell
+   sudo dnf -y install edb-as16-server-edb_wait_states
+   ```
+
+2. To launch the worker, register it in the `postgresql.conf` file using the `shared_preload_libraries` parameter. For example:
+
+   ```ini
+   shared_preload_libraries = '$libdir/edb_wait_states'
+   ```
+
+3. Restart the database server. After a successful restart, the background worker begins collecting data.
+
+4. To review the data, create the following extension:
+
+   ```sql
+   CREATE EXTENSION edb_wait_states;
+   ```
+
+## On Debian and Ubuntu
+
+To install EDB Wait States on Debian or Ubuntu:
+
+1. Enter the following command:
+
+   ```shell
+   sudo apt-get -y install <install-package-name>
+   ```
+
+   Where:
+
+   `<install-package-name>` is the name of the Postgres distribution you're using. In the package names, `<version>` is the version of the Postgres distribution.
+
+   | Type of Postgres distribution | Install command                              |
+   | ----------------------------- | -------------------------------------------- |
+   | PostgreSQL                    | postgresql`<version>`-edb-wait-states        |
+   | EDB Postgres Advanced Server  | edb-as`<version>`-server-edb-wait-states     |
+   | EDB Postgres Extended Server  | edb-postgresextended-wait-states-`<version>` |
+
+   For example, to install EDB Wait States for EDB Postgres Advanced Server 16 on a Debian 11 platform:
+
+   ```shell
+   sudo apt-get -y install edb-as16-server-edb-wait-states
+   ```
+
+2. To launch the worker, register it in the `postgresql.conf` file using the `shared_preload_libraries` parameter. For example:
+
+   ```ini
+   shared_preload_libraries = '$libdir/edb_wait_states'
+   ```
+
+3. Restart the database server. After a successful restart, the background worker begins collecting data.
+
+4. To review the data, create the following extension:
+
+   ```sql
+   CREATE EXTENSION edb_wait_states;
+   ```
+
+## On Windows
+
+An EDB Postgres Advanced Server installation includes support for EDB Wait States. After installing EDB Postgres Advanced Server, you need to perform some additional steps to activate EDB Wait States.
+
+1. To register the worker, modify the `postgresql.conf` file to include the EDB Wait States library in the `shared_preload_libraries` configuration parameter. The parameter value must include:
+
+   ```ini
+   shared_preload_libraries = '$libdir/edb_wait_states.dll'
+   ```
+
+   The EDB Wait States installation places the `edb_wait_states.dll` library file in the following path:
+
+   ```text
+   C:\Program Files\edb\as<xx>\lib\
+   ```
+
+   Where `<xx>` is the EDB Postgres Advanced Server version, such as `as16`.
+
+2. Restart the database server to make the changes take effect. After a successful restart, the background worker starts and begins collecting the data.
+
+3. To view the data, create the following extension:
+
+   ```sql
+   CREATE EXTENSION edb_wait_states;
+   ```
+
+The installer places the `edb_wait_states.control` file in the following path:
+
+```text
+C:\Program Files\edb\as14\share\extension
+```
+
+## Extension schema
+
+> **Note**
+>
+> Starting in version 1.7, the `edb_wait_states` extension isn't relocatable. You can't move it to a different schema using `ALTER EXTENSION edb_wait_states SET SCHEMA`. This command fails with `extension "edb_wait_states" does not support SET SCHEMA`.
+
+## Lasso compatibility
+
+EDB's diagnostic tools, Lasso and Postgres Workload Report (PWR), access EDB Wait States data using the `pg_monitor` role. For these tools to collect wait-state data successfully, grant the `pg_monitor` role usage on the schema where the extension objects reside. For example, if the extension is installed in the `public` schema:
+
+```sql
+GRANT USAGE ON SCHEMA public TO pg_monitor;
+```
+
+## Uninstalling
+
+To uninstall EDB Wait States:
+
+1. Use the `DROP EXTENSION` command to drop the `edb_wait_states` extension.
+2. Modify the `postgresql.conf` file. Remove `$libdir/edb_wait_states` (for Linux) or `$libdir/edb_wait_states.dll` (for Windows) from the `shared_preload_libraries` parameter.
+3. To apply your changes, restart the database server.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,47 @@
+---
+title: Creating native users for testing
+description: Create additional native users.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/managing_users/native_users/create_native_user/
+lastModified: 2026-03-17T01:01:27Z
+---
+
+# Creating native users for testing
+
+For testing or demo environments, you can simplify operations by adding native users. For production deployments, we strongly recommend [configuring an external IdP](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/install/configuration/byo_idp/).
+
+Currently, you can't create human users with the Hybrid Manager (HM) console. You can do so only by tweaking the HM configuration file.
+
+## Adding a native user
+
+Append new users to the `portal.authentication.staticPasswords` section during or after installation. Replace this value either in your `values.yaml` file or `HybridControlPlane` custom resource, depending on the installation method you use.
+
+```yaml
+portal:
+  authentication:
+    staticPasswords:
+      - email: "owner@mycompany.com"
+        hash: "$2y$10$STTzuGJa3PydqHvlzi2z6OgDU1G/JLTqiuGblH.RemIutWxkztN5m"
+        username: "owner@mycompany.com"
+        userID: "c5998173-a605-449a-a9a5-4a9c33e26df7"
+     - email: "<userA@example.com>"          
+       hash: "<example_hashed_password>"
+       username: "<userA@example.com>"
+       userID: "<unique_user_id>"  
+```
+
+The dex service will restart to apply the changes automatically after saving them.
+
+### Parameters
+
+These settings are for the user in the `portal.authentication.staticPasswords` entry. Each user needs values for `email`, `hash`, `username`, and `userID`.
+
+| Parameter  | Description                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `email`    | Email address of the user. Also serves as the user's login identifier for accessing the HM console.                                                                                                                                                                                                                                                                                                        |
+| `hash`     | Bcrypt-hashed user password for password store. To generate this value, use `echo ${password} \| htpasswd -BinC 10 userA \| cut -d: -f2`, where the actual password is stored behind the `${password}` variable. `userA` represents the username used during the password hashing process. It can be any arbitrary text, as it's not used elsewhere in the configuration. Only the resulting hash is used. |
+| `userID`   | Each new user configured with a static password must have a distinct, unique identifier for the user (uuid). You can choose to generate this value with a UUID generator tool or assign a random sequence of characters manually.                                                                                                                                                                          |
+| `username` | Unique username for the user. This is the primary identifier for logging into the HM console. It can be the same as `email`.                                                                                                                                                                                                                                                                               |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

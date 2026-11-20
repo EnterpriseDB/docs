@@ -1,0 +1,201 @@
+---
+title: WarehousePG Copy command reference
+description: The complete reference to the WarehousePG Copy command.
+product: WarehousePG Copy
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/reference/whpg-copy-utility/
+lastModified: 2026-09-29T16:04:16+01:00
+---
+
+# WarehousePG Copy command reference
+
+The `whpg-copy` command copies objects from databases in a source WarehousePG (WHPG) cluster to databases in a destination WarehousePG cluster.
+
+> **Note**
+>
+> Command-line arguments take precedence over settings defined in a TOML file. The configuration file also supports options that aren't available as command-line arguments, such as regular-expression-based mapping rules for renaming schemas and tables. See [whpg-copy configuration file](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/reference/config_file/) for the full list of options.
+
+## Synopsis
+
+```
+whpg-copy <subcommand> [global-options]
+```
+
+## Subcommands
+
+### Copy
+
+Copy data from one WarehousePG (WHPG) cluster to another.
+
+```
+whpg-copy copy
+   [-s | --src-url <url>]
+   [-d | --dst-url <url>]
+   [-c | --config-file <path>]
+   [--src-db <database_name>]
+   [--dst-db <database_name>]
+   [-i | --include-table <schema.table>]
+   [-e | --exclude-table <schema.table>]
+   [--compression <true|false>]
+   [-p | --through-partition-leaves <true|false>]
+   [--target-mode <append|truncate|skip|drop>]
+   [--rebuild-indexes <true|false>]
+   [--validate-method <none|count|checksum>]
+   [--port-range <min>-<max>]
+   [--workers <number>]
+   [--timeout <seconds>]
+   [--dst-address-cidr <cidr>]
+   [--preflight <true|false>]
+   [--progress-poll-interval <seconds>]
+   [--with-owner]
+   [--with-privilege]
+   [-m | --metadata-only <true|false>]
+   [--tls-mode <disabled|server-auth|mutual>]
+   [--tls-dir <path>]
+   [--log-level <info|debug>]
+   [--dry-run <true|false>]
+```
+
+The subcommand `copy` supports the following options:
+
+**Source and destination clusters and databases**
+
+- `--src-url <url>` or `-s <url>`: Connection string for the source database. It follows the format `postgres://[user@]host[:port][/dbname]`.
+- `--dst-url <url>` or `-d <url>`: Connection string for the destination database. It follows the format `postgres://[user@]host[:port][/dbname]`.
+- `--src-db <DB_NAME>`: The source database. It overrides the database name specified in `--src-url`.
+- `--dst-db <DB_NAME>`: The destination database. It overrides the database name specified in `--dst-url`.
+
+> **Note**
+>
+> `--src-url` and `--dst-url` aren't strictly required on the command line. You can instead define `src_url` and `dst_url` in a configuration file and pass it with `--config-file`. `whpg-copy` reports an error if a value is missing from both the command line and the configuration file.
+
+**Relations to copy**
+
+You can selectively include or exclude tables. If you don't provide this option, the utility copies all user tables in the source database.
+
+- `--include-table <table>` or `-i <table>`: Specifies a table to include. Can be used multiple times. Use the format `schema.table` to specify the relations. If you don't specify a schema, `whpg-copy` assumes the `public` schema. If you are using special characters, follow PostgreSQL's qualified identifier rules to quote them.
+- `--exclude-table <table>` or `-e <table>`: Specifies a table to exclude. Can be used multiple times. Uses the same format as `--include-table`.
+
+**Other options**
+
+Customize the data transfer behavior with these options:
+
+- `--config-file <path>` or `-c <path>`: Specify configuration options via a TOML configuration file. See [whpg-copy configuration file](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/reference/config_file/) for the full list of options. Note that command line options will override the configuration file.
+
+- `--target-mode <mode>`: Determines how to handle existing tables on the destination. The supported options are:
+  - `append` (Default): Inserts data into existing tables.
+  - `truncate`: Truncates the destination table before copying.
+  - `skip`: Skips the copy operation if the table already exists.
+  - `drop`: Drops the existing destination table with `DROP TABLE ... CASCADE`, recreates it from the source DDL, then copies the data. The cascade also drops objects that depend on the table, such as views or foreign keys from other tables, and anything not included in the same copy isn't recreated. Requires the destination table to share the source's schema and name, so it can't be combined with a mapping rule that renames the table.
+
+- `--rebuild-indexes <bool>`: Rebuilds secondary indexes around the bulk load instead of leaving them in place for every row insert. Droppable indexes are dropped after any truncate and recreated inside the same destination transaction once the load validates, so a failed copy leaves existing indexes untouched. Primary key, unique, constraint-backed, invalid, clustered, commented, and statistics-target indexes are never dropped. Default is `false`. See [Known limitations](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/overview/known_issues/) for partition-table and multi-source-table exceptions.
+
+- `--compression <bool>`: Enables or disables ZSTD compression during data transfer. Default is `true`.
+
+- `--through-partition-leaves <bool>` or `-p <bool>`: If `true` (default), copies data directly between leaf partitions in parallel. If `false`, data goes through the specified root/intermediate partition table.
+
+- `--validate-method <method>`: Validation to perform after copying. The supported options are:
+  - `none` (Default): No validation.
+  - `count`: Compares row counts.
+  - `checksum`: Calculates and compares data hashes.
+
+- `--with-owner`: Includes object ownership information in the DDL. By default, `whpg-copy` omits ownership, equivalent to running `pg_dump` with `--no-owner`.
+
+- `--with-privilege`: Includes privilege (`GRANT`) information in the DDL. By default, `whpg-copy` omits privileges, equivalent to running `pg_dump` with `--no-privileges`.
+
+- `--metadata-only <bool>` or `-m <bool>`: Copies only the schema (DDL) to the destination and skips the data transfer when set to `true`. Default is `false`.
+
+- `--preflight <bool>`: Checks that every destination host is reachable before copying anything. Default is `true`. Set to `false` to skip this check.
+
+- `--dst-address-cidr <cidr>`: Restricts the destination addresses `whpg-copy` connects to, in CIDR notation (for example, `10.0.0.0/8` or an IPv6 range). Use this option when the destination hosts resolve to multiple addresses (for example, a private interconnect network and a network reachable from the source) and you need to pin the network the source hosts can reach. Without it, the lowest resolved address is used, with IPv4 preferred over IPv6 unless the host resolves to no IPv4 address at all.
+
+- `--progress-poll-interval <seconds>`: Interval, in seconds, between polls of the live transfer statistics shown in the TUI (terminal user interface) and included in the success report. Set to `0` to disable progress polling entirely. Default is `5`.
+
+- `--tls-mode <mode>`: Protects the data-transfer connection with Transport Layer Security (TLS). The supported options are:
+
+  - `disabled` (Default): Plaintext transfer.
+  - `server-auth`: One-way TLS. Senders verify the daemon's certificate against the CA but don't present a client certificate.
+  - `mutual`: Mutual TLS. The daemon also requires each sender to present a CA-signed client certificate.
+
+    Requires `--tls-dir` when not `disabled`. Use [whpg-copy gen-certs](#gen-certs) to generate the required certificates.
+
+- `--tls-dir <path>`: Directory containing the TLS certificates used to encrypt data transfer. Required when `--tls-mode` isn't `disabled`. The directory must exist at the same path on every host, but its contents differ by role: destination hosts need `server.crt`, `server.key`, and `ca.crt`, and source hosts need `client.crt`, `client.key`, and `ca.crt`. Keep `ca.key` offline and don't deploy it to any host.
+
+- `--dry-run <bool>`: Performs a trial run without modifying data on the destination when set to `true`. Default is `false`.
+
+- `--timeout <seconds>`: Total time, in seconds, a single data transfer can spend getting ready to move bytes, covering both connecting to the destination daemon and waiting for the destination's receiver to appear. Default is `120`. Set to `0` to wait forever, except during the preflight check, which is always capped at 30 seconds.
+
+- `--workers <number>`: Specifies the number of concurrent worker tasks. Default is `4`. Use the keys `+` or `-` to dynamically increase or decrease the number of parallel workers  during the copy process.
+
+- `--log-level <level>`: Verbosity of the log file written by `whpg-copy` and the copy daemon it starts on the destination cluster. This setting doesn't affect what's printed to the console, which defaults to `warning` and is controlled by the `RUST_LOG` environment variable. The supported options are `info` and `debug` (default).
+
+### Diagnose
+
+Identify blocked connections or routing issues between WHPG clusters.
+
+```
+whpg-copy diagnose
+   -s | --src-url <url>
+   -d | --dst-url <url>
+   [--port-range <min-max>]
+   [--timeout <seconds>]
+   [--dst-address-cidr <cidr>]
+   [--tls-mode <disabled|server-auth|mutual>]
+   [--tls-dir <path>]
+   [--log-level <info|debug>]
+```
+
+Unlike `copy`, `diagnose` doesn't support a `--config-file`, so `--src-url` and `--dst-url` are always required.
+
+The subcommand `diagnose` supports the following options:
+
+- `--src-url <url>` or `-s <url>`: Connection string for the source database. It follows the format `postgres://[user[:password]@]host[:port][/dbname]`.
+- `--dst-url <url>` or `-d <url>`: Connection string for the destination database. It follows the format `postgres://[user[:password]@]host[:port][/dbname]`.
+- `--port-range <min-max>`: Range of ports available to scan sequentially until an available port is found.
+- `--timeout <seconds>`: Connection and operation timeout in seconds. Default is `5`.
+- `--dst-address-cidr <cidr>`: Restricts the destination addresses to one network, in CIDR notation. Pass the same value you use with `whpg-copy copy` so `diagnose` tests the addresses the copy actually uses.
+- `--tls-mode <mode>`: TLS mode to test. The supported options are `disabled` (default), `server-auth`, and `mutual`.
+- `--tls-dir <path>`: Directory containing the TLS certificates to test the encrypted transfer path. Required when `--tls-mode` isn't `disabled`. Its contents differ by role: destination hosts need `server.crt`, `server.key`, and `ca.crt`, and source hosts need `client.crt`, `client.key`, and `ca.crt`.
+- `--log-level <level>`: Verbosity of the log file. The supported options are `info` and `debug` (default).
+
+### Config-example
+
+Generate a sample TOML-formatted configuration file to use with the `whpg-copy copy` command.
+
+```
+whpg-copy config-example
+```
+
+See [whpg-copy configuration file](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/reference/config_file/) for the full list of all parameters and values.
+
+### Gen-certs
+
+Generate a self-signed CA plus a CA-signed server and client certificate for encrypting data transfer with `--tls-mode`.
+
+```
+whpg-copy gen-certs
+   --out-dir <path>
+   [--days <number>]
+```
+
+The subcommand `gen-certs` supports the following options:
+
+- `--out-dir <path>`: Directory to write the generated certificates to. Required.
+- `--days <number>`: Validity period of the generated certificates, in days. Default is `3650`.
+
+`gen-certs` writes `ca.crt`, `ca.key`, `server.crt`, `server.key`, `client.crt`, and `client.key` to the output directory, and prints deployment instructions. Copy `server.crt`, `server.key`, and `ca.crt` to every destination host, and `client.crt`, `client.key`, and `ca.crt` to every source host, all at the same path. Keep `ca.key` offline and don't deploy it to any host.
+
+### Version
+
+Display the current version of the `whpg-copy` utility.
+
+```
+whpg-copy version
+```
+
+## Global options
+
+The following options can be used with any of the `whpg-copy` subcommands:
+
+- `--help`: Displays command help.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

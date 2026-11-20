@@ -1,0 +1,666 @@
+---
+title: Using secure sockets layer (SSL) connections
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/11_using_ssl_connections/
+lastModified: 2025-07-01T14:24:44+02:00
+---
+
+# Using secure sockets layer (SSL) connections
+
+<div id="using_ssl_connections" class="registered_link"></div>
+
+You can make publication server and subscription server connections to Postgres publication databases, Postgres subscription databases, and Postgres primary nodes using secure sockets layer (SSL) connectivity.
+
+Replication Server doesn't support SSL connections to Oracle and SQL Server databases used in any Replication Server replication system.
+
+For a single-master replication system, you can make the following connections to Postgres databases enabled with SSL:
+
+- Publication server connection to the publication database and to the subscription databases
+- Subscription server connection to the subscription databases
+- Migration Toolkit connection to the publication and subscription databases
+
+For a multi-master replication system, you can make the following connections to Postgres databases enabled with SSL:
+
+- Publication server connection to the primary definition node and the non-MDN nodes
+- Migration Toolkit connection to the primary definition node and the non-MDN nodes
+
+> **Note**
+>
+> SSL connections aren't used from the Replication Server console or CLI. The Replication Server user interfaces communicate with the publication server and subscription server, which in turn connect to the publication/subscription databases or primary nodes.
+
+> **Note**
+>
+> The Migration Toolkit connection using SSL occurs in the context of the publication server and subscription server SSL connections. Therefore, you don't need to perform separate steps for the Migration Toolkit SSL connection.
+
+Using SSL requires various prerequisite configuration steps. Perform these steps on the database servers involved with the SSL connections and on the Java truststore and keystore on the hosts running the publication server and subscription server.
+
+The Java truststore is the file containing the Certificate Authority (CA) certificates. The Java client (the publication server and subscription server) use this certificate to verify the authenticity of the server to which it is starting an SSL connection.
+
+The Java keystore is the file containing private and public keys and their corresponding certificates. The keystore is required for client authentication to the server, which is used for Replication Server SSL connections.
+
+The following is material you can refer to for guidance in setting up the SSL connections:
+
+- See the section on secure TCP connections with SSL in the [PostgreSQL Core Documentation](https://www.postgresql.org/docs/current/static/ssl-tcp.html) for information on setting up SSL connectivity to Postgres database servers.
+
+- For information on JDBC client connectivity using SSL, see the section on configuring the client in the [PostgreSQL JDBC Interface documentation](https://jdbc.postgresql.org/documentation/ssl/#configuring-the-client).
+
+The following sections provide more information for the configuration steps of using SSL with the Replication Server.
+
+- [Configuring SSL on a Postgres database server](#configure_ssl_on_pg_db_server)
+- Configuring SSL on a JDBC client for the publication and subscription servers ([Configuring SSL for the publication server and subscription server](#configure_ssl_for_pub_and_sub_server))
+- [Requesting SSL connection to the Replication Server databases](#request_ssl_to_xdb_server_dbs)
+
+<div id="configure_ssl_on_pg_db_server" class="registered_link"></div>
+
+## Configuring SSL on a Postgres database server
+
+This example shows configuring SSL on a Postgres database server to show the use of SSL with Replication Server. A self-signed certificate is used for this purpose.
+
+1. Create the certificate signing request (CSR).
+
+   In the following example, the generated certificate signing request file is `server.csr`. The private key is generated as file server.key.
+
+   ```text
+   $ openssl req -new -text -nodes -subj '/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=enterprisedb' -keyout server.key -out server.csr
+   Generating a 1024 bit RSA private key
+   ......................................................++++++
+   .++++++
+   writing new private key to 'server.key'
+   -----
+   ```
+
+   > **Note**
+   >
+   > When creating the certificate, the value specified for the common name field (designated as `CN=enterprisedb` in this example) must be the database user name that is specified in the **User** field of the Add Database or Update Database dialog box used when defining the publication database, subscription database, or primary nodes. See [Adding a publication database](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/02_adding_pub_database/#adding_pub_database)), [Adding a subscription database](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database)), [Adding the primary definition node](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/02_creating_publication_mmr/#adding_pdn)), and [Creating more primary nodes](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes)).
+
+   Alternatively, you can use user name maps as defined in the `pg_ident.conf` file to permit more flexibility for the common name and database user name. Steps 8 and 9 describe the use of user name maps.
+
+   There are two options when entering the value for the common name field: the database user name and host name/ip-adress. If entering `CN=hostname/ip-address`, use the following command.
+
+   - Create root Certificate Authority (CA) private key (`root.key`) and root CA certificate (`root.crt`) files with these commands:
+
+     ```text
+     $ openssl genrsa -des3 -out root.key 4096
+     Generating RSA private key, 4096 bit long modulus
+     ........++
+     .........++
+     e is 65537 (0x10001)
+     Enter pass phrase for root.key:
+     Verifying - Enter pass phrase for root.key:
+
+     $ openssl req -x509 -new -nodes -key root.key -subj '/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=192.168.22.174' -sha256 -days 1024 -out root.crt
+     Enter pass phrase for root.key:
+     $ openssl genrsa -out server.key 2048
+     Generating RSA private key, 2048 bit long modulus
+     ..........................................+++
+     .........................................................................................+++
+     e is 65537 (0x10001)
+
+     Note: Please note in below command database server ip-address which is given as CN(Common Name) value for server.csr(server certificate signing request) file generation could not be identical as you have used above while generating root.crt file. It must be different.
+
+     $ openssl req -new -sha256 -key server.key -subj '/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=192.168.18.2' -out server.csr
+     ```
+
+2. Generate the self-signed certificate.
+
+   The following generates a self-signed certificate to file `server.crt` using the certificate signing request file, `server.csr`, and the private key, `server.key`, as input.
+
+   ```text
+   $ openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt
+   Signature ok
+   subject=/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=enterprisedb
+   Getting Private key
+   ```
+
+   The following command generates a server certificate with `CN=hostname/ip-address` to file `server.crt` using the certificate signing request file, `server.csr`, and the private root key, `root.key`, as input.
+
+   ```text
+   $ openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 1024 -sha256
+   Signature ok
+   subject=/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=localhost.localdomain
+   Getting CA Private Key
+   Enter pass phrase for root.key:
+   ```
+
+3. Make a copy of the server certificate (`server.crt`) to use as the root Certificate Authority (CA) file (`root.crt`).
+
+   ```text
+   $ cp server.crt root.crt
+   ```
+
+   If following the instructions specific to `CN=hostname/ip-address`, make a copy of the `root.crt` file from Step 1.
+
+4. Delete the now redundant certificate signing request (`server.csr`).
+
+   ```text
+   $ rm server.csr
+   ```
+
+5. Move or copy the certificate and private key files to the Postgres database server data directory, `POSTGRES_INSTALL_HOME/data`.
+
+   ```text
+   $ mv root.crt /var/lib/edb/as14/data
+   $ mv server.crt /var/lib/edb/as14/data
+   $ mv server.key /var/lib/edb/as14/data
+   ```
+
+6. Set the file ownership and permissions on the certificate files and private key file.
+
+   Set the ownership to the operating system account that owns the data subdirectory of the Postgres database server, which is either `enterprisedb` or `postgres` depending upon the installation mode you chose when you installed your Postgres database server (Oracle compatible or PostgreSQL compatible).
+
+   ```text
+   $ chown enterprisedb root.crt server.crt server.key
+   $ chgrp enterprisedb root.crt server.crt server.key
+   $ chmod 600 root.crt server.crt server.key
+   $ ls -l
+   total 140
+           .
+           .
+           .
+   -rw------- 1 enterprisedb enterprisedb  1346 Mar 15 09:31 root.crt
+   -rw------- 1 enterprisedb enterprisedb  1346 Mar 15 09:30 server.crt
+   -rw------- 1 enterprisedb enterprisedb  1704 Mar 15 09:28 server.key
+   ```
+
+7. In the `postgresql.conf` file, make the following changes.
+
+   ```ini
+   ssl = on                               # (change requires restart)
+   ssl_cert_file = 'server.crt'           # (change requires restart)
+   ssl_key_file = 'server.key'            # (change requires restart)
+   ssl_ca_file = 'root.crt'               # (change requires restart)
+   ```
+
+8. Modify the `pg_hba.conf` file to enable SSL usage on the desired publication, subscription, or primary node databases.
+
+   In the `pg_hba.conf` file, the `hostssl` type indicates the entry is used to validate SSL connection attempts from the client (the publication server and the subscription server).
+
+   The authentication method is set to cert with the option `clientcert=1` to require an SSL certificate from the client against which authentication is performed using the common name of the certificate (`enterprisedb` in this example).
+
+   The `map=sslusers` option specifies to use a mapping named `sslusers` defined in the `pg_ident.conf` file for authentication. This mapping allows a connection to the database if the common name from the certificate and the database user name attempting the connection match the `SYSTEM-USERNAME/PG-USERNAME` pair listed in the `pg_ident.conf` file.
+
+   The following is an example of the settings in the `pg_hba.conf` file if the publication and subscription databases (edb and subnode) must use SSL connections.
+
+   ```text
+   # TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+   # "local" is for Unix domain socket connections only
+   local   all             all                                     md5
+
+   # IPv4 local connections for for Postgres v13:
+   hostssl   edb,subnode   all  192.168.2.0/24   cert clientcert=verify-ca map=sslusers
+
+   # IPv4 local connections for for Postgres v14:
+   hostssl   edb,subnode   all  192.168.2.0/24   cert clientcert=verify-full map=sslusers
+   ```
+
+9. The following shows the user name maps in the `pg_ident.conf` file related to the `pg_hba.conf` file by the `map=sslusers` option. These user name maps permit you to specify database user names pubuser, subuser, MMRuser, or enterprisedb in the **User** field of the Add Database or Update Database dialog box when adding the publication, subscription, or primary node databases in the EPRS Replication Console.
+
+   In other words, these are the permitted set of database user names that can be used by the publication server and subscription server to connect to the publication, subscription, or primary node databases.
+
+   ```text
+   # MAPNAME       SYSTEM-USERNAME         PG-USERNAME
+   sslusers        enterprisedb            pubuser
+   sslusers        enterprisedb            subuser
+   sslusers        enterprisedb            MMRuser
+   sslusers        enterprisedb            enterprisedb
+   ```
+
+10. Restart the Postgres database server after you make the changes to the Postgres configuration files.
+
+<div id="configure_ssl_for_pub_and_sub_server" class="registered_link"></div>
+
+## Configuring SSL for the publication server and subscription server
+
+After you configure SSL on the Postgres database server, the following steps provide an example of generating a certificate and keystore file for the publication server and subscription server (the JDBC clients).
+
+Before you begin, configure the client for SSL with trigger mode.
+
+- If you are using PostgreSQL, on the SSL-enabled Postgres database server:
+
+  Make the following client/cert files available on the publication/subscription server using an SSL connection:
+
+  - `postgresql.crt`
+  - `postgresql.pk8`
+  - `root.crt`
+
+  In our example, we use the copy of this self-signed certificate and key generated for the database server on the client side.
+
+  The default location of these files is `{user.home}/.postgresql(e.g/var/lib/edb/.postgresql/)`. The file location can be overridden using SSL connection parameters or Postgres SSL environmental variables, see [Setting non-default paths using environment variables](#setting-non-default-paths-using-environment-variables) for more information.
+
+  > **Note**
+  >
+  > If you have installed Replication Server using the RPM install package from the EDB repository, the value of the {user.home} property is `/var/lib/edb/` and you need to create the  `.postgresql` directory in this path to have a valid default client SSL directory path (`/var/lib/edb/.postgresql/`).
+
+  Copy and rename the files:
+
+  ```shell
+  $ cd /var/lib/pgsql/.postgresql/
+
+  $ cp /var/lib/pgsql/14/data/server.crt postgresql.crt
+
+  $ cp /var/lib/pgsql/14/data/root.crt .
+
+  $ cp /var/lib/pgsql/14/data/server.key postgresql.key
+
+  $ openssl pkcs8 -topk8 -inform PEM -in postgresql.key -outform DER -out postgresql.pk8 -v1 PBE-MD5-DES -nocrypt
+  ```
+
+  > **Note**
+  >
+  > This completes the SSL configuration for the PostgreSQL publication server and subscription server.
+
+- If you are using EDB Postgres Advanced Server, on the SSL-enabled Postgres database server:
+
+  Make the following client/cert files available on the publication/subscription server using an SSL connection:
+
+  - `xdb.keystore`
+  - `xdb_pkcs.p12`
+
+- If you generated the server certificate with `CN=hostname/ip-address`, you cannot use `server.crt/key` as client server/key. Instead, generate the client private key and ceriticate where CN value is specified as db user name. To do so, enter the following commands in the same location as above:
+
+  - `postgresql.key`
+  - `postgresql.crt`
+  - `postgresql.pk8`
+  - `root.crt` (copied from database server data directory)
+
+  ```text
+  $ openssl genrsa -out postgresql.key 2048
+  Generating RSA private key, 2048 bit long modulus
+  ....................................................................................................+++
+  ..............................................................................................................+++
+  e is 65537 (0x10001)
+  $ openssl req -new -sha256 -key postgresql.key -subj "/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=enterprisedb" -out postgresql.csr
+
+  Create the client certificate using above postgresql.csr certificate signing request and root.crt and root.key files will be given as input(root.crt and root.key files will be used we created in Configuring SSL on a Postgres database server section).
+  $ openssl x509 -req -in postgresql.csr -CA root.crt -CAkey root.key -CAcreateserial -out postgresql.crt -days 1024 -sha256
+  Signature ok
+  subject=/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=enterprisedb
+  Getting CA Private Key
+  Enter pass phrase for root.key:
+  $ openssl pkcs8 -topk8 -inform PEM -in postgresql.key -outform DER -out postgresql.pk8 -v1 PBE-MD5-DES -nocrypt
+
+  $ cp /var/lib/edb/as14/data/root.crt 
+  ```
+
+1. Using files `server.crt` and server.key located under the Postgres database server data subdirectory, create copies of these files and move them to the host where the publication server and subscription server are running.
+
+   ```shell
+   cp server.crt xdb.crt
+   cp server.key xdb.key
+   ```
+
+   For this example, assume file `xdb.crt` is a copy of `server.crt` and `xdb.key` is a copy of `server.key`.
+
+   If you generated the server certificate with `CN=hostname/ip-address`, create xdb.keystore/xdb\_pkcs.p12 with the `postgresql.crt` and `postgresql.ke`y client files as created with `CN=username` using the following commands :
+
+   ```shell
+   $ cp postgresql.crt xdb.crt
+   $ cp postgresql.key xdb.key
+   ```
+
+2. Create a copy of `xdb.crt`.
+
+   ```text
+   $ cp xdb.crt xdb_root.crt
+   $ ls -l
+   total 12
+   -rw-r--r-- 1 user user 1346 Mar 15 09:58 xdb.crt
+   -rw-r--r-- 1 user user 1704 Mar 15 09:58 xdb.key
+   -rw-r--r-- 1 user user 1346 Mar 15 10:00 xdb_root.crt
+   ```
+
+   If you generated the server certificate with `CN=hostname/ip-address`, use the `root.crt file` from the database data directory in the following command to make `xdb_root.crt` file:
+
+   ```shell
+   $ cp root.crt xdb_root.crt
+   ```
+
+3. Create a distinguished encoding rules (DER) format of file `xdb_root.crt`. The generated DER format of this file is `xdb_root.crt.der`. The DER format of the file is required for the keytool program in the next step.
+
+   ```text
+   $ openssl x509 -in xdb_root.crt -out xdb_root.crt.der -outform der
+   $ ls -l
+   otal 16
+   -rw-r--r-- 1 user user 1346 Mar 15 09:58 xdb.crt
+   -rw-r--r-- 1 user user 1704 Mar 15 09:58 xdb.key
+   -rw-r--r-- 1 user user 1346 Mar 15 10:00 xdb_root.crt
+   -rw-rw-r-- 1 user user  954 Mar 15 10:05 xdb_root.crt.der
+   ```
+
+4. Use the keytool program to create a keystore file (`xdb.keystore`) using `xdb_root.crt.der` as the input. This process adds the certificate of the Postgres database server to the keystore file.
+
+   You can find the keytool program under the `bin` subdirectory of the Java Runtime Environment installation.
+
+   You are prompted for a new password. Save this password for the next step.
+
+   ```text
+   $ /usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/bin/keytool -keystore xdb.keystore -alias xdbstore -import -file xdb_root.crt.der
+   Enter keystore password:
+   Re-enter new password:
+   Owner: CN=enterprisedb, EMAILADDRESS=support@enterprisedb.com, OU=XDB, O=EnterpriseDB, L=Bedford, ST=Massachusetts, C=US
+   Issuer: CN=enterprisedb, EMAILADDRESS=support@enterprisedb.com, OU=XDB, O=EnterpriseDB, L=Bedford, ST=Massachusetts, C=US
+   Serial number: d7e9966b48e91523
+   Valid from: Tue Mar 15 08:30:37 GMT-05:00 2016 until: Wed Mar 15 08:30:37 GMT-05:00 2017
+   Certificate fingerprints:
+      MD5:  5D:32:AB:47:A2:44:48:84:0B:CA:EC:9E:C9:28:CE:64
+      SHA1: 31:14:C4:0A:E6:93:AA:2C:3E:4B:09:77:AB:94:DB:71:CB:58:99:D9
+      SHA256: 2B:EA:59:35:E6:5B:07:07:30:96:D4:80:B0:E1:13:5B:5E:45:97:2E:D0:5C:4F:D8:2F:A6:23:DA:F8:30:D6:17
+      Signature algorithm name: SHA1withRSA
+      Version: 1
+   Trust this certificate? [no]:  yes
+   Certificate was added to keystore
+   $ ls -l
+   total 20
+   -rw-r--r-- 1 user user 1346 Mar 15 09:58 xdb.crt
+   -rw-r--r-- 1 user user 1704 Mar 15 09:58 xdb.key
+   -rw-rw-r-- 1 user user 1019 Mar 15 10:18 xdb.keystore
+   -rw-r--r-- 1 user user 1346 Mar 15 10:00 xdb_root.crt
+   -rw-rw-r-- 1 user user  954 Mar 15 10:05 xdb_root.crt.der
+   ```
+
+5. Generate the encrypted form of the new password specified in the preceding step.
+
+   You must specify the encrypted password with the `sslTrustStorePassword` configuration option of the publication server configuration file for publication server SSL connections and the subscription server configuration file for subscription server SSL connections. (See [Publication and subscription server configuration options](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/03_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/#publications_and_subscriptions_server_conf_options) for information on the publication server and subscription server configuration files.)
+
+   Encrypt the password using the Replication Server CLI `encrypt` command. The following example shows this process encrypting the password contained in file `infile`.
+
+   ```text
+   $ export PATH=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/bin:$PATH
+   $ cd /usr/edb/xdb/bin
+   $ java -jar edb-repcli.jar -encrypt -input ~/infile -output ~/pwdfile
+   $ cat ~/pwdfile
+   LGn6+AagiXqumxVHlOKk3w==
+   ```
+
+6. Create a `PKCS #12` format of the keystore file (`xdb_pkcs.p12`) using files `xdb.crt` and `xdb.key` as input.
+
+   You're prompted for a new password. Save this password for the next step.
+
+   ```text
+   $ openssl pkcs12 -export -in xdb.crt -inkey xdb.key -out xdb_pkcs.p12
+   Enter Export Password:
+   Verifying - Enter Export Password:
+   $ ls -l
+   total 24
+   -rw-r--r-- 1 user user 1346 Mar 15 09:58 xdb.crt
+   -rw-r--r-- 1 user user 1704 Mar 15 09:58 xdb.key
+   -rw-rw-r-- 1 user user 1019 Mar 15 10:18 xdb.keystore
+   -rw-rw-r-- 1 user user 2557 Mar 15 10:34 xdb_pkcs.p12
+   -rw-r--r-- 1 user user 1346 Mar 15 10:00 xdb_root.crt
+   -rw-rw-r-- 1 user user  954 Mar 15 10:05 xdb_root.crt.der
+   ```
+
+7. Generate the encrypted form of the new password specified in the preceding step.
+
+   Specify the encrypted password with the `sslKeyStorePassword` configuration option of the publication server configuration file for publication server SSL connections and the subscription server configuration file for subscription server SSL connections.
+
+   Encrypt the password using the Replication Server CLI `encrypt` command.
+
+   ```text
+   $ export PATH=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/bin:$PATH
+   $ cd /usr/edb/xdb/bin
+   $ java -jar edb-repcli.jar -encrypt -input ~/infile -output ~/pwdfile
+   $ cat ~/pwdfile
+   LGn6+AagiXqumxVHlOKk3w==
+   ```
+
+8. Copy files `xdb.keystore` and `xdb_pkcs.p12` to a directory where they will be accessed by the publication server and subscription server.
+
+9. In the publication server and subscription server configuration files, set the location of file `xdb.keystore` with the `sslTrustStore` option and the location of file `xdb_pkcs.p12` with the `sslKeyStore` option.
+
+   The following shows the SSL configuration options set for the files generated in this example.
+
+   ```text
+   sslTrustStore=/tmp/sslclient/xdb.keystore
+   sslTrustStorePassword=LGn6+AagiXqumxVHlOKk3w==
+   sslKeyStore=/tmp/sslclient/xdb_pkcs.p12
+   sslKeyStorePassword= ygJ9AxoJEX854elcVIJPTw==
+   ```
+
+   The encrypted `sslTrustStorePassword` is obtained from Step 5 after being specified for the keytool program in Step 4.
+
+   The encrypted `sslKeyStorePassword` is obtained from Step 7 after being specified for the `openssl pkcs12` program in Step 6.
+
+   [Summary of SSL configuration options](#summary_ssl_conf_options) contains a summary of the publication server and subscription server configuration options for SSL connections.
+
+10. Restart the publication and subscription servers.
+
+### Configuring publication/subscription server in case of WAL stream changeset logging
+
+In the case of WAL stream changeset logging, while adding a publication or a subscription database that accepts only SSL connection, Replication Server validates if the database server is configured for logical replication using `libpq` connection.
+
+> **Note**
+>
+> Ownership depends on the Replication Server service account user. If you have installed Replication Server using the native packages from the EDB repository, the default account user is enterprisedb so ownership needs be given to the enterprisedb user.
+>
+> ```
+> chown enterprisedb postgresql.key
+> ```
+
+For the SSL connection, libpq must have the certificates and key as given in the following table along with the client certs and key you set up for trigger mode. The default directory is `${user.home}/.postgresql`.
+
+> **Note**
+>
+> If you are using EDB Postgres Advanced Server, you need to add and configure the following files, in addition to adding and configuring the `xdb.keystore` and `xdb_pkcs` files, which you added and configured in an earlier step.
+>
+> If you are using PostgreSQL, you need to add and configure the following files, in addition to adding and configuring `postgresql.pk8`, which you added and configured in an earlier step.
+
+| File name                      | Contents                             | Description                                                                                                                   |
+| ------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `~/.postgresql/postgresql.crt` | Client certificate                   | Requested by the server.                                                                                                      |
+| `~/.postgresql/postgresql.key` | Client private key                   | Proves that the client certificate is sent by the owner. However, doesn't indicate that the certificate owner is trustworthy. |
+| `~/.postgresql/root.crt`       | Trusted certificate authorities (CA) | Checks that the server certificate is signed by a trusted certificate authority.                                              |
+
+Make sure that the name of the certificates and key is the same as given in the table.
+
+Execute the following commands to change the permission of the certificates in `${user.home}/.postgresql`.
+
+```text
+chmod 0644 root.crt postgresql.crt
+chmod 0600 postgresql.key
+chown postgres postgresql.key
+```
+
+To set up different source and target database types (for example, source database `=POSTGRESQL` and target database `=enterprisedb`):
+
+1. Generate the certificate for `POSTGRESQL` database and follow the table for placing certificate files in the default directory.
+
+2. Copy these certificates in the EDB Postgres Advanced Server data directory.
+
+   ```shell
+   cd /var/lib/edb/as14/data
+   [root@localhost data]# cp /var/lib/pgsql/14/data/root.crt .
+   [root@localhost data]# cp /var/lib/pgsql/14/data/server.crt .
+   [root@localhost data]# cp /var/lib/pgsql/14/data/server.key .
+   ```
+
+3. Use the following commands to change the permissions of the certificates in the EDB Postgres Advanced Server data directory.
+
+   ```shell
+   [root@localhost data]# sudo chown enterprisedb root.crt server.crt server.key
+   [root@localhost data]# sudo chgrp enterprisedb root.crt server.crt server.key
+   [root@localhost data]# sudo chmod 600 root.crt server.crt server.key
+   ```
+
+<div id="request_ssl_to_xdb_server_dbs" class="registered_link"></div>
+
+## Using different databases for the source and target
+
+Follow these steps if you are using different databases for the source and target; for example, if you are using PostgreSQL for your source database and EDB Postgres Advanced Server for your target database.
+
+> **Note**
+>
+> The commands in this section assume `CN=db user name`.
+
+1. Generate the certificate for the PostgreSQL database. See [Configuring SSL on a Postgres database server](#configuring-ssl-on-a-postgres-database-server).
+
+2. Configure SSL for Replication Server. See the steps for PostgreSQL in [Configuring SSL for the publication server and subscription server](#configuring-ssl-for-the-publication-server-and-subscription-server).
+
+3. Create the same user in EDB Postgres Advanced Server which is same as the CN value used to generate the certificate for the PostgreSQL database. For example if `CN=postgres` if specified as shown in following command then the `postgres` role should be created in EDB Postgres Advanced Server.
+
+   ```shell
+   openssl req -new -text -nodes -subj '/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=muhammad.imtiaaz@enterprisedb.com/CN=postgres' -keyout server.key -out server.csr
+   ```
+
+   Create the user:
+
+   ```sql
+   CREATE ROLE postgres LOGIN SUPERUSER PASSWORD 'edb';
+   ```
+
+   If you specified `map=sslusers` for PostgreSQL and EDB Postgres Advanced Server in `pg_hba.conf`, add the following to `pg_ident.conf` using the same user name for both PostgreSQL and EDB Postgres Advanced Server:
+
+   ```shell
+   cat /var/lib/pgsql/14/data/pg_ident.conf
+   # ----------------------------------
+
+   # MAPNAME       SYSTEM-USERNAME         PG-USERNAME
+   sslusers        postgres                postgres
+   ```
+
+4. Copy the certificates from the PostgreSQL data directory to the EDB Postgres Advanced Server data directory:
+
+   ```shell
+   cd /var/lib/edb/as14/data
+   [root@localhost data]# cp /var/lib/pgsql/14/data/root.crt .
+   [root@localhost data]# cp /var/lib/pgsql/14/data/server.crt .
+   [root@localhost data]# cp /var/lib/pgsql/14/data/server.key .
+   ```
+
+5. Restart the  EDB Postgres Advanced Server service.
+
+   ```shell
+   systemctl restart edb-as-14.service
+   ```
+
+6. Change the permissions of the certificates in the EDB Postgres Advanced Server data directory.
+
+   ```shell
+   [root@localhost data]# sudo chown enterprisedb root.crt server.crt server.key
+   [root@localhost data]# sudo chgrp enterprisedb root.crt server.crt server.key
+   [root@localhost data]# sudo chmod 600 root.crt server.crt server.key
+   ```
+
+7. Make the required configuration changes for EDB Postgres Advanced Server see [Configuring SSL on a Postgres database server](#configuring-ssl-for-the-publication-server-and-subscription-server) and restart the service:
+
+   ```shell
+   systemctl restart edb-as-14.service
+   ```
+
+## Requesting SSL connection to the Replication Server databases
+
+Once SSL connectivity is configured, you must supply a URL option when configuring a single-master or multi-master replication system for those databases to which you intend to use an SSL connection.
+
+The SSL URL option informs Java to use SSL when the publication server or subscription server attempts to connect to a Replication Server database (publication, subscription, or primary node database) on which the SSL URL option is set to `true`.
+
+The configuration steps where these options are specified are as follows:
+
+- For using SSL connections in a single-master replication system, specify the URL options as shown in [Adding a publication database](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/02_adding_pub_database/#adding_pub_database) for the publication database and in [Adding a subscription database](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database) for the subscription databases.
+- For using SSL connections in a multi-master replication system, you must specify the URL options as shown in [Adding the primary definition node](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/02_creating_publication_mmr/#adding_pdn) for the primary definition node and in [Creating more primary nodes](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes) for the non-MDN nodes.
+
+Earlier we created self-signed certificates for the database server by specifying the value of the CN field as the database user name (for example, postgres or enterprisedb, and so on). In this case, we use the “verify-ca” value for sslmode parameter to indicate the server certificate is validated against the CA. We do this because the hostname given in the command Add Database or Update Database could not be verified against CN value present certificate, which is the database user name.
+
+For publication, subscription, and primary node databases, in the URL Options field of the Add Database or Update Database dialog box, enter the following:
+
+`ssl=true&sslmode=verify-ca`
+
+> **Note**
+>
+> `sslmode=verify-full` can be used if server certificates are generated by using hostname/IP. When a server certificate is created with the hostname/IP as the CN value there is no need to specify `sslmode=verify-ca` and replication server by default will take it `sslmode=verify-full`.
+
+You can specify the `ssl=true&sslmode=verify-ca` URL option on the Add Database dialog box.
+
+> **Note**
+>
+> If you no longer want to use an SSL connection to a Replication Server database, you must delete the `ssl=true` text from the **URL Options** field of the Add Database or Update Database dialog box. Changing `true` to `false` doesn't disable the SSL option.
+
+<div id="summary_ssl_conf_options" class="registered_link"></div>
+
+## Setting non-default paths using environment variables
+
+You can override the default paths of certificates and keys by setting the non-default paths in a terminal using the environment variables PGSSLKEY, PGSSLCERT, and PGSSLROOTCERT. You then need to export the paths in a terminal before running any Replication Server CLI command or launching the EPRS Replication Console. For example:
+
+```shell
+$ export PGSSLKEY=/home/postgresql.pk8
+$ export PGSSLCERT=/home/postgresql.crt
+$ export PGSSLROOTCERT=/home/root.crt
+```
+
+After setting and exporting the environment variables, from the same terminal, you may either run the Replication Server CLI  command or launch the EPRS Replication Console.
+
+## Setting non-default paths using SSL connection parameters
+
+Non-default paths of certificates and keys can be overridden using SSL connection parameters sslrootcert, sslcert, and sslkey.
+You need to specify these parameter values in urlOptions:
+
+```shell
+-urloptions "ssl=true&sslmode=verify-ca&sslcert=/home/postgresql.crt&sslkey=/home/postgresql.pk8&sslrootcert=/home/root.crt"
+```
+
+You set urlOptions using either the:
+
+- Replication Server CLI using the addpubdb/addsubdb command
+- EPRS Replication Console while adding the publication and subscription database
+
+## Enabling keepAlive configuration for database connections
+
+To configure the database server to not close idle TCP connections opened by Replication Server when replicating large databases:
+
+```shell
+-urloptions "tcpKeepAlive=true"
+```
+
+You set urlOptions using either the:
+
+- Replication Server CLI using the addpubdb/addsubdb command
+- EPRS Replication Console while adding the publication and subscription database
+
+## Summary of SSL configuration options
+
+The following is a summary of the publication server and subscription server configuration options that apply to SSL connections.
+
+`sslTrustStoreType`
+
+The `sslTrustStoreType` option specifies the truststore format. Set this option to the Java truststore format of the client.
+
+`sslTrustStoreType=truststore_format`
+
+The default value for `truststore_format` is `jks` for the JKS truststore file format.
+
+`sslTrustStore`
+
+The Replication Server uses the default Java truststore for SSL connectivity.
+
+The typical default location of the truststore is in directory `JAVA_HOME/jre/lib/security` or `JAVA_HOME/lib/security` in a file named `cacerts`. (`JAVA_HOME` is the Java installation directory.)
+
+Specify the full directory path to the truststore file with this option. `sslTrustStore=truststore_file`
+
+`sslTrustStorePassword`
+
+Encrypt the password for the Java system truststore using the Replication Server CLI `encrypt` command (see [Encrypting passwords](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/04_encrypt_password/#encrypt_password)), and specify the encrypted password with the `sslTrustStorePassword` option.
+
+`sslTrustStorePassword=encrypted_password`
+
+`sslKeyStoreType`
+
+The `sslKeyStoreType` option specifies the keystore format. Set this option to the Java keystore format of the client.
+
+`sslKeyStoreType=keystore_format`
+
+The default value for `keystore_format` is `pkcs12` for the PKCS #12 keystore file format.
+
+`sslKeyStore`
+
+Specify the full directory path to the keystore file with this option.
+
+`sslKeyStore=keystore_file`
+
+`sslKeyStorePassword`
+
+Encrypt the password for the Java system keystore using the Replication Server CLI `encrypt` command (see [Encrypting passwords](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/04_encrypt_password/#encrypt_password)) and specify the encrypted password with the `sslKeyStorePassword` option.
+
+`sslKeyStorePassword=encrypted_password`
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

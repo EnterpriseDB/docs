@@ -1,0 +1,139 @@
+---
+title: Referencing an object
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/application_programming/epas_compat_spl/15_object_types_and_objects/05_referencing_an_object/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# Referencing an object
+
+<div id="referencing_an_object" class="registered_link"></div>
+
+## Syntax
+
+After you create and initialize an object variable, you can reference individual attributes using dot notation of the form:
+
+```text
+<object>.<attribute>
+```
+
+Where:
+
+`object` is the identifier assigned to the object variable.
+
+`attribute` is the identifier of an object type attribute.
+
+If `attribute` is of an object type, then the reference must take the form:
+
+```text
+<object>.<attribute>.<attribute_inner>
+```
+
+Where `attribute_inner` is an identifier belonging to the object type to which `attribute` references in its definition of `object`.
+
+## Examples
+
+This example displays the values assigned to the `emp_obj_typ` object:
+
+```sql
+DECLARE
+    v_emp          EMP_OBJ_TYP;
+BEGIN
+    v_emp := emp_obj_typ(9001,'JONES',
+        addr_obj_typ('123 MAIN STREET','EDISON','NJ',08817));
+    DBMS_OUTPUT.PUT_LINE('Employee No   : ' || v_emp.empno);
+    DBMS_OUTPUT.PUT_LINE('Name          : ' || v_emp.ename);
+    DBMS_OUTPUT.PUT_LINE('Street        : ' || v_emp.addr.street);
+    DBMS_OUTPUT.PUT_LINE('City/State/Zip: ' || v_emp.addr.city || ', ' ||
+        v_emp.addr.state || ' ' || LPAD(v_emp.addr.zip,5,'0'));
+END;
+```
+
+The following is the output from this anonymous block:
+
+```sql
+__OUTPUT__
+Employee No   : 9001
+Name          : JONES
+Street        : 123 MAIN STREET
+City/State/Zip: EDISON, NJ 08817
+```
+
+Methods are called in a similar manner as attributes.
+
+Once an object variable is created and initialized, member procedures or functions are called using dot notation of the form:
+
+```text
+<object>.<prog_name>
+```
+
+Where:
+
+`object` is the identifier assigned to the object variable.
+
+`prog_name` is the identifier of the procedure or function.
+
+Static procedures or functions aren't called using an object variable. Instead call the procedure or function using the object type name:
+
+```text
+<object_type>.<prog_name>
+```
+
+Where:
+
+`object_type` is the identifier assigned to the object type.
+
+`prog_name` is the identifier of the procedure or function.
+
+You can duplicate the results of the previous anonymous block by calling the member procedure `display_emp`:
+
+```sql
+DECLARE
+    v_emp          EMP_OBJ_TYP;
+BEGIN
+    v_emp := emp_obj_typ(9001,'JONES',
+        addr_obj_typ('123 MAIN STREET','EDISON','NJ',08817));
+    v_emp.display_emp;
+END;
+```
+
+The following is the output from this anonymous block:
+
+```sql
+__OUTPUT__
+Employee No   : 9001
+Name          : JONES
+Street        : 123 MAIN STREET
+City/State/Zip: EDISON, NJ 08817
+```
+
+This anonymous block creates an instance of `dept_obj_typ` and calls the member procedure `display_dept`:
+
+```sql
+DECLARE
+    v_dept          DEPT_OBJ_TYP := dept_obj_typ (20);
+BEGIN
+    v_dept.display_dept;
+END;
+```
+
+The following is the output from this anonymous block:
+
+```sql
+__OUTPUT__
+Dept No    : 20
+Dept Name  : RESEARCH
+```
+
+You can call the static function defined in `dept_obj_typ` directly by qualifying it by the object type name as follows:
+
+```sql
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(dept_obj_typ.get_dname(20));
+END;
+
+RESEARCH
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

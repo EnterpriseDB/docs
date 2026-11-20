@@ -1,0 +1,62 @@
+---
+title: EDB Database
+description: Agent Studio component that produces a Postgres connection URL for a database in a Hybrid Manager cluster.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/components/database/
+lastModified: 2026-08-07T14:25:48+05:30
+---
+
+# EDB Database
+
+The **EDB Database** component resolves an HM project, cluster, and connection type to a Postgres connection URL and exposes that URL as an output. Downstream components (SQL query, MCP-tool wrappers, custom code) use the URL to connect.
+
+## Choosing the right component
+
+Use the EDB Database component when:
+
+- You need a Postgres connection URL for a database in an HM cluster, derived from your HM project and connection settings.
+- You want to wire that URL into another component that connects to the database directly (an [EDB Airman MCP](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/components/airman/) for SQL-as-tools, or a custom flow component).
+
+Use a different component if:
+
+- You want similarity search against an existing knowledge base. Use [EDB Knowledge Base](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/components/knowledge-base/).
+- You want to manage pgvector index structure. Use [EDB Vector Index](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/components/vector-index/).
+- You want SQL as MCP tools for an agent. Use [EDB Airman MCP](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/components/airman/) (it accepts the URL output from this component).
+
+## Prerequisites
+
+- The Project Viewer role on the project that owns the cluster:
+
+  - Project > **Users** > **Assign Project Roles** > **Project Viewer**.
+
+- An HM cluster the user has access to. See [Create clusters](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/).
+
+- An HM machine-user access key and the database user/password saved in upstream Langflow as [Global Variables](https://docs.langflow.org/configuration-global-variables).
+
+## Inputs
+
+| Field                              | Type     | Required | Default          | Notes                                                              |
+| ---------------------------------- | -------- | -------- | ---------------- | ------------------------------------------------------------------ |
+| **Hybrid Manager URL**             | Text     | No       |                  | Advanced. Override the default HM URL.                             |
+| **HM Machine User Key**            | Secret   | Yes      | `HM_API_KEY`     | Defaults to the global variable named `HM_API_KEY`.                |
+| **Hybrid Manager Project**         | Dropdown | Yes      |                  | Populated from your HM projects.                                   |
+| **Hybrid Manager Database**        | Dropdown | Yes      |                  | The cluster containing the database.                               |
+| **Database Group**                 | Dropdown | No       |                  | Cluster group, for example primary or reader.                      |
+| **Database Connection Type**       | Dropdown | Yes      |                  | For example, read or read/write.                                   |
+| **User for the database**          | Text     | Yes      | `HM_DB_USER`     | Defaults to the `HM_DB_USER` global variable.                      |
+| **Password for the database**      | Secret   | Yes      | `HM_DB_PASSWORD` | Defaults to the `HM_DB_PASSWORD` global variable.                  |
+| **Default database name override** | Text     | No       |                  | Advanced. Override the cluster default when listing databases.     |
+| **Database Name**                  | Dropdown | No       |                  | The database to connect to. Leave blank to use the user's default. |
+
+> **Note**
+>
+> If you can't select a project because the portal domain defaults to the API, select **Controls** at the top of the EDB Database and Knowledge Base component to configure `http://istio-internalgateway.istio-system.svc.cluster.local:7080` as the **Hybrid Manager URL**.
+
+## Outputs
+
+| Output           | Type    | Carries                                                                                                                                                                                                                                                                                                               |
+| ---------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Database URL** | Message | The fully resolved Postgres connection string (`postgresql://user:password@host:port/database`), URL-encoded as needed. Pass this into components that take a database URL, such as [EDB Airman MCP](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/langflow/components/airman/). |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,269 @@
+---
+title: Web server security configuration
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/considerations/pem_security_best_practices/apache_httpd_security_configuration/
+lastModified: 2026-09-29T21:55:48+05:30
+---
+
+# Web server security configuration
+
+You can configure the security of the PEM web server.
+
+On Windows, the supported web server is Apache HTTPD. Apache HTTPD is bundled with PEM under the name PEM HTTPD.
+The Apache HTTPD configuration file is `pem.conf`, and the SSL configuration file is `httpd-ssl-pem.conf`. Both configuration files are in the `<Apache_Installation_Path>/conf/addons` directory.
+
+On Linux, both NGINX and Apache HTTPD are supported.
+The NGINX configuration file is `/etc/nginx/conf.d/edb-pem.conf` on RHEL-like systems and `/etc/nginx/sites-available/edb-pem.conf` on Debian-like systems.
+The Apache HTTPD configuration file is `edb-pem.conf`, and the SSL configuration file is `edb-ssl-pem.conf`. Both configurations files are in the `<Apache_Installation_Path>/conf.d` directory.
+
+## Recommendations applied by default
+
+These recommendations are applied by default in new installations of PEM.
+If you customized your web server configuration or carried it over from a much older version of PEM, you can use this information to verify that your configuration meets current standards.
+
+### Disable insecure SSL and TLS protocols
+
+In new installations of PEM, SSL versions SSLv2, SSLv3, TLS 1, and TLS 1.1 are disabled by default. These versions are the most vulnerable and have cryptographic concerns.
+
+For NGINX, PEM adds the following line to the configuration file:
+
+```shell
+ssl_protocols TLSv1.2 TLSv1.3;
+```
+
+For Apache HTTPD, PEM adds the following lines to the SSL configuration file:
+
+```shell
+SSLProtocol -All TLSv1.2
+```
+
+```shell
+SSLProxyProtocol -All TLSv1.2
+```
+
+You can verify that TLS 1.1 is disabled using the following command. Replace the URL with your web server's.
+A return value of 35 means TLS 1.1 is disabled. 0 means it's enabled.
+
+```shell
+curl -k -v -s --tls-max 1.1 https://pem-server:8443 >/dev/null 2>&1; echo $?
+```
+
+### Disable web server information exposure
+
+In new installations of PEM, the web server is configured to minimize the information about the server exposed to clients by disabling server tokens and server signatures. Server tokens expose information about the server in response headers. Server signatures expose information in the footers of server-generated pages such as error messages.
+
+For NGINX, PEM adds the following line to the configuration file:
+
+```shell
+server_tokens off;
+```
+
+For Apache HTTPD, PEM adds the following lines to the SSL configuration file:
+
+```shell
+ServerTokens Prod
+ServerSignature Off
+```
+
+### Disable directory listing
+
+The directory listing allows an attacker to view the complete contents of directories from which content is served.
+This listing might lead to the attacker reverse engineering an application to obtain the source code, analyze it for possible security flaws, and discover more information about an application.
+
+To avoid this risk, PEM disables directory listing.
+
+For NGINX, PEM sets `autoindex: off`.
+
+For Apache HTTPD, PEM sets the `Options -Indexes` directive:
+
+```shell
+<Directory /application/directory> Options -Indexes </Directory>
+```
+
+### Cross-site tracing
+
+The TRACE and TRACK HTTP methods are used for debugging servers. When an HTTP TRACE request is sent to a supported web server, the server responds and echoes the data passed to it, including any HTTP headers. We recommend that you disable these methods in the Apache configuration.
+
+In NGINX, TRACK and TRACE methods are disabled by default. In Apache HTTPD, PEM includes the following lines in the configuration file to reject these methods.
+Some scanners don't understand this syntax and may incorrectly report that these methods are allowed.
+
+```shell
+RewriteEngine on
+RewriteCond %{REQUEST_METHOD} ^(TRACE|TRACK|OPTIONS)
+RewriteRule .\* - [F]
+```
+
+You can verify that TRACK and TRACE are disabled with the following commands. Replacing the URL with  your web server's.
+A return value of 35 means TLS 1.1 is disabled. 0 means it's enabled. If the methods are disabled, the command returns an HTML response that includes the text `405 Method Not Allowed` or similar.
+
+```shell
+curl -kL -X TRACK https://pem-server:8443/pem
+curl -kL -X TRACE https://pem-server:8443/pem
+```
+
+## Optimize HTTP headers for security
+
+PEM sets various HTTP header options to improve security.
+These settings are defined in the `config.py` and `config_distro.py` files.
+This file is located at `/usr/edb/pem/web` on Linux and at `C:\ProgramFiles\edb\pem\server\share\web` on Windows.
+
+If you want to alter any of these settings, don't edit these files. Instead create (or edit if it already exists) a file named `config_local.py` in the same location and add your desired settings.
+These settings override those in the `config.py` and `config_distro.py` files. They aren't overwritten during a PEM upgrade.
+
+For detailed information on the `config.py` file, see [Managing configuration settings](https://www.enterprisedb.com/docs/pem/latest/managing_configuration_settings/).
+
+#### X-Frame-Options
+
+X-Frame-Options indicates whether a browser is allowed to render a page in an \<iframe> tag. It specifically protects against clickjacking. PEM has a host validation `X_FRAME_OPTIONS` option to prevent these attacks, which you can configure in the `config_local.py` file. The default is:
+
+```ini
+X_FRAME_OPTIONS = "SAMEORIGIN"
+```
+
+#### Content-Security-Policy
+
+Content-Security-Policy is part of the HTML5 standard. It provides a broader range of protection than the X-Frame-Options header, which it replaces. It's designed so that website authors can whitelist domains. The authors can load resources (like scripts, stylesheets, and fonts) from the whitelisted domains and also from domains that can embed a page.
+
+PEM has a host validation `CONTENT_SECURITY_POLICY` option to prevent attacks, which you can configure in the `config_local.py` file. The default is:
+
+```ini
+CONTENT_SECURITY_POLICY = "default-src https: data: blob: 'unsafe-inline' ‘'unsafe-eval';"
+```
+
+#### Strict-Transport-Security
+
+The Strict-Transport-Security (HSTS) response header can prevent a man-in-the-middle attack. When you enable the option, websites or web applications tell browsers that they accept only HTTPS and not HTTP. The default is:
+
+```ini
+STRICT_TRANSPORT_SECURITY = "max-age=31536000;includeSubDomains"
+```
+
+> **Note**
+>
+> Adding this parameter can cause problems if config is changed. Therefore, we recommend that you add it only after PEM installation is complete and tested.
+
+#### X-Content-Type-Options
+
+The X-Content-Type-Options response HTTP header is a marker. The server uses the marker to indicate that the MIME types advertised in Content-Type headers can't be changed and followed. The following is a way to opt out of MIME type sniffing, that is, to say that the MIME types are deliberately configured. The default is:
+
+```ini
+X_CONTENT_TYPE_OPTIONS = "nosniff"
+```
+
+#### X-XSS-Protection
+
+Cross-site scripting (XSS) is one of the most common application layer vulnerabilities in the web servers. XSS enables attackers to inject client-side scripts into web pages that other users view. The HTTP X-XSS-Protection response to the header is a feature of Internet Explorer, Chrome, and Safari. It stops pages from loading when they detect reflected cross-site scripting (XSS) attacks. These protections are unnecessary in modern browsers when sites implement a strong Content-Security-Policy that disables the use of inline JavaScript ('unsafe-inline'). However, these protections can still provide protections for users of older web browsers that don't yet support CSP. The default is:
+
+```ini
+X_XSS_PROTECTION = "1; mode=block"
+```
+
+#### Cookie security
+
+Cookies are small packets of data that a server sends to your browser to store configuration data. The browser sends them and all other requests to the same server, so it’s important to know how to secure cookies. Multiple configuration options in `config.py` can make cookies secure. These are the three most important options:
+
+- SESSION\_COOKIE\_SECURE — The flag prevents cookies from sending over an unencrypted connection. The browser can't add the cookie to any request to a server without an encrypted channel. The browser can add cookies only to connections such as HTTPS. The default is:
+
+  ```ini
+  SESSION_COOKIE_SECURE = True
+  ```
+
+- SESSION\_COOKIE\_HTTPONLY — By default, JavaScript can read the content of cookies. The `HTTPOnly` flag prevents scripts from reading the cookie. Instead, the browser uses the cookie only with HTTP or HTTPS requests. Hackers can't exploit XSS vulnerabilities to learn the contents of the cookie. For example, the `sessionId` cookie never requires being read with a client-side script. So, you can set the `HTTPOnly` flag for `sessionId` cookies. The default is:
+
+  ```ini
+  SESSION_COOKIE_HTTPONLY = True
+  ```
+
+- ENHANCED\_COOKIE\_PROTECTION — When you set this option to `True`, then a token is generated according to the IP address and user agent. In all subsequent requests, the token recalculates and compares to the one computed for the first request. If the session cookie is stolen and the attacker uses it from another location, the generated token is different. In that case, the extension clears the session and blocks the request. The default is:
+
+  ```ini
+  ENHANCED_COOKIE_PROTECTION = True
+  ```
+
+  !!! Note
+  This option can cause problems when the server deploys in dynamic IP address hosting environments, such as Kubernetes or behind load balancers. In these cases, set this option to `False`.
+
+  To apply the changes, restart the web server.
+
+  For detailed information on the `config.py` file, see [Managing configuration settings](https://www.enterprisedb.com/docs/pem/latest/managing_configuration_settings/).
+
+#### Password encryption in transit
+
+By default, PEM encrypts passwords in the browser before submitting them to the web server, so they're never sent as readable plaintext, even after the HTTPS layer itself is decrypted (for example, by a TLS-inspection proxy or a security scanner running with the server's private key). This is defense in depth on top of HTTPS. It doesn't protect against a fully compromised session, such as a stolen, live session cookie — `ENHANCED_COOKIE_PROTECTION`, described earlier under [Cookie security](#cookie-security), addresses that instead.
+
+Two `config.py` options control this behavior.
+
+##### PEM\_ENCRYPT\_PASSWORDS\_IN\_TRANSIT
+
+Turns on browser-side RSA encryption of password fields, including login, change password, and server, agent, and other connection passwords throughout the UI. The default is:
+
+```ini
+PEM_ENCRYPT_PASSWORDS_IN_TRANSIT = True
+```
+
+Encryption requires the browser's Web Crypto API, which needs a secure context (HTTPS). Leave this `False` only for plain-HTTP development or test setups where the browser can't encrypt. When it's off, or a browser has no Web Crypto support, PEM falls back to accepting the password as plaintext, the same as before this feature existed.
+
+##### PEM\_REQUIRE\_TRANSIT\_ENCRYPTION
+
+Rejects a password that arrives without a valid encryption marker instead of silently accepting it as plaintext. This closes the gap where an attacker strips the marker to force a downgrade. The default is:
+
+```ini
+PEM_REQUIRE_TRANSIT_ENCRYPTION = False
+```
+
+This setting has an effect only when `PEM_ENCRYPT_PASSWORDS_IN_TRANSIT` is also `True`. Enable it only on HTTPS deployments where every client can actually encrypt — on a plain-HTTP deployment, enabling this locks out every login. Both options default the same way in every deployment. There's no separate recommended default for on-premises compared to cloud.
+
+> **Note**
+>
+> This setting applies uniformly to every configured authentication source. Internal, LDAP, and Kerberos authentication all receive the same decrypted plaintext password, because decryption happens once, centrally, before PEM hands the password to any authentication source. OAuth2 and other SSO sign-in flows aren't affected, since they don't submit a password field.
+
+If a client can't encrypt, PEM always logs a warning, whether or not `PEM_REQUIRE_TRANSIT_ENCRYPTION` is enabled: either that a password arrived without an encryption marker (a possible downgrade attempt) or that decryption failed. There's no distinct message shown to the user in either case. A login that's refused for this reason shows the same generic "Incorrect username or password" message as any other failed login, and a rejected in-app password field returns an HTTP 400 response. Check the PEM web server logs to tell a genuine bad password apart from an encryption downgrade.
+
+To apply changes to either setting, restart the web server. The encryption keys involved are generated per session, and the login key is single-use and discarded immediately after it decrypts one password, so toggling these settings doesn't invalidate anything already in progress. The new setting takes effect the next time a page issues a fresh key.
+
+For detailed information on the `config.py` file, see [Managing configuration settings](https://www.enterprisedb.com/docs/pem/latest/managing_configuration_settings/).
+
+Passwords are also encrypted at rest using a separate mechanism. See [Using a custom encryption key for ASB passwords](https://www.enterprisedb.com/docs/pem/latest/custom_encryption_keys/) if you want control over the key used to encrypt stored agent-server binding passwords.
+
+## Additional recommendations that can be applied manually
+
+These recommendations aren't applied automatically because they require additional information or action specific to the environment in which PEM is deployed.
+
+### Secure HTTPD with SSL certificates
+
+During PEM configuration, a self-signed certificate is generated to secure traffic between the web server and clients.
+To enhance security and to prevent browser warnings that the site isn't secure, we recommend that you [replace this certificate with one signed by a trusted certificate authority](https://www.enterprisedb.com/docs/pem/latest/certificates/#web-server-certificates).
+
+### Run the web server from a non-privileged user account
+
+On Linux, PEM uses web server packages provided by the OS. Typically, these create a service unit that runs the web server as the root user.
+
+Running the web server as a root user can create a security issue. We recommend that you run the web server as a unique non-privileged user. Doing so helps to secure any other services running during a security breach.
+
+> **Note: Variations in WSGI service by platform**
+>
+> PEM runs as a WSGI application. On Linux, when the web server is NGINX, the WSGI application is run by a separate service, `edb-uwsgi`, which runs as the pem user.
+> When the web server is Apache HTTPD, the WSGI application is run by a daemon process that's a child of the Apache HTTPD process. The daemon process is run as the pem user.
+>
+> On Windows, the `WSGIDaemonProcess` directive and features aren't available, so both the web server and the WSGI app run as the system user (the `LocalSystem` account).
+
+### Restrict the access to a network or IP address
+
+It's a good practice to restrict access to the web server to the smallest set of IP addresses compatible with your business needs.
+This is most commonly done at the network infrastructure level, for example, through firewall configuration, but can also be enforced by the web server.
+The PEM application configuration file (`<PEM_INSTALLATION_PATH>/web/config_local.py`) supports an `ALLOWED_HOSTS` configuration parameter for this purpose.
+
+For example:
+
+```ini
+# You can specify one or more subnets:
+ALLOWED_HOSTS = ['225.0.0.0/8', '226.0.0.0/7', '228.0.0.0/6']
+
+# You can specify individual host addresses:
+ALLOWED_HOSTS = ['127.0.0.1', '192.168.0.1']
+```
+
+To apply the application configuration file changes, restart the web server.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

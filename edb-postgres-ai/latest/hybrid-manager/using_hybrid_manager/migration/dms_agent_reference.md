@@ -1,0 +1,319 @@
+---
+title: EDB DMS agent parameter reference
+description: Learn how to configure parameters for the EDB DMS agent to access the Hybrid Manager instance and connect to source and destination databases.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/
+lastModified: 2026-10-14T11:17:37+02:00
+---
+
+# EDB DMS agent parameter reference
+
+## DMS agent general configuration
+
+These parameters define the information the EDB DMS agent requires to:
+
+- Access the Hybrid Manager (HM) instance and project that you're using for the migration
+- Connect to the source database and collect data or connect to the destination database and migrate data
+
+> **Note**
+>
+> A DMS Agent instance can only run in either reader or writer mode.
+
+### DBCONFIG\_ID
+
+The name you assign to identify a source/destination. This name will later appear either as a source in the **Migrate** section in the **Sources** tab of the HM console or as a destination in the **Destinations** tab.
+
+For the ID:
+
+- The maximum character length is 255 characters.
+- You can use lowercase and uppercase characters, numbers, underscores(\_) and hyphens(-). Other special characters aren't supported.
+- The ID must be unique in a project. Don't use the same ID for two or more sources/destinations in the same project.
+
+### RUN\_MODE
+
+Determines how the EDB DMS agent runs. Set it to `reader` if you're using the DMS agent to connect HM with a migration source. Set it to `writer` if you're connecting HM with an external, self-managed migration destination.
+
+Run the DMS agent in writer mode only if the destination for your migration is a self-managed Postgres database.
+
+### RW\_SERVICE\_HOST
+
+Specifies the URL of the DMS that the EDB DMS agent uses to perform migrations. This value is deployment-scoped — the same URL applies across all projects within a given HM deployment. Obtain this value from the HM console **Sources** or **Destinations** migration pages.
+
+To obtain your `RW_SERVICE_HOST`:
+
+1. In the HM console, select the project you want to use for migrations.
+
+2. In the left navigation select **Migrate** and then select **Sources** or **Destinations**.
+
+   Both **Sources** and **Destinations** pages display the `RW_SERVICE_HOST` in a banner at the top of the page.
+
+3. Use the copy icon to get the value and use it for the configuration of your EDB DMS agent.
+
+### CREDENTIAL\_DIRECTORY\_PATH
+
+The directory path of the credentials folder you [downloaded from the HM console](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/configuring_dms_agent/).
+
+## DMS agent database configuration
+
+These parameters (`DBCONFIG_DATABASES` section) define a list of source/destination database information the EDB DMS agent requires to connect to the correct database for the migration.
+
+You can configure the EDB DMS agent to migrate multiple databases. The `DBCONFIG_DATABASES_0__TYPE` section delimits the information for the first database. You can use `DBCONFIG_DATABASES_1__TYPE` to provide data for a second database. Add more sections to the EDB DMS agent (`DBCONFIG_DATABASES_2__TYPE`, `DBCONFIG_DATABASES_3__TYPE`) by increasing the index manually.
+
+### DBCONFIG\_DATABASES\_0\_\_TYPE
+
+The source/destination database type.
+
+The EDB DMS agent supports `ORACLE` and `POSTGRES` as source database types (in reader mode), but only `POSTGRES` as a destination type (in writer mode).
+
+### DBCONFIG\_DATABASES\_0\_\_HOSTNAME
+
+The hostname of the source/destination database.
+
+> **Note**
+>
+> For RDS databases, ensure the `DBCONFIG_DATABASES_0__HOSTNAME` value points to the RDS endpoint you can find under **Connectivity & security** in the AWS console. A redacted example is `foo_database.cb7asw1xxxxx.eu-west-0.rds.amazonaws.com`.
+
+### DBCONFIG\_DATABASES\_0\_\_PORT
+
+The port of the source/destination database.
+
+### DBCONFIG\_DATABASES\_0\_\_CATALOG
+
+The database name in the source/destination database server.
+
+For Oracle sources:
+
+- **CDB/PDB**: use `CDB_NAME/PDB_NAME` (for example, `ORCLCDB/ORCLPDB1`). The agent splits on `/` to identify the CDB and PDB separately. Using only the PDB name causes it to be treated as the CDB, leaving the PDB unset.
+- **Non-CDB**: use the SID or service name (for example, `ORCL`)
+
+### DBCONFIG\_DATABASES\_0\_\_USERNAME
+
+The database username of the source/destination database. Use your dedicated migration user, it can be the same user you created for the EDB Postgres AI agent.
+
+> **Note**
+>
+> For Oracle sources, use your dedicated migration user — not `SYS` or other privileged system accounts. See [Preparing your Oracle source](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/preparing_oracle_source/) for instructions on creating the required migration user.
+
+### DBCONFIG\_DATABASES\_0\_\_PASSWORD
+
+The password for the database username of the source/destination database. You can set an environment variable for the password without specifying it in the script, but the variable must follow this format: `export DBCONFIG_DATABASES_0__PASSWORD=password`
+
+### DBCONFIG\_DATABASES\_0\_\_RESOURCEID
+
+User-defined identifier that associates this database with its registered counterpart in HM.
+
+If you previously registered this database with the EDB Postgres AI agent, this value **must match** the `resource_id` set for this database in `beacon_agent.yaml`. This is how HM correlates the DMS agent source with the registered database — a mismatch will cause them to appear as separate, unrelated entries.
+
+### DBCONFIG\_DATABASES\_0\_\_INCLUDELIST
+
+Comma-separated list of `schema.table` tokens that controls which tables are available for migration. Use `*` as a wildcard for schema or table name (for example, `SCHEMA1.*` or `*.TABLE1`).
+
+If absent or empty, all tables are included. If `EXCLUDELIST` is also set, exclusions take priority.
+
+### DBCONFIG\_DATABASES\_0\_\_EXCLUDELIST
+
+Comma-separated list of `schema.table` tokens for tables to always exclude from migration. Use `*` as a wildcard. Takes priority over `INCLUDELIST` — a table matching any exclude pattern is always excluded regardless of include rules.
+
+### Role migration
+
+Optionally migrates the source cluster's roles, ownership, privileges, and row-level security (RLS) policies alongside the schema. Applies to the EDB DMS agent in writer mode. See [Migrating roles, ownership, and privileges](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migrating_roles_and_privileges/) for how this works.
+
+> **Important: Requirements**
+>
+> - Postgres-to-Postgres migrations to a self-managed destination, with migration scope **Schema and data** or **Schema only**.
+> - The migration role — the same `DBCONFIG_DATABASES_0__USERNAME` you configured for the EDB DMS agent in writer mode — is a superuser.
+
+#### DBCONFIG\_DATABASES\_0\_\_ROLE\_MIGRATION\_ENABLED
+
+Enables role migration. Default: `false`.
+
+When set to `true`, DMS creates the source cluster's roles on the destination cluster at the start of schema migration, and applies role memberships, object ownership, privilege grants, default privileges, and RLS policies at the Schema Finalization stage.
+
+#### DBCONFIG\_DATABASES\_0\_\_ROLE\_MIGRATION\_EXCLUDELIST
+
+Comma-separated list of regular expression patterns matched against role names, for example `postgres,enterprisedb,app_ro_.*`. A role whose name fully matches any pattern isn't created on the destination, and ownership, grant, default privilege, and policy statements that reference it are skipped at the Schema Finalization stage.
+
+Takes effect only when `ROLE_MIGRATION_ENABLED` is `true`.
+
+### DBCONFIG\_DATABASES\_0\_\_SSLMODE
+
+Controls the SSL/TLS behavior for the database connection. Accepted values:
+
+- `STRICT` — verify-full; requires a valid, trusted certificate
+- `DEFAULT` — require encryption but don't verify the certificate
+- `WEAK` — prefer encryption but allow plaintext fallback
+
+### DBCONFIG\_DATABASES\_0\_\_SOCKETTIMEOUT
+
+Socket timeout in seconds for the database connection. Used for dead connection detection. Default: `600` for writer mode, `60` for reader mode.
+
+### DBCONFIG\_DATABASES\_0\_\_TCPKEEPALIVE
+
+Enables TCP keepalive probes on the database connection. Default: `true`.
+
+### DBCONFIG\_DATABASES\_0\_\_TCPKEEPALIVESIDLE
+
+Seconds of inactivity before the first TCP keepalive probe is sent. Used during long-running writer operations such as PK application and post-snapshot deduplication. Default: `60`.
+
+### DBCONFIG\_DATABASES\_0\_\_TCPKEEPALIVESINTERVAL
+
+Seconds between TCP keepalive retry probes. Default: `10`.
+
+### DBCONFIG\_DATABASES\_0\_\_TCPKEEPALIVESCOUNT
+
+Maximum number of failed TCP keepalive probes before the connection is considered dead. Default: `6`.
+
+### DBCONFIG\_DATABASES\_0\_\_JDBCOPTIONS
+
+Arbitrary JDBC driver properties to pass to the database connection, in `key=value;key=value` format. These are applied after defaults but before explicit settings like `SSLMODE` and `SOCKETTIMEOUT`.
+
+Oracle examples:
+
+- Disable network encryption negotiation: `oracle.net.encryption_client=REJECTED`
+- Set session program name: `v$session.program=DMSAgent`
+
+### DBCONFIG\_DATABASES\_0\_\_WALLET\_LOCATION
+
+Oracle only. Path to the Oracle Wallet directory. When set, the agent authenticates using the wallet instead of a password, and `DBCONFIG_DATABASES_0__PASSWORD` isn't required. The agent generates the `oracle.net.wallet_location` and `oracle.net.tns_admin` connection properties from this path. `DBCONFIG_DATABASES_0__USERNAME` is still required, for schema discovery and Debezium log mining.
+
+### DBCONFIG\_DATABASES\_0\_\_WALLET\_TNS\_ALIAS
+
+Oracle only. Optional TNS alias to use with wallet authentication. When set, the agent connects using a TNS alias URL (`jdbc:oracle:thin:/@<alias>`), and a matching entry must exist in `tnsnames.ora`. When not set, the agent connects using an EZConnect URL (`jdbc:oracle:thin:/@//host:port/service`), and the wallet credential entry must match `//host:port/service`.
+
+## Postgres large object migration parameters
+
+> **Note: Minimum agent version**
+>
+> Large object migration requires DMS agent v2.2.0 or later. We recommend v2.2.1. On an older agent version, setting `LO_SNAPSHOT_ENABLED=true` has no effect.
+
+### LO\_SNAPSHOT\_ENABLED
+
+Controls whether the large object snapshot runs. When `false` (the default), no large object related
+operations run: the source is not scanned, no partitions are computed, and nothing is uploaded
+or published. Set to `true` to opt into the large object snapshot.
+
+### LO\_SNAPSHOT\_PARALLELISM
+
+Number of parallel workers used for the large object snapshot. For example, `LO_SNAPSHOT_PARALLELISM = 20` runs 20 parallel workers.
+
+In reader mode, the workers copy the large objects out of the source database and upload them to object storage in parallel.
+
+In writer mode, the workers download the large objects and copy them into the target database in parallel.
+
+> **Tip**
+>
+> Copying large objects spends most of its time waiting on network and disk transfers rather than on CPU processing, so you can set `LO_SNAPSHOT_PARALLELISM` higher than the number of vCPUs available to the agent. Start with a value close to the agent's vCPU count, then increase it gradually while monitoring CPU and memory usage on the reader agent, writer agent, source database, and target database. Stop increasing parallelism once any of these components approaches its resource limit.
+
+### LO\_SNAPSHOT\_PARTITION\_TARGET\_MB
+
+Target size, in MB, for each partition the large object snapshot splits large objects into.
+
+### LO\_SNAPSHOT\_PARTITION\_TARGET\_LO\_COUNT
+
+Target large object count for each partition the large object snapshot splits large objects into. The agent calculates a partition count from each of `LO_SNAPSHOT_PARTITION_TARGET_MB` and `LO_SNAPSHOT_PARTITION_TARGET_LO_COUNT`, then uses the larger of the two values.
+
+### LO\_SNAPSHOT\_COMPRESSION\_RATIO
+
+Compression ratio used to estimate the logical (decompressed) volume. Unset by default, in which case the agent estimates the logical volume by sampling large objects at startup. When pinned, the agent uses the value directly, with no sampling.
+
+### LO\_SNAPSHOT\_SAMPLE\_LO\_COUNT
+
+Number of large objects to decompress when estimating the compression ratio. This fixed count (not a percentage) bounds the sampling cost regardless of the total large object volume. Default: `200`. A larger value increases the estimation time.
+
+### LO\_SNAPSHOT\_SAMPLE\_TIMEOUT\_SECONDS
+
+Statement timeout, in seconds, for the sampling query used to estimate the compression ratio. Default: `30`. Increase this value if the agent times out while estimating the compression ratio.
+
+### LO\_SNAPSHOT\_HIGH\_VOLUME\_WARN\_LOGICAL\_GB
+
+Estimated logical (decompressed) large object volume, in GiB, at or above which the snapshot logs a high-volume warning at startup. Default: `5120`. Set to `0` to disable the warning.
+
+## Writer upsert parameters
+
+### DBCONFIG\_DATABASES\_0\_\_UPSERTMODE
+
+Controls how the writer applies changes to keyed (primary-key or unique-key) tables on the target. Accepted values:
+
+- `ENABLED` — always use `UPSERT` (`INSERT ... ON CONFLICT DO UPDATE`)
+- `DISABLED` — use separate `INSERT` and `UPDATE` statements
+- `ADAPTIVE` (default) — dynamically switch between the two based on each table's ratio of inserts to updates
+
+### DBCONFIG\_DATABASES\_0\_\_ADAPTIVEUPSERTTHRESHOLD
+
+The UPDATE ratio above which adaptive mode switches a table to UPSERT. Default: `0.3` (switches once more than 30% of a table's write operations are UPDATEs). Only applies when `UPSERTMODE` is `ADAPTIVE`.
+
+### DBCONFIG\_DATABASES\_0\_\_ADAPTIVESWITCHTHRESHOLD
+
+Maximum number of INSERT/UPDATE operation-type transitions adaptive mode tolerates before switching a table to UPSERT. Default: `3`. Only applies when `UPSERTMODE` is `ADAPTIVE`.
+
+## Optional parameters
+
+### METRICS\_TASK\_ENABLED
+
+Enables performance metrics reporting from the DMS agent to HM. Set the environment variable to true to populate the **Metrics** tab for this agent's migrations: `export METRICS_TASK_ENABLED=true`. Recommended for all production migrations. See [Metrics tab](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#metrics-tab) for more information.
+
+### FIPS\_MODE
+
+If you need to comply with FIPS standards, enable FIPS mode for the DMS Agent by setting the environment variable to true: `export FIPS_MODE=true`.
+
+### TRANSFORMATION\_ENABLE\_NULLCHAR\_REPLACEMENT
+
+Oracle-specific. Enables replacement of null characters (`0x00`) in text-based column types: `VARCHAR2`, `LONG`, `CLOB`, and `NCLOB`. Default: `false`.
+
+Use together with `TRANSFORMATION_NULLCHAR_REPLACEMENT` to specify the replacement string.
+
+### TRANSFORMATION\_NULLCHAR\_REPLACEMENT
+
+Oracle-specific. The string used to replace null characters (`0x00`) when `TRANSFORMATION_ENABLE_NULLCHAR_REPLACEMENT` is enabled. Defaults to an empty string.
+
+### TRANSFORMATION\_ENABLE\_SPECIAL\_COLUMN\_NAME\_ENCODING
+
+Oracle-specific. Enables encoding of special characters (`$` and `-`) in column names. Default: `false`.
+
+### DBZ\_\*
+
+Debezium property passthrough. You can override any Debezium connector property by prefixing it with `DBZ_`. For example, to set `max.batch.size`, use `export DBZ_MAX_BATCH_SIZE=204800`.
+
+For a full list of supported properties, see the Debezium documentation:
+
+- [Oracle connector properties](https://debezium.io/documentation/reference/stable/connectors/oracle.html#oracle-connector-properties)
+- [PostgreSQL connector properties](https://debezium.io/documentation/reference/stable/connectors/postgresql.html#postgresql-connector-properties)
+
+### QUARKUS\_LOG\_LEVEL
+
+Sets the default log level for the entire Quarkus application, including all underlying frameworks and third-party libraries.
+
+Avoid setting this to `DEBUG` or `TRACE` unless you need to diagnose issues within the entire application ecosystem. Using this method produces logs that are excessively verbose and difficult to analyze. Use `QUARKUS_LOG_CATEGORY__COM_ENTERPRISEDB__LEVEL` instead for focused debugging.
+
+### QUARKUS\_LOG\_CATEGORY**COM\_ENTERPRISEDB**LEVEL
+
+Sets the log level specifically for classes within the `com.enterprisedb` package.
+
+This is the recommended parameter for debugging. Set this parameter to `DEBUG` or `TRACE` to obtain detailed logging for the DMS agent's core logic (the components relevant to schema extraction, migration assessment, etc.). This isolates the useful output and excludes messages from third-party libraries.
+
+### PG\_COMPOSITE\_TYPE\_SUPPORT\_ENABLED
+
+Postgres sources only. Controls whether the reader passes through Postgres composite-type column values instead of omitting them. When `false`, composite (and any other unmappable) columns follow Debezium's default handling for the entire connector. Default: `true`.
+
+### DISCOVERY\_SCAN\_DATA
+
+Oracle sources only. Controls whether schema discovery scans actual row data, rather than metadata only. Default: `false`.
+
+### DDL\_EXECUTE\_BATCH\_SIZE
+
+Batch size for DDL statements the writer executes against the target database. Default: `1000`.
+
+### DDL\_REQUEST\_SCHEMA\_SIZE
+
+Chunk size for schema-change requests the writer pulls for processing. Default: `50`.
+
+### CONSUMER\_POLL\_DURATION
+
+Poll duration, in seconds, for the writer's internal Kafka consumers. Default: `5`.
+
+### CONSUMERS\_COUNT
+
+Number of parallel internal Kafka consumer threads the writer uses to apply changes. Default: `3`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,59 @@
+---
+title: QUOTED_PRINTABLE_ENCODE
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/19_utl_encode/06_quoted_printable_encode/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# QUOTED\_PRINTABLE\_ENCODE
+
+Use the `QUOTED_PRINTABLE_ENCODE` function to translate and encode a string in quoted-printable format. The signature is:
+
+```sql
+QUOTED_PRINTABLE_ENCODE(<r> IN RAW)
+```
+
+This function returns a `RAW` value.
+
+## Parameters
+
+`r`
+
+`r` contains the string (a `RAW` value) to encode in a quoted-printable format.
+
+## Examples
+
+Before executing the example, invoke the command:
+
+```sql
+SET bytea_output = escape;
+```
+
+This command escapes any nonprintable characters and displays `BYTEA` or `RAW` values onscreen in readable form. For more information, see the [Postgres core documentation](https://www.postgresql.org/docs/current/static/datatype-binary.html).
+
+This example first encodes and then decodes a string:
+
+```sql
+edb=# SELECT UTL_ENCODE.QUOTED_PRINTABLE_ENCODE('E=mc2') FROM DUAL;
+```
+
+```output title="Output"
+quoted_printable_encode
+-------------------------
+ E=3Dmc2
+(1 row)
+```
+
+```sql
+edb=# SELECT UTL_ENCODE.QUOTED_PRINTABLE_DECODE('E=3Dmc2') FROM DUAL;
+```
+
+```output title="Output"
+ quoted_printable_decode
+-------------------------
+ E=mc2
+(1 row)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

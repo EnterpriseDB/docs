@@ -1,0 +1,467 @@
+---
+title: Troubleshooting common issues
+description: Solutions for connectivity, authentication, and permission issues within WarehousePG Enterprise Manager.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/troubleshooting/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Troubleshooting common issues
+
+Address errors encountered within the portal to ensure continuous access to the management suite. Contact your system administrator if the resolution requires infrastructure-level changes.
+
+## Performing system diagnostics
+
+Use the built-in command-line tools on the WarehousePG Enterprise Manager (WEM) host to identify configuration errors or connectivity gaps.
+
+**Validate active configuration settings**
+
+Run the setup verification tool to ensure your current environment variables and database strings are functional:
+
+```bash
+wem setup --verify
+```
+
+See [wem setup command reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/#wem-setup) for details.
+
+**Perform a comprehensive health audit**
+
+Check for missing dependencies, incorrect file permissions, or service-level connectivity issues:
+
+```bash
+wem doctor
+```
+
+See [wem doctor command reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/#wem-doctor) for details.
+
+**Check WEM logs**
+
+For service-level events (startup failures, restarts):
+
+```bash
+sudo journalctl -u wem -n 50 --no-pager
+```
+
+For application-level logs (alert evaluation, canary checks, query activity):
+
+```bash
+sudo tail -f /var/log/edb/wem/wem.log
+```
+
+> **Note**
+>
+> Every `systemctl restart wem` rotates `wem.log` to a timestamped copy and starts a fresh file, so a `tail -f` left running from before the restart stops receiving new lines without any error. Either restart the `tail -f` after each `systemctl restart wem`, or use `sudo journalctl -u wem -f` instead, which follows across restarts on its own.
+
+**Verify each observability component**
+
+Check each component directly, outside the WEM UI, to narrow down where a break in the pipeline sits:
+
+```bash
+# ClickHouse
+sudo clickhouse status
+
+# WEM
+sudo systemctl status wem
+
+# Host agent (coordinator and standby coordinator only)
+sudo systemctl status acp-host-agent
+
+# OTel Collector, on every WHPG node
+sudo systemctl status edb-otelcol
+
+# Gateway collector, on the standby coordinator or dedicated monitoring host, whichever your deployment provisions
+sudo systemctl status edb-otelcol
+```
+
+Check the OTel Collector across every cluster node at once, using `all_hosts`, a file listing all hosts in the WHPG cluster:
+
+```bash
+gpssh -f all_hosts -u gpadmin -e "sudo systemctl is-active edb-otelcol"
+```
+
+Confirm data is actually reaching ClickHouse:
+
+```bash
+clickhouse-client --password <your-clickhouse-password> \
+  --query "SELECT count() FROM acp_observability.otel_metrics_gauge WHERE TimeUnix > now() - 300"
+clickhouse-client --password <your-clickhouse-password> \
+  --query "SELECT count() FROM acp_observability.otel_logs WHERE Timestamp > now() - 300"
+```
+
+For collector-specific errors, check its own logs:
+
+```bash
+sudo journalctl -u edb-otelcol -n 20 --no-pager
+```
+
+## Connectivity issues
+
+### Error: "failed to connect to WHPG server" or "failed to connect to WEM server" during setup
+
+`wem setup`, including the automatic run at service start, fails with one of two similarly worded but distinct errors:
+
+```
+Setup failed: failed to connect to WHPG server: failed to ping database: ...
+```
+
+```
+Setup failed: failed to connect to WEM server: failed to ping database: ...
+```
+
+**Cause:** These two errors name two different connections, and the fix depends on which one appears. `WHPG server` means the `WHPG_*` parameters, the cluster you're monitoring, are wrong or unreachable. `WEM server` means the `WEM_*` parameters, WEM's own application-state database, are wrong or unreachable. See [Target cluster](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#target-cluster) and [Application state](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#application-state) for the full parameter lists.
+
+**Solution:**
+
+1. Confirm which set of parameters the error names, then verify those specific values in `/etc/edb/wem/wem.conf`, host, port, database, user, and password.
+
+2. For a `WHPG server` failure, test the connection directly with `wem setup`'s flags, bypassing `wem.conf` entirely:
+
+   ```bash
+   sudo -u wem /usr/edb/wem/bin/wem setup --host <host> --port <port> --user <user> --password <password> --database <database> --check --debug
+   ```
+
+   `wem setup` has no equivalent flags for the `WEM_*` connection, so for a `WEM server` failure, double-check `WEM_HOST`, `WEM_PORT`, `WEM_DATABASE`, `WEM_USER`, and `WEM_PASSWORD` directly in `wem.conf` instead.
+
+3. If the target database itself isn't running, start it, `gpstart -a` for the WHPG cluster, or start whatever PostgreSQL instance backs the `WEM_*` connection.
+
+### Issue: WEM service failed to start
+
+Running `sudo systemctl start wem` returns an error:
+
+```
+Job for wem.service failed because the control process exited with error code.
+See "systemctl status wem.service" and "journalctl -xe" for details.
+```
+
+**Cause:** WEM can't reach the WarehousePG database at startup.
+
+**Solution:**
+
+1. Check whether WarehousePG is running:
+
+   ```bash
+   gpstate
+   ```
+
+2. If the database is down, start it:
+
+   ```bash
+   gpstart -a
+   ```
+
+3. Start WEM again and verify the status:
+
+   ```bash
+   sudo systemctl start wem
+   sudo systemctl status wem
+   ```
+
+### Issue: Can't connect to the database
+
+If WEM is unable to reach the WarehousePG cluster from the portal:
+
+1. Ensure the database is active and accepting local connections:
+
+   ```bash
+   psql -d postgres -c "SELECT version();"
+   ```
+
+2. Verify that the WEM connection strings are correctly set in the environment:
+
+   ```bash
+   env | grep WHPG
+   ```
+
+3. Use the built-in WEM tool from the WEM host to validate the current configuration:
+
+   ```bash
+   wem setup --verify
+   ```
+
+4. Test the credentials directly via the CLI using the same parameters defined in the WEM **Settings** tab within the **Management** panel.
+
+   ```bash
+   PGHOST=localhost PGUSER=gpadmin psql -d postgres -c "SELECT current_database();"
+   ```
+
+## Service identity and PXF issues
+
+### Error: `gpadmin` OS user not found during install
+
+When installing the WEM package, the install fails with:
+
+```
+ERROR: gpadmin OS user not found
+```
+
+**Cause:** The WEM host doesn't have a `gpadmin` OS user. WEM requires a `gpadmin` OS user. On WHPG hosts it already exists, but on standalone WEM hosts it must be created manually.
+
+**Solution:** Create the `gpadmin` user, then re-run the install:
+
+```bash
+sudo useradd -r -m -d /home/gpadmin -s /bin/bash gpadmin
+```
+
+### Issue: WEM service stays in `activating (auto-restart)` after upgrade
+
+Running `systemctl status wem` shows `activating (auto-restart)` and the log shows `wem refuses to start as root`.
+
+**Cause:** A custom service configuration override sets `User=root` or clears the user setting.
+
+**Solution:** Remove any custom configuration files in `/etc/systemd/system/wem.service.d/` that set `User=root`, then reload the service configuration:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart wem
+```
+
+Alternatively, set `WHPG_ALLOW_ROOT=1` in `/etc/edb/wem/wem.conf` to acknowledge running as `root`.
+
+### Issue: The PXF tab shows PXF as unavailable
+
+The **PXF** tab in **Database Objects** reports PXF as unavailable instead of showing its status.
+
+**Cause:** PXF actions dispatch through the host agent on the coordinator rather than running locally on the WEM host, so this error usually means the host agent isn't reachable there, or PXF itself isn't installed on the coordinator.
+
+**Solution:**
+
+1. Check that the host agent is running on the coordinator:
+
+   ```bash
+   sudo systemctl status acp-host-agent
+   ```
+
+2. Confirm PXF is installed on the coordinator.
+
+3. Check the WEM log for a more specific remediation hint:
+
+   ```bash
+   sudo journalctl -u wem
+   ```
+
+### Issue: Start PXF and Stop PXF buttons fail with `Operation not permitted`
+
+The **Start PXF** and **Stop PXF** buttons on the **External Tables** tab return `Operation not permitted`.
+
+**Cause:** The WEM service configuration is missing or out of date for the active `PXF_BASE`. The issue commonly occurs after installing PXF on a host that already has WEM, or after running `pxf cluster prepare -b`.
+
+**Solution:** Run `wem configure-pxf-sandbox` to detect the active `PXF_BASE` and update the WEM service configuration, then restart the service to apply the change:
+
+```bash
+sudo wem configure-pxf-sandbox
+sudo systemctl restart wem
+```
+
+## Cluster management
+
+### Issue: The Cluster Management panel is missing
+
+**Cause:** WEM hides the Cluster Management panel (Start, Stop, Restart, and Recover Segments) whenever its own application-state database, `WEM_DATABASE`, lives on the same WHPG cluster it monitors. Stopping that cluster would take WEM's own database down with it mid-operation, so WEM disables the panel as a safety measure rather than risk it. This is expected behavior, not a bug.
+
+**Solution:** To use the Cluster Management panel, host `WEM_DATABASE` on an instance that isn't part of the monitored cluster. See [Application state](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/#application-state) for guidance on choosing where to host it.
+
+## Authentication and access issues
+
+### Message: "Session expired"
+
+**Cause:** Your security token has timed out due to a period of inactivity.
+
+**Solution:** Select **Log In** to return to the authentication screen and re-enter your credentials.
+
+> **Note**
+>
+> Any unsaved changes in forms or the query editor are lost upon session expiration. Regularly save your configuration changes and avoid long periods of idle time with the browser tab open.
+
+### Error: "Permission denied"
+
+**Cause:** Your assigned role doesn't have the authorization required to perform the requested action.
+
+**Solution:**
+
+1. Verify your current role in the top right bar.
+2. Review the [Role permissions matrix](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/#role-permissions-matrix) to confirm if the action is permitted for your role.
+3. If you require elevated access, contact your administrator to request a role change.
+
+## Query editor restrictions
+
+### Issue: Query is blocked
+
+**Symptoms:**
+
+- "Query blocked" error messages.
+- Inability to execute `INSERT`, `UPDATE`, or `DELETE` statements.
+- DDL commands (`CREATE`, `DROP`) are rejected.
+
+**Cause:** WEM enforces role-based SQL restrictions to prevent accidental data loss or unauthorized schema changes. Review the [Role permissions matrix](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/#role-permissions-matrix) to confirm if the action is permitted for your role.
+
+## Backup and restore issues
+
+### Error: `gpbackup not found under /usr/edb/*/bin`
+
+Taking or restoring a backup from the **Backups** panel fails with this error.
+
+**Cause:** `whpg-backup` isn't installed on the target cluster node, or is installed at a nonstandard location. WEM's host agent looks for the `gpbackup` and `gprestore` binaries under `/usr/edb/*/bin`, where the `whpg-backup` package installs them alongside your WHPG binaries.
+
+**Solution:** Install `whpg-backup` 1.34 or later on every cluster node. See [Installing WarehousePG Backup and Restore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/).
+
+### Issue: Take Backup Now is disabled in Safeguard
+
+**Cause:** WEM disables **Take Backup Now**, and creating a restore point, while the primary cluster isn't configured, a job is already running, or archiving is suspended, invalid, or inconsistent. A configuration error on the cluster can also keep the actions disabled.
+
+**Solution:**
+
+1. In **Safeguard**, check the **Events** table and wait for any running job to finish.
+2. Select **Check Configuration**, which runs `whpg-dr check` in the background, and review the error it reports.
+3. Resolve the reported error. A `failed backups` error means earlier attempts left `[FAILED]` backups in the storage repository. See [Error: Backup fails with XMinioStorageFull](#error-backup-fails-with-xminiostoragefull). The backup and restore point actions become available once the problem is fixed.
+
+See [Taking an initial backup](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/protecting-data/safeguard/#taking-an-initial-backup) for more information.
+
+### Error: Backup fails with XMinioStorageFull
+
+**Cause:** The storage repository ran out of space. MinIO stops accepting writes when free drive space falls below its threshold, and the backup fails with `Cloud backup failed with error` in **Safeguard**. The Barman log on the segment host, `$HOME/gpAdminLogs/barman-<cluster-name>.log`, contains the underlying error:
+
+```text
+An error occurred (XMinioStorageFull) when calling the UploadPart operation: Storage backend has reached its minimum free drive threshold.
+```
+
+Each failed attempt leaves a partial backup marked `[FAILED]` in the repository, and **Check Configuration** reports it as a `failed backups` error.
+
+**Solution:**
+
+1. Free space on the storage backend, or add capacity. Delete only data you no longer need through the backend's own tools, not directly on its filesystem.
+
+2. List the backups on the primary coordinator and note the ones marked `[FAILED]`:
+
+   ```bash
+   whpg-dr list-backup <cluster-name>
+   ```
+
+3. Delete each failed backup. Run it with `--dry-run` first to confirm what it removes:
+
+   ```bash
+   whpg-dr delete <cluster-name> --backup-name <backup-name> --dry-run
+   whpg-dr delete <cluster-name> --backup-name <backup-name>
+   ```
+
+4. Select **Check Configuration** in **Safeguard** and confirm the check passes, then take the backup again.
+
+## Observability and metrics
+
+WEM's dashboards, charts, and log search all read from ClickHouse. A single pipeline, each node's OTel Collector forwarding through a gateway into ClickHouse, backs both, so most data-not-showing issues trace back to one break in that chain rather than to separate metrics and log backends.
+
+### Issue: "WEM is unable to connect to the configured ClickHouse instance"
+
+**Cause:** `CLICKHOUSE_URL` in `/etc/edb/wem/wem.conf` is incorrect, or ClickHouse isn't reachable from the WEM host.
+
+**Solution:**
+
+1. Test connectivity directly:
+
+   ```bash
+   curl "http://<clickhouse-host>:8123/?query=SELECT%201"
+   ```
+
+2. Check that ClickHouse itself is running:
+
+   ```bash
+   sudo clickhouse status
+   ```
+
+### Issue: "the configured database does not exist yet"
+
+**Cause:** ClickHouse is reachable, but the `acp_observability` database doesn't exist yet. The OTel Collector creates it automatically on its first data flush, so this error is expected until at least one cluster node's telemetry pipeline is actually running, not necessarily a configuration error on its own.
+
+**Solution:**
+
+1. Navigate to **Management > Host Agents** and confirm agents are listed and approved.
+2. Check the **Telemetry** status column for each agent, it should show as running.
+3. If **Telemetry** shows unknown or stopped, check that node's host agent and OTel Collector:
+
+   ```bash
+   sudo systemctl status acp-host-agent edb-otelcol
+   sudo journalctl -u edb-otelcol -n 30 --no-pager
+   ```
+
+### Issue: No entries in Management > Host Agents
+
+**Cause:** Host agents haven't registered with WEM yet.
+
+**Solution:**
+
+1. On the affected node, confirm the agent is running:
+
+   ```bash
+   sudo systemctl status acp-host-agent
+   ```
+
+2. Check `/etc/edb/acp-host-agent/acp-host-agent.conf`. `WEM_CONNECT_ADDRESS` must be a hostname or IP address in the form `<wem-host>:<wem-port + 1>` (default `8081`). The hostname must resolve from the node, and that port must be reachable from every cluster node. Test it directly:
+
+   ```bash
+   curl -k https://<wem-host>:8081/
+   ```
+
+   See [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/) for setup.
+
+### Issue: `acp-host-agent` service isn't active, or an agent is stuck waiting for approval
+
+**Cause:** Either `WEM_CONNECT_ADDRESS` is wrong or its port is blocked, or the agent registered but hasn't been approved yet.
+
+**Solution:**
+
+1. Check the agent's log for the specific failure:
+
+   ```bash
+   sudo journalctl -u acp-host-agent -n 50 --no-pager
+   ```
+
+2. If it shows a connection failure, verify connectivity with `curl -k https://<wem-host>:8081/`, as above.
+
+3. If it shows `awaiting TLS material`, the agent registered correctly and is only waiting on approval. Go to **Management > Host Agents** and approve it. Once approved, check the **Telemetry** and **Last Seen** columns to confirm it's active.
+
+### Error: `verification_token must be 1-255 chars of [a-zA-Z0-9._-]`
+
+**Cause:** The host agent failed to register because the value of `WEM_AGENT_JOIN_SECRET`, which the agent presents as its verification token, contains unsupported characters. Output from `openssl rand -base64` commonly triggers this error.
+
+**Solution:** Set `WEM_AGENT_JOIN_SECRET` in `/etc/edb/wem/wem.conf` and `/etc/edb/acp-host-agent/join-token` to a value that contains only letters, numbers, periods, underscores, and hyphens, for example the output of `openssl rand -hex 32`. Restart WEM, then restart the host agent.
+
+### Issue: `acp-host-agent` log shows `sudo: a password is required`
+
+**Cause:** The `gpadmin` user was created after you installed the host agent, so the sudoers grants the agent needs were never activated.
+
+**Solution:**
+
+1. On the affected node, copy the sudoers files from `/usr/edb/acp-host-agent/sudoers.d/` to `/etc/sudoers.d/`, skipping any that already exist and validating each one:
+
+   ```bash
+   for src in /usr/edb/acp-host-agent/sudoers.d/*; do
+     f=$(basename "$src")
+     sudo test -e "/etc/sudoers.d/$f" && continue
+     sudo install -o root -g root -m 0440 "$src" "/etc/sudoers.d/$f" \
+       && sudo visudo -cf "/etc/sudoers.d/$f"
+   done
+   ```
+
+2. Verify that the `acp-host-agent` user now has the grants:
+
+   ```bash
+   sudo -l -U acp-host-agent
+   ```
+
+### Issue: Telemetry service is failed or stopped on a node
+
+**Cause:** The node's OTel Collector (`edb-otelcol`) can't reach ClickHouse, or failed to start.
+
+**Solution:**
+
+```bash
+sudo systemctl status edb-otelcol
+sudo journalctl -u edb-otelcol -n 30 --no-pager
+```
+
+If the log shows a ClickHouse connection error, verify ClickHouse is reachable from that specific node:
+
+```bash
+curl "http://<clickhouse-host>:8123/?query=SELECT%201"
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

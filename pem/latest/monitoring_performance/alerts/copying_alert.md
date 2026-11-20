@@ -1,0 +1,31 @@
+---
+title: Copying an alert
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/monitoring_performance/alerts/copying_alert/
+lastModified: 2026-06-22T21:47:06+05:30
+---
+
+# Copying an alert
+
+To speed up the deployment of alerts in the PEM system, you can copy alert definitions from one object to one or more target objects.
+
+To copy alerts from an object, select the object in the PEM client tree on the main PEM window. Then, select **Management > Alerts > Copy Alerts**. On the **Manage Alerts** tab, from the Quick Links toolbar, select **Copy Alerts**.
+
+The Copy Alert Configuration dialog box copies all alerts from the object selected in the PEM client tree to the objects selected on the dialog box. Expand the tree to select nodes to specify as the target objects. The tree displays a red warning indicator next to the source object.
+
+To copy alerts to multiple objects at once, select a parent node of the targets. For example, to copy the alerts from one table to all tables in a schema, select the check box next to the schema. PEM copies alerts only to targets that are the same type as the source object.
+
+Select **Ignore duplicates** to prevent PEM from updating any existing alerts on the target objects with the same name as those being copied.
+
+Select **Replace duplicates** to replace existing alerts with alerts of the same name from the source object.
+
+Select **Delete Existing Alerts** to delete all the alerts from the target object and copy all the alerts from the source object to the target object.
+
+Select **Configure Alerts** to copy the alerts from the source object to all objects of the same type in or under those objects selected on the Copy Alert Configuration dialog box.
+
+## Schedule an alert blackout
+
+To schedule an alert blackout for servers or agents during maintenance, see [Alert blackout](https://www.enterprisedb.com/docs/pem/latest/monitoring_performance/alerts/alert_blackout/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

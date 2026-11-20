@@ -1,0 +1,59 @@
+---
+title: Connection Manager Authentication
+product: EDB Postgres Distributed (PGD)
+version: 6.1.0
+url: https://www.enterprisedb.com/docs/pgd/6.1/connection-manager/authentication/
+lastModified: 2026-09-23T17:21:18+01:00
+---
+
+# Connection Manager Authentication
+
+Connection Manager's authentication is configured through Postgres's own [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file. Connection Manager uses the same authentication methods as Postgres.
+
+> **Note**
+>
+> For Connection Manager authentication to work correctly, set or change role passwords only while connected to a PGD-enabled database with [`bdr.role_replication`](https://www.enterprisedb.com/docs/pgd/6.1/reference/tables-views-functions/pgd-settings/#bdrrole_replication) set to `on`. A password set or changed while disconnected from the PGD-enabled database, or with `bdr.role_replication` set to `off`, doesn't replicate, and Connection Manager can then fail to authenticate that role.
+
+## Connection Manager connection types
+
+Connection Manager supports the following connection types in pg\_hba.conf:
+
+- `host` - TCP/IP connections
+- `hostssl` - TCP/IP connections with SSL
+- `hostnossl` - TCP/IP connections without SSL
+
+## Connection Manager authentication methods
+
+Connection Manager supports the following authentication methods in pg\_hba.conf:
+
+- `trust` - No authentication
+- `reject` - Reject the connection
+- `md5` - MD5 password authentication
+- `scram-sha-256` - SCRAM-SHA-256 password authentication
+- `cert` - SSL certificate authentication. Not recommended. See [Using client certificate authentication](#using-client-certificate-authentication).
+
+> **Note**
+>
+> Connection Manager needs to be able to authenticate to the PGD nodes as the client user. Configure the `pg_hba.conf` file on each PGD node to accept connections originating from other PGD nodes for replication and internal communications.
+>
+> When using a certificate authentication method, the Connection Manager presents its server key. You must configure the PGD node to accept this certificate from the Connection Manager address.
+>
+> Connection Manager supports the use of `ssl_passphrase_command` to decrypt the server key, provided the key is in PKCS#8 format with AES encryption.
+
+## Using client certificate authentication
+
+We recommend against using client certificate (`cert`) authentication with Connection Manager.
+
+Client certificates cannot be forwarded. Therefore, when using `cert` authentication, Connection Manager's connection to the PGD node must be configured to use a different authentication method, such as `trust`.
+
+## Connection Manager authentication options
+
+Connection Manager also supports regular expression matching for the `user` and `database` fields in pg\_hba.conf. This allows you to specify a pattern for matching user and database names, making it easier to manage authentication for multiple users and databases.
+
+Group membership checks are also supported. This allows you to specify a group of users that can connect to the database, rather than specifying each user individually.
+
+## Unsupported pg\_hba.conf rules
+
+Where a rule is not supported by Connection Manager, it will be logged as a warning and ignored.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,75 @@
+---
+title: Guide & Getting Started
+description: Get started with Hybrid Manager, Agent Factory, and Analytics for EDB Postgres AI.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/overview/guide-and-getting-started/
+lastModified: 2026-06-24T13:31:48+01:00
+---
+
+# Guide & Getting Started
+
+Begin your journey with EDB Postgres® AI by exploring how to deploy, manage, and build intelligent systems across hybrid environments using Postgres, GenAI workloads, and analytics pipelines.
+
+---
+
+## What do you want to do?
+
+Do you want to run analytical queries on your Postgres data?
+Check out the [EDB Postgres® AI Analytics Accelerator documentation](https://www.enterprisedb.com/docs/pgaa/latest/), which covers the Lakehouse engine, Delta Lake, Iceberg, and tiered storage.
+
+Do you want to run GenAI or machine learning models on your data?
+Explore the [EDB Postgres® Agent Factory](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/), including tools for automated AI data pipelines, agent workflows, and model orchestration.
+
+Do you want to manage hybrid workloads, self-managed databases, or model endpoints?
+Visit the [EDB Postgres® AI Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/), which provides a Kubernetes-native control plane.
+
+---
+
+## Hybrid Manager
+
+Hybrid Manager is the control plane that runs EDB Postgres AI. It provides a unified interface for managing database clusters, AI workloads, and analytics engines in any Kubernetes environment.
+
+### Start here
+
+- [Overview](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/)
+- [Install on Kubernetes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/)
+- [Manage Postgres clusters](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/)
+- [Observability and diagnostics](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/)
+- [Sovereign Data and AI Factory System](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/system/)
+
+---
+
+## Agent Factory
+
+Agent Factory is a low-code environment for building GenAI systems, vector-enabled retrieval, and data-connected agents. It runs either standalone or orchestrated through Hybrid Manager.
+
+### Learning paths
+
+- [101 - Core concepts and first assistant](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/learn/101/)
+- [201 - Integrating knowledge and external data](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/learn/201/)
+- [301 - Scaling, tools, and vector retrieval](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/learn/301/)
+
+---
+
+## Analytics & Pipelines
+
+The [Analytics Accelerator](https://www.enterprisedb.com/docs/pgaa/latest/) enables analytics directly in Postgres by leveraging a vectorized query engine and columnar formats like Apache Iceberg® and Delta Lake. With separation of storage and compute and tiered tables that automatically manage hot and cold data, you can run analytical and transactional workloads concurrently without degrading performance
+
+---
+
+## Recommended next steps
+
+| Area           | Start here                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| Hybrid Manager | [Hybrid Manager overview](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/) |
+| Agent Factory  | [101 Learning Path](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/learn/101/)             |
+| Analytics      | [Analytics Accelerator overview](https://www.enterprisedb.com/docs/pgaa/latest/)                             |
+
+Once you're set up, explore advanced capabilities:
+
+- Deploy sovereign AI solutions using Hybrid Manager
+- Serve and monitor GenAI workloads
+- Build tiered data lakes with Delta Lake and Iceberg
+- Integrate vector pipelines directly into your database
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

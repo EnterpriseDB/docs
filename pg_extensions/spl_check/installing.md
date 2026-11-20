@@ -1,0 +1,36 @@
+---
+title: Installing EDB SPL Check
+description: Instructions for installing EDB SPL Check on EDB Postgres Advanced Server.
+product: EDB SPL Check
+url: https://www.enterprisedb.com/docs/pg_extensions/spl_check/installing/
+lastModified: 2025-12-16T11:21:45+05:30
+---
+
+# Installing EDB SPL Check
+
+The syntax to install the package is:
+
+```shell
+sudo <package-manager> -y install edb-as<version>-spl-check
+```
+
+Where:
+
+- `<package-manager>` is the package manager used with your operating system:
+
+  | Package manager | Operating system                 |
+  | --------------- | -------------------------------- |
+  | dnf             | RHEL 8/9 and derivatives         |
+  | yum             | RHEL 7 and derivatives, CentOS 7 |
+  | zypper          | SLES                             |
+  | apt-get         | Debian and derivatives           |
+
+- `<version>` is the version of EDB Postgres Advanced Server you're using.
+
+For example, to install EDB SPL Check for EDB Postgres Advanced Server 17 on a RHEL 8 platform:
+
+```shell
+sudo dnf -y install edb-as17-spl-check
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

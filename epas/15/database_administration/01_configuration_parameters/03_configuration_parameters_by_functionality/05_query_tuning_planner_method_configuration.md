@@ -1,0 +1,39 @@
+---
+title: Query tuning/planner method configuration
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/database_administration/01_configuration_parameters/03_configuration_parameters_by_functionality/05_query_tuning_planner_method_configuration/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# Query tuning/planner method configuration
+
+<div id="query_tuning_planner_method_configuration" class="registered_link"></div>
+
+These configuration parameters are used for planner method configuration.
+
+## edb\_enable\_pruning
+
+**Parameter type:** Boolean
+
+**Default value:** `false`
+
+**Range:** `{true | false}`
+
+**Minimum scope of effect:** Per session
+
+**When value changes take effect:** Immediate
+
+**Required authorization to activate:** Session user
+
+Allows the query planner to _early prune_ partitioned tables. Early pruning means that the query planner can "prune" (that is, ignore) partitions that aren't searched in a query before generating query plans. This setting helps improve performance because it prevents generating query plans of partitions that aren't searched.
+
+Conversely, _late pruning_ means that the query planner prunes partitions after generating query plans for each partition. The `constraint_exclusion` configuration parameter controls late pruning.
+
+The ability to early prune depends on the nature of the query in the `WHERE` clause. You can use early pruning in only simple queries with constraints like `WHERE column = literal`, for example, `WHERE deptno = 10`.
+
+Don't use early pruning for more complex queries such as `WHERE column = expression`, for example, `WHERE deptno = 10 + 5`.
+
+This parameter is deprecated from version 15 and later. Use `enable_partition_pruning` instead.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

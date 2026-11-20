@@ -1,0 +1,518 @@
+---
+title: Report types
+product: Lasso
+version: "4"
+url: https://www.enterprisedb.com/docs/lasso/latest/report-types/
+lastModified: 2024-09-18T14:23:51+01:00
+---
+
+# Report types
+
+## Local/full PostgreSQL report
+
+This type of report is useful when the server has a PostgreSQL cluster
+that's up, running, and accessible. In addition to all information that's
+gathered in the system-only report, it also gathers configurations
+and metrics from the PostgreSQL instance.
+
+For this report, you need to run Lasso as the postgres or enterprisedb user.
+
+> **Important**
+>
+> The same user that runs the Postgres server process must run the command.
+> The user must have permission to write
+> in the current working directory.
+
+A standard Lasso run consists of:
+
+```
+    lasso
+```
+
+By default, Lasso tries to connect using Unix sockets, the default
+Postgres port (5432), the default database, and the user name (postgres).
+You can specify different values at the command line:
+
+```
+    lasso -p PORT DATABASE_NAME USER_NAME
+```
+
+By default, Lasso looks for a Unix socket under `/var/run/postgresql/`,
+but you can specify any socket listed by
+`SHOW unix_socket_directories` using the `-H` argument. For example,
+usually a Lasso report for the EDB Postgres Advanced Server is
+gathered with:
+
+```
+    lasso -H /tmp -p 5444 edb
+```
+
+If a password is required, it's a common practice to create a `~/.pgpass`
+file for the postgres or enterprisedb operating system user. You can
+find more details about the `.pgpass` file [in the PostgreSQL
+documentation](https://www.postgresql.org/docs/current/libpq-pgpass.html).
+As Lasso connects to the database using `libpq`, then Lasso uses the
+`.pgpass` file as appropriate.
+
+If the `.pgpass` file isn't found or a corresponding entry for the
+database connection doesn't exist in the `.pgpass` file, then Lasso
+prompts for a password. Alternatively, you can specify a password using
+the `PGPASSWORD` environment variable:
+
+```
+    PGPASSWORD=xxxx lasso -p PORT DATABASE_NAME USER_NAME
+```
+
+On Windows, typically you run Lasso like this:
+
+```
+    lasso-windows-X.Y.Z.exe -H IP_ADDRESS -p PORT --password PASSWORD DATABASE_NAME USER_NAME
+```
+
+For a list of all command line arguments detailed in [Usage](https://www.enterprisedb.com/docs/lasso/latest/usage/),
+run:
+
+```
+    lasso --help
+```
+
+You can specify Postgres settings in the Lasso configuration file,
+under the `postgresql` setting. For more details, see
+[Configuration](https://www.enterprisedb.com/docs/lasso/latest/configuration/).
+
+> **Important**
+>
+> When run on a local instance, Lasso
+> requires a user that belongs to the pg\_monitor role, which is available
+> in Postgres 10 and later. For earlier versions of Postgres, you must run as
+> a superuser. For more information, see
+> [Default Roles](https://www.postgresql.org/docs/current/default-roles.html) in the PostgreSQL documentation.
+
+Lasso transparently gathers information related to
+all supported versions of EDB Postgres Distributed (PGD) and pglogical.
+
+## Remote/database-only PostgreSQL report
+
+If you need to gather data from a remote PostgreSQL instance, you can
+run a remote PostgreSQL report.
+
+As explained in [Local/full PostgreSQL report](#localfull-postgresql-report), you can change the
+connection-string parameters of Lasso. For example, to gather a PostgreSQL report
+from a remote server located in the IP 192.168.0.10 running on port
+5433, you can invoke Lasso from another server as follows:
+
+```
+    lasso -H 192.168.0.10 -p 5433
+```
+
+This type of report brings only PostgreSQL-related info from the
+PostgreSQL instance that Lasso was connected to. It means it can't
+gather files like `postgresql.conf` and `pg_hba.conf`. It also can't
+gather configurations and metrics from the underlying
+operational system or information from PostgreSQL-related tools, like EFM
+configuration files. With that in mind, we recommend running a
+local PostgreSQL report, if possible.
+
+> **Important**
+>
+> This is the only option for gathering PostgreSQL information
+> from an instance hosted on a DBaaS provider such as EDB Big Animal or
+> Amazon RDS.
+
+> **Important**
+>
+> This is the only option for gathering PostgreSQL information
+> from an instance running under Kubernetes.
+
+## Barman report
+
+Lasso can run on systems where Barman is installed. In that
+case, it gathers Barman-related information, as well as system information,
+that helps during analysis.
+
+> **Important**
+>
+> You must run the command as the same user that runs the
+> Barman process, and you must have enough permission to write in the current
+> working directory. If you installed Barman using RPM/DEB packages,
+> Barman is configured to run as the barman user.
+
+The Barman report is enabled by default if Lasso runs as the barman user
+and looks for configuration files in the expected locations, typically
+`/etc/barman.conf`. Execute `man 5 barman` for details.
+
+In general, if you installed Barman using EDB-certified RPM and DEB
+packages, all you need to do is execute Lasso as the barman user.
+
+### Managing custom installations of Barman
+
+If you have custom installations of Barman, you can enable the barman report
+by passing the `--barman` option to Lasso:
+
+```
+    lasso --barman
+```
+
+You can also point to a specific global configuration file by using the
+`--barman-configuration` option:
+
+```
+    lasso --barman-configuration /opt/barman/barman.conf
+```
+
+## Replication Manager (repmgr) report
+
+Lasso can run on systems where repmgr is installed. In that
+case, it gathers repmgr-related information.
+
+In general, if you installed repmgr using EDB-certified RPM and DEB
+packages, all you need to do is execute Lasso.
+
+### How Lasso finds the repmgr configuration file
+
+Lasso uses the following approach while trying to identify the repmgr
+configuration file. It uses the first one it finds.
+
+1. Use the one provided to the `--repmgr-configuration` option, if given.
+2. Check the paths provided by packages. For example, in CentOS/RHEL packages, the
+   configuration file is usually put under `/etc/repmgr/<PG_VERSION>/repmgr.conf`.
+   Lasso inspects those folders, if they exist, in descending order, and uses the
+   first repmgr configuration file that it finds.
+3. Check if a `repmgr.conf` file exists in the current directory.
+4. Check if a `/etc/repmgr.conf` file exists.
+5. Check the path given by `pg_config --sysconfdir` for the `repmgr.conf` file.
+6. Check the output of `systemctl cat <service_name>`, where `<service_name>` is
+   any service whose name contains `repmgr`, and try to get the `repmgr.conf`
+   file from the service unit file. It checks the units in descending order, just
+   as it does in approach 2, and uses the first match.
+
+### Managing custom installations of repmgr
+
+You can point to a specific repmgr configuration file by using the
+`--repmgr-configuration` option:
+
+```
+    lasso --repmgr-configuration /opt/repmgr/repmgr.conf
+```
+
+We recommend this approach, as it guarantees Lasso will use
+the correct repmgr configuration file instead of trying to find it.
+
+## Postgres Enterprise Manager (PEM) report
+
+Lasso can run on systems where PEM is installed. In that
+case, it also gathers PEM-related information, like some configuration
+files and information about services.
+
+Lasso inspects the well-known paths for configuration files
+as well as well-known service names. If you have custom PEM installations,
+Lasso doesn't gather the related information.
+
+## Failover Manager (EFM) report
+
+Lasso can run on systems where EFM is installed. In that
+case, it gathers EFM-related information.
+
+In general, if you installed EFM using EDB-certified RPM and DEB
+packages, all you need to do is execute Lasso.
+
+### How Lasso finds the EFM configuration file
+
+Lasso uses the following approach while trying to identify the EFM
+configuration file. It uses the first one it finds.
+
+1. Use the one provided to the `--efm-configuration` option, if given.
+2. Check the paths provided by packages. The configuration file is usually put
+   under `/etc/edb/efm-<EFM_VERSION>/efm.properties`. Lasso inspects
+   those folders, if they exist, in descending order, and uses the first EFM
+   configuration file that it finds.
+3. Check the output of `systemctl cat <service_name>`, where `<service_name>` is
+   replaced with any service whose name starts with `edb-efm-`. Then try to get the
+   `efm.properties` file from the service unit file. It checks the units in
+   descending order, just as it does in approach 2, and uses the first match.
+
+### How Lasso finds the EFM binary
+
+Lasso inspects the paths provided by packages. The binary file is
+usually put under `/usr/edb/efm-<EFM_VERSION>/bin/efm`. Lasso inspects
+these folders, if they exist, in descending order, and uses the first EFM binary
+file that it finds.
+
+### Managing custom installations of EFM
+
+You can point to a specific EFM configuration file by using the
+`--efm-configuration` option:
+
+```
+    lasso --efm-configuration /opt/EFM/efm.properties
+```
+
+We recommend this approach, as it guarantees Lasso will use
+the correct EFM configuration file instead of trying to find it.
+
+## Patroni report
+
+Lasso can run on systems where Patroni is installed. In that
+case, it gathers Patroni-related information.
+
+In general, if you installed Patroni using EDB-certified RPM and DEB
+packages, all you need to do is execute Lasso.
+
+### How Lasso finds the Patroni configuration file
+
+Lasso uses the following approach while trying to identify the Patroni
+configuration file. It uses the first one it finds.
+
+1. Use the one provided to the `--patroni-configuration` option, if given.
+2. Check the paths provided by packages. For DEB packages, the configuration
+   file is usually `/etc/patroni/config.yml`, while for RPM packages, the
+   configuration file is usually `/etc/patroni/patroni.yml`.
+3. Check the running processes. If there is any `patroni` processes running,
+   then the configuration file is passed as the last argument.
+
+## Replication Server (xDB) report
+
+Lasso can run on systems where xDB is installed. In that
+case, it gathers xDB-related information.
+
+In general, if you installed xDB using EDB-certified RPM packages or the
+bitrock installer, all you need to do is execute Lasso.
+
+### How Lasso finds the xDB configuration file
+
+Lasso uses the following approach while trying to identify the xDB
+configuration files. It uses the first one it finds.
+
+On Linux:
+
+1. Use the ones provided to the `--xdb-pubserver-configuration` and
+   `--xdb-subserver-configuration` options, if given.
+2. Check the paths provided by xDB 7 RPM package and bitrock installer. The
+   configuration files are usually put under `/etc/edb/xdb/etc`. Lasso
+   inspects this folder, if it exists, and uses the `xdb_pubserver.conf` and
+   `xdb_subserver.conf` files found under that folder.
+3. Check the paths provided by xDB 6 RPM package and bitrock installer, which are
+   usually `/usr/ppas-xdb-<XDB_VERSION>/etc` and `/opt/PostgreSQL/EnterpriseDB-xDBReplicationServer/etc`,
+   respectively. Lasso inspects these folders and, if they exist, uses the
+   `xdb_pubserver.conf` and `xdb_subserver.conf` files found under the folder. In the
+   case of RPM packages, as there can be a lot of folders, they're inspected
+   from newest XDB version to oldest.
+
+On Windows:
+
+1. Use the ones provided to the `--xdb-pubserver-configuration` and
+   `--xdb-subserver-configuration` options, if given.
+2. Check the paths provided by xDB 7 packages. The configuration files are usually
+   put under `<drive>:\Program Files\edb\EnterpriseDB-xDBReplicationServer\etc`.
+   Lasso inspects this folder, if it exists, and uses the `xdb_pubserver.conf` and
+   `xdb_subserver.conf` files found under that folder.
+3. Check the paths provided by xDB 7 packages. The configuration files are usually
+   put under `<drive>:\Program Files\PostgreSQL\EnterpriseDB-xDBReplicationServer\etc`.
+   Lasso inspects this folder, if it exists, and uses the `xdb_pubserver.conf`
+   and `xdb_subserver.conf` files found under that folder.
+
+### How Lasso finds the xDB binary
+
+Lasso uses the following approach while trying to identify the xDB
+binary file. It uses the first one it finds.
+
+On Linux:
+
+1. Check the paths provided by the xDB 7 RPM package and bitrock installer. The
+   binary files are usually put under `/etc/edb/xdb/bin`. Lasso
+   inspects this folder, if it exists, and uses the `edb-repcli.jar` file found under that
+   folder.
+2. Check the paths provided by the xDB 6 RPM package and bitrock installer, which are
+   usually `/usr/ppas-xdb-<XDB_VERSION>/bin` and `/opt/PostgreSQL/EnterpriseDB-xDBReplicationServer/bin`,
+   respectively. Lasso inspects these folders and, if they exist, uses the
+   `edb-repcli.jar` file found under the folder. For RPM packages, as there
+   can be a lot of folders, they're inspected from newest XDB version to oldest.
+
+On Windows:
+
+1. Check the paths provided by the xDB 7 packages. The binary files are usually
+   put under `<drive>:\Program Files\edb\EnterpriseDB-xDBReplicationServer\bin`.
+   Lasso inspects this folder, if it exists, and uses the `edb-repcli.jar` file found
+   under that folder.
+2. Check the paths provided by the xDB 7 packages. The binary files are usually
+   put under `<drive>:\Program Files\PostgreSQL\EnterpriseDB-xDBReplicationServer\bin`.
+   Lasso inspects this folder, if it exists, and uses the `edb-repcli.jar`
+   file found under that folder.
+
+### Managing custom installations of xDB
+
+You can point to a specific xDB publication or subscription server configuration
+file by using the `--xdb-pubserver-configuration` and `--xdb-subserver-configuration`
+options.
+
+On Linux:
+
+```
+    lasso --xdb-pubserver-configuration /opt/xDB/pubserver.conf --xdb-subserver-configuration /opt/xDB/subserver.conf
+```
+
+On Windows:
+
+```
+    lasso-windows-X.Y.Z.exe --xdb-pubserver-configuration C:\\xDB\pubserver.conf --xdb-subserver-configuration C:\\xDB\subserver.conf
+```
+
+We recommend this approach, as it guarantees Lasso will use
+the correct xDB configuration files instead of trying to find it.
+
+## PgBouncer report
+
+Lasso can run on systems where PgBouncer is installed. In that
+case, it gathers PgBouncer-related information.
+
+In general, if you installed PgBouncer using EDB-certified RPM and DEB
+packages, and PgBouncer instances are up and running, all you need to do is
+execute Lasso.
+
+### How Lasso finds the PgBouncer configuration file
+
+Lasso uses the list of running processes to identify the PgBouncer processes
+and uses the configuration file retrieved from there.
+
+You can also specify one or more PgBouncer configuration files with
+the Lasso argument `--pgbouncer-configuration`. It's mainly useful in scenarios
+where a PgBouncer instance isn't running or if Lasso can't
+detect the configuration file from the process list.
+
+Lasso collects information from all identified PgBouncer instances.
+
+## HARP report
+
+Lasso can run on systems where HARP is installed. In that
+case, it gathers HARP-related information.
+
+In general, if you installed HARP using EDB-certified RPM and DEB
+packages, all you need to do is execute Lasso.
+
+### How Lasso finds the HARP configuration file
+
+Lasso uses the following approach while trying to identify the HARP
+configuration file. It uses the first one it finds.
+
+1. Use the one provided to the `--harp-configuration` option, if given.
+2. Check if the `/etc/harp/config.yml` file exists.
+
+### Managing custom installations of HARP
+
+You can point to a specific HARP configuration file by using the `--harp-configuration`
+option:
+
+```
+    lasso --harp-configuration /opt/harp/config.yml
+```
+
+We recommend this approach, as it guarantees Lasso will use
+the correct HARP configuration file instead of trying to find it.
+
+### Running Lasso on a HARP proxy node
+
+The HARP proxy nodes don't have a Postgres or EDB Postgres Advanced Server service running on them, as they're
+intended only as a proxy for connections coming in from the applications.
+
+When using Lasso to gather information from a HARP proxy node, you must use the
+`--system-only` option so it doesn't try to connect to the database server.
+
+## PGD Proxy report
+
+Lasso can be run on systems where PGD Proxy is installed. In that
+case, it gathers PGD Proxy-related information.
+
+In general, if you installed PGD Proxy using EDB-certified RPM and DEB
+packages, all you need to do is execute Lasso.
+
+### How Lasso finds the PGD Proxy configuration file
+
+Lasso uses the following approach while trying to identify the PGD Proxy
+configuration file. It uses the first one it finds.
+
+1. Use the one provided through `--pgd-proxy-configuration` option, if given
+2. Check if `/etc/edb/pgd-proxy/pgd-proxy-config.yml` file exists
+
+### Managing custom installations of PGD Proxy
+
+You can point to a specific PGD Proxy configuration file by using the
+`--pgd-proxy-configuration` option:
+
+```
+    lasso --pgd-proxy-configuration /opt/pgd-proxy/config.yml
+```
+
+We recommend this approach, as it guarantees Lasso will use
+the correct PGD Proxy configuration file instead of trying to find it automatically.
+
+### Running Lasso on a PGD Proxy node
+
+There are cases where the PGD Proxy nodes don't have a Postgres/EDB Postgres Advanced Server service running
+on them. They're intended only as a proxy for connections coming in from the
+applications.
+
+When using Lasso to gather information from a standalone PGD Proxy node, you must
+use the `--system-only` option so it doesn't try to connect to the database server.
+
+## etcd report
+
+Lasso can run on systems where etcd is installed. In that
+case, it gathers etcd-related information.
+
+### How Lasso finds the etcd configuration file
+
+Lasso uses the following approach while trying to identify the etcd
+configuration file. It uses the first one it finds.
+
+1. Use the one provided to the `--etcd-configuration` option, if given.
+2. Check if the `/etc/etcd/etcd.conf` file exists.
+
+## System-only report
+
+Lasso can also run on systems where Postgres or
+Barman aren't installed to gather all relevant information
+regarding the underlying operating system.
+
+You can run a system-only report:
+
+```
+    lasso --system-only
+```
+
+> **Important**
+>
+> Despite the argument being called `--system-only`, in this mode,
+> Lasso gathers information about all the aforementioned tools
+> except PostgreSQL/EDB Postgres Advanced Server and Barman.
+
+## edb\_wait\_states report
+
+For each database where the `edb_wait_states` extension is installed, Lasso
+gathers important performance information from this extension and includes
+it in the `postgresql/dbs/DBNAME/edb_wait_states/` folder.
+
+The `edb_wait_states` extension requires defining a sampling range for
+retrieving data, so Lasso exposes 2 arguments for defining the sampling
+range: `--sampling-start` and `--sampling-end`. For example:
+
+```
+    lasso --sampling-start "2024-02-06 13:30:00+0000" --sampling-end "2024-02-06 14:00:00+0000"
+```
+
+In this case, the timestamps are in UTC. It's possible to specify a different timezone. For example:
+
+```
+    lasso --sampling-start "2024-02-06 10:30:00-0300" --sampling-end "2024-02-06 11:00:00-0300"
+```
+
+These arguments are ignored if the `edb_wait_states` extension isn't
+installed.
+
+If the `edb_wait_states` extension is installed and these arguments are
+omitted, then Lasso considers `--sampling-start` as 1 hour from now and
+`--sampling-end` as now.
+
+For more details about the `edb_wait_states` extension, see the
+[documentation](https://www.enterprisedb.com/docs/pg_extensions/wait_states/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

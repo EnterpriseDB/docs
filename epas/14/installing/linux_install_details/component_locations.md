@@ -1,0 +1,62 @@
+---
+title: Default component locations
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/installing/linux_install_details/component_locations/
+lastModified: 2024-06-26T10:43:04-04:00
+---
+
+# Default component locations
+
+The package managers for the various Linux variations install EDB Postgres Advanced Server components in different locations. If you need to access the components after installation, see:
+
+- [RHEL/Rocky Linux/AlmaLinux/SLES Locations](#rhelrocky-linuxalmalinuxsles-locations)
+- [Debian/Ubuntu Locations](#debianubuntu-locations)
+
+## RHEL/Rocky Linux/AlmaLinux/SLES Locations
+
+The RPM installers place EDB Postgres Advanced Server components in the directories listed in the table below:
+
+| Component                   | Location                                   |
+| --------------------------- | ------------------------------------------ |
+| Executables                 | `/usr/edb/as14/bin`                        |
+| Libraries                   | `/usr/edb/as14/lib`                        |
+| Cluster configuration files | `/var/lib/edb/as14`                        |
+| Documentation               | `/usr/edb/as14/share/doc`                  |
+| Contrib                     | `/usr/edb/as14/share/contrib`              |
+| Data                        | `/var/lib/edb/as14/data`                   |
+| Logs                        | `/var/log/edb/as14`                        |
+| Lock files                  | `/var/lock/edb/as14`                       |
+| Backup area                 | `/var/lib/edb/as14/backups`                |
+| Templates                   | `/usr/edb/as14/share`                      |
+| Procedural Languages        | `/usr/edb/as14/lib or /usr/edb/as14/lib64` |
+| Development Headers         | `/usr/edb/as14/include`                    |
+| Shared data                 | `/usr/edb/as14/share`                      |
+| SGML Documentation          | `/usr/edb/as14/share/doc`                  |
+
+## Debian/Ubuntu Locations
+
+The Debian package manager places EDB Postgres Advanced Server and supporting components in the directories listed in the following table:
+
+| Component                        | Location                                                                                |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| Server                           | `/usr/lib/edb-as/14/`                                                                   |
+| Data and Configuration Directory | `/var/lib/edb-as/14/main`<br /><br />`/etc/edb-as/14/main/`                             |
+| pgAgent                          | `/usr/lib/edb-as/14`                                                                    |
+| Pgpool                           | `/usr/edb/pgpool4.1/`                                                                   |
+| Postgis                          | `/usr/lib/edb-as/14/`                                                                   |
+| PGSNMPD                          | `/usr/lib/edb-as/14`                                                                    |
+| Slony Replication                | `/usr/lib/edb-as/14`                                                                    |
+| pgBouncer                        | `/usr/edb/pgbouncer1.14/`                                                               |
+| pgBouncer Configuration Files    | `/etc/edb/pgbouncer1.14/pgbouncer.ini`<br /><br />`/etc/edb/pgbouncer1.14/userlist.txt` |
+| SQL-Profiler                     | `/usr/lib/edb-as/14/lib`                                                                |
+| SQL-Protect                      | `/usr/lib/edb-as/14/lib`                                                                |
+| SSLUTILS                         | `/usr/lib/edb-as/14/lib`                                                                |
+| PL-PERL                          | `/usr/lib/edb-as/14/lib`                                                                |
+| PL-PYTHON                        | `/usr/lib/edb-as/14/lib`                                                                |
+| PLTCL                            | `/usr/lib/edb-as/14/lib`                                                                |
+| EFM                              | `/usr/edb/efm-4.1/`                                                                     |
+| JDBC                             | `/usr/edb/jdbc`                                                                         |
+| MTK                              | `/usr/edb/migrationtoolkit/`                                                            |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

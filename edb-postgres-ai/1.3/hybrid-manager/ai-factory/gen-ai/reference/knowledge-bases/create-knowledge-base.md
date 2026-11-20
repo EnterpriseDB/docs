@@ -1,0 +1,24 @@
+---
+title: Knowledge Bases
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/knowledge-bases/create-knowledge-base/
+lastModified: 2026-10-21T00:19:17Z
+---
+
+# Knowledge Bases
+
+Knowledge Bases are way to organize and access your data ingested from [Data Sources](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/data-sources/create-data-source/).
+You can specify multiple Data Sources per Knowledge Base in order to access data ingested from different sources all in one place.
+
+## Creating a Vector Knowledge Base
+
+You can create a Gen AI Builder Vector Knowledge Base on the Create Knowledge Base page in Gen AI Builder console. When doing so, you will asked provide a name and to select the Data Sources that you wish to include in your new Knowledge Base. Once created, you can [access your data](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/knowledge-bases/accessing-data/).
+
+If you wish to provide your own Postgres & pgvector endpoint, you will be prompted to provide your database connection string and password, as well as to select the Data Sources that you wish to use to populate this Knowledge Base.
+
+## Creating a Hybrid Knowledge Base
+
+To create a Gen AI Builder Hybrid Knowledge Base, select the Gen AI Builder card in the Hybrid Knowledge Base section on the Create Knowledge Base page in Gen AI Builder console. You will be prompted to provide a name and to select the Data Sources that you wish to include in your Knowledge Base. The final step is the verify the field mappings and confirm which columns are structured columns and which columns contain unstructued data. We attempt to determine which columns are of which type, but you can modify the mappings if you see any columns that have been incorrectly mapped.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

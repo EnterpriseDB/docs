@@ -1,0 +1,701 @@
+---
+title: Documentation Style Guide
+description: EDB style guide to help you get your writing right
+product: Community
+url: https://www.enterprisedb.com/docs/community/contributing/styleguide/
+lastModified: 2026-02-26T06:45:03-08:00
+---
+
+# Documentation Style Guide
+
+## Introduction
+
+EDB docs follow the 5 Cs of technical writing:
+
+- Clear
+
+- Correct
+
+- Concise
+
+- Complete
+
+- Consistent
+
+Follow these guidelines to ensure consistency.
+
+Included in this guide:
+
+- 1 [Language and tone](#language-and-tone)
+  - 1.1 [Tense and voice](#tense-and-voice)
+  - 1.2 [Person](#person)
+  - 1.3 [Sentence length](#sentence-length)
+  - 1.4 [Contractions](#contractions)
+  - 1.5 [Latin abbreviations](#latin-abbreviations)
+  - 1.6 [Em-dashes and en-dashes](#em-dashes-and-en-dashes)
+  - 1.7 [Numbers](#numbers)
+- 2 [Capitalization and punctuation](#capitalization-and-punctuation)
+- 3 [Topic structure](#topic-structure)
+- 4 [Verbiage](#verbiage)
+  - 4.1 [Future and conditional tenses](#future-and-conditional-tenses)
+  - 4.2 [Empty phrases](#empty-phrases)
+  - 4.3 [Weak sentence starters](#weak-sentence-starters)
+  - 4.4 [“This” without a noun](#this-without-a-noun)
+  - 4.5 [Misplaced modifiers](#misplaced-modifiers)
+  - 4.6 [Hyphen use](#hyphen-use)
+    - 4.6.1 [With a prefix](#with-a-prefix)
+    - 4.6.2 [With compound adjectives](#with-compound-adjectives)
+  - 4.7 [Directing users up and down through a topic](#directing-users-up-and-down-through-a-topic)
+  - 4.8 [Select versus click](#select-versus-click)
+- 5 [Common errors/words to avoid](#common-errorswords-to-avoid)
+  - 5.1 [Login and log in](#login-and-log-in)
+  - 5.2 [Setup and set up](#setup-and-set-up)
+  - 5.3 [Words to avoid](#words-to-avoid)
+- 6 [Headings](#headings)
+- 7 [Font treatments](#font-treatments)
+  - 7.1 [Bold (\*\*text\*\*)](#bold-text))
+  - 7.2 [Courier aka code or monospace ('text')](#courier-aka-code-or-monospace-text)
+  - 7.3 [Italics (_text_)](#italics-_text_)
+  - 7.4 [Underline](#underline)
+- 8 [Links](#links)
+- 9 [Admonitions: notes, tips, and warnings](#admonitions-notes-tips-and-warnings)
+  - 9.1 [Notes](#notes)
+  - 9.2 [Tips](#tips)
+  - 9.3 [Warnings](#warnings)
+  - 9.4 [Code](#code)
+    - 9.4.1 [Inline code](#inline-code)
+    - 9.4.2 [Code blocks](#code-blocks)
+- 10 [Tables](#tables)
+  - 10.1 [Markdown](#markdown)
+- 11 [Lists](#lists)
+- 12 [Images](#images)
+- 13 [Dates](#dates)
+- 14 [Terminology considerations](#terminology-considerations)
+- 15 [Trademark symbols](#trademark-symbols)
+- 16 [Frontmatter](#frontmatter)
+
+## Language and tone
+
+EDB docs are helpful, humble, positive, and friendly. To achieve this, write topics that are factual and free of hyperbole and wordiness.
+
+Where possible, use active voice instead of passive.
+
+### Tense and voice
+
+For reference and general task-based docs, use the second-person [imperative present tense](https://en.wikipedia.org/wiki/Imperative_mood), also known as "imperative mood." These docs should be straightforward and conventional.
+
+**Example:** Use the following command to create a user:
+
+`CREATE USER john IDENTIFIED BY abc;` 
+
+For tutorials, the docs can be more casual and conversational but must also be straightforward and clear.
+
+**Example:** In this lab, start with a fresh cluster. Make sure to stop and clean up the cluster from the previous labs.
+
+### Person
+
+Use second person (you) when referring to the user. Don’t use “the user,” which is third person, unless you're talking about the customer’s user.
+
+Use first person plural (we) to refer to EDB. For example, use:
+
+We recommend that you restart your server.
+
+Instead of:
+
+EDB recommends that you restart your server.
+
+However, don’t use first person plural when talking about how the software works or in an example. For example:
+
+Instead of:
+
+Next, we process the instruction.
+
+Use:
+
+Next, Barman processes the instruction.
+
+Instead of:
+
+Next, we enter the following the information:
+
+Use:
+
+Enter the following information:
+
+### Sentence length
+
+Use simple and direct language and keep your sentences short. Avoid combining sentences, which makes the content complicated. The preferred maximum sentence length is 26 words.
+
+### Contractions
+
+In keeping with the casual and friendly tone, use contractions. However, use common contractions (isn’t, can’t, don’t). Don't use contractions that are unclear or difficult to pronounce (there’ll).
+
+In new reference material, don't use contractions.
+
+For instructions that concern important lifecycle operations of an environment, the functionality of databases, or when warning against actions that could interrupt a procedure, it's okay to spell out the words if you choose to, for example:
+
+Do not restart the server.
+
+### Latin abbreviations
+
+Don’t use the Latin abbreviations i.e. and e.g. Use “that is” and “for example” instead.
+
+### Em-dashes and en-dashes
+
+Avoid using em-dashes to set off phrases within a sentence, which creates a complicated sentence structure and can be difficult to translate. You can use em-dashes for definition lists such as:
+
+- Autonomous — Use to create autonomous calls to the server.
+
+Use spaces around em-dashes in a definition list. Otherwise, don't put spaces around em-dashes.
+
+To create an em-dash, use the character entity `&mdash;`.
+
+Use en-dashes to mean “through,” for example, items 1–10. Don’t use en-dashes otherwise. (There's only one other use of en-dashes that doesn’t typically come up in technical writing.) To create an en-dash, use the character entity `&ndash;`.
+
+### Numbers
+
+Spell out numbers zero through nine. Use digits for numbers 10 and greater. Spell out any number that starts a sentence. For this reason, avoid starting a sentence with a long or complex number.
+
+### Capitalization and punctuation
+
+Capitalization rules:
+
+- Use sentence-case for headings (including column headings in tables).
+
+- Capitalize the first letter in each list item except for function and command names that are naturally lower case.
+
+- Capitalize link labels to match the case of the topic you're linking to.
+
+- Capitalize proper nouns and match the case of UI features:
+  **Examples:** EDB, the Overview dashboard, the SQL Queries graph
+
+- Don’t capitalize the words that make up an initialization unless they're part of proper noun. For example, single sign-on is not a proper noun even though it's usually written as the initialism SSO.
+
+Punctuation rules:
+
+- Avoid semicolons. Instead, use two sentences.
+
+- Don’t join related sentences using a comma. This syntax is incorrect.
+
+- Don't end headings with a period or colon
+
+- Use periods at the end of list items that are a sentence or that complete a sentence. If one item in a list uses a period, use a period for all the items in that list.
+
+- Use the [Oxford (a.k.a. serial) comma](https://en.wikipedia.org/wiki/Serial_comma).
+
+### Topic structure
+
+- Procedure headings use gerunds, for example, _Modifying your cluster_.
+
+- Use a stem sentence to introduce a procedure only if multiple paragraphs of text fall between the head and the start of the procedure. The stem sentence helps to reorient the user when the heading might have scrolled off the screen. A stem sentence starts with “To” and ends with a colon:\
+  To modify your cluster:
+
+- In general, include text between a heading and any subheadings. However, if such text is superfluous, a subhead can directly follow the head.
+
+See also [Headings](#headings).
+
+## Verbiage
+
+Use language that's precise and informative.
+
+### Future and conditional tenses
+
+Avoid future tense (will) and conditional tenses (would, could, should). These tenses lack precision and can create passive voice.
+
+Use future tense when an action occurs in the future, for example:
+
+This feature will be removed in a future release.
+
+While present tense is strongly preferred, future tense can be useful and accurate in an "if/then" phrase. For example, it's okay to write:
+
+If you perform this action, another action will occur.
+
+The conditional tense is okay only if you explain the conditions and any action to take. For example, use:
+
+A message should appear. If it doesn't, restart the server.
+
+### Empty phrases
+
+Phrases like, “This section tells you about how to \[do something]” are empty and don’t impart any real information. The title of the chapter or section tells you what the section is about. These phrases describe the documentation (documenting the documentation) rather than the product or user actions.
+
+Replace these empty phrases with wording that focuses on the product or process. So instead of:
+
+This chapter is divided into five sections. Each section tells you about part of the process.
+
+Write:
+
+To complete the process, perform these five steps:
+
+You can then link to each of the sections.
+
+### Weak sentence starters
+
+“There is” and “there are” are [weak sentence starters](http://www2.ensc.sfu.ca/~whitmore/courses/style/templates/sentence.html). Avoid starting sentences this way.
+
+### “This” without a noun
+
+Avoid using “this” without a noun following. Doing so can lead to ambiguity. For example, instead of:
+
+This happens when…
+
+Write:
+
+This error happens when…
+
+### Misplaced modifiers
+
+Make sure the word “only” precedes the word or expression you mean to modify. For example, instead of:
+
+This condition only happens after you select **Okay**.
+
+Write:
+
+This condition happens only after you select **Okay**.
+
+### Hyphen use
+
+#### With a prefix
+
+Don't use hyphens with prefixes such as re, non, multi, and pre unless needed for readability or to eliminate ambiguity. Often, when two vowels end up together, a hyphen is needed, for example, multi-instance. However, preexisting is a legitimate word; don’t hyphenate it. Re-create (create again) requires a hyphen to avoid confusion with recreate (play). You can check many words using a spell checker. For example, nonexistent is not flagged by the spell checker.
+
+If you're unsure whether to include a hyphen, check with your editor or google the word without the hyphen.
+
+#### With compound adjectives
+
+A compound adjective is formed when two words together describe a noun, for example, _red-bellied warbler_. Don’t use a hyphen when an adverb and a verb together describe a noun. The adverb describes the verb and doesn’t need a hyphen to create the relationship between the words. An example is _finely tuned settings_.
+
+### Directing users up and down through a topic
+
+Don’t use words like "above" and “below” to refer to previous and following sections. Link to the section instead or use "earlier" or "later."
+
+It also isn't necessary to use the words “the following” to refer to list items. These words are empty. So, for example, instead of:
+
+The palette includes the following colors:
+
+Write:
+
+The color palette includes:
+
+### Select versus click
+
+House style is to use “select” instead of “click” to allow for mobile-device use.
+
+## Common errors/words to avoid
+
+Avoid these common errors and wording issues.
+
+### Login and log in
+
+The verb form is “log in”:
+
+To log in to the system…
+
+The adjective form is “login”:
+
+At the login screen, enter your username.
+
+### Setup and set up
+
+The verb form is “set up”:
+
+To set up your environment…
+
+The noun form is “setup”:
+
+Check your setup for errors.
+
+### Words to avoid
+
+Don't use:
+
+- Please
+
+- Note that
+
+- In order to (just use “to”)
+
+## Headings
+
+Use headings to create a hierarchy for readers to navigate to more easily find information.
+
+In Markdown, headings are denoted by number signs (`#`) followed by one space. Enter a line break between a heading and its content. EDB docs use Heading 2 (`##`), Heading 3 (`###`) and Heading 4 (`####`). Use Heading 4 sparingly. You can denote anything below Heading 4 using bold text or other layout options. (Consider redesigning the material.)
+
+Heading 1 is reserved for page titles.
+
+Examples:
+
+- `## This is heading 2`
+
+- `### This is heading 3`
+
+- `## Step 2. This is a step in a tutorial`
+
+## Font treatments
+
+Don’t use any font treatments for:
+
+- Roles
+
+- User names (for example, edb\_admin)
+
+- Permissions
+
+- Window or dialog box names
+
+### Bold (\*\*text\*\*)
+
+Use for UI elements. For menu items, include a greater-than sign: Select **File > Save**.
+
+### Courier aka code or monospace (`'text'`)
+
+Use for text entered in text boxes, parameters, commands, text in configuration files, and file paths. Don’t use for utility names.
+
+If you need to enter a `value in a field`, type the `ls` or `dd` command, add a setting to a `configuration=file` or just refer to `/etc/passwd`, then this is the font treatment to use.
+
+See [Code](#code) for more information.
+
+### Italics (`_text_`)
+
+Use for book titles and first instance of terms. Do not use _italics_ for keywords.
+
+### Underline
+
+Don't use underlined text in EDB docs.
+
+## Links
+
+Whenever an EDB feature is referenced, provide a link to the relevant documentation. For example:
+
+Use Postgres Distributed (PGD) dashboards and probes to monitor status and activities for admin, nodes, and groups. See [Monitoring EDB Postgres Distribute](https://www.enterprisedb.com/docs/pem/latest/monitoring_BDR_nodes/).
+
+Avoid using the URL as the label. For example:
+
+**Best practice:** For information about the platforms and versions supported by PEM, see [Product Compatibility](https://www.enterprisedb.com/services-support/edb-supported-products-and-platforms) on the EnterpriseDB website\*\*.\*\*
+
+**Avoid:** For information about the platforms and versions supported by PEM, visit the EnterpriseDB website at: <https://www.enterprisedb.com/services-support/edb-supported-products-and-platforms>.
+
+You can also provide links to external resources, but only if the resource is vetted and no EDB documentation covers the topic. For example:
+
+Information about managing authentication is also available in the [Postgres core documentation](https://www.postgresql.org/docs/current/static/auth-pg-hba-conf.html).
+
+If you're referring to a guide on Docs 2.0, the label is the name of the guide and in italics. For example:
+
+For information about modifying the `pg_hba.conf` file, see the [_PEM Administrator's Guide_](https://www.enterprisedb.com/docs/pem/latest/).
+
+Link capitalization can be either title or sentence case:
+
+- **Use title case** and _italics_ when referring to the linked doc by name. For example. “For information about modifying the `pg_hba.conf` file, see the [_PEM Administrator's Guide_](https://www.enterprisedb.com/docs/pem/latest/).”).
+
+- **Use sentence case** when linking in the middle of a sentence. For example, “\[…] follow the identifier rules when creating \[…]“).
+
+Addresses are relative. In these examples of links to topics, “folder” means the folder in the repo such as the product folder or the guide folder. For the destination topic, use the name of the file without the .mdx extension. If the destination includes a topic\_identifier (sub-section of a file), include the topic\_identifier prefixed with a # sign, such as in “/09\_controlling\_logging/#enabling\_syslog.”
+
+| Link type                                                | Syntax                                  | Example                                                                                | Source path                                                               | Destination path                                                 |
+| -------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Another topic in the same folder                         | `[here](file_name)`                     | `[Using the EFM Utility](07_using_efm_utility/#using_efm_utility)`                     | /efm/4.2/efm\_user/07\_using\_efm.mdx                                     | /efm/4.2/efm\_user/07\_using\_efm\_utility.mdx                   |
+| Another topic in a different folder at the same level    | `[here](../dest_folder_name/file_name)` | \[The ERD Tool]\(../pem\_ent\_feat/04\_pem\_erd\_tool/)                                | /pem/8/pem\_rel\_notes/08\_810\_rel\_notes.mdx                            | /pem/8/pem\_ent\_feat04\_pem\_erd\_tool/                         |
+| Another topic in a different folder at a different level | `[here](../../folder_name/file_name`)   | \[Enabling syslog Log File Entries]\(../../09\_controlling\_logging/#enabling\_syslog) | /efm/4.2/efm\_user/04\_configuring\_efm/01\_cluster\_properties/index.mdx | /efm/4.2/efm\_user/09\_controlling\_logging.mdx/enabling\_syslog |
+
+- To link to a specific heading on another page, use the name of the file plus the heading.
+  **Example:** `[xyz](file_name#heading-on-page)`
+
+- To link to a specific heading on the current page, use just the heading.
+  **Example:** `[xyz](#heading-on-page)`
+
+- To link to a specific location on a page that isn't a heading (for example, a specific command-line flag in a table), add a manual anchor and use the `id` parameter:
+  **Example:**
+
+  ```markdown
+  Anchor: <a id="flags-max-offset"></a> `--max-offset` 
+
+  Link: [--max-offset](#flags-max-offset)
+  ```
+
+## Admonitions: notes, tips, and warnings
+
+Our docs use notes, tips, and warnings.
+
+See <https://github.com/EnterpriseDB/docs/blob/develop/README.md> for more information on admonitions.
+
+For multiple, consecutive admonitions, use separate admonitions. If there are more than two consecutive admonitions, consider adding a subsection called **Additional notes** or **Additional information**. Admonitions can contain bullets and code. To keep the formatting simple, consider instead adding a subsection (or whether an admonition is the appropriate mechanism).
+
+### Notes
+
+Use notes to call attention to a piece of clarifying information. This information isn't crucial to accomplishing the task in the document.
+
+For example, you might use a note to let users know that the `DELETE` command deletes only rows and that to delete columns you must use `ALTER TABLE`. This information helps to clarify the command's purpose and point users to the right place.
+
+### Tips
+
+Use for indicating a new version added in a particular release when working in the major version of the documentation for products that are adhering to semantic versioning. See the PEM documentation for examples. Also can use for information that might improve productivity.
+
+### Warnings
+
+Use a warning to express that a piece of information is critical to preventing unexpected things from happening.
+
+For example, you might include a warning that using `CASCADE` in `DROP INDEX` drops dependent objects without warning. This information is critical to prevent users from unexpectedly losing constraints or additional indexes.
+
+## Code
+
+Code can be shown inline or as a code block.
+
+### Inline code
+
+Inline `code` has back-ticks around it (`` `code` ``) and is used when referring to code, commands, or other technical syntax within a sentence. For example:
+
+The `CREATE TABLE` statement creates a new table in a database.
+
+### Nesting inline code
+
+To format code that includes back-ticks, add additional back-ticks to demarcate: ``` `` \echo `date` `` ```. You need spaces to separate the demarcation from the code in this example.
+
+### Code blocks
+
+Code blocks provide executable code samples, marked with an opening and closing set of three backticks (` ``` `). Code blocks can support syntax highlighting if you add the language name immediately after the first line of backticks. Use one returned line before and after a code block for better Markdown readability. For example:
+
+````
+This is a sample line of text. 
+
+```
+{% include copy-clipboard.html %}
+~~~shell
+$ go get -u github.com/lib/pq
+~~~
+```
+````
+
+Which results in:
+
+> This is a sample line of text.
+>
+> ```
+> {% include copy-clipboard.html %}
+> ~~~shell
+> $ go get -u github.com/lib/pq
+> ~~~
+> ```
+>
+> This is more sample text.
+
+Use syntax highlighting for configuration file, shell, and SQL commands, where appropriate, as follows.
+
+**Shell code samples**
+
+Start shell code samples with ` ```shell` followed by a line break. Use the terminal marker `$` as the first character of the next line. For multi-line shell commands, use a backslash (`\`) at the end of each line to indicate a line break.
+
+**SQL code samples**
+
+SQL code samples are broken into two sections: commands and responses.
+
+- **Commands** (e.g., `SELECT`, `CREATE TABLE`) begin with ` ```sql` followed by a line break. The first character of the next line should be the terminal marker `>`. Capitalize commands properly. Use only one command per code sample.
+
+- **Responses** (e.g., retrieved tables) add (`__OUTPUT__`) on a line between the command and the output, you'll get highlights for the code but not the output. For example,
+
+  ````
+  ```sql 
+  SELECT slot_name, slot_type, database, active FROM pg_replication_slots ORDER BY 1; 
+  __OUTPUT_
+  slot_name   | slot_type | database  | active 
+  ------------+-----------+-----------+-------- 
+  xdb_47877_5 | logical   | MMRnode_a | t 
+  xdb_47878_5 | logical   | MMRnode_b | t 
+  xdb_47879_5 | logical   | MMRnode_c | t 
+  (3 rows)
+  ```
+  ````
+
+  Results in
+
+  > ```sql
+  > SELECT slot_name, slot_type, database, active FROM pg_replication_slots ORDER BY 1; 
+  > ```
+  >
+  > ```output title="Output"
+  > slot_name   | slot_type | database  | active 
+  > ------------+-----------+-----------+-------- 
+  > xdb_47877_5 | logical   | MMRnode_a | t 
+  > xdb_47878_5 | logical   | MMRnode_b | t 
+  > xdb_47879_5 | logical   | MMRnode_c | t 
+  > (3 rows)
+  > ```
+
+**Configuration file samples**
+
+For files that have key-value pairs use ` ```ini`. For example:
+
+````
+```ini 
+promotable=false 
+auto.reconfigure=false 
+``` 
+````
+
+Which results in:
+
+> ```ini
+> promotable=false 
+> auto.reconfigure=false 
+> ```
+
+### Tables
+
+Use tables to display structured information in an easy-to-read format. We use two types of tables: Markdown and HTML.
+
+## Markdown
+
+If table formatting can be kept simple (for example, basic text formatting and using `<br>` tags for paragraph breaks), create a table using Markdown. This is the preferred table format.
+
+To create a table, use pipes (`|`) between columns and at least 3 dashes (`-`) separating the header cells from the body cells. A return denotes the start of the next row. The text within each column doesn't need to align to be rendered correctly, and you can inline Markdown or HTML.
+
+We don’t use outer pipes.
+
+Example:
+
+```
+Term | Description | Example 
+----------|-----------------------------|---------------- 
+`term_1` | This is a description. | `3.14` 
+`term_2` | This is also a description. | `"lola mcdog"` 
+```
+
+Resulting in
+
+| Term     | Description                 | Example        |
+| -------- | --------------------------- | -------------- |
+| `term_1` | This is a description.      | `3.14`         |
+| `term_2` | This is also a description. | `"lola mcdog"` |
+
+## Lists
+
+EDB docs uses two types of lists:
+
+1. **Numbered** (ordered) — Use to list information that must appear in order, like tutorial steps.
+
+- **Bulleted** (unordered) — Use to list related information in an easy-to-read way.
+
+Introduce lists with a sentence and a colon. Use periods at the end of list items that are sentences or complete a sentence.
+
+For each item of a **numbered** list, use `1.` followed by a period and a space, for example:
+
+`1. This is a numbered list.`
+
+Markdown renders the steps in the correct order.
+
+For each item of a **bulleted list**, use one dash followed by one space to denote a list item, for example:
+
+`- This is a bulleted list.`
+
+## Images
+
+Use images to clarify a topic, but use them only as needed. Images are either:
+
+- **Screenshots** — Provide a UI visual. Don’t use to show dialog boxes and parts of the UI a user can see for themselves, as these are hard to maintain and don’t provide useful information. If a screenshot needs an annotation, use a red box.
+
+- **Diagrams** — Provide a visual of a complicated theory. Diagrams must be clean and easy to read.
+
+**Syntax:**
+
+! \[Alternate\_text]\(\<path\_to\_image\_file>/\<image\_filename.png>)
+
+**Example:**
+
+`![PEM Architecture](../images/pem_architecture.png)`
+
+### Screenshot recommendations
+
+Reserve screenshots for situations where the complexity of a user interface exceeds what you can comfortably describe (or render using text in [a code block](#code-blocks)). A good screenshot aids the reader in recognizing what the text is describing, but does not replace textual instructions.
+
+- Use PNG format for screenshots; avoid JPEG (JPEG compression artifacts can be distracting).
+- Limit the resolution of images; very large screenshots take longer to load and can be difficult to view.
+- Crop the edges and make judicious use of arrows or highlighting to draw attention to areas of interest.
+- Do not add borders; the Docs system will add borders appropriate for the color scheme.
+- Give screenshots names that describe the feature or form it represents, and place them in the filesystem near the topic that references them. E.g.,
+  ```
+  /cluster/index.mdx
+  /cluster/settings.mdx
+  /cluster/images/settings-ha-options.png
+  ```
+
+### Diagram recommendations
+
+Diagrams are often helpful in reducing the complexity of overviews, explanations, or system architecture. A good diagram provides, at a glance, more information than can be conveyed in an equivalently-sized paragraph. Diagrams are particularly useful as a tool for showing connections between system components that will be described in prose immediately afterwards.
+
+- Use a tool that suits the needs of the diagram you need to create. LucidChart and Figma are good for general-purpose work; if a diagram is generated from existing data, other tools might be more useful.
+- Try to use a tool that'll export SVG and a design file that can be re-imported later.
+- Check in both the SVG and the design file - that way if we gotta change it later, we can edit the design file instead of the SVG.
+- Crop your diagram when exporting - don't have a little diagram in a field of white.
+- Feel free to use a transparent background, but then DO use background fill on individual elements where necessary for legibility - we have a dark theme & it needs to stay readable!
+- Use the Roboto mono font, min 7 pt.
+- Use our brand colors (<https://enterprisedb.atlassian.net/wiki/spaces/EDB/pages/3998613556/Colors>).
+- Keep diagrams clean and professional - "napkin sketch" styling might be appropriate for a blog post or presentation where you're talking through a process, but documentation should reflect a complete understanding of the topic.
+- If there's a moderate level of detail, link to the diagram as well as embedding, e.g. `[![proxy connections](images/proxy.svg)](images/proxy.svg)]`.
+  - If there is a high level of detail (to the extent that the diagram becomes unreadable at embedded sizes), break the diagram into multiple diagrams showing e.g. an overview and individual components... Or re-think the level of detail that is necessary. Do not _require_ readers to "click through" to a diagram to percieve it.
+
+And remember that not every reader's visual acuity will be up to the task of interpreting a diagram; they are useful as an aid, but should never be the _only_ source of critical information!
+
+## Dates
+
+When specifying dates for human readability, use the DD mmm YYYY format with a short month name in English. Where the date is being used in a column in a table, use a leading 0 on the day of month for easier alignment, for example, 01 Jan 2024.
+
+When specifying dates as solely numbers, use [ISO8601](https://www.iso.org/iso-8601-date-and-time-format.html) format; YYYY/MM/DD. This is the internationally accepted, disambiguous format. Use it where you may expect the date to be read by automated systems.
+
+## Terminology considerations
+
+### Referencing software versions
+
+House style to refer to versions is to use "earlier" or "later." For example:
+
+This function is for use in EDB Postgres Advanced Server version 17 and later.
+
+### Ambiguity of the term "cluster"
+
+The term "cluster" can refer to different groups of resources in the technological field.
+At EDB, the product documentation uses the term "cluster" to refer to several different objects/concepts.
+To avoid ambiguity, always use an adjective (describing word) to clarify which of the cluster types you're referring to in the specific context.
+
+Here are a few examples:
+
+**Postgres cluster**: Also known as a [database cluster](https://www.enterprisedb.com/docs/epas/latest/fundamentals/epas_fundamentals/terminology/#database-cluster), a Postgres cluster is a Postgres server that hosts a number of databases in a single file system location.
+
+**PGD cluster**: A [PGD cluster](https://www.enterprisedb.com/docs/pgd/latest/overview/terminology/#pgd-cluster) is a [Postgres Distributed](https://www.enterprisedb.com/docs/pgd/latest/) system with a group of multiple redundant database systems in different locations.
+
+**Kubernetes cluster**: A [Kubernetes cluster](https://kubernetes.io/docs/reference/glossary/?fundamental=true#term-cluster) is a set of multiple nodes that run containerized applications.
+
+### Postgres distributions
+
+EDB products support three types of Postgres distributions:
+
+- PostgreSQL (open-source or community Postgres)
+- EDB Postgres Advanced Server (EPAS)
+- EDB Postgres Extended Server (PGE)
+
+Although also referred to as "Postgres flavors," the preferred terms are "Postgres" or "Postgres distributions" to refer to all three options.
+
+## Trademark symbols
+
+Use the ™ or ® symbol at least upon the first use of the `EDB Postgres® + [product]` trademark in the body text of a page.
+
+Examples: EDB Postgres® AI, EDB Postgres® Analytics, EDB Postgres® Machine Learning, etc.
+
+For other trademarks, the documentation site already includes a general disclaimer at the footer of every page called "Trademark" which links to <https://www.enterprisedb.com/trademarks>.
+Contrary to the specifications on [Trademarks](https://www.enterprisedb.com/trademarks), don't include the symbol in page titles,
+because the symbol can affect how search engines index and find pages.
+
+## Frontmatter
+
+The frontmatter is located at the top of every Markdown page and allows you to specify metadata and options in YAML language. Frontmatter lets you control how a page renders.
+
+Ensure your page, at minimum, includes a `title` and `description` as metadata. It can include other metadata such as `navTitle`, `deepToC`, and so on.
+
+```yaml
+---
+title: Working with the repo
+description: Step-by-step instructions to install and use the docs repo.
+---
+```
+
+> **Note**
+>
+> Ensure the `description` has a final stop (period), even if it isn't a full grammatical sentence. Descriptions are used to dynamically build a summary for each section in `index` pages. Since all descriptions are then displayed next to each other, add a full stop to ensure visual consistency.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,20 @@
+---
+title: Known Issues
+description: Learn about known issues in WarehousePG Copy version 1.
+product: WarehousePG Copy
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/overview/known_issues/
+lastModified: 2026-09-29T16:04:16+01:00
+---
+
+# Known Issues
+
+These are the currently known issues and limitations identified in the WarehousePG Copy release. Where applicable, we have included workarounds to help you mitigate the impact of these issues. These issues are actively tracked and are planned for resolution in a future release.
+
+- **Support for password authentication**: `whpg-copy` currently only supports password authentication through a [password file](https://www.postgresql.org/docs/12/libpq-pgpass.html). Use `.pgpass` or the `PGPASSFILE` environment variable to set a password for the connection. If you specify a password with the `whpg-copy` command or in the TOML-based configuration file, it will be ignored.
+- **Views and materialized views:** `whpg-copy` supports the creation of both regular views and materialized views on the destination cluster. After the copy phase, it refreshes each materialized view, but only if every relation it depends on finished successfully. For a table dependency, that means the data copy completed. For a materialized view dependency, that means its own refresh succeeded. If a dependency fails, `whpg-copy` skips the refresh, along with any materialized views that depend on it, and you must manually execute `REFRESH MATERIALIZED VIEW` on the destination once the underlying data is in place.
+- **Version compatibility:** Migration is supported between clusters of the same version or when upgrading from WarehousePG 6.x to WarehousePG 7.x. However, downward migration from version 7.x to 6.x is not supported.
+- **Extensions with schema dependencies:** `whpg-copy` doesn't install extensions on the destination cluster automatically. If a table depends on an extension tied to a specific schema, such as `vector` or `postgis`, install and create that extension on the destination cluster before running `whpg-copy`. Otherwise, the copy operation fails with an error similar to `type "<schema>.<extension>" does not exist`.
+- **Index rebuilding and partition tables:** `--rebuild-indexes` doesn't apply to partition tables on WarehousePG 7.x. On WarehousePG 6.x, it only applies when copying through the root partition table (`through_partition_leaves = false`). A destination table written by more than one source relation keeps its existing indexes rather than rebuilding them.
+- **Progress display on very large copies:** When you copy tens of thousands of tables, the live progress display can slow down and eventually stop updating. The slowdown doesn't affect the copy itself, and all your data is still transferred correctly. Increasing `progress_poll_interval` doesn't prevent the slowdown. If you don't need to watch the progress display, set `progress_poll_interval` to `0` to turn it off.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

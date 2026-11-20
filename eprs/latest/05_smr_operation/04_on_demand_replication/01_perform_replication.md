@@ -1,0 +1,45 @@
+---
+title: Performing snapshot replication
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/04_on_demand_replication/01_perform_replication/
+lastModified: 2023-06-06T12:24:48-04:00
+---
+
+# Performing snapshot replication
+
+<div id="perform_replication" class="registered_link"></div>
+
+You must perform the first replication using snapshot replication. After the first snapshot replication, you can perform later replications using either the synchronization method (if the publication wasn't initially defined as a snapshot-only publication) or the snapshot method.
+
+1. In the Replication Server console, select the Subscription node of the subscription for which you wish to perform snapshot replication.
+
+2. Select **Subscription > Snapshot**.
+
+3. Select **Verbose Output** if you want to display the output from the snapshot in the dialog box. Don't select this option in a network address translation (NAT) environment, as a large amount of output from the snapshot can delay the response from the Snapshot dialog box.
+
+4. Select **Snapshot** to start snapshot replication.
+
+   Snapshot Taken Successfully appears if the snapshot was successful.
+
+5. Select **OK**. If the snapshot wasn't successful, scroll through the messages in the Snapshot dialog box  if **Verbose Output** was selected or check the log files.
+
+The status messages of each snapshot are saved in the Migration Toolkit log files named `mtk.log[.n]` in the following directories. `[.n]` is an optional history file count if log file rotation is enabled.
+
+**For Linux:**
+
+`/var/log/xdb-x.x`
+
+**For Windows:**
+
+`POSTGRES_HOME\.enterprisedb\xdb\x.x`
+
+`POSTGRES_HOME` is the home directory of the Windows postgres account (enterprisedb account for EDB Postgres Advanced Server installed in Oracle-compatible configuration mode). The specific location of `POSTGRES_HOME` depends on your version of Windows. The Replication Server version number is represented by `x.x`.
+
+The publication is now replicated to the subscription database. A record of the snapshot is kept in the replication history. See [Viewing replication history](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/04_view_replication_history/#view_replication_history) for more information.
+
+> **Note**
+>
+> Before version 7.0.0, Replication Server required superuser privileges to disable/enable constraints and indexes as part of its snapshot operation. Starting with version 7.0.0, the superuser privileges are no longer required, and the constraints/indexes are now dropped and re-created as part of the snapshot operation. This change might cause any views/materialized views with a dependency on the constraints from the target subscription/master database to be dropped. These views are then re-created at the end of snapshot operation. Depending on the permissions assigned to the Replication Server subscription database user, the re-created views/materialized views might have permissions that are inconsistent with those of the originally assigned permissions. Therefore, we recommend manually verifying the assigned permissions of the relevant views/materialized views in the target database and making any corrections where applicable.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

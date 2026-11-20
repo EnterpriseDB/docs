@@ -1,0 +1,45 @@
+---
+title: Supported PGD upgrade paths
+product: EDB Postgres Distributed (PGD)
+version: 5.9.5
+url: https://www.enterprisedb.com/docs/pgd/5.9/upgrades/upgrade_paths/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Supported PGD upgrade paths
+
+## Upgrading within version 5
+
+EDB Postgres Distributed uses [semantic versioning](https://semver.org/).
+All changes within the same major version are backward compatible, lowering the risk when upgrading and allowing you to choose any later minor or patch release as the upgrade target.
+
+You can upgrade from any version 5.x release to a later 5.x release.
+
+## Upgrading from version 4 to version 5
+
+We generally recommend you upgrade your cluster to the latest PGD 4 release before upgrading to the latest PGD 5 release.
+
+Upgrades from PGD 4 to PGD 5 are supported from version 4.3.0 or later.
+
+The following table provides a full list of possible upgrade paths from PGD 4 to PGD 5. Check the "From version" column to confirm the minimum required PGD 4 release necessary before upgrading to your des
+ired PGD 5 target version.
+
+See [Upgrading within version 4](https://www.enterprisedb.com/docs/pgd/4/upgrades/upgrade_paths/#upgrading-within-version-4) for instructions on upgrading within PGD 4 to reach the required version.
+
+| From version | To version (range) |
+| ------------ | ------------------ |
+| 4.3.0        | 5.0.0 to 5.8.1     |
+| 4.3.1        | 5.1.0 to 5.8.1     |
+| 4.3.2        | 5.1.0 to 5.8.1     |
+| 4.3.3        | 5.1.0 to 5.8.1     |
+| 4.3.7        | 5.7.0 to 5.8.1     |
+| 4.4.0        | 5.9.0 or later     |
+
+## Upgrading from version 3.7 to version 5
+
+Starting with version 3.7.23, you can upgrade directly to version 5.3.0 or later.
+For earlier versions, upgrade to 3.7.23 before upgrading to 5.
+See [Upgrading within version 3.7](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/supported_paths/#upgrading-within-version-37)
+for more information.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

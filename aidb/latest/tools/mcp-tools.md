@@ -1,0 +1,110 @@
+---
+title: MCP tools
+description: Import tools from an external Model Context Protocol (MCP) server for AIDB agents to call.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/tools/mcp-tools/
+lastModified: 2026-11-02T12:47:22+05:30
+---
+
+# MCP tools
+
+[MCP](https://modelcontextprotocol.io) (Model Context Protocol) is a standard way for a server to advertise a set of callable tools. `aidb.import_mcp_tools()` registers an external MCP server and imports the tools it advertises, so your agents can call them alongside AIDB's own native and SQL tools:
+
+```sql
+SELECT aidb.import_mcp_tools(
+    name        => 'weather',
+    url         => 'https://weather.example.com/mcp',
+    transport   => 'streamable_http',  -- optional; 'streamable_http' or 'sse' (see below). Default: 'streamable_http'
+    headers     => NULL,               -- optional; request headers to send, for example, an auth token. Mutually exclusive with headers_env and headers_k8s_secret. Default: NULL
+    tool_filter => NULL,               -- optional; import only these tool names. Default: NULL (import everything the server advertises)
+    headers_env => NULL,               -- optional; env var holding the headers JSON instead of storing it. Mutually exclusive with headers and headers_k8s_secret. Default: NULL
+    headers_k8s_secret => NULL         -- optional; file path to a mounted Kubernetes Secret holding the headers JSON. Mutually exclusive with headers and headers_env. Default: NULL
+);
+
+SELECT aidb.create_agent('trip_planner', 'Help plan trips, checking weather when useful.', 'my_gpt',
+    tools => ARRAY['get_forecast']);  -- a tool the weather server advertised
+```
+
+| Parameter            | Type  | Default             | Description                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------- | ----- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`               | TEXT  | Required            | Unique name for the server registration.                                                                                                                                                                                                                                                                                                                                                                                       |
+| `url`                | TEXT  | Required            | The server's MCP endpoint URL.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `transport`          | TEXT  | `'streamable_http'` | `'streamable_http'` or `'sse'` — only `'streamable_http'` is fully supported today.                                                                                                                                                                                                                                                                                                                                            |
+| `headers`            | JSONB | `NULL`              | Request headers to send, for example, `{"Authorization": "Bearer ..."}`. Mutually exclusive with `headers_env` and `headers_k8s_secret`.                                                                                                                                                                                                                                                                                       |
+| `tool_filter`        | TEXT  | `NULL`              | Import only these tool names. Omit to import everything the server advertises.                                                                                                                                                                                                                                                                                                                                                 |
+| `headers_env`        | TEXT  | `NULL`              | Name of an environment variable holding the headers JSON, read fresh on each use instead of storing it. Superusers and members of `aidb_admins` only. Mutually exclusive with `headers` and `headers_k8s_secret`.                                                                                                                                                                                                              |
+| `headers_k8s_secret` | TEXT  | `NULL`              | Path to a file holding the headers JSON, read on each use instead of storing it. Meant for a Kubernetes Secret mounted into the Postgres pod. Superusers and members of `aidb_admins` only. The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#kubernetes-secret-paths). Mutually exclusive with `headers` and `headers_env`. |
+
+`import_mcp_tools` validates the server by calling its `tools/list` endpoint before registering anything — if it's unreachable or advertises nothing matching `tool_filter`, nothing is stored. The tools it returns are cached immediately, so they show up in `aidb.tools` right away rather than after a separate refresh.
+
+Only the `streamable_http` transport (the default) actually works end-to-end today; `sse` is accepted as a value but isn't fully implemented yet.
+
+Reaching an MCP server is an outbound network call — subject to the same [`aidb.egress_allowlist`](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#network-egress) restriction as model provider calls and HuggingFace downloads.
+
+An MCP tool call isn't subject to purpose enforcement, unlike a [native](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/) or [custom SQL](https://www.enterprisedb.com/docs/aidb/latest/tools/custom-sql-tools/) tool call: it's outbound HTTP, with no local Postgres identity to switch. See [Governance](https://www.enterprisedb.com/docs/aidb/latest/governance/).
+
+## Authentication
+
+Pass `headers` for a server that needs specific request headers (most commonly an `Authorization` bearer token):
+
+```sql
+SELECT aidb.import_mcp_tools(
+    name    => 'internal_crm',
+    url     => 'https://crm.internal.example.com/mcp',
+    headers => '{"Authorization": "Bearer sk-..."}'::JSONB
+);
+```
+
+`headers` is stored in `aidb.mcp_registry`. Members of `aidb_users` can't read it through SQL.
+
+To read the headers from the Postgres server instead, pass one of these:
+
+- `headers_env`: the name of an environment variable that holds a JSON object of headers. The name must start with the prefix set by [`aidb.env_var_allowed_prefix`](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#credential-environment-variables) (`AIDB_` by default).
+- `headers_k8s_secret`: the path to a file that holds a JSON object of headers. The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#kubernetes-secret-paths).
+
+Only superusers and members of [`aidb_admins`](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#managing-credential-access-with-the-aidb_admins-role) can pass them. A registration that uses them works only while its owner is a superuser or a member of `aidb_admins`. To limit the hosts the headers are sent to, the server operator can add a `_HOST` variable or file. See [Credential environment variables](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#credential-environment-variables) and [Kubernetes Secret paths](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#kubernetes-secret-paths).
+
+The role that calls `aidb.import_mcp_tools()` owns the registration. Only the owner, or a member of the owner role, can refresh or delete it.
+
+## Filtering which tools are imported
+
+By default, every tool the server advertises is imported. Pass `tool_filter` to import only specific ones by name:
+
+```sql
+SELECT aidb.import_mcp_tools(
+    name        => 'weather',
+    url         => 'https://weather.example.com/mcp',
+    tool_filter => ARRAY['get_forecast', 'get_alerts']
+);
+```
+
+## Keeping the tool list current
+
+AIDB doesn't re-fetch a server's tool list on every query — `aidb.tools` only shows entries cached within the last 60 minutes, so a `SELECT` never has a network side effect. Call `aidb.refresh_mcp_tools()` to re-fetch and update the cache on demand (for example, after the server adds a new tool):
+
+```sql
+SELECT aidb.refresh_mcp_tools('weather');
+```
+
+It returns the number of tools now cached (after `tool_filter` applies). Changing a server's registration — its `url`, `transport`, `headers`, or `tool_filter`, via re-running `import_mcp_tools`-equivalent settings — also invalidates its cache automatically.
+
+## Removing a server
+
+```sql
+SELECT aidb.delete_tool('weather');
+```
+
+Deleting an MCP server removes every tool it advertised along with it — there's no way to remove just one of its tools individually; use `tool_filter` to curate which of its tools are exposed instead.
+
+## Exposing AIDB's own tools over MCP
+
+`aidb.get_mcp_tools()` returns every tool currently in `aidb.tools` (native, SQL, and imported MCP tools alike), reshaped as MCP `tools/list` line items — useful if some other system needs AIDB's tool catalog in MCP's own descriptor format:
+
+```sql
+SELECT * FROM aidb.get_mcp_tools();
+```
+
+This function only converts the catalog into MCP's descriptor shape. The [MCP server](https://www.enterprisedb.com/docs/aidb/latest/mcp-endpoint/) serves the same catalog to external MCP clients over the network.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

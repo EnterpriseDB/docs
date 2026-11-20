@@ -1,0 +1,120 @@
+---
+title: EDB Postgres Distributed (PGD)
+description: EDB Postgres Distributed (PGD) provides multi-master replication and data distribution with advanced conflict management, data-loss protection, and throughput up to 5X faster than native logical replication.
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# EDB Postgres Distributed (PGD)
+
+EDB Postgres Distributed (PGD) is an integrated software stack that transforms standard PostgreSQL into a distributed, always-on database platform. Designed for the modern enterprise where downtime is no longer an option, PGD provides a robust framework for global data distribution, high availability, and simplified consistency management.
+
+## The foundation: PostgreSQL transformed
+
+PGD is implemented as a sophisticated extension compatible with standard PostgreSQL, EDB Postgres Extended Server (PGE), or EDB Postgres Advanced Server (EPAS).
+At its core, PGD is powered by the latest generation of BDR (Bi-Directional Replication). While several active-active systems on the market are still built on the legacy BDR 1.0 architecture, PGD incorporates over ten years of continuous enhancements and enterprise hardening since that initial release. This battle-hardened version provides the specific performance and reliability required for Tier 1 applications, leveraging a decade of production-proven refinements to handle modern distributed workloads.
+
+## Continuous business continuity (Active-Active)
+
+Unlike traditional physical replication, which requires complex and often minutes-long failover processes, PGD is built on logical replication.
+
+- **Zero-wait failover:** Every node in a PGD cluster is inherently writable. If a node or region fails, applications can immediately route traffic to any other active node without waiting for a primary election or recovery process.
+- **Always-on access:** Traffic remains fluid across the cluster, ensuring that "recovery time" is measured in seconds, not minutes.
+
+## Simplified consistency via commit scopes
+
+PGD is the only solution that provides true distributed consistency for PostgreSQL. It acknowledges that different applications have different needs regarding the CAP Theorem (Consistency, Availability, and Partition Tolerance).
+
+- **Predefined guarantees:** Instead of manually tuning dozens of `postgresql.conf` parameters, PGD uses commit scopes. These are predefined, intuitively named configurations that allow you to choose the exact trade-off between performance and durability your application requires.
+- **Reduced complexity:** You can toggle between asynchronous, synchronous, or quorum commit logic using single global settings. For more complex requirements, you can modify these scopes down to the individual transaction level using simple commands to meet specific business needs on the fly.
+
+## Granular data locality & sovereignty
+
+To meet the demands of a global user base and strict regulatory environments like GDPR, PGD supports sophisticated data routing:
+
+- **Selective filtering:** Control exactly which data is replicated to which nodes.
+- **Regional sovereignty:** Pin sensitive user data to specific geographic regions while maintaining a unified global cluster view.
+- **Reduced latency:** Keep data physically close to application instances. By maintaining local data availability at the edge, you eliminate “speed of light” delays associated with cross region round trips.
+
+## Automated conflict management
+
+While we recommend application designs that minimize row-level contention, we recognize that real-world production environments are inherently messy. For those inevitable moments when concurrent writes overlap, PGD provides a robust, automated conflict resolution engine.
+
+Acting as a critical safety net, PGD detects and resolves discrepancies based on established business rules (such as last update wins or custom triggers). This ensures data remains identical across the global fabric without requiring manual DBA intervention or "data cleanup" shifts.
+
+## Global read scaling with subscriber only nodes
+
+For workloads requiring massive read capacity, PGD supports subscriber only nodes. These groups allow you to scale horizontally far beyond the limits of a standard cluster.
+
+- **Massive scale:** PGD is proven in production environments with clusters containing up to 200 subscriber nodes.
+- **Edge access:** These nodes can be deployed anywhere in the world to provide low-latency local access for global users.
+- **Flexible topology:** You can choose how data is distributed. All nodes in a group can connect directly to the primaries, or a single node per group can act as a "hub" that redistributes data to others. This redistribution model includes automatic high availability to ensure the edge remains online.
+- **Performance tuning:** Architects have the choice between minimizing replication latency to the edge and managing the connection load on the primary nodes.
+
+## Managed data lifecycle: AutoPartition and Tiered tables
+
+New data is being created exponentially and old data often needs to remain accessible to meet regulator requirements. PGD builds upon its AutoPartition capability, which automates the creation of time-interval partitions, by introducing Tiered tables. This feature provides a seamless way to manage hot and cold data across different storage tiers while integrating directly with modern data lakehouse architectures.
+
+- **Automated management:** PGD automatically handles the creation and maintenance of time-interval apparitions. You define the policy, such as daily or monthly intervals, and the system ensures the necessary partitions exist before the data arrives.
+- **Unified query interface:** You can query both hot (row based) and cold (columnar) data from a single table. PGD handles the complexity of retrieving data from different storage formats behind the scenes.
+- **Automated data offloading:** PGD automatically migrates older data partitions to a highly compressed columnar format in object storage. This keeps your active SSD focused on high performance, low latency transactions.
+- **Flexible storage and data lake targets:** Tiered tables support cost-effective targets including Amazon S3, MinIO, or local file systems. Furthermore, PGD now supports replication to Apache Iceberg through the Postgres Analytics Accelerator (PGAA).
+- **Streamlined analytics:** With Apache Iceberg support, you can stream data directly from your PGD cluster to a data lake and query that Iceberg data directly from within PGD. This allows you to join real-time transactional data with massive historical datasets without complex ETL pipelines.
+- **Significant cost efficiency:** By moving historical data to object storage or an Iceberg lakehouse, you can reduce storage costs by up to 18x compared to high-performance SSDs
+
+## Seamless lifecycle management
+
+PGD eliminates the “maintenance window.” Because the architecture is distributed and nodes are independent, you can perform rolling upgrades and OS patches one node at a time. The application remains online and connected to the rest of the cluster throughout the entire lifecycle of the database.
+
+| Feature            | Standard PostgreSQL                    | EDB Postgres Distributed (PGD)    |
+| ------------------ | -------------------------------------- | --------------------------------- |
+| Write availability | Single primary only                    | Multi-master (all nodes)          |
+| Failover speed     | Minutes (detection + promotion)        | Near-instant (traffic re-routing) |
+| Consistency        | Rigid (primary/standby)                | Configurable via commit scopes    |
+| Data locality      | All-or-nothing replication             | Granular/selective filtering      |
+| Upgrades           | Significant downtime/re-build standbys | Zero-downtime rolling upgrades    |
+
+> **Note: Note on Reliability:**
+>
+> PGD is built for the modern enterprise where even Tier 2 and Tier 3 applications are expected to be 100% available. By removing the "Primary" bottleneck, PGD ensures your database is as global and resilient as your users.
+
+- [Release notes](https://www.enterprisedb.com/docs/pgd/latest/rel_notes/): Release notes for EDB Postgres Distributed 6 and later
+- [Quickstart](https://www.enterprisedb.com/docs/pgd/latest/quickstart/): Get started with EDB Postgres Distributed, installing and configuring the software, and creating your first cluster.
+- [Overview](https://www.enterprisedb.com/docs/pgd/latest/overview/): An overview of EDB Postgres Distributed.
+- [Planning](https://www.enterprisedb.com/docs/pgd/latest/planning/): Understand the requirements of your application and the capabilities of PGD to plan your deployment.
+- [Installing and configuring](https://www.enterprisedb.com/docs/pgd/latest/deploying/): How to deploy EDB Postgres Distributed with a range of deployment options.
+- [Upgrading](https://www.enterprisedb.com/docs/pgd/latest/upgrades/): Upgrading EDB Postgres Distributed and Postgres
+- [Maintaining](https://www.enterprisedb.com/docs/pgd/latest/lifecycle/): Executing day-to-day maintenance tasks including performance tuning and backup and recovery to ensure high availability and cluster health.
+
+## Guidance for DBAs
+
+- [Ensuring security](https://www.enterprisedb.com/docs/pgd/latest/ensuring-security/): How to secure an EDB Postgres Distributed (PGD) cluster through access controls and column-level encryption.
+- [Configuring connection pooling](https://www.enterprisedb.com/docs/pgd/latest/connection-pooling-dba/): How to choose and enable Connection Manager's built-in connection pooling to reduce server resource overhead and eliminate the need for a separate pooler such as pgBouncer.
+- [Managing geo-replication](https://www.enterprisedb.com/docs/pgd/latest/geo-replication-dba/): How to plan, configure, and operate geo-distributed PGD clusters.
+- [Automating table partitioning](https://www.enterprisedb.com/docs/pgd/latest/partitioning/): How to use AutoPartition to automate RANGE or HASH partitioning for application tables, such as continuously growing event logs and time-series data, or tables that need partitions spread evenly.
+- [Using tiered storage](https://www.enterprisedb.com/docs/pgd/latest/tiered-storage/): Understand how writing Postgres data to lakehouse tables enables cost-efficient data lifecycle management
+- [Recovering from failures](https://www.enterprisedb.com/docs/pgd/latest/recovering-from-failures/): How PGD responds to node, network, and consensus failures, and how to handle replication apply errors and recover failed nodes in an EDB Postgres Distributed (PGD) cluster.
+
+## Guidance for developers
+
+- [Designing applications](https://www.enterprisedb.com/docs/pgd/latest/developing-applications/): Design considerations, compatibility assessment, and replication behaviors for applications built on EDB Postgres Distributed (PGD).
+- [Achieving durability with commit scopes](https://www.enterprisedb.com/docs/pgd/latest/achieving-durability/): How to choose a commit scope that matches your workload's durability, consistency, and availability needs.
+- [Using connection pooling](https://www.enterprisedb.com/docs/pgd/latest/connection-pooling-developer/): How to write applications that work correctly with Connection Manager's built-in connection pooling, including session parameter handling, prepared statements, and transaction lifecycle.
+- [Developing for geo-replication](https://www.enterprisedb.com/docs/pgd/latest/geo-replication-dev/): How to build applications that connect to, write to, and read from geo-distributed PGD clusters.
+
+## Deep dive
+
+- [Node types](https://www.enterprisedb.com/docs/pgd/latest/nodes/): The different types of nodes that can be configured and grouped in a PGD cluster
+- [Node management](https://www.enterprisedb.com/docs/pgd/latest/node_management/): Managing nodes and groups in a PGD cluster
+- [Connection Manager](https://www.enterprisedb.com/docs/pgd/latest/connection-manager/): How to use and configure integrated Connection Manager
+- [Commit scopes](https://www.enterprisedb.com/docs/pgd/latest/commit-scopes/commit-scopes/): Commit scopes give applications granular control about durability and consistency of EDB Postgres Distributed.
+- [Conflict Management](https://www.enterprisedb.com/docs/pgd/latest/conflict-management/): PGD's options for resolving conflicts that arise when multiple nodes write to the same or related rows.
+- [Advanced functionality](https://www.enterprisedb.com/docs/pgd/latest/advanced-functionality/): Advanced EDB Postgres Distributed (PGD) functionality, including DDL replication, replication sets, sequences, stream triggers, and other low-level protocol topics.
+
+## Reference
+
+- [PGD Reference](https://www.enterprisedb.com/docs/pgd/latest/reference/): Reference documentation for EDB Postgres Distributed (PGD) 6.0.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

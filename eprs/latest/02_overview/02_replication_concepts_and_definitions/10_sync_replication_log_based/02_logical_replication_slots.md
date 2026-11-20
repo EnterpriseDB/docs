@@ -1,0 +1,74 @@
+---
+title: Logical replication slots
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/10_sync_replication_log_based/02_logical_replication_slots/
+lastModified: 2025-02-28T09:46:47-05:00
+---
+
+# Logical replication slots
+
+When using the log-based method on a publication database, the underlying logical decoding framework exposes the data changes (the changeset stream) by means of a logical replication slot.
+
+A logical replication slot represents a changeset stream and applies to a single database.
+
+## Naming of replication slots
+
+Replication Server assigns a unique identifier, called the slot name, to each logical replication slot it creates. The identifier is  `xdb_<dboid>_<pubid>`, where `<dboid>` is the publication database object identifier (OID) and `<pubid>` is the publication ID assigned by Replication Server. All slot names are unique in a Postgres database cluster.
+
+Thus, for each single-master replication system using the log-based method, a replication slot is required for the publication database of each such system.
+
+For a multi-master replication system using the log-based method, each primary node requires a replication slot.
+
+## Number of replication slots
+
+The maximum number of replication slots permitted for a database server is controlled by the `max_replication_slots` configuration parameter in the `postgresql.conf` file. Therefore, set this configuration parameter to a value large enough to account for:
+
+- All publication databases defined with the log-based method of single-master replication systems running on the database server.
+- All primary nodes of a multi-master replication system defined with the log-based method running on the database server.
+
+Additional replication slots are required to support the use of replication origin (see [Replication origin](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/10_sync_replication_log_based/04_replication_origin/#replication_origin)).
+
+## High availability and failover
+
+EPRS supports logical replication slot synchronization between primary and standby databases on PostgreSQL and EDB Postgres Advanced Server versions 17 and later.
+
+When enabled, the logical replication slot is replicated to the standby. If the primary fails, the standby can take over, allowing for replication to continue in failover scenarios as the slot is already there.
+
+### Before failover
+
+![Logical replication slots with publication database standby before failover](https://raw.githubusercontent.com/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/eprs/7/images/eprs_logical_replication_600w.svg)
+
+---
+
+### After failover
+
+![Logical replication slots with publication database standby after failover](https://raw.githubusercontent.com/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/eprs/7/images/eprs_logical_replication_failover_600w.svg)
+
+EPRS creates logical replication slots on the publication database primary. If you enabled logical replication slot synchronization while configuring physical replication between publication database primary and publication database standby, then the logical replication slots created on the primary are synchronized to the standby. If the primary fails, the replication server can continue replication from the standby.
+
+### Enabling
+
+To enable logical replication slot synchronization between primary and standby publication database servers in a physical streaming replication:
+
+- Add the following line into the `xdb_pubserver.conf` file before setting up a logical replication cluster.
+
+  ```
+  replicationSlotFailover=true
+  ```
+
+- Update your database configuration. [Logical Decoding Concepts](https://www.postgresql.org/docs/17/logicaldecoding-explanation.html#LOGICALDECODING-REPLICATION-SLOTS-SYNCHRONIZATION) collects the required settings to support slot synchronization. After you configure the database to support logical slot synchronization between primary and standby servers, EPRS will create replication slots with the failover flag set to true.
+
+EDB recommends using a virtual IP for logical replication slot synchronization. EPRS stores the IP address of the primary node and, on promotion, the promoted primary must be mapped to the same IP and port. That allows EPRS to connect to the new primary using the same host details. If virtual IP or a similar IP address management tool isn't used, you must manually update the details of the new primary in EPRS control tables after promotion. You also must restart the service.
+
+> **Note**
+>
+> For existing setups where replication slots are already created, you must re-create the replication slots with this feature enabled by setting up the cluster again.
+
+## Other configuration parameters
+
+For more information on configuration parameters for single-master replication systems, see [Enabling synchronization replication with the log-based method](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/01_prerequisites/02_enable_sync_replication_with_log-based_method/#enable_sync_replication_with_log-based_method).
+
+For multi-master replication systems, see [Enabling synchronization replication with the log-based method](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/01_pre_steps/#enabling_sync_replication_log-based_method_mmr).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

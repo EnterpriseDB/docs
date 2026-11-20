@@ -1,0 +1,45 @@
+---
+title: Enabling usage reporting
+description: Enable usage reporting with the EDB Postgres AI agent.
+product: Postgres tools
+url: https://www.enterprisedb.com/docs/tools/agent/usage_reporting/
+lastModified: 2026-08-17T11:02:15+02:00
+---
+
+# Enabling usage reporting
+
+The EDB Postgres AI agent (packaged as `beacon-agent`) can provide valuable usage data, helping EDB understand how customers are using our products and facilitating core-based licensing and entitlements. This functionality is available regardless of whether you're using Hybrid Manager (HM) for monitoring or are running an on-premises database server.
+
+Usage reporting with the EDB Postgres AI agent is an opt-in service, so it is not enabled by default. Data is only sent to EDB when you explicitly enable it. When enabled, the EDB Postgres AI agent sends a new report every 12 hours by default, starting with the first time the EDB Postgres AI agent runs.
+
+## What type of data is collected?
+
+When configured to send usage data, the EDB Postgres AI agent generates a small report containing environment metadata and resource usage. This includes information like:
+
+- Operating system details
+- Memory and CPU usage
+- Installed database distribution (e.g., PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server) and version
+
+> **Important**
+>
+> This report does not include sensitive data or user-identifiable information.
+
+## Where is the data sent to?
+
+When configured, reporting data goes to `https://pg-usage.enterprisedb.com`, an EDB-managed S3 bucket.
+
+## How do I enable usage reporting with the EDB Postgres AI agent?
+
+If you are using the Hybrid Manager for centralized observability and monitoring, you can enable reporting as part of your EDB Postgres AI agent's configuration. See [Enabling usage reporting in HM](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/usage_reporting/).
+
+If you have a standalone deployment of a database server (PostgreSQL, EPAS, PGE), and you don't wish to use the Hybrid Manager, see [Enabling usage reporting for standalone databases](https://www.enterprisedb.com/docs/tools/agent/stand_alone/).
+
+If you are operating in an air-gapped environment, you can create an usage report as a JSON file within the EDB Postgres AI agent's configuration page and upload it through the option **PGAI Agent Reporting** under the **Tools** section in the left side pane of the [EDB Customer Portal](https://techsupport.enterprisedb.com).
+
+## How many EDB Postgres AI agents do I need to track several databases?
+
+Regardless of your setup, EDB recommends deploying one Agent per host machine with self-managed database clusters. While a single Agent can track databases across different hosts, keeping the Agent on the same machine is necessary to capture full host-level metrics.
+
+To enable tracking and observability, you only need to provide the Agent access to one database per database server instance (via a DSN string). The Agent will automatically discover the other databases on that instance.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

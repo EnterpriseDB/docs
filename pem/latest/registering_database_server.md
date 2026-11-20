@@ -1,0 +1,435 @@
+---
+title: Registering a Postgres server
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/registering_database_server/
+lastModified: 2026-06-22T21:47:06+05:30
+---
+
+# Registering a Postgres server
+
+Before you can manage or monitor a database server with PEM, you must register the database server with PEM and bind the database server to a previously registered PEM agent.
+You can bind a database server to a remote agent (an agent that resides on a different host). However, if the agent resides on a different host, it doesn't have access to all of the statistical information about the instance.
+
+## What does registering a Postgres server do?
+
+Registering a server does two things:
+
+- It adds the server to the server tree in the PEM web application, allowing users to open connections from the web application to the server.
+- It binds the server to a particular agent, meaning that agent will open connections to the server to execute probes and scheduled jobs.
+
+> **Note: Connections from the agent to the monitored server**
+>
+> During agent registration, you're required to provide connection details for the agent to connect to the monitored server. As you normally do for Postgres, you must specify the database to connect to.
+> However, the PEM agent will monitor **every database accessible to the specified user**, not just the database specified.
+>
+> After registration, the agent opens a connection to the specified database. It uses this connection to determine the other databases it can connect to with the same user and then spawns one connection to each.
+
+## How to register a Postgres server
+
+There are three ways to register a server.
+
+- [Use the pemworker utility to register a database server](#using-the-pemworker-utility-to-register-a-server) from the command line on the host where the agent you want to bind is located.
+- [Use automatic server discovery](#registering-a-server-with-automatic-server-discovery) in the PEM web application to automatically register Postgres servers located on the same host as an agent.
+- [Manually register a Postgres server](#manually-registering-a-database-server) by adding all the details in the PEM web application.
+
+## Using the pemworker utility to register a server
+
+You can use the pemworker utility to register a Postgres server.
+During registration, the pemworker utility binds the new server to the agent that resides on the system from which you invoked the registration command.
+
+To register a server on a Linux host, use the command:
+
+```shell
+export PEM_SERVER_PASSWORD=example
+export PEM_MONITORED_SERVER_PASSWORD=example
+pemworker --register-server
+```
+
+To register a server on a Windows host, use the command:
+
+```shell
+set PEM_SERVER_PASSWORD=example
+set PEM_MONITORED_SERVER_PASSWORD=example
+pemworker.exe REGISTER-SERVER
+```
+
+The environment variable `PEM_SERVER_PASSWORD` must be set to the password of the specified `--pem-user`.
+If necessary, you can [specify additional connection parameters](#specifying-additional-parameters-for-the-pemworker-connection) for this user.
+Set the environment variable `PEM_MONITORED_SERVER_PASSWORD` to the password of the Agent-Server binding user (`--asb-host-user` or `--server-user` if the former is not specified).
+
+Append command line options to the command string when invoking the pemworker utility. Follow each option with a corresponding value.
+
+| Option                              | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |   |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | - |
+| `--pem-user`                        | Specifies the name of the PEM administrative user (must have the `pem_admin` role) on the PEM server to use to write the server details to the PEM database. Required.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |   |
+| **Server parameters**               | These parameters are used to populate the connection properties in the PEM web application. They're used when a user connects from the PEM web application to the monitored server. They're also used for connections from the agent to the monitored server unless overridden by Agent Server Binding parameters (see the **Agent-server binding parameters** in this table).                                                                                                                                                                                                                                                   |   |
+| `--server-addr`                     | Specifies the IP address or fully qualified domain name of the monitored server. On Linux systems, you can leave the address field blank to use the default PostgreSQL Unix Domain Socket on the local machine. Or you can set it to an alternative path to a PostgreSQL socket. If you enter a path, the path must begin with a forward slash (/). In this case you must still set `PEM_MONITORED_SERVER_PASSWORD` to a non-empty value, although it isn't used. Because sockets are only accessible locally, if you want to use a socket connection, we recommend that you specify this via `asb-host-name` instead. Required. |   |
+| `--server-port`                     | Specifies the port number of the monitored server. Required.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |   |
+| `--server-database`                 | Specifies the name of the database on the monitored server to which to connect. Required.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |   |
+| `--server-user`                     | Specifies the name of the user used to connect to the monitored server. Required.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |   |
+| `--server-service-name`             | Specifies the name of the operating system service that manages the monitored Postgres server, for example, a systemd service unit on Linux. Optional.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |   |
+| **Agent-server binding parameters** | Use these parameters to override the server parameters. Use these if you want the agent to connect to the monitored server using different credentials from those used by the PEM web application.                                                                                                                                                                                                                                                                                                                                                                                                                               |   |
+| `--asb-host-name`                   | Specifies the IP address or fully qualified domain name of the monitored server. Alternatively, on Linux systems, you can provide path to a PostgreSQL socket. If you enter a path, the path must begin with a forward slash (/). In this case you must still set `PEM_MONITORED_SERVER_PASSWORD` to a non-empty value, although it isn't used. Optional, defaults to `--server-addr` if not supplied.                                                                                                                                                                                                                           |   |
+| `--asb-host-port`                   | Specifies the port number of the monitored server. Optional, defaults to `--server-port` if not supplied.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |   |
+| `--asb-host-db`                     | Specifies the name of the database on the monitored server to which the agent connects. Optional, defaults to `--server-database` if not supplied.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |   |
+| `--asb-host-user`                   | Specifies the name of the user used by the agent to connect to the monitored server. Optional, defaults to `--server-user` if not supplied.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |   |
+| `--asb-ssl-mode`                    | Specifies the type of SSL authentication to use for connections. Supported values include: `prefer`, `require`, `disable`, `verify-CA`, and `verify-full`. Optional, defaults to `prefer`.                                                                                                                                                                                                                                                                                                                                                                                                                                       |   |
+| **Server metadata**                 | These parameters determine how the server is shown in the PEM web application.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |   |
+| `--group`                           | Specifies the name of the group in which the server is displayed. Optional.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |   |
+| `--team`                            | Specifies a Postgres role on the PEM server to be assigned as the team to which the monitored server belongs. Only users with this role can access the server. Optional, defaults to none, meaning all users can access.                                                                                                                                                                                                                                                                                                                                                                                                         |   |
+| `--owner`                           | Specifies a Postgres user on the PEM server to assign as the owner of the monitored server. Optional, defaults to `--pem-user`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |   |
+| `--display-name <name>`             | Specifies the display name of the monitored database server. Optional, defaults to the system hostname.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |   |
+| `--cluster-name`                    | Specifies the cluster name in Object Explorer to which the server object will be added. If the cluster does not exist, it will be created automatically. Optional.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |   |
+| `--profile-id`                      | Specifies the ID of an existing server profile to assign to this server. Optional.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |   |
+| `--profile-name`                    | Specifies the name of an existing server profile to assign to this server. This parameter is optional and will be overridden by `--profile-id` if set.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |   |
+| **Cluster management parameters**   | These parameters allow you to pass information about a cluster manager—EDB Failover Manager (EFM) or Patroni—if one is in use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |   |
+| `--replication-solution`            | Specifies the cluster manager in use with this cluster. Possible values are `efm` and `patroni`. Optional. If you set this option, you must also set the following options for your selected solution.                                                                                                                                                                                                                                                                                                                                                                                                                           |   |
+| `--efm-cluster-name`                | Specifies the name of the EDB Failover Manager cluster that monitors the server (if applicable).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |   |
+| `--efm-install-path`                | Specifies the complete path to the installation directory of EDB Failover Manager (if applicable).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |   |
+| `--patroni-cluster-name`            | Specifies the name of the Patroni cluster of which the server is a member (if applicable).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |   |
+| `--patroni-install-path`            | Specifies the complete path to the installation directory of Patroni (if applicable).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |   |
+| `--patroni-config-path`             | Specifies the complete path to the configuration file of the Patroni cluster (if applicable).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |   |
+| **Other parameters**                |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |   |
+| `--remote-monitoring`               | Set to `yes` if the server isn't located on the same host as the agent. When remote monitoring is enabled (`yes`), agent-level statistics for the monitored server aren't available for custom charts and dashboards, and the remote server isn't accessible by some PEM utilities (such as Audit Manager, Capacity Manager, Log Manager). Optional, defaults to `no`.                                                                                                                                                                                                                                                           |   |
+| `--config-dir`                      | Specifies the directory path of the agent configuration file. Optional, defaults to `<pemworker path>/../etc`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |   |
+| `--force-registration`              | If supplied, registration will go ahead even if an `agent.cfg` file already exists. This option should only be used if directed by EDB support, as it can cause data integrity issues if used improperly.                                                                                                                                                                                                                                                                                                                                                                                                                        |   |
+
+### Specifying additional parameters for the pemworker connection
+
+When registering or unregistering a database server, you must specify an administrative PEM user (`--pem-user`) to perform the registration.
+You must also specify this user's password as `PEM_SERVER_PASSWORD`.
+
+If you need to specify additional connection parameters, or use a non-password authentication method, follow the instructions below.
+
+The pemworker utility uses [libpq](https://www.postgresql.org/docs/current/libpq.html) to connect to Postgres.
+As such, you can set many connection properties using [libpq environment variables](https://www.postgresql.org/docs/current/libpq-envars.html).
+
+For example, if you wish to specify the SSL mode of the connection used to register the agent
+
+```shell
+export PEM_SERVER_PASSWORD=edb
+export PGSSLMODE=require
+pemworker --register-agent ...
+```
+
+Similarly, if you wish to connect using a certificate-authenticated account, you can provide details of the certificate and key.
+Note you must still provide `PEM_SERVER_PASSWORD` but it can be set to any value as it will not be used.
+
+```shell
+export PGSSLCERT=pem-server.crt
+export PGSSLKEY=pem-server.key
+export PEM_SERVER_PASSWORD=none
+pemworker --register-agent ...
+```
+
+### Examples
+
+This example registers a server using only the required parameters.
+The user `admin01` will be used to connect to the PEM server. The credentials supplied for the `--server-*` parameters will be used to create a connection from the agent to the monitored server.
+The same details will also be used to populate the server connection details in the PEM web application.
+
+```shell
+pemworker --register-server \
+          --pem-user admin01 \
+          --server-addr pg123.prod.infra.business \
+          --server-port 5432 \
+          --server-database postgres \
+          --server-user prod_admin 
+```
+
+The following example specifies different parameters to used for the connection from the agent to the monitored server.
+They override the fully qualified domain name provided in `--server-addr` with `localhost` instead. They also override the user to use a `local_monitor` user.
+This might be a user who's permitted to connect only from the same host, for example.
+
+This example also specifies a service name, `postgresql`, which means the PEM agent can restart this server to apply configuration changes.
+
+```shell
+pemworker --register-server \
+          --pem-user admin01 \
+          --server-addr pg123.prod.infra.business \
+          --server-port 5432 \
+          --server-database postgres \
+          --server-user prod_admin \
+          --server-service-name postgresql \
+          --asb-host-name localhost \
+          --asb-host-user local_monitor 
+```
+
+### Using the pemworker utility to unregister a server
+
+You can use the pemworker utility to unregister a database server. To unregister a server, invoke the pemworker utility.
+
+On a Linux host, use the command:
+
+`pemworker --unregister-server`
+
+On a Windows host, use the command:
+
+`pemworker.exe UNREGISTER-SERVER`
+
+Append command line options to the command string when invoking the pemworker utility. Follow each option with by a corresponding value:
+
+| Option            | Description                                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--pem-user`      | Specifies the name of the PEM administrative user. Required.                                                   |
+| `--asb-host-name` | Specifies the hostname that the agent will use to connect to the database server.                              |
+| `--server-port`   | Specifies the port number of the host. Required.                                                               |
+| `--config-dir`    | Specifies the directory path of the agent configuration file. Optional, defaults to `<pemworker path>/../etc`. |
+
+Use the `PEM_SERVER_PASSWORD` environment variable to provide the password for the PEM server to allow the pemworker utility to connect to the PEM server as `--pem-user`.
+
+## Registering a server with automatic server discovery
+
+If the server you want to monitor resides on the same host as the monitoring agent, you can use the Auto Discovery dialog box to simplify the registration and binding process.
+
+> **Note: Limitations of automatic discovery**
+>
+> Automatic server discovery doesn't perform an exhaustive search for Postgres binaries or services. It detects only the Postgres instances created directly by the package installer.
+
+To enable auto discovery for a specific agent, you must enable the Server Auto Discovery probe. To do so, select the PEM agent in the PEM client tree, and select **Management > Manage Probes**. When the **Manage Probes** tab opens, confirm that the slider in the **Enabled?** column is set to **Yes**.
+
+To open the Auto Discovery dialog box, select a PEM agent in the PEM client tree and select **Management > Auto Discovery**.
+
+When the Auto Discovery dialog box opens, the **Discovered Database Servers** box displays a list of servers that currently aren't being monitored by a PEM agent. Select the box next to a server name to display information about the server in the **Server Connection Details** box and connection properties for the agent in the **Agent Connection Details** box.
+
+Use **Check All** to select the box next to all of the displayed servers or **Uncheck All** to clear all of the boxes to the left of the server names.
+
+The fields in the **Server Connection Details** box provide information about the server that PEM monitors:
+
+- Accept or modify the name of the monitored server in the **Name** field. The specified name is displayed in the tree of the PEM client.
+- Use the **Server group** list to select the server group under which the server is displayed in the PEM client tree.
+- Use the **Host name/address** field to specify the IP address of the monitored server.
+- The **Port** field displays the port that's monitored by the server. You can't modify this field.
+- Provide the name of the service in the **Service ID** field. You must provide the service name to enable some PEM functionality.
+- The **Maintenance database** field specifies the database to use for the initial connection and any global maintenance operations. Customize the content of the **Maintenance database** field for your installation.
+
+The fields in the **Agent Connection Details** box specify the properties for the PEM agent to use when connecting to the server:
+
+- The **Host** field displays the IP address used for the PEM agent binding.
+- The **User name** field displays the name used by the PEM agent when connecting to the selected server.
+- The **Password** field displays the password associated with the specified user name.
+- Use the **SSL mode** field to specify your SSL connection preferences.
+
+After you finish specifying the connection properties for the servers that you're binding for monitoring, select **OK** to register the servers.
+
+After selecting **OK**, the newly registered server is displayed in the PEM tree and is monitored by the PEM server.
+
+## Manually registering a database server
+
+To manage or monitor a database server with PEM, you must:
+
+- Register your EDB Postgres Advanced Server or PostgreSQL server with the PEM server.
+- Bind the database server to a PEM agent.
+
+You can use the Register Server dialog box to provide registration information for a server, bind a PEM agent, and display the server in the PEM client tree. To open the Create Server dialog box, select **Object > Register > Server**.
+
+> **Note**
+>
+> - You must ensure the `pg_hba.conf` file of the Postgres server that you're registering allows connections from the host of the PEM client before attempting to connect.
+> - Only database superusers or users with the `pem_admin` role can bind a database server to a PEM agent.
+
+Use the **General** tab to describe the general properties of the server:
+
+- Use the **Name** field to specify a name for the server. The name identifies the server in the PEM browser tree.
+- You can use **Server group/Cluster** to organize your servers, agents, and clusters in the tree. Using Server groups/Cluster can help you manage large numbers of servers more easily. For example, you can have a production group, a test group, or LAN-specific groups. Use the **Server group/Cluster** list to select the server group/cluster in which to display the new server.
+- Use the **Team** field to specify a PostgreSQL role name. Only PEM users who are members of this role, who created the server initially, or have superuser privileges on the PEM server see this server when they log in to PEM. If this field is left blank, by default all PEM users see the server. You can use the `show_objects_with_no_team` parameter in the Server Configuration dialog box to change the behavior. If `show_objects_with_no_team` is set to `false`, the server with no team isn't visible to all other users.
+- Use the **Background** color selector to select the color to display in the PEM tree behind database objects that are stored on the server.
+- Use the **Foreground** color selector to select the font color of labels in the PEM tree for objects stored on the server.
+- Select **Connect now?** to attempt a server connection when you select **Save**. Clear **Connect now?** if you don't want the PEM client to validate the specified connection parameters until a later connection attempt.
+- Provide notes about the server in the **Comments** field.
+
+> **Note**
+>
+> The **Team** field in the Server Properties dialog is editable only if one of the following conditions is met:
+>
+> - User has the `pem_super_admin` role.
+> - User is the owner of the server.
+> - User is creating a new server (this requires the `pem_database_server_registration` role).
+>
+> In all other scenarios, the field is read-only.
+
+Use the **Connection tab** to specify connection details for the server:
+
+- Specify the IP address of the server host or the fully qualified domain name in the **Host name/address** field. On Unix-based systems, leave the address field blank to use the default PostgreSQL Unix Domain Socket on the local machine. Or you can set an alternative path containing a PostgreSQL socket. If you enter a path, the path must begin with a forward slash (/).
+- Specify the port number of the host in the **Port** field.
+- Use the **Maintenance database** field to specify the name of the initial database for PEM to connect to that's expected to contain pgAgent schema and adminpack objects installed (both optional). On PostgreSQL version 8.1 and later, the maintenance DB is normally called `postgres`. On earlier versions `template1` is often used, although it's better to create a `postgres` database to avoid cluttering the template database.
+- Set **Kerberos Authentication** to **Yes** to use the Kerberos authentication for a monitored server. By default, the monitored server uses the same authentication method as the PEM server. If the monitored server doesn't want to use Kerberos authentication, then set `ALLOW_DATABASE_CONNECTION_WITHOUT_KERBEROS` to `TRUE` in the `config_local.py` file.
+- Specify the name to use when authenticating with the server in the **Username** field.
+- Provide the password associated with the specified user in the **Password** field.
+- Select **Save password?** to store passwords in encrypted format in a PEM backend database for later reuse. Each password is stored on a per-user, per-server basis and isn't shared with other team members. PEM uses the saved password to connect the database server next time. To remove a saved password, disconnect the database server first, and then select **Object > Clear Saved Password**.
+- Use the **Role** field to specify the name of the role that's assigned the privileges for the client to use after connecting to the server. This value allows you to connect as one role and then assume the permissions of another role (the one you specified in this field) when the connection is established. The connecting role must be a member of the role specified.
+
+Use the fields in the **Parameters** tab to configure your connection settings:
+
+Click the `+` button to add a new parameter. Common parameters include:
+
+- **Host address**: Specify the server's IP address to avoid DNS lookups and improve connection speed. When using Kerberos, GSSAPI, SSPI, or verify-full SSL mode, it's recommended to provide both the hostname and IP address.
+- **Password file**: Specify the path to a .pgpass file to enable passwordless authentication. For more information, see PostgreSQL documentation, Section 33.15.
+- **Connection timeout**: Set the maximum time (in seconds) to wait for a connection. A value of 0 or empty means wait indefinitely. The default is 10 seconds; using a value less than 2 seconds is not recommended.
+- **SSL mode**: Select the type of SSL connection to use. For more information, see [the PostgreSQL documentation](https://www.postgresql.org/docs/current/static/libpq-ssl.html).
+
+You can use the platform-specific file manager dialog box to upload files that support SSL encryption to the server. To open the file manager, select the icon located to the right of each of the following fields:
+
+- Use the **Client certificate** field to specify the file containing the client SSL certificate. This file replaces the default `<STORAGE_DIR>/<USERNAME>/.postgresql/postgresql.crt`. This parameter is ignored if an SSL connection isn't made.
+- Use the **Client certificate key** field to specify the file containing the secret key used for the client certificate. This file replaces the default `<STORAGE_DIR>/<USERNAME>/.postgresql/postgresql.key`. This parameter is ignored if an SSL connection isn't made.
+- Use the **Root certificate** field to specify the file containing the SSL certificate authority. This file replaces the default `~/.postgresql/root.crt` file. This parameter is ignored if an SSL connection isn't made.
+- Use the **Certificate revocation list** field to specify the file containing the SSL certificate revocation list. This list replaces the default list, found in `~/.postgresql/root.crl`. This parameter is ignored if an SSL connection isn't made.
+- When **SSL compression?** is set to **True**, data sent over SSL connections is compressed. The default value is **False** (compression is disabled). This parameter is ignored if an SSL connection isn't made.
+
+> **Warning**
+>
+> Certificates, private keys, and the revocation list are stored in the per-user file storage area on the server, which is owned by the user account under which the PEM server process is run. This means that administrators of the server might be able to access those files. Use caution before using this feature.
+
+Use the **SSH Tunnel** tab to configure SSH tunneling. You can use a tunnel to connect a database server through an intermediary proxy host to a server that resides on a network to which the client might not be able to connect directly.
+
+- Set **Use SSH tunneling** to **Yes** to use an SSH tunnel when connecting to the specified server.
+- Specify the name or IP address of the SSH host (through which client connections are forwarded) in the **Tunnel host** field.
+- Specify the port of the SSH host through which client connections are forwarded in the **Tunnel port** field.
+- Specify the name of a user with login privileges for the SSH host in the **Username** field.
+- Specify the type of authentication to use when connecting to the SSH host in the **Authentication** field.
+  - Select **Password** to use a password for authentication to the SSH host. This is the default.
+  - Select **Identity file** to use a private key file when connecting.
+- If the SSH host is expecting a private key file for authentication, use the **Identity file** field to specify the location of the key file.
+- If the SSH host is expecting a password, use the **Password** field to specify the password. If an identity file is being used, specify the passphrase.
+- Enable the **Save password?** to instruct the PEM to save the password for future use. Use [Clear SSH Tunnel Password](https://www.pgadmin.org/docs/pgadmin4/9.3/clear_saved_passwords.html#clear-saved-passwords) to remove the saved password.
+- Specify the number of seconds in the **Keep alive (seconds)** field to define the period in which, if no data was sent over the connection, `keepalive` packet will be sent (ignored by the remote host). This is useful to keep the connections alive over a NAT. Specify 0 to disable `Keep alive`.
+
+Use the **Advanced** tab to specify details that are used to manage the server:
+
+- Use the **DB restriction** field to specify a SQL restriction to use against the [pg\_database](http://www.postgresql.org/docs/current/interactive/catalog-pg-database.html) table to limit the databases displayed in the tree. For example, you might enter: `'live_db'`, `'test_db'` to display only the `live_db` and `test_db` databases. You can also limit the schemas shown in the database from the database Properties dialog box by entering a restriction against [pg\_namespace](http://www.postgresql.org/docs/current/interactive/catalog-pg-namespace.html).
+
+- Use the **Password exec command** field to specify a shell command that retrieves the SQL password at runtime. The command's stdout is used as the password.
+
+This is useful when passwords are short-lived tokens, such as in [PAM authentication](https://www.postgresql.org/docs/current/auth-pam.html) scenarios.
+
+You can include placeholders in the command to dynamically pass connection details:
+
+- **%HOSTNAME%** – Server hostname
+
+- **%PORT%** – Server port
+
+- **%USERNAME%** – Database username
+
+- Use the **Password exec expiration** field to set the maximum age (in seconds) of the password retrieved by the **Password exec command**.
+  - If not specified, the password remains valid for the duration of the session.
+  - If set to 0, the command will be executed for every new connection or reconnection.
+  - If the password is time-limited (e.g., a temporary token), set this value slightly before its expiration time to avoid authentication failures.
+
+- Use the **Prepare threshold** field to control when queries are prepared:
+
+  - **0**: Prepare the query on its first execution.
+  - **Positive integer**: Prepare the query after it has been executed that many times.
+  - **Blank**: Disable prepared statements entirely for this connection.
+
+  This setting is especially useful when using external connection pooling tools like PgBouncer, which are incompatible with prepared statements — set this field to blank in such cases.
+
+- Use the **Service ID** field to specify parameters to the database service process. For servers that are stored in the Enterprise Manager directory, enter the service ID. On Windows machines, this is the identifier for the Windows service. On Linux machines, the name of the init script used to start the server is `/etc/init.d` and the name of the systemd script to start the server is `systemctl`. For example, the name of the EDB Postgres Advanced Server 11 service is `edb-as-11`. For local servers, the setting is operating system dependent:
+
+  - If the PEM client is running on a Windows machine, it can control the postmaster service if you have enough access rights. Enter the name of the service. In case of a remote server, prepend it with the machine name (such as `PSE1\pgsql-8.0`). PEM automatically discovers services running on your local machine.
+  - If the PEM client is running on a Linux machine, it can control processes running on the local machine if you have enough access rights. Provide a full path and needed options to access the `pg_ctl` program. When executing service control functions, PEM appends status/start/stop keywords to this. For example:
+
+    `sudo /usr/pgsql-x/bin/pg_ctl -D /var/lib/pgsql/x/data`
+
+    where `x` is the version of the PostgreSQL database server.
+
+Use the **Post Connection SQL** tab to specify SQL queries.
+
+- Use the **Post Connection SQL** field to write the SQL queries that executes in autocommit mode for each connection made to any of the database in the server.
+
+Use the **Tags** tab to add tags.
+
+- Use the **Tags** tab to add custom tags, that appears next to the server node label in the Object Explorer tree.
+
+To add a tag:
+
+```
+- Click the **+** button.
+- Use the **Text** field to specify the tag name.
+- Use the **Color** field to select an accent color for the tag.
+```
+
+Use the **Replication** tab to select the replication solution used by the server.
+
+- Use the **Replication Solution** for your server:
+
+  - If the server is a member of any replication solution, you can use PEM to monitor the health of the cluster and to replace the primary node if necessary.
+
+  **EFM**
+
+  - To enable PEM to monitor Failover Manager, use the **EFM cluster name** field to specify the cluster name. The cluster name is the prefix of the name of the Failover Manager cluster properties file name. For example, if the file name is `efm.properties`, the cluster name is efm.
+  - If you're using PEM to monitor the status of a Failover Manager cluster, use the **EFM installation path** field to specify the location of the Failover Manager binary file. By default, the Failover Manager binary file is installed in `/usr/edb/efm-x.x/bin`, where `x.x` specifies the Failover Manager version.
+
+  **Patroni**
+
+  - To enable PEM to monitor Patroni cluster, use the **Patroni cluster name** field to specify the cluster name. The default name of the cluster is Patroni. You can find the cluster name in the `Scope` value of the Patroni configuration file. The configuration file is in YAML format and often named as patroni.yaml.
+  - Use the **Patroni installation path** to specify the Patroni binary file location. The common locations are:
+    - `/usr/local/bin`
+    - `/usr/bin`
+  - Use the **Patroni config path** field to specify the configuration file. The common locations are:
+    - `/etc/patroni/patroni.yaml`
+    - `/etc/patroni.yaml`
+    - The directory where the Patroni process is started
+
+  **None**
+
+  - Select **None** if you are not using any of the replication solution.
+
+Use the **PEM Agent** tab to specify connection details for the PEM agent.
+
+On the **Connection Parameters** tab:
+
+- Use the **Bound agent** list to select a PEM agent. One agent can monitor multiple Postgres servers.
+
+- Set **Remote monitoring?** to **Yes** to indicate that the PEM agent doesn't reside on the same host as the monitored server. When remote monitoring is enabled, agent level statistics for the monitored server aren't available for custom charts and dashboards, and the remote server can't be accessed by some PEM utilities (such as Audit Manager, Capacity Manager, Log Manager).
+
+- In the **Host** field, enter the IP address or socket path for the agent to use when connecting to the database server. By default, the agent uses the host address shown on the **General** tab. On a Unix server, you might want to specify a socket path, such as `/tmp`.
+
+- Enter the **Port** number for the agent to use when connecting to the server. By default, the agent uses the port defined on the **Properties** tab.
+
+- Use the **SSL** field to specify an SSL operational mode. Specify **require**, **prefer**, **allow**, **disable**, **verify-ca**, or **verify-full**.
+
+| Mode        | Description                                                                                                                      |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| require     | Require SSL encryption for transactions between the server and the agent.                                                        |
+| prefer      | Use SSL encryption between the server and the agent if SSL encryption is available.                                              |
+| allow       | Allow the connection to use SSL if required by the server.                                                                       |
+| disable     | Disable SSL encryption between the agent and the server.                                                                         |
+| verify-ca   | Require SSL encryption and require the server to authenticate using a certificate registered by a certificate authority.         |
+| verify-full | Require SSL encryption and require the server to authenticate using a certificate registered by a trusted certificate authority. |
+
+For more information about using SSL encryption, see the [PostgreSQL documentation](https://www.postgresql.org/docs/12.1/libpq-ssl.html).
+
+- Use the **Database** field to specify the name of the Postgres database to which the agent initially connects.
+
+  - If you're registering a EDB Postgres Distributed database node then specify the EDB Postgres Distributed-enabled database name in this field.
+    In the **Username** field, specify the name of the role for the agent to use when connecting to the server. The specified role must be a database superuser for all of the features to work as expected. For the list of features that don't work if the specified role isn't a database superuser, see [Agent privileges](https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/setting_agent_privileges/). If you're using the Kerberos authentication method, then specify the user having the pgd\_monitor or pgd\_superuser role in this field.
+
+  - If you're using Postgres version 10 or later, you can use the pg\_monitor role to grant the required privileges to a non-superuser. For information about the pg\_monitor role, see [Default Roles](https://www.postgresql.org/docs/current/default-roles.html).
+    In the **Username** field, specify the name of the user for the agent to use when connecting to the server. The specified role must be a database superuser for all of the features to work as expected. If you're using Postgres version 10 or later, you can use the pg\_monitor role to grant the required privileges to a nonsuperuser. For information about the pg\_monitor role, see [Default Roles](https://www.postgresql.org/docs/current/default-roles.html).
+
+- Specify the password for the agent to use when connecting to the server in the **Password** field and **Confirm password** fields. If you don't specify a password, you must configure the authentication for the agent manually. For example, you can use a `.pgpass` file, which must be present and accessible on the system where agent is installed.
+
+On the **Advanced** tab:
+
+- Set **Allow takeover?** to **Yes** to specify that another agent can take over the server. This feature allows an agent to take responsibility for the monitoring of the database server if, for example, the server moved to another host as part of a high-availability failover process.
+
+- Use the plus sign (**+**) to add the database you want to exclude from the PEM monitoring. You can't exclude the database mentioned on the **Connection Parameters** tab of the **PEM Agent** tab.
+
+> **Note**
+>
+> The database-level probes don't execute for excluded databases, but the server-level probes can collect the database statistics.
+
+To view the properties of a server, right-click the server name in the PEM client tree, and select **Properties** from the context menu. To modify a server's properties, disconnect from the server before opening the Properties dialog box.
+
+## Verifying the connection and binding
+
+Once registered, the new server is added to the PEM browser tree and is displayed on the Global Overview dashboard.
+
+When first connecting to a newly bound server, the Global Overview dashboard might display the new server with a status of “unknown” in the server list. Before recognizing the server, the bound agent must execute a number of probes to examine the server. These probes might take a few minutes to complete, depending on network availability.
+
+In a few minutes, bar graphs on the Global Overview dashboard show that the agent connected successfully. The new server is included in the **Postgres Server Status** list.
+
+If after five minutes the Global Overview dashboard still doesn't list the new server, check the logfiles for the monitoring agent for errors. Right-click the agent's name in the tree, and select the **Dashboards > Probe Log Analysis** from the context menu.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

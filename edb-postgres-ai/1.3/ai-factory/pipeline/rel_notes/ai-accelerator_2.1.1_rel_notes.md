@@ -1,0 +1,35 @@
+---
+title: AI Accelerator - Pipelines 2.1.1 release notes
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/rel_notes/ai-accelerator_2.1.1_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# AI Accelerator - Pipelines 2.1.1 release notes
+
+Released: 3 February 2025
+
+In this release, we add support for Nvida NIM, introduce new model names, and improve the retriever pipeline.
+
+## Highlights
+
+- Support for NVIDIA NIM added.
+- `embeddings` and `completions` are new model names.
+- Reranking using NIM is now available.
+- Source tables in retriever pipelines now support schemas.
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Renamed openai_embedding and openai_completion</summary><p>The model names <code>openai_embedding</code> and <code>openai_completion</code> have been renamed to <code>embeddings</code> and <code>completions</code> respectively. The old names are still supported for backward compatibility.</p>
+</details></td></tr>
+<tr><td><details><summary>Improved model provider credential management</summary><p>Improve model provider credential management in the create_model() call. New credentials no longer get silently ignored if credentials already exist.</p>
+</details></td></tr>
+<tr><td><details><summary>Added handler for the FDW (foreign data wrappers) used for the model registry</summary><p>The handler has no functionality but it satisfies the FDW handler interface. This avoids certain issues with PG system calls that happen when FDWs don't have any handlers.</p>
+</details></td></tr>
+<tr><td><details><summary>Added schema support / fully qualified identifiers to the retriever pipeline.</summary><p>For retrievers with table sources, the source table and vector table can now be in any schema in the PG database. The schema can either be passed during retriever creation (fully qualified identifier) or can be omitted. If the schema is omitted, we resolve and store the applicable schema.</p>
+</details></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

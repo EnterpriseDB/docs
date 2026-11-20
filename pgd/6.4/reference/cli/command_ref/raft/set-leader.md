@@ -1,0 +1,72 @@
+---
+title: pgd raft set-leader
+product: EDB Postgres Distributed (PGD)
+version: 6.4.0
+url: https://www.enterprisedb.com/docs/pgd/6.4/reference/cli/command_ref/raft/set-leader/
+lastModified: 2026-08-21T09:22:11+02:00
+---
+
+# pgd raft set-leader
+
+## Synopsis
+
+The `pgd raft set-leader` command manually triggers a leadership transfer within a Raft group. It instructs the current leader to step down and facilitates the election of the specified target node as the new Raft leader.
+
+## Syntax
+
+```plaintext
+pgd raft set-leader [OPTIONS] <LEADER>
+```
+
+## Arguments
+
+| Argument   | Description                                         |
+| ---------- | --------------------------------------------------- |
+| `<LEADER>` | The name of the node to become the new Raft leader. |
+
+## Options
+
+The following options are available for the `pgd raft set-leader` command:
+
+| Short | Long                  | Description                                                                                                                                |
+| ----- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+|       | --group               | The name of the group in which to change the leader. If omitted, the global group is used.                                                 |
+|       | --wait-for-completion | If set, the CLI will block and monitor the cluster state until the target node successfully assumes leadership or the operation times out. |
+
+See [Global Options](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/#global-options) for common global options.
+
+## Examples
+
+### Change the leader of the global group
+
+```shell
+pgd raft set-leader kaboom
+```
+
+```output title="Output"
+Command submitted successfully
+```
+
+### Attempt to set a node that is already the leader
+
+```shell
+pgd raft set-leader kaftan --group dc1_subgroup
+```
+
+```output title="Output"
+Node kaftan is already the raft leader
+```
+
+### Change the leader and wait for completion
+
+Using the `--wait-for-completion` flag sets a 60-second statement timeout. The CLI will attempt to verify the new leader using the existing connection, or retry with a new connection if a proxy (like Connection Manager) reroutes the traffic.
+
+```shell
+pgd raft set-leader kaolin --group dc1_subgroup --wait-for-completion
+```
+
+```output title="Output"
+Command executed successfully
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

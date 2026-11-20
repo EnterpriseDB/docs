@@ -1,0 +1,26 @@
+---
+title: Managing alerts
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/monitoring_performance/alerts/managing_alerts/
+lastModified: 2026-03-09T19:19:09+05:30
+---
+
+# Managing alerts
+
+Use the PEM client's **Manage Alerts** tab to define, copy, or manage alerts. To open the **Manage Alerts** tab, select **Management > Alerts > Manage Alerts**.
+
+![The Manage Alerts tab](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/pem/10/images/alerting_manage_alerts.png)
+
+Use the Quick Links toolbar to open dialog boxes and tabs for managing alerts:
+
+- Select **Copy Alerts** to open the Copy Alert Configuration dialog box and copy an alert definition.
+- Select **Alert Templates** to open the **Alert Template** tab and modify or create an alert template.
+- Select **Email Templates** to open the Email Template dialog box and modify the default email template to customize an email notification.
+- Select **Email Groups** to open the **Email Groups** tab and modify or create an email group.
+- Select **Webhooks** to open the **Webhooks** tab and create or manage the webhooks endpoints.
+- Select **Server Configurations** to open the Server Configuration dialog box and review or modify server configuration settings.
+
+Use the table in the Alerts section of the **Manage Alerts** tab to create new alerts or manage existing alerts.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

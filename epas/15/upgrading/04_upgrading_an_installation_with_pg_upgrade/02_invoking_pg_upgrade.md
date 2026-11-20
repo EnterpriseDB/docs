@@ -1,0 +1,58 @@
+---
+title: Invoking pg_upgrade
+description: Describes how to invoke the pg_upgrade utility
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/upgrading/04_upgrading_an_installation_with_pg_upgrade/02_invoking_pg_upgrade/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# Invoking pg\_upgrade
+
+When invoking `pg_upgrade`, you must specify the location of the old and new cluster's `PGDATA` and executable (`/bin`) directories, the name of the EDB Postgres Advanced Server superuser, and the ports on which the installations are listening. A typical call to invoke `pg_upgrade` to migrate from EDB Postgres Advanced Server 14 to EDB Postgres Advanced Server 15 takes the form:
+
+```shell
+pg_upgrade
+--old-datadir <path_to_14_data_directory>
+--new-datadir <path_to_15_data_directory>
+--user <superuser_name>
+--old-bindir <path_to_14_bin_directory>
+--new-bindir <path_to_15_bin_directory>
+--old-port <14_port> --new-port <14_port>
+```
+
+Where:
+
+`--old-datadir path_to_14_data_directory`
+
+Use the `--old-datadir` option to specify the complete path to the `data` directory in the EDB Postgres Advanced Server 14 installation.
+
+`--new-datadir path_to_15_data_directory`
+
+Use the `--new-datadir` option to specify the complete path to the `data` directory in the EDB Postgres Advanced Server 15 installation.
+
+`--username superuser_name`
+
+Include the `--username` option to specify the name of the EDB Postgres Advanced Server superuser. The superuser name must be the same in both versions of EDB Postgres Advanced Server. By default, when EDB Postgres Advanced Server is installed in Oracle mode, the superuser is named `enterprisedb`. If installed in PostgreSQL mode, the superuser is named `postgres`.
+
+If the EDB Postgres Advanced Server superuser name isn't the same in both clusters, the clusters won't pass the `pg_upgrade` consistency check.
+
+`--old-bindir path_to_14_bin_directory`
+
+Use the `--old-bindir` option to specify the complete path to the `bin` directory in the EDB Postgres Advanced Server 14 installation.
+
+`--new-bindir path_to_15_bin_directory`
+
+Use the `--new-bindir` option to specify the complete path to the `bin` directory in the EDB Postgres Advanced Server 15 installation.
+
+`--old-port 14_port`
+
+Include the `--old-port` option to specify the port on which EDB Postgres Advanced Server 14 listens for connections.
+
+`--new-port 15_port`
+
+Include the `--new-port` option to specify the port on which EDB Postgres Advanced Server 15 listens for connections.
+
+- [Command line options for pg\_upgrade](https://www.enterprisedb.com/docs/epas/15/upgrading/04_upgrading_an_installation_with_pg_upgrade/02_invoking_pg_upgrade/01_command_line_options_reference/): pg\_upgrade accepts the following command line options. Each option is available in a long form or a short form:
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,48 @@
+---
+title: Using HashiCorp Vault
+description: Learn how to secure your encryption key with a HashiCorp Vault key.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/key_store/hashicorp/
+lastModified: 2026-11-02T10:35:00+01:00
+---
+
+# Using HashiCorp Vault
+
+Protect the data encryption key with a key managed by HashiCorp Vault.
+
+## Configuration example
+
+Enable transit with [HashiCorp Vault Transit Secrets Engine](https://developer.hashicorp.com/vault/docs):
+
+```shell
+vault secrets enable transit
+```
+
+Create a key and give it a name:
+
+```shell
+vault write -f transit/keys/pg-tde-master-1
+```
+
+Use the `vault write` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key. You can provide these commands as environment variables or as `initdb` command-line arguments.
+
+### Via environment variable
+
+```shell
+PGDATAKEYWRAPCMD='base64 | vault write -field=ciphertext transit/encrypt/pg-tde-master-1 plaintext=- > "%p"'
+PGDATAKEYUNWRAPCMD='vault write -field=plaintext transit/decrypt/pg-tde-master-1 ciphertext=- < "%p" | base64 -d'
+```
+
+### Via command argument
+
+```shell
+initdb --data-encryption -D /var/lib/edb/as16/data \
+  --key-wrap-command='base64 | vault write -field=ciphertext transit/encrypt/pg-tde-master-1 plaintext=- > "%p"' \
+  --key-unwrap-command='vault write -field=plaintext transit/decrypt/pg-tde-master-1 ciphertext=- < "%p" | base64 -d'
+```
+
+> **Note**
+>
+> Shell commands with pipes, as in this example, have a drawback: a pipe's exit status reflects only its last command, so a failure earlier in the pipeline can go unreported. Postgres partly compensates by checking whether the wrap or unwrap command produced no output, but it's safer to make the command itself robust — for example, with the `pipefail` option available in some shells, or the `mispipe` command available on some operating systems. For anything more complex, put the command in an external shell script or program instead of defining it inline.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

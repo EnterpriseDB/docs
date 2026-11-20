@@ -1,0 +1,79 @@
+---
+title: Confirmation levels
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/commit-scopes/comparing/
+lastModified: 2026-10-27T13:40:59+01:00
+---
+
+# Confirmation levels
+
+A confirmation level sets how far a node has processed a transaction before it confirms the transaction to the origin node.
+
+You set the level as part of a [commit scope rule](https://www.enterprisedb.com/docs/pgd/latest/commit-scopes/commit-scope-rules/#the-confirmation-level). Each rule is made up of two or three parts: the [commit scope group](https://www.enterprisedb.com/docs/pgd/latest/commit-scopes/origin_groups/), an optional confirmation level, and the [commit scope kind](https://www.enterprisedb.com/docs/pgd/latest/commit-scopes/commit-scope-rules/#the-commit-scope-kinds). Setting a level is optional. If you leave it out, the default level, `visible`, applies.
+
+The levels are inspired by the PostgreSQL [`synchronous_commit`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT) settings, but PGD behaves differently from a PostgreSQL [warm standby](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION).
+
+```
+commit_scope_group [ ON confirmation_level ] commit_scope_kind
+```
+
+For example, to ask a majority of nodes in the origin group to confirm after they flush the transaction to disk, add `ON durable` to the rule:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'example_bdr_group',
+    rule := 'MAJORITY ORIGIN GROUP ON durable SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+The full syntax diagram is in the [commit scope syntax](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/commit-scopes/#commit-scope-syntax) reference.
+
+## Confirmation level types
+
+PGD has four confirmation levels: `received`, `replicated`, `durable`, and `visible`. Each level is a later point in a node's processing of the transaction, and the node confirms once it reaches that point.
+
+### `received`
+
+A peer confirms as soon as it receives the transaction, before it updates its tuple store or writes anything to storage. The origin node only waits for the transaction to arrive, so with large transactions, `received` can improve transactions per second.
+
+If a Postgres server or operating system crash hits the peer after it confirms but before it writes the transaction to persistent storage, the peer loses the transaction and it has to be sent again.
+
+Because a peer confirms before it applies the transaction, reads from that peer can return stale data.
+
+### `replicated`
+
+For commit scope kinds that support `replicated`, it's the same as `received`. Synchronous Commit and CAMO don't distinguish the two levels, and Quorum Commit supports neither.
+
+### `durable`
+
+A peer confirms after it receives the transaction, applies it to the tuple store, and flushes the changes to storage. The origin node waits for the flush. With some commit scope kinds, such as Quorum Commit, the peer hasn't yet made the changes available to other sessions. The level is similar to the PostgreSQL [`on`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT) setting.
+
+The flush protects against data loss after a crash and recovery of the peer, which recovers without retransmission.
+
+If a session commits a transaction with the `durable` level, then disconnects and reconnects, the transaction's changes aren't guaranteed to be visible to the reconnected session. The level doesn't guarantee consistency during failover.
+
+### `visible`
+
+A peer confirms after it receives and applies the transaction. The changes are also visible to concurrent transactions. With Synchronous Commit and CAMO, `visible` behaves the same as `durable`, because PGD applies a transaction before it flushes it. With Quorum Commit, peers confirm after applying the transaction, without waiting for a flush. The `visible` level is the default and is similar to the PostgreSQL [`remote_apply`](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT) setting.
+
+Confirmation of visibility means that the transaction was fully applied remotely. If a session commits a transaction with an `ON visible` rule before disconnecting and reconnecting, the transaction's changes are guaranteed to be visible to the reconnected session.
+
+## Comparing levels by commit scope kind
+
+The origin confirms a transaction when its results become visible to the client or application. A peer applies a transaction when it becomes visible on that peer, even though the transaction might not be on disk yet, because peers flush replicated transactions asynchronously.
+
+| Level        | Synchronous Commit                                                                                   | Commit At Most Once (CAMO)                                                                                                                       | Quorum Commit                                                                                                                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `received`   | The origin confirms once the required peers have received the transaction and queued it for writing. | The CAMO partner confirms right after committing, without waiting for a flush.                                                                   | Not supported.                                                                                                                                                                                               |
+| `replicated` | Same as `received`.                                                                                  | Same as `received`.                                                                                                                              | Not supported.                                                                                                                                                                                               |
+| `durable`    | The origin confirms once the required peers have applied the transaction and flushed it to disk.     | The CAMO partner confirms once the transaction is flushed to disk. The flush is asynchronous, so the transaction is visible before it's flushed. | Peers acknowledge the prepare after applying and flushing the transaction. Once enough peers acknowledge, the origin commits and confirms. The transaction becomes visible on peers later and can't diverge. |
+| `visible`    | Same as `durable`.                                                                                   | Same as `durable`.                                                                                                                               | Peers acknowledge the prepare after applying the transaction, without waiting for a flush. Once a quorum applies the commit, the transaction becomes visible on the origin.                                  |
+
+> **Note**
+>
+> Lag Control doesn't use confirmation levels.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

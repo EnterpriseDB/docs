@@ -1,0 +1,65 @@
+---
+title: Frequently asked questions
+description: Answers to common questions about the Sovereign Data and Agent Factory system, including hardware, support, and usage.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/system/faq/
+lastModified: 2026-07-23T19:28:07Z
+---
+
+# Frequently asked questions
+
+## Why use this system instead of a cloud service?
+
+Sovereign Data and Agent Factory gives you complete physical and operational control over your infrastructure. It's designed for:
+
+- Environments where data must remain on premises
+- Workloads that require consistent, predictable performance
+- Organizations that need AI capabilities but can't use cloud APIs or GPU services
+- Teams that want unified Postgres and AI orchestration from a single platform
+
+## Who installs and maintains the hardware?
+
+Supermicro and EDB jointly install the system at your site. All hardware, firmware, and OS-level maintenance is covered under your agreement, along with support for Postgres, Hybrid Manager, and AI tools.
+
+## What software does it run?
+
+The system runs:
+
+- EDB Postgres Advanced Server or Extended Server
+- Hybrid Manager for orchestration and observability
+- Agent Factory components
+- pgvector and Apache Arrow/Iceberg for vector and analytics workloads
+- Containers and KServe for model serving
+- Optional: EDB Postgres Distributed for multi-node HA
+
+## Can I connect this system to cloud services?
+
+You can, but it's not required or assumed. The platform is designed to be fully self-contained. You can selectively enable outbound traffic, depending on your internal policies.
+
+## What models are supported for AI use?
+
+The system supports standard containerized models, including:
+
+- Embedding models like `bge-base`, `instructor-xl`, `e5`
+- Language models like `LLaMA2`, `Mistral`, `Mixtral`
+- Task-specific models (summarization, classification, and so on
+
+Custom models can be deployed as long as they conform to the inference container format.
+
+## Can I monitor external databases?
+
+Yes. Hybrid Manager can monitor and display metrics for external Postgres clusters in observer mode. However, only approved Sovereign Data and Agent Factory nodes can be added to the internal cluster and managed through lifecycle workflows.
+
+## How do I scale the system?
+
+You can order and rack additional compute nodes or GPU-enabled AI nodes.
+
+## What’s included in support?
+
+- 24/7 global support for software stack (EDB)
+- Hardware and firmware support
+- Security patches and version upgrades managed through Hybrid Manager
+- Lifecycle assistance for expansion, updates, or custom configuration
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

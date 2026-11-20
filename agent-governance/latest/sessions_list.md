@@ -1,0 +1,90 @@
+---
+title: Browsing activity
+description: Find and filter the AI agent sessions, connections, conversations, and traces recorded for a cluster in EDB Agent Governance.
+product: EDB Agent Governance
+version: "1"
+url: https://www.enterprisedb.com/docs/agent-governance/latest/sessions_list/
+lastModified: 2026-10-02T16:19:46+05:30
+---
+
+# Browsing activity
+
+Use the Activity page to audit everything AI agents did on a cluster. Open a cluster from the home page, then select Activity in the sidebar. See [Reading the cluster dashboard](https://www.enterprisedb.com/docs/agent-governance/latest/dashboard/) for how to get there.
+
+Each row is one group of agent work. What a group is depends on the source:
+
+- `aidb` database — A session, connection, conversation, or trace, whichever identifier `aidb` recorded for the call. The Type column says which.
+- HM or Loki source — An Airman MCP session: all the SQL statements an agent executed within one MCP session.
+
+## Using the activity table
+
+Use the page numbers, Previous, and Next below the table to move between pages. The newest activity comes first, and the table shows five rows per page.
+
+Selecting a row opens a details panel on the right with a summary of that row. The first row is selected when the page opens. Use the Toggle details panel button in the toolbar to show or hide the panel, or press Esc to close it. To open the full view of a session, select its identifier, or select View Full Details in the details panel. See [Inspecting a session](https://www.enterprisedb.com/docs/agent-governance/latest/session_detail/).
+
+### Reading the columns for an aidb database
+
+Read these columns to identify each group of agent work in an `aidb` database:
+
+| Column        | Description                                                                |
+| ------------- | -------------------------------------------------------------------------- |
+| Type          | Session, connection, conversation, or trace.                               |
+| Identifier    | The identifier of the group. Select it to open the session page.           |
+| OBO Principal | The user the agent acted on behalf of, when `aidb` recorded one.           |
+| User Context  | Always a dash: `aidb` doesn't record the application user context.         |
+| Purpose       | The declared purpose of the agent.                                         |
+| Agents        | The agents that took part.                                                 |
+| Steps         | The number of recorded steps.                                              |
+| Decisions     | A Denied badge with the count, when governance denied at least one action. |
+| Started       | When the first step was recorded.                                          |
+
+The details panel adds Resolved From (the telemetry attribute the identifier came from, for example `mcp.session.id`), Duration, and the number of conversations, spans, agents, and approved and denied decisions.
+
+### Reading the columns for an HM or Loki source
+
+Read these columns to identify each session from an HM or Loki source:
+
+| Column         | Description                                                        |
+| -------------- | ------------------------------------------------------------------ |
+| Type           | Always a session.                                                  |
+| Identifier     | The Airman session identifier. Select it to open the session page. |
+| Purpose        | The declared purpose from the Airman MCP configuration.            |
+| Steps          | The number of SQL statements executed.                             |
+| Denied queries | Statements the database refused with an access denial.             |
+| Errors         | Statements that recorded an error.                                 |
+| Started        | When the first statement was recorded.                             |
+
+The details panel adds Resolved From (`application_name`) and Last Activity.
+
+## Searching
+
+Type in the Search... field in the toolbar to narrow the list as you type. For an `aidb` database, the search matches identifiers. For an HM or Loki source, it matches identifiers and purposes.
+
+## Filtering
+
+Select the filter button in the toolbar to open the filters. The button shows when a filter is active.
+
+For an `aidb` database:
+
+| Filter              | Options                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| Telemetry recorded  | A Start date and End date, or one of Today, Last 7 days, and Last 30 days. Clear date range removes it. |
+| Agent               | One or more agents that reported telemetry.                                                             |
+| Identifier type     | Session, connection, conversation, or trace.                                                            |
+| Status              | OK, Error, or Denied.                                                                                   |
+| Find by decision id | Enter a decision ID from `aidb` and select Find decision to open the session that contains it.          |
+
+Find by decision id appears only when the chart value `bff.governanceDecisionsEnabled` is `true`, which is the default.
+
+For an HM or Loki source:
+
+| Filter  | Options                                                                                               |
+| ------- | ----------------------------------------------------------------------------------------------------- |
+| Purpose | All purposes (the default, no filter applied), or one of the purposes present in the loaded sessions. |
+| Outcome | All outcomes, Denied, Errors, or No errors recorded.                                                  |
+
+Selecting an agent or purpose on the dashboard opens Activity with that filter already applied. For an HM or Loki source, the Purpose filter is also kept in the page address, so you can bookmark or share the filtered view.
+
+If the list can't load, the page shows Failed to load activity, or one of the connection messages described in [Connecting an aidb database — Troubleshooting](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/#troubleshooting), with a Retry button.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

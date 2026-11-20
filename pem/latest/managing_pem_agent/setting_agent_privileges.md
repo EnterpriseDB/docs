@@ -1,0 +1,95 @@
+---
+title: Setting agent privileges
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/setting_agent_privileges/
+lastModified: 2026-01-21T12:37:38+01:00
+---
+
+# Setting agent privileges
+
+By default, the PEM agent is installed with root privileges for the operating system host and superuser privileges for the database server. These privileges allow the PEM agent to invoke unrestricted probes on the monitored host and database server about system usage, retrieving and returning the information to the PEM server.
+
+## Root user versus non-root user
+
+For complete functionality, run the PEM agent as root.
+The table gives a high-level summary of the effects of limiting privileges.
+
+| Feature name       | Behavior with non-root user                                                                                                                                                                                                                                                                                                                                                                  | Works with remote PEM agent                                                                                                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audit Manager      | The Audit Log Manager might not be able to apply requested modifications if the service can't be restarted. The user running the PEM agent might be different from the user who owns the data directory of the database server. Thus the user running the PEM agent might not be able to change the configuration and also might not be able to restart the services of the database server. | no                                                                                                                                                                                              |
+| Capacity Manager   | No functionality limitation.                                                                                                                                                                                                                                                                                                                                                                 | yes<br /><br />Note: There's no correlation between the database server and operating system metrics<br />                                                                                      |
+| Log Manager        | The Log Manager might not be able to apply requested modifications if the service can't restart. The user running the PEM agent might be different from the user who owns the data directory of the database server. Thus the user running the PEM agent might not be able to change the configuration and also might not be able to restart the services of the database server.            | no                                                                                                                                                                                              |
+| Manage Alerts      | No functionality limitation.                                                                                                                                                                                                                                                                                                                                                                 | yes<br /><br />Note: When Run Alert Script on the database server is selected, it runs on the machine where the bound PEM agent is running and not on the actual database server machine.<br /> |
+| Manage Charts      | No functionality limitation.                                                                                                                                                                                                                                                                                                                                                                 | yes                                                                                                                                                                                             |
+| Manage Dashboards  | Some dashboards might not be able to show complete data. See the [affected functionality](#functionality-affected-by-limiting-operating-system-privileges).                                                                                                                                                                                                                                  | Some dashboards might not be able to show complete data. For example, the operating system information of the database server doesn't appear as not available.                                  |
+| Manage Probes      | Some PEM probes can't run, and some return incomplete data. See the [affected functionality](#functionality-affected-by-limiting-operating-system-privileges).                                                                                                                                                                                                                               | Some of the PEM probes don't return information, and some of the functionality might be affected.                                                                                               |
+| Scheduled Tasks    | Limited. See the [affected functionality](#functionality-affected-by-limiting-operating-system-privileges).                                                                                                                                                                                                                                                                                  | Scheduled tasks work only for the database server. Scripts run on a remote agent.                                                                                                               |
+| System Reports     | No functionality limitation.                                                                                                                                                                                                                                                                                                                                                                 | yes                                                                                                                                                                                             |
+| Core Usage Reports | No functionality limitation.                                                                                                                                                                                                                                                                                                                                                                 | The Core usage report doesn't show complete information. For example, the platform, number of cores, and total RAM aren't displayed.                                                            |
+
+## Functionality affected by limiting operating system privileges
+
+If you run the PEM agent as a non-root user, the level of functionality depends on the permissions the agent user has.
+TSome operations are impacted by OS user permissions and certain permissions are required for normal operation.
+
+### Probes
+
+| Probe                         | Operating system | PEM functionality affected                                                                                                                                                                                          |
+| ----------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session Information           | Linux/Windows    | The probe will be missing the following ‘per-process’ columns if the agent user isn't either root or the same user as Postgres: `memory_usage_mb`, `swap_usage_mb`, `cpu_usage`, `io_read_bytes`, `io_write_bytes`. |
+| Patroni Node Status           | Linux/Windows    | Requires permission to execute `patronictl`. No data is returned otherwise.                                                                                                                                         |
+| Patroni Cluster Status        | Linux/Windows    | Requires permission to execute `patronictl`. No data is returned otherwise.                                                                                                                                         |
+| PG HBA Conf                   | Linux/Windows    | Requires permission to read `pg_hba.conf`. No data is returned otherwise.                                                                                                                                           |
+| Data and Log File Analysis    | Linux/Windows    | Requires permission to read PGDATA. No data is returned otherwise.                                                                                                                                                  |
+| WAL Archive Status            | Linux/Windows    | Requires read access to the WAL directory. No data is returned otherwise.                                                                                                                                           |
+| Failover Manager Node Status  | Linux/Windows    | Requires permission to execute `efm`. No data is returned otherwise.                                                                                                                                                |
+| Failover Manager Cluster Info | Linux/Windows    | Requires permission to execute `efm`. No data is returned otherwise.                                                                                                                                                |
+
+### Restarting services
+
+Audit Log Manager and Server Log Manager require the PEM agent user to restart the Postgres service for changes to take effect and the features to work.
+The agent user needs privileges to restart services. Typically, this requires root access.
+
+### Batch/shell tasks
+
+On Windows, the PEM agent runs batch tasks only if the agent user has administrative privileges.
+
+On Linux, the PEM agent can run shell tasks only if the agent user can become the `batch_script_user` specified in `agent.cfg`.
+This is always true for the root user and the `batch_script_user`.
+
+## Functionality affected by limiting database privileges
+
+If the PEM agent connects to the monitored database using a non-superuser account, the available functionality is limited based on the privileges granted to that user.
+
+The PEM agent reads data from the pg\_catalog schema for most SQL-based probes. In general, assigning the pg\_monitor role to the agent user is sufficient. However, certain catalog functions and probes may require privileges beyond pg\_monitor.
+
+Also, the agent user must be able to connect to all target databases where probes need to run.
+If the agent can't connect to a database, no database-level probes will be executed on that instance. Only server-level metrics—such as those collected from `pg_stat_database`—are available in such cases.
+
+The table lists probes that require permissions in addition to pg\_monitor on the Linux and Windows operating systems.
+
+| Probe                          | Additional permissions required                                                                                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| All PGD probes                 | `SELECT` permission on tables and views, and `EXECUTE` permission on functions, in the `bdr` schema of the replicated database.                                                    |
+| Number of WAL Files            | `EXECUTE` on `pg_ls_dir()`.                                                                                                                                                        |
+| Streaming Replication Lag Time | The ability to execute `pg_last_xlog_receive_location()`, `pg_last_xlog_replay_location()`, and `pg_last_xact_replay_timestamp()`. Provided by granting the `pg_wal_monitor` role. |
+| Streaming Replication          | The ability to execute `pg_xlogfile_name_offset()` and `pg_xlog_location_diff()`. This can be provided by granting the `pg_wal_monitor` role.                                      |
+| System Waits & Session Waits   | `SELECT` permission on the `system_waits` and `session_waits` views respectively.                                                                                                  |
+| SQL Protect                    | `SELECT` on `sqlprotect.edb_sql_protect_stats`.                                                                                                                                    |
+| User Information               | `SELECT` on `pg_user`.                                                                                                                                                             |
+| xDB Replication                | `SELECT` on EDB Replicator views.                                                                                                                                                  |
+
+## Error handling
+
+If the probe is querying the operating system without enough privileges, the probe might return a `permission denied` error. If the probe is querying the database without enough privileges, the probe might return a `permission denied` error or display the returned data in a PEM chart or graph as an empty value.
+
+When a probe fails, an entry is written to the log file that contains the name of the probe, the reason the probe failed, and a hint to help you resolve the problem.
+
+You can view probe-related errors that occurred on the server in the Probe Log dashboard or review error messages in the PEM worker log files. On Linux, the default location of the log file is:
+
+`/var/log/pem/worker.log`
+
+On Windows, log information is available on the Event Viewer.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

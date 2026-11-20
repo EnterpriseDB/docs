@@ -1,0 +1,110 @@
+---
+title: Detailed view
+description: Use the detailed view to assist in database migrations with Hybrid Manager.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migrations/migration_database_details_view/
+lastModified: 2026-07-23T08:34:31+02:00
+---
+
+# Detailed view
+
+When you select a database from the **Migrations** tab of the **Estate** page in Hybrid Manager (HM), a detailed view opens. This view includes functionality that you can leverage to perform migrations from external databases.
+
+> **Note**
+>
+> Currently, Postgres databases offer only a high-level assessment. A more comprehensive analysis is available for Oracle databases.
+
+## Status
+
+Use the status selector next to the database name to manage and track your migration workflow. This selector allows you to update the current state of a database migration, providing clarity for you and your team members.
+
+You can select from the following statuses:
+
+- Assessing (default)
+- Planning
+- Decided Not To Migrate
+- In Progress
+- Done
+
+## Schemas
+
+The **Schemas** tab offers an overview of the schemas found in your connected database. It displays summary metrics for the database, along with a list of schemas where you granted `SELECT` access on at least one table. Only schemas containing at least one table are displayed.
+
+This information can help you scope your migration effort and effectively plan the migration of your schemas. Also, for Oracle databases, the **Schemas** tab allows you to [create new Migration Portal projects](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/hm_schema_migration/#creating-a-migration-portal-project) directly from the extracted schemas.
+
+> **Important**
+>
+> The EDB Postgres AI agent detects schema changes to tables and columns while running. However, changes to views or procedures aren't detected until you restart the EDB Postgres AI agent.
+
+### Summary cards
+
+- Total schemas for the selected database.
+
+- Total tables for the selected database.
+
+- Total objects for the selected database.
+
+- Complexity overview for all schemas, color-coded by complexity (very easy, easy, medium, hard, very hard). Available for Oracle databases only.
+
+- Migration level of effort, color-coded by day ranges (0-5, 6-15, 16-25, 26-40, 40+ days), defined by 8-hours working days. Available for Oracle databases only.
+
+### Schema table
+
+- **Name:** Name of the schema.
+
+- **Latest Assessment:** Available for Oracle databases only. Status of the latest assessment. Possible values are Not started, In progress, Complete and Error.
+
+- **Last Assessed:** Available for Oracle databases only. Timestamp corresponding to the last time the schema was assessed. The assessment is regenerated or updated if the EDB Postgres AI agent discovers that a new schema is available or if an existing one was updated.
+
+- **# of Tables:** Number of tables in the assessed schema.
+
+- **# of Objects:** Number of objects in the assessed schema.
+
+- **Complexity:** Available for Oracle databases only. Indicates how challenging it will be to convert a specific schema to EDB Postgres Advanced Server based on a detailed, object-level analysis. Possible values are Very Easy, Easy, Medium, Hard, and Very Hard. A single schema's complexity may be higher than the overall database complexity, as schema-level analysis is more granular.
+
+- **Migration LoE:** Available for Oracle databases only. Indicates how many days it will take to migrate a specific schema, in 8-hour working days, based on a detailed, object-level analysis.
+
+- **Dependencies:** Available for Oracle databases only. The name of the schema that the current schema depends on. We recommend migrating schemas with their dependencies in the same batch (using the same Migration Portal project) to ensure that all objects referenced by the schema exist in the destination database.
+
+- **MP Project:** Available for Oracle databases only. Use the integrated Migration Portal to convert an Oracle schema to EDB Postgres Advanced Server. Select the plus sign to open a window where you can provide details to start a new schema migration project with the Migration Portal [project-scoped workspace](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/access_mp/#project-scoped-workspace-vs-users-workspace). After you provide the details, HM creates a Migration Portal project in the background. You can access this project later from the [**Migration**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migrations/migration_database_details_view/#migration) tab.
+
+> **Note: Schemas tab vs. Migration Portal object counts**
+>
+> The **Total objects** summary card and the **# of Objects** column count objects reported by the EDB Postgres AI agent from the source database's system catalog. Once a Migration Portal project exists for a schema, Migration Portal shows its own, usually larger, object count, because it counts each parsed DDL statement (one for every `CREATE`, `ALTER TABLE ... ADD CONSTRAINT`, `COMMENT ON`, and similar statement) rather than each catalog entry, so constraints and comments are counted as separate objects. For Oracle sources, the **# of Objects** column also counts only the schema objects in which the assessment engine matched at least one PL/SQL feature, so it can show 0 for a schema that hasn't been assessed yet even though the summary card's catalog-based total is higher.
+>
+> Each number answers a different question about the schema. See [Evaluate an assessment report](https://www.enterprisedb.com/docs/migration_portal/latest/04_mp_migrating_database/mp_schema_assessment/#evaluate-an-assessment-report) for how Migration Portal defines an object.
+
+## Assessment
+
+The **Assessment** tab provides a migration assessment of your connected database, offering insights to help you scope the effort and plan the migration of your database objects. This section contains a summary of the assessment, including key metrics and detailed breakdowns of the factors that contribute to the generated analysis.
+
+To export the assessment results in `.json` formatting, select **Download Report**.
+
+**Assessment Details:** Summarizes key analysis results and assessment metadata.
+
+**Compatibility Summary:** Available for Oracle databases only. Summarizes database features and schema objects as well as other factors that contribute to the overall migration complexity and level of effort. The complexity is assigned depending on a scoring system that analyses several factors. Some of the factors include database size, large object usage, used partition types, Oracle database features, procedural database objects, and whether they're EDB Postgres Advanced Server compatible. Each of the analyzed object gets a 1-5 score (very easy to very hard). The max complexity value is displayed here.
+
+**Oracle PL/SQL features used:** Available for Oracle databases only. Lists all PL/SQL objects that contain Oracle built-in features. To understand the migration impact of the Oracle PL/SQL feature, see the object count, the occurrence count, whether they're EDB Postgres Advanced Server-compatible, and the results of the migration complexity assessment.
+
+If all calls of a specific feature have equivalent EDB Postgres Advanced Server implementations, the feature is marked as **EPAS Compatible**. If no equivalent is detected, the feature is marked as incompatible.
+
+**Oracle database features used:** Available for Oracle databases only. Lists all Oracle database features in use in the database.
+
+**Incompatible PL/SQL features in objects:** Available for Oracle databases only. Lists all Oracle and non-Oracle incompatible PL/SQL features while displaying the schema they are in, the object type (procedure, function, and so on), the object name, the incompatible feature name, how often the feature appears, and the migration complexity.
+
+## Migration
+
+Helps you perform migration-related tasks.
+
+**Create a Destination:** Creates a new cluster to serve as a destination for your migration. See [Creating a database cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/) for more guidance.
+
+**Migrate Schema(s):**
+
+- For Oracle databases, this option lets you create a project in the built-in Migration Portal ([project-scoped workspace](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/access_mp/#project-scoped-workspace-vs-users-workspace)) that you can use to convert the Oracle schema to be compatible with EDB Postgres Advanced Server. After you resolve any incompatibilities, the Migration Portal service also lets you connect to the destination cluster to import the converted schema.
+
+- For Postgres databases, this option provides information on how to use external tooling like Migration Toolkit or pg\_dump, among other tools, to migrate Postgres schemas.
+
+**Migrate Data:** Leverages HM's [Data Migration Service](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/) to perform data migrations with CDC technology. Before you perform data migrations with this function, prepare your database, migrate your schema, and install and configure the EDB DMS agent. See [Choose your migration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migration_guides/) for end-to-end examples of how to perform a complete database migration.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

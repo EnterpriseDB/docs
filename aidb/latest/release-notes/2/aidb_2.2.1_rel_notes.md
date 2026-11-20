@@ -1,0 +1,22 @@
+---
+title: AIDB 2.2.1 release notes
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/release-notes/2/aidb_2.2.1_rel_notes/
+lastModified: 2026-08-26T21:11:52+05:30
+---
+
+# AIDB 2.2.1 release notes
+
+Released: 13 Mar 2025
+
+AIDB 2.2.1 introduces a new Data Preparation Pipeline (preparer) and includes enhancements to existing functionality.
+
+| Type        | Description                                                                                                                                                                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Feature     | **Introduced preparer, a new pipeline for data preparation:** The new preparer pipeline supports automated chunking, parsing, and summarizing of data to make it ready for use in AI applications.                                                                                                |
+| Enhancement | **Added support for HTTP basic authentication in OpenAI model adapters:** The OpenAI model adapters (for example, `completions` or `embeddings`) now support HTTP basic authentication via the credential field `basic_auth`. Previously, only bearer authentication via `api_key` was supported. |
+| Enhancement | **Added a PostgreSQL view for configured models:** Configured models can now be listed via the view `aidb.models` rather than requiring the function call `aidb.list_models()`.                                                                                                                   |
+| Enhancement | **Added autodetection for model dimensions with external models:** Model dimensions for external models (via `completions` or `embeddings` model adapters) no longer need to be explicitly configured. AIDB now auto-detects the number of dimensions of the returned embeddings.                 |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

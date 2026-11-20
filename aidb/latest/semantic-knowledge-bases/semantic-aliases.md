@@ -1,0 +1,97 @@
+---
+title: Semantic aliases
+description: Define named, parameterized SQL queries with vectorized descriptions so recurring questions map to trusted, reusable queries.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/
+lastModified: 2026-09-30T22:23:49+05:30
+---
+
+# Semantic aliases
+
+A semantic alias is a named, parameterized SQL query paired with a natural-language description. The description is embedded, so an alias can be found by meaning — the same way schema metadata is. Aliases are the reusable, governed layer of text-to-SQL: instead of generating fresh SQL for every question, a recurring question resolves to a query you've already written and reviewed.
+
+An alias can belong to more than one semantic KB. See [Multi-KB membership](#multi-kb-membership) for how that works.
+
+## Creating an alias
+
+Before creating an alias, make sure a semantic KB already covers the schema its query reads — see [Getting started](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/#getting-started) to create one first.
+
+`aidb.create_semantic_alias()` takes a unique name, a description to embed, the SQL query text, and its parameter definitions. Placeholders in the query use `${name}` syntax. The query must be a single read-only `SELECT`.
+
+```sql
+SELECT aidb.create_semantic_alias(
+    name        => 'monthly_revenue',
+    description => 'Total revenue for a given month and year',
+    query_text  => $$
+        SELECT SUM(amount) AS total
+        FROM sales.orders
+        WHERE EXTRACT(MONTH FROM order_date) = ${month}
+          AND EXTRACT(YEAR  FROM order_date) = ${year}
+    $$,
+    params => '[
+        {"name": "month", "param_type": "integer", "description": "Month number (1-12)"},
+        {"name": "year",  "param_type": "integer", "description": "Four-digit year"}
+    ]'
+);
+```
+
+Parameters: `name`, `description`, `query_text`, `params` (each entry needs a `name`, `param_type`, and optionally a `description` or `enum_values`), and `kb_name` (optional, omit to embed the alias for every KB that owns the query's schema). Returns the alias name. See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbcreate_semantic_alias) for the full parameter list.
+
+If the query's schema maps to more than one KB, the alias is embedded once for each of them. Creation never fails on ambiguity. Pass `kb_name` only to narrow it to a single KB. A schema not yet owned by any KB leaves the alias unembedded, until a KB covering it is created or adopts it later.
+
+## Multi-KB membership
+
+Each alias is a member of every semantic KB that owns the schema its SQL reads, not just one. AIDB infers the owning KB(s) from the query and embeds the alias's description once per KB, using that KB's model, so each embedding stays comparable to that KB's schema vectors. A schema owned by two KBs yields two embeddings, so the alias is findable from either KB using [`aidb.semantic_kb_search()`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-everything-at-once).
+
+Deleting a KB removes only that KB's embedding of each alias, while the alias definition and its embeddings in any other owning KBs survive. A later KB covering the same schema adopts the alias, adding a fresh embedding for it, even if the alias is already embedded for other KBs.
+
+## Finding an alias
+
+`aidb.search_semantic_aliases()` searches aliases by natural-language query. Without `kb_name`, it searches `default_semkb` — the name a KB gets when created without an explicit one — if that KB exists, or every KB with stored alias embeddings otherwise. The query is embedded once per distinct model among those KBs, so the search stays dimension-safe, and results are de-duplicated to the best match per alias.
+
+```sql
+SELECT name, query_text, similarity
+FROM aidb.search_semantic_aliases(
+    query_text => 'how much money did we make last month',
+    kb_name    => 'analytics_kb',
+    top_k      => 5
+);
+```
+
+Parameters: `query_text`, `min_similarity` (optional floor), `top_k` (default `10`), `offset` (default `0`), and `kb_name` (optional, omit to resolve `default_semkb`, or every KB with alias embeddings). Returns `name`, `query_text`, and `similarity`. See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbsearch_semantic_aliases) for the full parameter list.
+
+Aliases also appear in [`aidb.semantic_kb_search()`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-everything-at-once) results with `source_type = 'alias'`, so a single composite search finds both schema and aliases at once.
+
+## Running an alias
+
+`aidb.execute_semantic_alias()` runs an alias by name, substituting its parameters. It returns a set of `result` rows, each a JSONB object:
+
+```sql
+SELECT result
+FROM aidb.execute_semantic_alias(
+    alias_name => 'monthly_revenue',
+    args       => '{"month": 3, "year": 2025}'
+);
+```
+
+Parameters: `alias_name`, `args` (a JSONB object of parameter values keyed by name), and `execute_role` (optional). See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbexecute_semantic_alias) for the full parameter list.
+
+Use `execute_role` to run an alias under a least-privilege reporting role rather than the connecting user. Because every alias is validated as a single read-only `SELECT` at creation and re-validated at execution, an alias can't be used to run writes.
+
+## Managing aliases
+
+| Function                                                                     | Purpose                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aidb.get_semantic_aliases()`                                                | List all aliases with `name`, `description`, `query_text`, and `param_count`.                                                                                                                                                                   |
+| `aidb.get_semantic_alias(alias_name)`                                        | Get one alias's `name`, `description`, `query_text`, and `params`.                                                                                                                                                                              |
+| `aidb.update_semantic_alias(name, description, query_text, params, kb_name)` | Update an alias. Changing `query_text` or `kb_name` re-infers its owning KB(s) and reconciles embeddings — adding KBs it newly belongs to and dropping ones it no longer does. Changing `description` re-embeds it in every KB it's already in. |
+| `aidb.delete_semantic_alias(name)`                                           | Delete an alias by name.                                                                                                                                                                                                                        |
+
+## Next steps
+
+- Alias functions aren't exposed as [agent tools](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/#semantic-knowledge-bases), but an agent still uses aliases indirectly, through the end-to-end [text-to-SQL](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/text-to-sql/) workflow.
+- Walk through aliases and search together in the [example](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/example/).
+- Look up every alias function's full parameters and return columns in the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#creating-and-managing-aliases).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

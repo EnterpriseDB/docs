@@ -1,0 +1,86 @@
+---
+title: DROP FUNCTION
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/reference/oracle_compatibility_reference/epas_compat_sql/47_drop_function/
+lastModified: 2024-02-23T16:16:14Z
+---
+
+# DROP FUNCTION
+
+<div id="drop_function" class="registered_link"></div>
+
+## Name
+
+`DROP FUNCTION` — Remove a function.
+
+## Synopsis
+
+```sql
+DROP FUNCTION [ IF EXISTS ] <name>
+  [ ([ [ <argmode> ] [ <argname> ] <argtype> ] [, ...]) ]
+  [ CASCADE | RESTRICT ]
+```
+
+## Description
+
+`DROP FUNCTION` removes the definition of an existing function. To execute this command, you must be a superuser or the owner of the function. If this is an overloaded function, you must specify all input (`IN`, `IN OUT`) argument data types to the function.
+
+> **Note**
+>
+> This requirement isn't compatible with Oracle databases. In Oracle, you specify only the function name. EDB Postgres Advanced Server allows you to overload function names. Therefore, the function signature given by the input argument data types is required in the EDB Postgres Advanced Server `DROP FUNCTION` command of an overloaded function.
+
+The `IF EXISTS`, `CASCADE`, and `RESTRICT` parameters aren't compatible with Oracle databases. Only EDB Postgres Advanced Server uses them.
+
+## Parameters
+
+`IF EXISTS`
+
+Specifies not to throw an error if the function doesn't exist. A notice is issued instead.
+
+`name`
+
+The name (optionally schema-qualified) of an existing function.
+
+`argmode`
+
+The mode of an argument: `IN`, `IN OUT`, or `OUT`. If omitted, the default is `IN`. `DROP FUNCTION` ignores `OUT` arguments, since only the input arguments are needed to determine the function’s identity. You need to list only the `IN` and `IN OUT` arguments.
+
+!!! Note
+Specifying `argmode` isn't compatible with Oracle databases. It applies only to EDB Postgres Advanced Server.
+
+`argname`
+
+The name of an argument. `DROP FUNCTION` ignores argument names, since only the argument data types are needed to determine the function’s identity.
+
+!!! Note
+Specifying `argname` isn't compatible with Oracle databases. It applies only to EDB Postgres Advanced Server.
+
+`argtype`
+
+The data type of an argument of the function.
+
+!!! Note
+Specifying `argtype` isn't compatible with Oracle databases. It applies only to EDB Postgres Advanced Server.
+
+`CASCADE`
+
+Drop objects that depend on the function, such as operators or triggers, and objects that depend on those objects.
+
+`RESTRICT`
+
+Prevent dropping the function if any objects depend on it. This is the default.
+
+## Examples
+
+This example removes the `emp_comp` function:
+
+```sql
+DROP FUNCTION emp_comp(NUMBER, NUMBER);
+```
+
+## See also
+
+[CREATE FUNCTION](https://www.enterprisedb.com/docs/epas/15/reference/oracle_compatibility_reference/epas_compat_sql/23_create_function/#create_function)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,37 @@
+---
+title: Known issues
+description: Learn about known issues in WarehousePG Enterprise Manager.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/overview/known_issues/
+lastModified: 2026-10-16T14:41:49+01:00
+---
+
+# Known issues
+
+These are the currently known issues and limitations identified in the WarehousePG Enterprise Manager (WEM) release. Where applicable, we've included workarounds to help you mitigate the impact of these issues. These issues are actively tracked and are planned for resolution in a future release.
+
+### Deployment & infrastructure
+
+- Each WEM deployment is designed to manage and monitor only one WarehousePG (WHPG) cluster. Managing multiple clusters requires separate, dedicated WEM installations for each.
+- WEM can't be installed on Red Hat Enterprise Linux 7. However WEM is fully capable of monitoring WHPG 6.x clusters running on RHEL 7 nodes.
+
+### Disaster recovery
+
+- Safeguard supports only one storage repository and only one DR cluster at a time. Managing multiple DR standbys or storage backends from the same WEM install isn't supported.
+
+### Query monitoring
+
+[PTT-453]: #
+
+- The **Query Editor** supports running `EXPLAIN` on queries you write, but WEM doesn't capture execution plans for queries that are already running. To investigate the plan of an in-flight query, connect to the cluster directly using `psql` and run `EXPLAIN` against the query text.
+
+### Observability
+
+- In containerized deployments, such as WHPG clusters running in Docker containers, storage metrics don't populate. The OTel Collector runs as a non-root user and its host metrics receiver skips bind-mounted filesystems, so it can't read the data volumes' usage.
+
+### Alerting
+
+- WEM doesn't offer a form-based interface for configuring notification receivers, such as email, Slack, or PagerDuty. Edit Alertmanager's own configuration directly instead, using the raw YAML editor on the **Notifications** tab. See [Alertmanager notification configuration](https://prometheus.io/docs/alerting/latest/configuration/) for the YAML syntax.
+- Upgrading to 1.4 deletes existing **User** alert rules rather than migrating them, since Prometheus, where they're stored, is removed as part of the upgrade. **System** rules are recreated automatically using ClickHouse SQL, and alert history is preserved regardless of which engine originally raised it. Note down any **User** alert rules before upgrading and recreate them afterward through the **Rules** tab. See [Upgrading WarehousePG Enterprise Manager](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/upgrading/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

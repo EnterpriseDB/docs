@@ -1,0 +1,1639 @@
+---
+title: edbctl cluster
+description: Use the edbctl utility to manage database cluster resources for a Hybrid Manager cluster.
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/
+lastModified: 2026-08-31T20:44:44+05:30
+---
+
+# edbctl cluster
+
+Manages database cluster resources. Use this command to create, edit, view, delete, and restore all types of clusters.
+
+## Commands
+
+The `edbctl cluster` command has following options:
+
+- [edbctl cluster list](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-list)	— Displays active or deleted clusters.
+- [edbctl cluster list-connection-info](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-list-connection-info) — Lists the connection string for a specified cluster.
+- [edbctl cluster create](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-create) — Creates a new cluster.
+- [edbctl cluster edit](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-edit) — Edits an existing cluster.
+- [edbctl cluster delete](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-delete) — Deletes a specified cluster.
+- [edbctl cluster restore](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-restore) — Restores a specified cluster
+- [edbctl cluster switchover-primary](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_cluster/#edbctl-cluster-switchover-primary) — Switches over a specified replica to primary.
+
+## edbctl cluster list
+
+Lists all active or deleted clusters. Use the `[--deleted]` flag to display deleted clusters. You can also filter results by cluster ID or architecture. When you provide the `[--id]` flag, detailed information about the cluster is displayed, including instance size, storage, and node count. When you provide both `[--id]` and `[--config-yaml]`, the cluster config YAML is printed directly and can be reused as a config file for `edbctl cluster edit`. This output is always YAML and ignores `--output`.
+
+```shell
+edbctl cluster list [--id [--config-yaml]] [--deleted] [options]
+```
+
+Where `options` are:
+
+```shell
+-i, --id string                     Cluster ID. Filter the list by a specific cluster ID.
+-n, --name string                   Cluster name. Filter the list by a specific cluster name.
+-d, --deleted                       The cluster is a deleted cluster.
+-A, --cluster-architecture string   Cluster architecture ID. Filter the list by architecture (for example, single/ha).
+-y, --config-yaml                   Print cluster config YAML directly. Use with `--id`; ignores `--output`.
+-o, --output string                 [table json yaml xml] (default "table")
+-c, --credential string             The credential that you created via `credential create` command. The default is fetched from `context_credential`
+-P, --project string                The project that groups your clusters and other resources. The default is taken from `context_project`.
+-h, --help                          Help for list.
+```
+
+### Examples
+
+```shell
+edbctl cluster list
+edbctl cluster list --id p-c5fh47nfjcg4ci71uv32
+edbctl cluster list --id p-c5fh47nfjcg4ci71uv32 --config-yaml
+edbctl cluster list --deleted
+```
+
+## edbctl cluster list-connection-info
+
+Retrieves and displays the connection string for a specified Postgres cluster using its cluster ID. The output includes the read/write URI, database name, host, port, and user.
+
+```shell
+edbctl cluster list-connection-info {--id} [options]
+```
+
+Where `options` are:
+
+```
+  -i, --id string           Cluster ID (required). The unique identifier for the cluster to list connection string.
+  -o, --output string       [table json yaml xml] (default "table")
+  -c, --credential string   The credential that you created via `credential create` command. The default is fetched from `context_credential`.
+  -P, --project string      The project that groups your clusters and other resources. the default is taken from `context_project`.
+  -h, --help                Help for list-connection-info.
+```
+
+These examples show how to retrieve and display the connection strings for specific clusters:
+
+```shell
+edbctl cluster list-connection-info --id <pg_id>
+edbctl cluster list-connection-info -i <pg_id>
+```
+
+## edbctl cluster create
+
+Creates a cluster using a specified configuration file.
+
+This command provisions a new cluster based on the settings defined in a YAML configuration file. The file specifies key details such as:
+
+- **Cluster Type**: single, ha, pgd, aha, or analytics
+- **PostgreSQL Configuration**: pgConfig
+- **Resource Allocation**: storage, memory
+- **Backup Settings**
+- **Image**
+
+To supply your own load balancer service annotations instead of HM's defaults, for example to select a MetalLB IP address pool or disable Azure Private Link Service, set `networking: custom` and list your annotations under `serviceAnnotations`. See [Custom networking annotations](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/custom-networking/) for prerequisites and examples.
+
+```shell
+edbctl cluster create [options]
+```
+
+Where `options` are:
+
+```
+-F, --config-file string   Path to the cluster config YAML file.
+-c, --credential string    The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-h, --help                 Help for create.
+-P, --project string       The project that groups your clusters and other resources. The default is taken from `context_project`.
+-y, --yes                  Auto-confirm all confirmations.
+```
+
+This example shows how to create a cluster using a YAML configuration file:
+
+```shell
+edbctl cluster create -F <any sample YAML Configuration file>
+```
+
+<details>
+
+<summary>
+
+create-single.yaml:
+
+</summary>
+
+```yaml
+# cluster details
+clusterType: single # Required. Type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-single-name # Required.
+password: password@1234 # Required. Password must be 12 characters or more
+
+# primary details
+primaryPgName: Primary-Replica
+imageId: 3e2af4f1dba3b9f8fb2bb6ae4834a5bd # Image ID can be fetched with command `edbctl image list-image-tags`
+deploymentLocation: managed-devspatcher # Required.
+networking: private # Required. Network access type for the cluster. Valid values: private, public, custom
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+#serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#    value: "true"
+#  - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#    value: internal
+backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Required. Scheduled Backup Cron
+#image:  # only one of `imageId` or `image` should be set
+#  url: docker.example.com/platform/example/postgres:latest
+#  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+postgresqlConfiguration: # Optional
+  max_connections: 100
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+instanceSize: # Required.
+  cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+  memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+storage:
+  databaseStorage: # Required.
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+  walStorage:   # Optional. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads)
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+#transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+##  passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+#  keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+#nodeSelectors: # Optional. Constrains Postgres pods to nodes with all matching labels.
+#  - key: node_pool
+#    value: pg-pool-big
+#tolerations: # Optional. Allows Postgres pods to schedule on nodes with matching taints.
+#  - key: edbaiplatform.io/postgres  # effect: NoSchedule, PreferNoSchedule, NoExecute (empty matches all)
+#    operator: Equal                 # operator: Equal (default) or Exists (ignores value)
+#    value: "true"
+#    effect: NoSchedule
+#  - key: big-node
+#    operator: Equal
+#    value: "true"
+#    effect: NoSchedule
+
+# replica details
+replicaClusters:
+  - replicaPgName: replica-1
+    imageId: 3e2af4f1dba3b9f8fb2bb6ae4834a5bd # Image ID can be fetched with command `edbctl image list-image-tags`
+    deploymentLocation: managed-devspatcher # Required.
+    networking: private # Required. Network access type for the cluster. Valid values: private, public, custom
+    #    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #      - cidrBlock: 127.0.0.1/24
+    #        description: test
+    #    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #        value: "true"
+    backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    backupSchedule: 39 13 23 * * * # Required. Scheduled Backup Cron
+    #    image: # only one of `imageId` or `image` should be set
+    #      url: docker.example.com/platform/example/postgres:latest
+    #      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 100
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    instanceSize: # Required.
+      cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage: # Required.
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+    #transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+    ##  passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+    #  keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+  - replicaPgName: replica-2 # Required.
+    imageId: 3e2af4f1dba3b9f8fb2bb6ae4834a5bd # Image ID can be fetched with command `edbctl image list-image-tags`
+    deploymentLocation: managed-devspatcher # Required.
+    networking: private # Required. Network access type for the cluster. Valid values: private, public, custom
+    #    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #      - cidrBlock: 127.0.0.1/24
+    #        description: test
+    #    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #        value: "true"
+    backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    backupSchedule: 39 13 23 * * * # Required. Scheduled Backup Cron
+    #    image: # only one of `imageId` or `image` should be set
+    #     url: docker.example.com/platform/example/postgres:latest
+    #     digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 100
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    instanceSize: # Required.
+      cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage: # Required.
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+    #transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+    ##  passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+    #  keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+create-ha.yaml:
+
+</summary>
+
+```yaml
+# cluster details
+clusterType: ha # Required. Type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-ha-name # Required.
+password: password@1234 # Required. Password must be 12 characters or more
+
+# primary details
+primaryPgName: Primary-Replica
+imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+standbyReplicas: 2 # Required for HA cluster
+deploymentLocation: managed-devspatcher # Required.
+networking: private # Required. Network access type for the cluster. Valid values: private, public, custom
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+#serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#    value: "true"
+#  - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#    value: internal
+backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Required. Scheduled Backup Cron
+#image: # only one of `imageId` or `image` should be set
+#  url: docker.example.com/platform/example/postgres:latest
+#  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+postgresqlConfiguration: # Optional
+  max_connections: 100
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+instanceSize: # Required.
+  cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+  memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+storage:
+  databaseStorage: # Required.
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+  walStorage:   # Optional. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads)
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+    storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+#transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+##  passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+#  keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+#nodeSelectors: # Optional. Constrains Postgres pods to nodes with all matching labels.
+#  - key: node_pool
+#    value: pg-pool-big
+#tolerations: # Optional. Allows Postgres pods to schedule on nodes with matching taints.
+#  - key: edbaiplatform.io/postgres  # effect: NoSchedule, PreferNoSchedule, NoExecute (empty matches all)
+#    operator: Equal                 # operator: Equal (default) or Exists (ignores value)
+#    value: "true"
+#    effect: NoSchedule
+#  - key: big-node
+#    operator: Equal
+#    value: "true"
+#    effect: NoSchedule
+
+# replica details
+replicaClusters:
+  - replicaPgName: replica-1
+    standbyReplicas: 2 # Required for HA cluster
+    imageId: 3e2af4f1dba3b9f8fb2bb6ae4834a5bd # Image ID can be fetched with command `edbctl image list-image-tags`
+    deploymentLocation: managed-devspatcher # Required.
+    networking: private # Required. Network access type for the cluster. Valid values: private, public, custom
+    #    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #      - cidrBlock: 127.0.0.1/24
+    #        description: test
+    #    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #        value: "true"
+    backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    backupSchedule: 39 13 23 * * * # Required. Scheduled Backup Cron
+    #    image: # only one of `imageId` or `image` should be set
+    #      url: docker.example.com/platform/example/postgres:latest
+    #      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 100
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    instanceSize: # Required.
+      cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage: # Required.
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+    #transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+    ##  passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+    #  keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+  - replicaPgName: replica-2 # Required.
+    standbyReplicas: 2 # Required for HA cluster
+    imageId: 3e2af4f1dba3b9f8fb2bb6ae4834a5bd # Image ID can be fetched with command `edbctl image list-image-tags`
+    deploymentLocation: managed-devspatcher # Required.
+    networking: private # Required. Network access type for the cluster. Valid values: private, public, custom
+    #    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #      - cidrBlock: 127.0.0.1/24
+    #        description: test
+    #    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #        value: "true"
+    backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    backupSchedule: 39 13 23 * * * # Required. Scheduled Backup Cron
+    #    image: # only one of `imageId` or `image` should be set
+    #     url: docker.example.com/platform/example/postgres:latest
+    #     digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 100
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    instanceSize: # Required.
+      cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage: # Required.
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+    #transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+    ##  passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+    #  keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+create-analytics.yaml:
+
+</summary>
+
+```yaml
+clusterType: analytics # required, type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+clusterName: create-analytics-name # required
+deploymentLocation: managed-devspatcher # required
+password: password@1234 #Password must be 12 characters or more
+networking: private # Network access type for the cluster. Valid values: private, public, custom
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+#serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#    value: "true"
+#  - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#    value: internal
+backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Required. Scheduled Backup Cron
+#image: # only one of `imageId` or `image` should be set
+#  url: docker.example.com/platform/example/postgres:latest
+#  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+#postgresqlConfiguration: # Optional
+#  max_connections: 100
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+instanceSize: # Required
+    cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+create-pgd.yaml:
+
+</summary>
+
+```yaml
+clusterType: pgd # Type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-pgd-name # required
+password: Password@1234 #Password must be 12 characters or more
+dataGroups:
+  - groupName: Data Group A # required
+    deploymentLocation: managed-devspatcher # required
+    imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+#    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#      - cidrBlock: 9.9.9.9/28
+#        description: Allow traffic from App A
+#      - cidrBlock: 10.10.10.10/27
+#        description: Allow traffic from App B
+#    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update. Witness groups do not support custom annotations.
+#      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#        value: "true"
+    backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    nodes: 3 # Required. Only can be set to 2 or 3
+#    image: # only one of `imageId` or `image` should be set
+#      url: docker.example.com/platform/example/postgres:latest
+#      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration:
+      max_connections: 100
+      max_locks_per_transaction: 64
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 27 26 0 * * * # Required. Scheduled Backup Cron
+    instanceSize: # Required
+        cpuCores: 2 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+    storage:
+      databaseStorage: # Required
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For PGD clusters, the recommended size is 10 Gi or more.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional, WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs.
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+#    transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+#      passphrase: mypassphrase
+#      keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+
+  - groupName: Data Group B
+    deploymentLocation: managed-devspatcher # required
+    imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+#    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#      - cidrBlock: 9.9.9.9/28
+#        description: Allow traffic from App A
+#      - cidrBlock: 10.10.10.10/27
+#        description: Allow traffic from App B
+#    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update. Witness groups do not support custom annotations.
+#      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#        value: "true"
+    backupRetentionPeriod: 30d  # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    nodes: 3 # only can be set to 2 or 3
+#    image: # only one of `imageId` or `image` should be set
+#      url: docker.example.com/platform/example/postgres:latest
+#      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration:
+      max_connections: 100
+      max_locks_per_transaction: 64
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 6 27 0 * * * # Required. Scheduled Backup Cron
+    instanceSize: # Required
+        cpuCores: 2 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+    storage:
+      databaseStorage: # Required
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For PGD clusters, the recommended size is 10 Gi or more.
+        storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage: # Optional field, but default value is 1 Gi
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+#    transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+##      passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+#      keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+witnessGroups:
+  - groupName: Witness Group  # required
+    deploymentLocation: managed-devspatcher # required
+    imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+#    image: # only one of `imageId` or `image` should be set
+#      url: docker.example.com/platform/example/postgres:latest
+#      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    instanceSize:
+        cpuCores: 2 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+create-aha.yaml:
+
+</summary>
+
+```yaml
+clusterType: aha # required, type of the cluster
+tags: # Optional tags for the cluster with name and color(valid name or hex color code)
+  - color: blue
+    tagName: tag-1
+clusterName: create-aha-name # required
+password: Password@1234 # Password must be 12 characters or more
+dataGroup:
+  deploymentLocation: managed-devspatcher # required
+  groupName: Data Group A # required
+  networking: private # Network access type for the cluster. Valid values: private, public, custom
+#  allowedIpRanges: # Optional, must contain at least one IP range with subnet mask when specified
+#    - cidrBlock: 9.9.9.9/28
+#      description: Allow traffic from App A
+#    - cidrBlock: 10.10.10.10/27
+#      description: Allow traffic from App B
+#  serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#    - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#      value: "true"
+#    - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#      value: internal
+  backupRetentionPeriod: 30d # Required. Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+  nodes: 3 # Required. Only can be set to 1, 2 or 3
+  imageId: e791cfd57486281653d3d6135872125c # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+#  image: # only one of `imageId` or `image` should be set
+#    url: docker.example.com/platform/example/postgres:latest
+#    digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+  postgresqlConfiguration:
+    max_connections: 100
+    max_locks_per_transaction: 64
+  #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+  #  - enabled: true
+  #    extensionId: postgis
+  #  - enabled: true
+  #    extensionId: pgvector
+  backupSchedule: 27 26 0 * * * # Required. Scheduled Backup Cron
+  instanceSize: # Required
+      cpuCores: 2 # CPU must be between 0.1 and 47.51 Cores
+      memoryGi: 2 # Memory must be between 0.1 and 178.51 Gi. For Aha clusters, the recommended memory is 2 Gi or more.
+  storage:
+    databaseStorage: # Required
+      sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For Aha clusters, the recommended size is 10 Gi or more.
+      storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+    walStorage:
+      sizeGi: 20 # Size must be between 0 and Unlimited (0-Unlimited Gi)
+      storageClass: standard-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+#  transparentDataEncryption: # Optional. Only one of passphrase or KeyId should be set, adds a layer of security by encrypting supported data stored at rest.
+##    passphrase: mypassphrase # Warning: only use passphrase for testing purposes, it is not recommended for production use.
+#    keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4
+```
+
+</details>
+
+<br/>
+
+## edbctl cluster edit
+
+Edits an existing cluster using a YAML configuration file. This command allows you to modify cluster settings, database configurations, backup policies, extensions, and resource allocations.
+
+To switch a cluster to custom load balancer annotations, set `networking: custom` and list your annotations under `serviceAnnotations`. The API replaces the entire annotation set on every update, so always include every annotation you want to keep, not just the ones you're changing. See [Custom networking annotations](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/custom-networking/) for details.
+
+```shell
+edbctl cluster edit [options]
+```
+
+Where `options` are:
+
+```
+-F, --config-file string   Path to the cluster config YAML file.
+-c, --credential string    The credential that you created via the `credential create`' command. The default is fetched from `context_credential`.
+-h, --help                 Help for edit.
+-P, --project string       The project that groups your clusters and other resources. The default is taken from `context_project`.
+-y, --yes                  Auto-confirm all confirmations.
+```
+
+This example shows how to edit a cluster using a YAML configuration file:
+
+```shell
+edbctl cluster edit -F <any sample YAML configuration file>
+```
+
+<details>
+
+<summary>
+
+edit-single.yaml:
+
+</summary>
+
+```yaml
+clusterType: single # checks that cluster type is a single cluster, this can only be changed to ha
+clusterId: p-abcdefg # cluster id of the cluster to be edited
+tags: # Optional tags for the cluster with name and color(valid name or hex color code). Remove 'tags' to preserve existing tags. 'tags' values will overwrite existing tags. set 'tags: []' to remove all tags.
+  - color: blue
+    tagName: production
+  - color: green
+    tagName: staging
+  - color: red
+    tagName: development
+clusterName: edit-single-name
+primaryPgName: edited-primary-replica-name
+imageId: 6535c8bc9e358f0afaf5a706ea1bc722 # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+password: password@1234 #Password must be 12 characters or more
+networking: private # Network access type for the cluster. Valid values: private, public, custom
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: "192.168.1.0/24"
+#    description: "Office network"
+#  - cidrBlock: "10.0.0.0/16"
+#    description: "VPN network"
+#serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#    value: "true"
+#  - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#    value: internal
+backupRetentionPeriod: 40d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+#image: # only one of `imageId` or `image` should be set
+#  url: docker.example.com/platform/example/postgres:latest
+#  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+postgresqlConfiguration: # Optional
+  max_connections: 500
+  shared_buffers: 256
+  application_name: beaconator
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+backupSchedule: 0 0 0 1 1 *   # Scheduled Backup Time in Cron format (UTC)
+#nodeSelectors: # Optional. Constrains Postgres pods to nodes with all matching labels, omit the field to preserve existing values.
+#  - key: node_pool
+#    value: pg-pool-big
+#tolerations: # Optional. Allows Postgres pods to schedule on nodes with matching taints, omit the field to preserve existing values.
+#  - key: edbaiplatform.io/postgres  # effect: NoSchedule, PreferNoSchedule, NoExecute (empty matches all)
+#    operator: Equal                 # operator: Equal (default) or Exists (ignores value)
+#    value: "true"
+#    effect: NoSchedule
+#  - key: big-node
+#    operator: Equal
+#    value: "true"
+#    effect: NoSchedule
+instanceSize:
+  cpuCores: 4 # CPU must be between 0.1 and 15 Cores
+  memoryGi: 16 # Memory must be between 0.1 and 10 Gi
+storage:
+  databaseStorage:  # Primary Storage size in Gi
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing databaseStorage size.
+    storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+  walStorage:   # Optional field. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+    storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+# to edit: if you provide a replica with a replicaPgId then that existing replica will be preserved/edited
+# to add a replica: if you do provide a replica without a replicaPgId then a new replica will be created
+# to remove a replica: if you do not provide a replica with a replicaPgId that exists then that existing replica will be removed
+replicaClusters:
+  # this is editing a replica cluster because it provides a replicaPgId
+  - replicaPgId: p-abcdefg-b
+    replicaPgName: test replica d
+    imageId: 6535c8bc9e358f0afaf5a706ea1bc722 # Image ID can be fetched with command `edbctl image list-image-tags --location-id <location-id>`, only one of `imageId` or `image` should be set
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+    #allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #  - cidrBlock: "192.168.1.0/24"
+    #    description: "Office network"
+    #  - cidrBlock: "10.0.0.0/16"
+    #    description: "VPN network"
+    #serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #    value: "true"
+    backupRetentionPeriod: 40d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    #image: # only one of `imageId` or `image` should be set
+    #  url: docker.example.com/platform/example/postgres:latest
+    #  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 500
+      shared_buffers: 256
+      application_name: beaconator
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 0 0 0 1 1 *   # Scheduled Backup Time in Cron format (UTC)
+    instanceSize:
+      cpuCores: 4 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 16 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage:  # Primary Storage size in Gi
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing databaseStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional field. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+  # this is adding a new replica because it does not provide a replicaPgId
+  - replicaPgName: test replica e
+    deploymentLocation: managed-devspatcher
+    imageId: 6535c8bc9e358f0afaf5a706ea1bc722 # Image ID can be fetched with command `edbctl image list-image-tags --location-id <location-id>`, only one of `imageId` or `image` should be set
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+    #allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #  - cidrBlock: "192.168.1.0/24"
+    #    description: "Office network"
+    #  - cidrBlock: "10.0.0.0/16"
+    #    description: "VPN network"
+    #serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #    value: "true"
+    backupRetentionPeriod: 40d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    #image: # only one of `imageId` or `image` should be set
+    #  url: docker.example.com/platform/example/postgres:latest
+    #  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 500
+      shared_buffers: 256
+      application_name: beaconator
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 0 0 0 1 1 *   # Scheduled Backup Time in Cron format (UTC)
+    instanceSize:
+      cpuCores: 4 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 16 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage:  # Primary Storage size in Gi
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing databaseStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional field. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+  # any replicas that are not provided with a replicaPgId will be removed
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+edit-ha.yaml:
+
+</summary>
+
+```yaml
+clusterType: ha # checks that cluster type is a ha cluster, this can only be changed to single
+clusterId: p-abcdefg # cluster id of the cluster to be edited
+tags: # Optional tags for the cluster with name and color(valid name or hex color code). Remove 'tags' to preserve existing tags. 'tags' values will overwrite existing tags. set 'tags: []' to remove all tags.
+  - color: blue
+    tagName: production
+  - color: green
+    tagName: staging
+  - color: red
+    tagName: development
+clusterName: edit-ha-name
+imageId: 6535c8bc9e358f0afaf5a706ea1bc722 # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+password: password@1234 #Password must be 12 characters or more
+networking: private # Network access type for the cluster. Valid values: private, public, custom
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: "192.168.1.0/24"
+#    description: "Office network"
+#  - cidrBlock: "10.0.0.0/16"
+#    description: "VPN network"
+#serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#    value: "true"
+#  - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#    value: internal
+backupRetentionPeriod: 40d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+#image: # only one of `imageId` or `image` should be set
+#  url: docker.example.com/platform/example/postgres:latest
+#  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+postgresqlConfiguration: # Optional
+  max_connections: 500
+  shared_buffers: 256
+  application_name: beaconator
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+backupSchedule: 0 0 0 1 1 *   # Scheduled Backup Time in Cron format (UTC)
+#nodeSelectors: # Optional. Constrains Postgres pods to nodes with all matching labels, omit the field to preserve existing values.
+#  - key: node_pool
+#    value: pg-pool-big
+#tolerations: # Optional. Allows Postgres pods to schedule on nodes with matching taints, omit the field to preserve existing values.
+#  - key: edbaiplatform.io/postgres  # effect: NoSchedule, PreferNoSchedule, NoExecute (empty matches all)
+#    operator: Equal                 # operator: Equal (default) or Exists (ignores value)
+#    value: "true"
+#    effect: NoSchedule
+#  - key: big-node
+#    operator: Equal
+#    value: "true"
+#    effect: NoSchedule
+instanceSize:
+  cpuCores: 4 # CPU must be between 0.1 and 15 Cores
+  memoryGi: 16 # Memory must be between 0.1 and 10 Gi
+storage:
+  databaseStorage:  # Primary Storage size in Gi
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing databaseStorage size.
+    storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+  walStorage:   # Optional field. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+    sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+    storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+# to edit: if you provide a replica with a replicaPgId then that existing replica will be preserved/edited
+# to add a replica: if you do provide a replica without a replicaPgId then a new replica will be created
+# to remove a replica: if you do not provide a replica with a replicaPgId that exists then that existing replica will be removed
+standbyReplicas: 3          # for HA cluster
+replicaClusters:
+  # this is editing a replica cluster because it provides a replicaPgId
+  - replicaPgId: p-abcdefg-b
+    replicaPgName: test replica d
+    imageId: 6535c8bc9e358f0afaf5a706ea1bc722 # Image ID can be fetched with command `edbctl image list-image-tags --location-id <location-id>`, only one of `imageId` or `image` should be set
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+    #allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #  - cidrBlock: "192.168.1.0/24"
+    #    description: "Office network"
+    #  - cidrBlock: "10.0.0.0/16"
+    #    description: "VPN network"
+    #serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #    value: "true"
+    backupRetentionPeriod: 40d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    #image: # only one of `imageId` or `image` should be set
+    #  url: docker.example.com/platform/example/postgres:latest
+    #  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 500
+      shared_buffers: 256
+      application_name: beaconator
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 0 0 0 1 1 *   # Scheduled Backup Time in Cron format (UTC)
+    instanceSize:
+      cpuCores: 4 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 16 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage:  # Primary Storage size in Gi
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing databaseStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional field. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+    standbyReplicas: 3          # for HA cluster
+  # this is adding a new replica because it does not provide a replicaPgId
+  - replicaPgName: test replica e
+    deploymentLocation: managed-devspatcher
+    imageId: 6535c8bc9e358f0afaf5a706ea1bc722 # Image ID can be fetched with command `edbctl image list-image-tags --location-id <location-id>`, only one of `imageId` or `image` should be set
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+    #allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+    #  - cidrBlock: "192.168.1.0/24"
+    #    description: "Office network"
+    #  - cidrBlock: "10.0.0.0/16"
+    #    description: "VPN network"
+    #serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+    #  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+    #    value: "true"
+    backupRetentionPeriod: 40d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    #image: # only one of `imageId` or `image` should be set
+    #  url: docker.example.com/platform/example/postgres:latest
+    #  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 500
+      shared_buffers: 256
+      application_name: beaconator
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 0 0 0 1 1 *   # Scheduled Backup Time in Cron format (UTC)
+    instanceSize:
+      cpuCores: 4 # CPU must be between 0.1 and 15 Cores
+      memoryGi: 16 # Memory must be between 0.1 and 10 Gi
+    storage:
+      databaseStorage:  # Primary Storage size in Gi
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing databaseStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+      walStorage:   # Optional field. WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs (Recommended for high write workloads) (Optional)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+    standbyReplicas: 3          # for HA cluster
+  # any replicas that are not provided with a replicaPgId will be removed
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+edit-analytics.yaml:
+
+</summary>
+
+```yaml
+clusterType: analytics # checks that cluster type is an analytics cluster, cannot change this field
+clusterId: p-pd6kf9unmi # required, cluster ID of the cluster to be edited
+tags: # Optional tags for the cluster with name and color(valid name or hex color code). Remove 'tags' to preserve existing tags. 'tags' values will overwrite existing tags. set 'tags: []' to remove all tags.
+  - color: blue
+    tagName: production
+  - color: green
+    tagName: staging
+  - color: red
+    tagName: development
+imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+clusterName: edit-analytics-name
+password: password@1234 #Password must be 12 characters or more
+networking: private # Network access type for the cluster. Valid values: private, public, custom
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 192.168.1.0/24
+#    description: Office network
+#  - cidrBlock: 10.0.0.0/16
+#    description: VPN network
+#serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#  - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#    value: "true"
+#  - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#    value: internal
+backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 0 0 0 1 1 *   # Scheduled Backup Time in Cron format (UTC)
+#image: # only one of `imageId` or `image` should be set
+#  url: docker.example.com/platform/example/postgres:latest
+#  digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+postgresqlConfiguration: # Optional
+  max_connections: 100
+  max_locks_per_transaction: 64
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+instanceSize:
+    cpuCores: 4 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 16 # Memory must be between 0.1 and 10 Gi
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+edit-pgd.yaml:
+
+</summary>
+
+```yaml
+clusterType: pgd # checks that cluster type is a pgd cluster, cannot change this field
+clusterId: p-12345abcde
+tags: # Optional tags for the cluster with name and color(valid name or hex color code). Remove 'tags' to preserve existing tags. 'tags' values will overwrite existing tags. set 'tags: []' to remove all tags.
+  - color: blue
+    tagName: tag-1
+clusterName: edit-pgd-name
+password: Password@1234
+dataGroups:
+  # add new data group A
+  - groupName: Data Group A # required
+    imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+#    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#      - cidrBlock: 9.9.9.9/28
+#        description: Allow traffic from App A
+#      - cidrBlock: 10.10.10.10/27
+#        description: Allow traffic from App B
+#    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update. Witness groups do not support custom annotations.
+#      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#        value: "true"
+    backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    nodes: 2 # only can be set to 2 or 3
+#    image: # only one of `imageId` or `image` should be set
+#      url: docker.example.com/platform/example/postgres:latest
+#      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 100
+      max_locks_per_transaction: 64
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 0 4 8 * * * # Scheduled Backup Cron
+    instanceSize:
+        cpuCores: 2 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+    storage:
+      databaseStorage: # Size must be between 0 and Unlimited (0-Unlimited Gi)
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For PGD clusters, the recommended size is 10 Gi or more. Size needs to be the same or greater than the existing databaseStorage size.
+      walStorage: # Optional, WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs.
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+  - groupId: p-12345abcde-x
+    networking: private # Network access type for the cluster. Valid values: private, public, custom
+    groupName: Data Group B # required
+    imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+#    allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#      - cidrBlock: 9.9.9.9/28
+#        description: Allow traffic from App A
+#      - cidrBlock: 10.10.10.10/27
+#        description: Allow traffic from App B
+#    serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update. Witness groups do not support custom annotations.
+#      - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#        value: "true"
+    backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+    nodes: 2 # only can be set to 2 or 3
+#    image: # only one of `imageId` or `image` should be set
+#      url: docker.example.com/platform/example/postgres:latest
+#      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    postgresqlConfiguration: # Optional
+      max_connections: 100
+      max_locks_per_transaction: 64
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    backupSchedule: 0 4 8 * * * # Scheduled Backup Cron
+    instanceSize:
+        cpuCores: 2 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+    storage:
+      databaseStorage:
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing databaseStorage size.
+      walStorage: # Optional, WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs.
+        sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). Size needs to be the same or greater than the existing walStorage size.
+        storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+witnessGroups:
+  # add new witness group
+  - groupName: Witness Group A # required when adding a new witness group
+    imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+#    image: # only one of `imageId` or `image` should be set
+#      url: docker.example.com/platform/example/postgres:latest
+#      digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+    instanceSize:
+        cpuCores: 2 # CPU must be between 0.1 and 15 Cores
+        memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For PGD clusters, the recommended memory is 2 Gi or more.
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary>
+
+edit-aha.yaml:
+
+</summary>
+
+```yaml
+clusterType: aha # required, checks that cluster type is 'aha' cluster, cannot change this field
+clusterId: p-12345abcde # required, cluster ID of the cluster to be edited
+tags: # Optional tags for the cluster with name and color(valid name or hex color code). Remove 'tags' to preserve existing tags. 'tags' values will overwrite existing tags. set 'tags: []' to remove all tags.
+  - color: blue
+    tagName: tag-1
+clusterName: edit-aha-name
+password: Password@1234 # Password must be at least 12 characters
+dataGroup:
+  imageId: 6138b8f8e2293a87ebf7ba8dfd1f74da # Image ID can be fetched with command `edbctl image list-image-tags`, only one of `imageId` or `image` should be set
+  groupName: Data Group A
+  networking: private # Network access type for the cluster. Valid values: private, public, custom
+#  allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#    - cidrBlock: 9.9.9.9/28
+#      description: Allow traffic from App A
+#    - cidrBlock: 10.10.10.10/27
+#      description: Allow traffic from App B
+#  serviceAnnotations: # Optional. Custom Kubernetes service annotations. Only valid when networking is 'custom'. Note: API replaces ALL annotations on every update.
+#    - key: service.beta.kubernetes.io/aws-load-balancer-internal
+#      value: "true"
+#    - key: service.beta.kubernetes.io/aws-load-balancer-scheme
+#      value: internal
+  backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+  nodes: 2 # only can be set to 1, 2 or 3
+#  image: # only one of `imageId` or `image` should be set
+#    url: docker.example.com/platform/example/postgres:latest
+#    digest: sha256:dummyhash1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+  postgresqlConfiguration: # Optional
+    max_connections: 100
+    max_locks_per_transaction: 64
+  #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+  #  - enabled: true
+  #    extensionId: postgis
+  #  - enabled: true
+  #    extensionId: pgvector
+  backupSchedule: 0 4 8 * * * #  Scheduled Backup Cron
+  instanceSize:
+    cpuCores: 2 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 2 # Memory must be between 0.1 and 10 Gi. For Aha clusters, the recommended memory is 2 Gi or more.
+  storage:
+    databaseStorage: # Size must be between 0 and Unlimited (0-Unlimited Gi)
+      sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi). For Aha clusters, the recommended size is 10 Gi or more. Size needs to be the same or greater than the existing databaseStorage size.
+    walStorage: # Optional, WAL Storage size in Gi, a separate storage volume for Write-Ahead Logs.
+      sizeGi: 10 # Size must be between 0 and Unlimited (0-Unlimited Gi), size needs to be the same or greater than the existing walStorage size.
+      storageClass: ssd-csi # Supported storage classes can be fetched with command `edbctl image list-image-tags` and checking `Supported Storage Classes` field
+```
+
+</details>
+
+<br/>
+
+> **Note**
+>
+> - The following fields are mandatory while editing a cluster:
+>
+>   - `clusterID`
+>   - `clusterType`
+>
+>   All the other fields are optional. If omitted, the original values from the cluster are used.
+>
+> - YAML group logic for editing a PGD cluster:
+>
+>   - **Retain:** Providing only a `groupId` keeps that existing group as-is.
+>
+>   - **Update:** Providing a `groupId` along with specific fields (e.g., `image`, `groupName`) retains the group and applies the new values to those fields.
+>
+>   - **Create:** Providing group details (e.g., `groupName`, `image`) without a `groupId` will trigger the creation of a new group.
+>
+>   - **Delete:** Omitting a `groupId` entirely from the list (for an existing group) will result in that group being removed.
+
+## edbctl cluster delete
+
+Deletes a specified cluster using its cluster ID. This action permanently removes the cluster from your project and can't be undone, so ensure you have the correct cluster ID before proceeding.
+
+```shell
+edbctl cluster delete [options]
+```
+
+Where `options` are:
+
+```
+-i, --id string           Cluster ID (required). The unique identifier for the cluster to delete.
+-c, --credential string   The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-y, --yes                 Auto-confirm all confirmations.
+-P, --project string      The project that groups your clusters and other resources, the default is taken from `context_project`.
+-h, --help                Help for delete
+```
+
+These examples show how to delete the cluster:
+
+```shell
+edbctl cluster delete
+edbctl cluster delete --id p-8nllnskncq
+edbctl cluster delete -i p-8nllnskncq
+```
+
+## edbctl cluster restore
+
+You can restore a cluster by providing a YAML configuration file with the required specifications. Use the `cluster restore` command and pass the file using the `--file` or `-f` option. While restoring, you must specify one of the following restore modes:
+
+- `full`
+- `pointInTime`
+
+Make sure you uncomment only one mode at a time.
+
+> **Note**
+>
+> The `restoreRequest` and `password` fields are mandatory for all clusters except PGD and AHA. All other fields are optional and default to the values from the source cluster if not specified.
+
+```shell
+edbctl cluster restore [options]
+```
+
+Where `options` are:
+
+```
+-F, --config-file string   Path to the cluster config YAML file (required).
+-c, --credential string    The credential that you created via the `credential create` command. The default is fetched from `context_credential`.
+-y, --yes                  Auto-confirm all confirmations.
+-P, --project string       The project that groups your clusters and other resources. The default is taken from `context_project`.
+-h, --help                 Help for restore.
+```
+
+This example shows how to restore a cluster using a YAML configuration file:
+
+```shell
+edbctl cluster restore -F <any sample YAML configuration file>
+```
+
+<details>
+
+<summary><code>restore-single.yaml</code>
+
+</summary>
+
+```yaml
+# Cluster type must be "single" or "ha" (default: same as source cluster)
+clusterType: single
+# Optional: Tags to apply to the restored cluster
+# To remove all tags, use: tags: []
+# To inherit tags from the source cluster, omit this field
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored cluster
+clusterName: restore-single-name
+# Location where the cluster will be deployed
+deploymentLocation: managed-devspatcher
+# Cluster admin password (minimum 12 characters)
+password: password@1234
+# Restore configuration - either full or point-in-time restore must be specified
+restoreRequest:
+  full:
+    postgresBackupId: 20241112T211900
+    sourceClusterId: p-12345abcde
+  # pointInTime:
+  #   pointInTime: '2025-01-01T13:40:04.000Z'
+  #   sourceClusterId: p-12345abcde
+# Optional: Networking configuration
+networking: public # Valid values: public, private
+# Optional: IP ranges allowed to access the cluster
+# allowedIpRanges:
+#   - cidrBlock: 127.0.0.1/24
+#     description: test
+# Optional: Backup retention policy
+backupRetentionPeriod: 30d # Valid units: d (days), w (weeks), m (months)
+# Optional: Backup schedule in cron format
+backupSchedule: 39 13 23 * * *
+# Optional: Base image for the cluster
+image:
+  digest: sha256:c37c5d0ff1a9318919b9581c61286fcfce87f0c5b13000ff036da8bcf253173c
+  url: upmdev.azurecr.io/enterprisedb/starlight:15.8-3-debian
+# Optional: PostgreSQL configuration parameters
+postgresqlConfiguration:
+  max_connections: 100
+# Required: Instance size (CPU and memory)
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+instanceSize:
+  cpuCores: 1       # Must be between 0.1 and 15 cores
+  memoryGi: 1       # Must be between 0.1 and 10 Gi
+# Required: Storage configuration
+storage:
+  databaseStorage:
+    sizeGi: 1          # Any value >= 0
+    storageClass: standard-csi
+  walStorage:          # Optional but recommended for high-write workloads
+    sizeGi: 1
+    storageClass: standard-csi
+# Optional: Transparent data encryption
+# transparentDataEncryption:
+#   passphrase: mypassphrase  # Required if source cluster uses TDE with passphrase. Warning: only use passphrase for testing purposes, it is not recommended for production use.
+#   keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4  # Uses KMS key from source if source cluster uses KMS
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary><code>restore-ha.yaml</code>
+
+</summary>
+
+```yaml
+# Cluster type must be "ha" or "single" (default: same as source cluster)
+clusterType: ha
+# Optional: Tags to apply to the restored cluster
+# To remove all tags, use: tags: []
+# To inherit tags from the source cluster, omit this field
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored cluster
+clusterName: restore-ha-name
+# Location where the cluster will be deployed
+deploymentLocation: managed-devspatcher
+# Cluster admin password (minimum 12 characters)
+password: password@1234
+# Restore configuration - either full or point-in-time restore must be specified
+restoreRequest:
+  full:
+    postgresBackupId: 20241112T211900
+    sourceClusterId: p-12345abcde
+  # pointInTime:
+  #   pointInTime: '2025-01-01T13:40:04.000Z'
+  #   sourceClusterId: p-12345abcde
+# Optional: Networking configuration
+networking: public # Valid values: public, private
+# Optional: IP ranges allowed to access the cluster
+# allowedIpRanges:
+#   - cidrBlock: 127.0.0.1/24
+#     description: test
+# Optional: Backup retention policy
+backupRetentionPeriod: 30d # Valid units: d (days), w (weeks), m (months)
+# Optional: Backup schedule in cron format
+backupSchedule: 39 13 23 * * *
+# Optional: Base image for the cluster
+image:
+  digest: sha256:c37c5d0ff1a9318919b9581c61286fcfce87f0c5b13000ff036da8bcf253173c
+  url: upmdev.azurecr.io/enterprisedb/starlight:15.8-3-debian
+# Optional: PostgreSQL configuration parameters
+postgresqlConfiguration:
+  max_connections: 100
+# Required: Instance size (CPU and memory)
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+instanceSize:
+  cpuCores: 1       # Must be between 0.1 and 15 cores
+  memoryGi: 1       # Must be between 0.1 and 10 Gi
+# Required: Storage configuration
+storage:
+  databaseStorage:
+    sizeGi: 1
+    storageClass: standard-csi
+  walStorage:              # Optional but recommended for high-write workloads
+    sizeGi: 1
+    storageClass: standard-csi
+# Optional: Transparent data encryption
+# transparentDataEncryption:
+#   passphrase: mypassphrase  # Required if source cluster uses TDE with passphrase. Warning: only use passphrase for testing purposes, it is not recommended for production use.
+#   keyId: 42c4f77e-3ebe-46ab-9749-4178887bded4  # Uses KMS key from source if source cluster uses KMS
+# Required for HA clusters: number of standby replicas
+standbyReplicas: 2
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary><code>restore-analytics.yaml</code>
+
+</summary>
+
+```yaml
+clusterType: analytics # checks that cluster type is a pgd cluster, cannot change this field
+tags: # Optional tags for the cluster with name and color(valid name or hex color code). Remove 'tags' to use source cluster tags. 'tags' values will use exactly these tags only. set 'tags: []' to use no tags.
+  - color: blue
+    tagName: tag-1
+clusterName: restore-analytics-name
+deploymentLocation: managed-devspatcher
+password: password@1234 #Password must be 12 characters or more
+restoreRequest:
+# only one of the fields 'full' or 'pointInTime' can be set
+  full:
+    postgresBackupId: 20241112T211900
+    sourceClusterId: p-12345abcde
+  #  pointInTime:
+  #    pointInTime: '2025-01-01T13:40:04.000Z'
+  #    sourceClusterId: p-12345abcde
+networking: public # Network access type for the cluster. Valid values: private, public
+#allowedIpRanges: # Must contain at least one IP range with subnet mask when specified
+#  - cidrBlock: 127.0.0.1/24
+#    description: test
+backupRetentionPeriod: 30d # Retention period must be between 1-180 days, 1-25 weeks, or 1-6 months. Valid units: days(d),weeks(w),months(m)
+backupSchedule: 39 13 23 * * * # Scheduled Backup Cron
+image: # user can fetch list of supported images with command `edbctl image list-image-tags`
+  digest: sha256:c37c5d0ff1a9318919b9581c61286fcfce87f0c5b13000ff036da8bcf253173c
+  url: upmdev.azurecr.io/enterprisedb/starlight:15.8-3-debian
+postgresqlConfiguration: # Optional
+  max_connections: 100
+#pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+#  - enabled: true
+#    extensionId: postgis
+#  - enabled: true
+#    extensionId: pgvector
+instanceSize:
+    cpuCores: 1 # CPU must be between 0.1 and 15 Cores
+    memoryGi: 1 # Memory must be between 0.1 and 10 Gi
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary><code>restore-pgd.yaml</code>
+
+</summary>
+
+```yaml
+# PGD restore configuration
+clusterType: pgd # Must remain 'pgd' for PGD clusters
+# ID of the source cluster to restore from
+sourceClusterId: p-12345abcde
+# Optional: Tags for the restored cluster
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored PGD cluster
+name: restore-pgd-name
+# Password for the restored cluster (min 12 characters)
+password: Password@1234
+# Only one data group can be restored at a time
+dataGroups:
+  - groupName: Data Group A
+    deploymentLocation: managed-devspatcher
+    networking: public  # Valid values: private, public
+    backupRetentionPeriod: 31d  # Valid units: d (days), w (weeks), m (months)
+    nodes: 2  # Must be either 2 or 3 nodes
+    image:
+      url: upmdev.azurecr.io/enterprisedb/starlight:16.6.0-5.6.1-11-debian-bdr-epas-full
+      digest: sha256:3db7c449c69f04753a3fb791623b0d6add58c0254e09b7bfe743d24f78f4ca57
+    # Optional PostgreSQL configuration overrides
+    postgresqlConfiguration:
+      max_connections: 100
+      max_locks_per_transaction: 64
+    #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+    #  - enabled: true
+    #    extensionId: postgis
+    #  - enabled: true
+    #    extensionId: pgvector
+    # Optional backup schedule in cron format
+    backupSchedule: 0 4 8 * * *
+    # Specify one restore method only: 'full' or 'pointInTime'
+    restorePgdGroupRequest:
+      full:
+        postgresBackupId: 20241228T055553
+        sourceGroupId: p-12345abcde-b
+      # pointInTime:
+      #   pointInTime: '2025-01-01T13:40:04.000Z'
+      #   sourceGroupId: p-12345abcde-b
+    # Instance size settings
+    instanceSize:
+      cpuCores: 1         # Between 0.1 and 15 cores
+      memoryGi: 2         # Minimum recommended: 2 Gi
+    # Storage settings
+    storage:
+      databaseStorage:
+        sizeGi: 10        # Minimum recommended: 10 Gi
+        storageClass: standard-csi
+      walStorage:         # Optional: separate WAL storage
+        sizeGi: 1
+        storageClass: ssd-csi
+# Optional: Transparent data encryption
+# transparentDataEncryption:
+#   passphrase: yourpassphrase
+```
+
+</details>
+
+<br/>
+
+<details>
+
+<summary><code>restore-aha.yaml</code>
+
+</summary>
+
+```yaml
+# Restore configuration for an AHA (Active-Active HA) cluster
+clusterType: aha  # Must remain 'aha' for AHA clusters
+sourceClusterId: p-12345abcde  # Required
+# Optional tags
+tags:
+  - color: blue
+    tagName: tag-1
+# Name of the restored AHA cluster
+name: restore-aha-name
+# Admin password (minimum 12 characters)
+password: Password@1234
+dataGroup:
+  groupName: Data Group A
+  deploymentLocation: managed-devspatcher
+  networking: public  # Valid values: private, public
+  # Allow list for IP ranges
+  allowedIpRanges:
+    - cidrBlock: 9.9.9.9/28
+      description: Allow traffic from App A
+    - cidrBlock: 10.10.10.10/27
+      description: Allow traffic from App B
+  backupRetentionPeriod: 31d  # Valid: 1-180d, 1-25w, 1-6m
+  nodes: 2  # Must be 2 or 3
+  # Image to use for the restore
+  image:
+    url: 339713079902.dkr.ecr.us-east-1.amazonaws.com/uat-hcp/postgresql-testing:17.5-2505151734-pgds-full
+    digest: sha256:b1464368351b16f2f2b990c296dad695d06f948580138512e6da3dbf5c5f475b
+  # Optional PostgreSQL settings
+  postgresqlConfiguration:
+    max_connections: 100
+    max_locks_per_transaction: 64
+  #pgExtensions: # Optional. PostgreSQL extensions to enable/disable (extensionId must be available in the selected image).
+  #  - enabled: true
+  #    extensionId: postgis
+  #  - enabled: true
+  #    extensionId: pgvector
+  # Scheduled backup in cron format
+  backupSchedule: 0 4 8 * * *
+  # Restore mode: choose either full or pointInTime
+  restoreAhaGroupRequest:
+    # full:
+    #   postgresBackupId: 20241228T055553
+    pointInTime:
+      pointInTime: '2025-01-01T13:40:04.000Z'
+  # Compute resources
+  instanceSize:
+    cpuCores: 2         # Between 0.1 and 47.51 cores
+    memoryGi: 2         # Recommended: 2 Gi or more
+  # Storage settings
+  storage:
+    databaseStorage:
+      sizeGi: 20         # Recommended: 10 Gi or more
+      storageClass: ssd-csi
+    walStorage:
+      sizeGi: 20
+      storageClass: standard-csi
+```
+
+</details>
+
+<br/>
+
+> **Note**
+>
+> - The following fields are mandatory while restoring a PGD cluster:
+>
+>   - `sourceClusterID`
+>   - `clusterType`
+>   - `password`
+>   - `dataGroups`
+>   - `restorePgdGroupRequest`
+>
+>   All the other fields are optional. If omitted, the values from the source cluster are used.
+>
+> - The following fields are mandatory while restoring an AHA cluster:
+>
+>   - `sourceClusterID`
+>   - `clusterType`
+>   - `password`
+>   - `dataGroup`
+>   - `restoreAhaGroupRequest`
+>
+>   All the other fields are optional. If omitted, the values from the source cluster are used.
+
+## edbctl cluster switchover-primary
+
+The `edbctl cluster switchover-primary` command performs a controlled role swap within a database cluster. It promotes a designated Replica to become the new Primary node while simultaneously demoting the current Primary to a Replica role. This is typically used for planned maintenance, performance optimization, or data center migration.
+
+By default, this command performs a graceful switchover, the replica is promoted only after it receives a promotion token from the current primary, guaranteeing no data is lost. Use `--force` to perform a failover instead, promoting the replica without waiting for that token. Because a forced failover can result in data loss or leave the replica inconsistent with the old primary, reserve it for disaster recovery, when the primary is unavailable.
+
+```
+edbctl cluster switchover-primary [options]
+```
+
+Where `options` are:
+
+```
+-i, --id string                 The unique ID of the cluster to switchover (required).
+    --replica-id string         The unique ID of the Replica node to promote to Primary (required).
+    --force                     Forces the switchover operation, promoting the Replica without waiting for a promotion token from the former Primary. Use with caution, as this may lead to data loss or inconsistencies with the old Primary.
+-P, --project string            The project context for the operation. Defaults to `context_project`.
+    --credential string         The credential to use for authentication. Defaults to `context_credential`.
+-y, --yes                       Auto-confirms all prompts and confirmations, enabling non-interactive operation.
+-h, --help                      Displays help information for the switchover-primary command.
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

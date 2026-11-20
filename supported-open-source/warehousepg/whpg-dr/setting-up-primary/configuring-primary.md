@@ -1,0 +1,301 @@
+---
+title: Installing and configuring the primary cluster for WarehousePG Disaster Recovery
+description: Install the whpg-dr package and configure backup storage on the primary WarehousePG cluster.
+product: WarehousePG Disaster Recovery
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/configuring-primary/
+lastModified: 2026-11-09T15:30:56Z
+---
+
+# Installing and configuring the primary cluster for WarehousePG Disaster Recovery
+
+Install `whpg-dr` on the primary cluster, create a backup configuration file, and run `whpg-dr configure backup` to enable WAL archiving to the storage repository.
+
+## Prerequisites
+
+Confirm that the primary cluster meets these requirements:
+
+- A WarehousePG version, operating system, and architecture listed in [Compatibility](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/overview/compatibility/)
+- No standalone `barman` or `barman-cli` packages installed on the WarehousePG hosts. The `edb-whpg-dr` RPM conflicts with them.
+- Access to the storage repository from the coordinator and all segment hosts. For NFS, the path must be mounted read-write. For S3, credentials must be available on all hosts. S3 requires WarehousePG 7.x.
+
+## Installing the package
+
+Install the `edb-whpg-dr` RPM on the coordinator and all segment hosts. Run these steps as `gpadmin` on the coordinator.
+
+1. The `edb-whpg-dr` package is available in the `gpsupp` EDB repository. Download it to the coordinator:
+
+   ### RHEL 8, 9
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/gpsupp/setup.rpm.sh" | sudo -E bash
+   sudo dnf download edb-whpg-dr
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/gpsupp/setup.rpm.sh" | sudo -E bash
+   sudo yumdownloader edb-whpg-dr
+   ```
+
+2. Create a file `all_hosts` listing the coordinator and all segment hosts:
+
+   ```ini
+   cdw
+   sdw1
+   sdw2
+   sdw3
+   ```
+
+3. Copy the RPM to all hosts. In the file name, replace `<version>`, `<dist>`, and `<arch>` with the values from the downloaded file, for example `edb-whpg-dr-1.1.0.el9.x86_64.rpm`:
+
+   ### WHPG 7
+
+   ```bash
+   gpsync -f all_hosts edb-whpg-dr-<version>.<dist>.<arch>.rpm =:/tmp/
+   ```
+
+   ### WHPG 6
+
+   ```bash
+   gpscp -f all_hosts edb-whpg-dr-<version>.<dist>.<arch>.rpm =:/tmp/
+   ```
+
+4. Install the package on all hosts:
+
+   ### RHEL 8, 9
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo dnf install -y /tmp/edb-whpg-dr-<version>.<dist>.<arch>.rpm"
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo yum install -y /tmp/edb-whpg-dr-<version>.<dist>.<arch>.rpm"
+   ```
+
+   The package installs `whpg-dr` to `/usr/edb/whpg-dr/bin/`, bundles its own copy of Barman and all required Python modules, and installs Python 3.12 as a dependency if it isn't already present.
+
+5. Add the `whpg-dr` bin directory to `gpadmin`'s `PATH`:
+
+   ```bash
+   echo 'export PATH=$PATH:/usr/edb/whpg-dr/bin' >> ~/.bashrc && source ~/.bashrc
+   ```
+
+6. Verify the installation on the coordinator:
+
+   ```bash
+   whpg-dr --version
+   ```
+
+### Upgrading the package
+
+Upgrade `whpg-dr` on the coordinator and all segment hosts. The RPM bundles its own Barman virtual environment, so you don't need to change the system Python. Upgrade the DR cluster hosts the same way, as described in [Upgrading whpg-dr](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/configuring-dr/#upgrading-whpg-dr).
+
+> **Note**
+>
+> Some releases need extra steps when you upgrade. Check the upgrade notes in the [release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/release_notes/) for the version you're upgrading to.
+
+1. Make sure no backup or restore is running, and pause any `whpg-dr` cron jobs until you've upgraded all hosts. The upgrade replaces the bundled Barman.
+
+2. On the coordinator, download the newer package version from the EDB repository:
+
+   #### RHEL 8, 9
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/gpsupp/setup.rpm.sh" | sudo -E bash
+   sudo dnf download edb-whpg-dr
+   ```
+
+   #### RHEL 7
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/gpsupp/setup.rpm.sh" | sudo -E bash
+   sudo yumdownloader edb-whpg-dr
+   ```
+
+3. Copy the RPM to all hosts, using the same `all_hosts` file as in [Installing the package](#installing-the-package):
+
+   #### WHPG 7
+
+   ```bash
+   gpsync -f all_hosts edb-whpg-dr-<version>.<dist>.<arch>.rpm =:/tmp/
+   ```
+
+   #### WHPG 6
+
+   ```bash
+   gpscp -f all_hosts edb-whpg-dr-<version>.<dist>.<arch>.rpm =:/tmp/
+   ```
+
+4. Upgrade the package on all hosts:
+
+   #### RHEL 8, 9
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo dnf upgrade -y /tmp/edb-whpg-dr-<version>.<dist>.<arch>.rpm"
+   ```
+
+   #### RHEL 7
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo yum upgrade -y /tmp/edb-whpg-dr-<version>.<dist>.<arch>.rpm"
+   ```
+
+5. Verify the upgrade on the coordinator:
+
+   ```bash
+   whpg-dr --version
+   ```
+
+> **Note**
+>
+> If your cluster uses tablespaces and POSIX storage, you can't restore backups taken with version 1.0.0. They don't contain tablespace data, and the restore fails. Take a new full backup after upgrading.
+
+## Customizing the home directory (optional)
+
+You can override the default home directory and set shared configuration defaults that apply across cluster configurations.
+
+Set `WHPG_DR_HOME` to override the default location where `whpg-dr` stores Barman configuration, state, and logs. The default path is `$HOME/.whpg-dr`:
+
+```bash
+export WHPG_DR_HOME=/data/coordinator/whpg-dr-home
+```
+
+Add this export to `gpadmin`'s `.bashrc` or `.bash_profile` to make it persistent. You can also set `whpg_dr_home` in your backup YAML file, as described in [Creating the backup configuration file](#creating-the-backup-configuration-file). When both are set, the environment variable takes precedence over the YAML field.
+
+Create `$WHPG_DR_HOME/global.yaml` to set default values that per-cluster YAML files inherit:
+
+```yaml
+log_dir: /data/coordinator/gpAdminLogs
+log_file_level: debug
+ssh_user: gpadmin
+pg_user: gpadmin
+```
+
+Per-cluster YAML settings override `global.yaml` values.
+
+## Creating the backup configuration file
+
+Create a YAML file that describes your cluster name and storage repository, then run [`whpg-dr configure backup`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/reference/commands/#whpg-dr-configure-backup) to generate the necessary backup configuration and prepare the cluster for WAL archiving. Run all `whpg-dr` commands as the WarehousePG cluster owner, typically `gpadmin` on the coordinator. The RPM installs ready-to-adapt starting points under `/usr/edb/whpg-dr/examples/backup/`.
+
+> **Important**
+>
+> `whpg-dr configure backup` restarts the cluster by running `gpstop -ar`. Close all client connections before running it, or use `--restart-mode fast` to end client sessions and stop the cluster cleanly. With the default `smart` mode, a connected client session can stall the restart for about two minutes and then force a crash stop.
+
+### Using POSIX storage
+
+Create a backup YAML file with `storage.type: posix` when both the primary and DR cluster hosts can mount the same filesystem path:
+
+```yaml
+cluster_name: my_cluster
+
+storage:
+  type: posix
+  path: /data/backups/whpg-dr
+```
+
+For a full description of all available fields, see [Backup configuration YAML](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/reference/configuration/#backup-configuration-yaml).
+
+### Using S3 storage
+
+Create a backup YAML file with `storage.type: s3` if all cluster hosts have network access to an S3 endpoint. S3 requires WarehousePG 7.x.
+
+```yaml
+cluster_name: my_cluster
+
+storage:
+  type: s3
+  bucket: my-dr-bucket
+  prefix: whpg/my_cluster
+  region: us-east-1
+  access_key_id: your_aws_access_key_id
+  secret_access_key: your_aws_secret_access_key
+```
+
+For S3-compatible stores such as MinIO or SeaweedFS, add `endpoint_url` pointing to your endpoint. For a full description of all fields including other credential methods, see [Backup configuration YAML](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/reference/configuration/#backup-configuration-yaml).
+
+## Preparing the primary cluster for backup
+
+Run `whpg-dr configure backup` to set up the primary cluster for WAL archiving. The command is a one-time configuration step. It doesn't take a backup. Once complete, the cluster is ready to start archiving WAL to the storage repository:
+
+```bash
+whpg-dr configure backup /home/gpadmin/backup.yaml
+```
+
+The command does the following:
+
+- Generates Barman configuration files under `$WHPG_DR_HOME/<cluster_name>/backup/barman_conf/` and distributes them to the coordinator and all segment hosts.
+- Saves a copy of your YAML to `$WHPG_DR_HOME/<cluster_name>/backup/config.yaml`. `whpg-dr` runs from this copy, so changes to your YAML file have no effect until you run `configure backup` again, or [`configure backup --reconfigure`](#updating-the-configuration) to apply most fields without restarting the cluster. Don't edit the copy by hand.
+- Records a topology snapshot of the cluster's segment configuration to `$WHPG_DR_HOME/<cluster_name>/backup/segment_configuration.csv`. `whpg-dr` uses this snapshot to detect topology drift before each backup. Any topology change, such as a failover, segment add or remove, or hostname or port change, requires re-running `configure backup` before the next backup. Each base backup also saves a copy to the storage repository under `restore-points/<backup_name>/segment_configuration.csv`, which `configure restore` reads when setting up the DR cluster.
+- Sets `archive_mode` and `archive_command` in `postgresql.conf` to enable WAL archiving, then restarts the cluster for the changes to take effect.
+
+Use `--dry-run` to preview the planned actions without writing any files or restarting the cluster:
+
+```bash
+whpg-dr configure backup /home/gpadmin/backup.yaml --dry-run
+```
+
+Once the command completes without errors, verify the backup configuration:
+
+```bash
+whpg-dr check my_cluster
+```
+
+All checks report `OK` when the configuration is correct. If any check fails, see [Troubleshooting](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/troubleshooting/) for common issues.
+
+At this point the storage repository is initialized with a cluster metadata file and a `wal/` directory. WAL archiving starts immediately. No base backup exists yet — that happens in the next step.
+
+With the primary cluster configured, you can start taking backups. See [Performing backups](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/).
+
+> **Important**
+>
+> Record the following details before disaster occurs and store them somewhere accessible without the primary cluster, such as version control, a secrets manager, or the storage repository itself. You'll need them to construct the restore configuration YAML at recovery time, and they may not be retrievable if the primary is down:
+>
+> - The exact WHPG patch version and OS (for example, `warehouse-pg-7-7.4.0-1.el8.x86_64`)
+> - The number of primary segments
+> - The cluster name (as set in the backup YAML)
+> - Storage credentials and bucket or path details
+
+## Updating the configuration
+
+Use `--reconfigure` to update Barman options such as compression settings, or to rotate S3 credentials such as `access_key_id`, `secret_access_key`, and `session_token`, without restarting the cluster:
+
+```bash
+whpg-dr configure backup /home/gpadmin/backup.yaml --reconfigure
+```
+
+The command regenerates and distributes the configuration files without modifying `postgresql.conf` or restarting the cluster. It rejects unsupported field changes and fails if the cluster topology has changed since the last `configure backup`. In either case, run a fresh `configure backup` instead.
+
+If you need to change the storage location, use a new cluster name to avoid conflicts with existing backup data in the repository.
+
+## Removing the backup configuration
+
+Run `configure reset` to disable WAL archiving and remove the Barman configuration files from all cluster hosts:
+
+```bash
+whpg-dr configure reset my_cluster
+```
+
+The command does the following:
+
+- Removes Barman configuration files from all hosts.
+- For S3 storage, removes the stored AWS credentials from all hosts.
+- Resets `archive_command` and `archive_mode` in `postgresql.conf` and restarts the cluster.
+
+Use `--dry-run` to preview what will be removed without making any changes:
+
+```bash
+whpg-dr configure reset my_cluster --dry-run
+```
+
+> **Note**
+>
+> `configure reset` affects only the primary cluster. It doesn't remove restore configuration or data directories on the DR cluster, and it doesn't delete backups from the storage repository. Existing backups remain recoverable. However, WAL archiving stops immediately after the reset, so you can only recover to the point of the last backup taken before the reset.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,36 @@
+---
+title: Adding a subscription
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/03_adding_subscription/
+lastModified: 2023-05-15T12:05:18-04:00
+---
+
+# Adding a subscription
+
+<div id="adding_subscription" class="registered_link"></div>
+
+Subordinate to a subscription database definition, you create subscriptions. A subscription assigns the publication to replicate to the database identified by the subscription database definition.
+
+1. Select the Subscription Database node. Select **Subscription > Create Subscription**.
+
+2. In the Create Subscription dialog box, fill in the following fields:
+
+   - **Subscription Name**. Enter a name for the subscription that is unique among all subscription names.
+   - **Host**. Network IP address of the publication server that is the parent node of the publication to subscribe to. This  IP address is the same value entered in the **Host** field in Step 3 of [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server).
+   - **Port**. Port used by the publication server. This is the same value entered in the **Port** field in Step 3 of [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server).
+   - **User Name**. Admin user name of the publication server. This is the same value entered in the **User Name** field in Step 3 of [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server).
+   - **Password**. Password of the admin user. This is the same value entered in the **Password** field in Step 3 of [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server).
+   - **Publication Name**. Select **Load** to get a list of available publications. Select the publication to  subscribe to.
+
+3. (Optional) If you defined a set of available table filters for the publication, you have the option of enabling these filters on this subscription. See [Adding a publication](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/03_adding_publication/#adding_publication) for instructions on defining table filters.
+
+   Select the **Filter Rules** tab to enable one or more filter rules on the subscription. You can enable at most one filter rule on any given subscription table.
+
+4. Select **Create**. When Subscription Created Successfully appears, select **OK**.
+
+   A Subscription node is added to the replication tree.
+
+   The tables and views from the publication are created in the subscription database but without any rows. Rows are populated into the subscription tables when the first snapshot replication occurs.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

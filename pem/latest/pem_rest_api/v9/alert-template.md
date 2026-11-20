@@ -1,0 +1,580 @@
+---
+title: "EDB Postgres Enterprise Manager REST APIs v9.0: Alert template"
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v9/alert-template/
+lastModified: 2026-03-26T11:49:42+05:30
+---
+
+# EDB Postgres Enterprise Manager REST APIs v9.0: Alert template
+
+## `get__alert_template_`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X GET https://PEM-SERVER-IP/pem/api/v9/alert/template/ \
+  -H 'Accept: application/json' \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json',
+  'X-Auth-Token': 'string'
+}
+
+r = requests.get('https://PEM-SERVER-IP/pem/api/v9/alert/template/', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v9/alert/template/',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`GET /alert/template/`
+
+Gets Alert templates.
+
+<span id="get__alert_template_-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type   | Required | Description            |
+| ------------ | ------ | ------ | -------- | ---------------------- |
+| X-Auth-Token | header | string | true     | Token of authorization |
+
+**Example responses**
+
+<details>
+<summary>200 Response</summary>
+
+```json
+[
+  {
+    "name": "string",
+    "description": "string",
+    "default_history_retention": 0,
+    "object_type": 0,
+    "sql": "string",
+    "applicable_on_server": "ALL",
+    "default_check_frequency": 0,
+    "threshold_unit": "string",
+    "is_system_template": false,
+    "is_auto_create": true,
+    "operator": ">",
+    "low_threshold_value": 0,
+    "medium_threshold_value": 0,
+    "high_threshold_value": 0,
+    "info_sql": "string"
+  }
+]
+```
+
+</details>
+
+<span id="get__alert_template_-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description         | Schema |
+| ------ | ------------------------------------------------------- | ------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Successful response | Inline |
+
+<span id="get__alert_template_-responseschema"></span>
+
+### Response Schema
+
+Status Code **200**
+
+| Name                          | Type                                                                                                         | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------ | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_                   | \[[AlertTemplate](https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v9/schemas/#tocs_alerttemplate)] | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| » name                        | string                                                                                                       | false    | none         | Name of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| » description                 | string                                                                                                       | false    | none         | Description of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| » default\_history\_retention | integer                                                                                                      | false    | none         | Defines the history retention period in days for this type of alerts. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| » object\_type                | integer                                                                                                      | false    | none         | Defines the type of the object to which this alert template applies. <ul><li>A system-wide alert template is <b>50</b>.</li><li>An alert template applicable to an agent is <b>100</b>.</li><li>An alert template applicable to a managed server is <b>200</b>.</li><li>An alert template applicable to a database for a particular monitored server is <b>300</b>.</li><li>An alert template applicable to a schema on a particular database for the managed server is <b>400</b>.</li><li>An alert template applicable to a table on a particular schema for the database on a monitored server is <b>500</b>.</li><li>An alert template applicable to an index on a particular schema for the database on a monitored server is <b>600</b>.</li><li>An alert template applicable to a sequence on a particular schema for the database on a monitored server is <b>700</b>.</li><li>An alert template applicable to a function on a particular schema for the database on a monitored server is <b>800</b>.</li></ul>NOTE: This property is a mandatory parameter for a POST request. |
+| » sql                         | string                                                                                                       | false    | none         | SQL query, possibly parameterized, to get a numeric value indicating threshold reached. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| » applicable\_on\_server      | string                                                                                                       | false    | none         | Specifies the type of monitored server to which the template applies. Possible values are ALL, POSTGRES\_SERVER, and ADVANCED\_SERVER. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| » default\_check\_frequency   | integer                                                                                                      | false    | none         | Defines how frequently (in minutes) to check for the alert defined in this template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| » threshold\_unit             | string                                                                                                       | false    | none         | Units used to calculate the threshold, such as MB/kB/seconds/days/... This value is only used for the GUI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| » is\_system\_template        | boolean                                                                                                      | false    | none         | Determines whether the given template is system-defined or user-defined. NOTE: This property is not applicable for POST/PUT requests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| » is\_auto\_create            | boolean                                                                                                      | false    | none         | Determines whether an alert should be created as soon as an agent or server is added to PEM.Note: Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| » operator                    | string                                                                                                       | false    | none         | Operator to compare threshold values.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| » low\_threshold\_value       | number                                                                                                       | false    | none         | Low threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| » medium\_threshold\_value    | number                                                                                                       | false    | none         | Medium threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| » high\_threshold\_value      | number                                                                                                       | false    | none         | High threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| » info\_sql                   | string                                                                                                       | false    | none         | Specifies the SQL query that provides detailed information about the alert on the dashboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+##### Enumerated Values
+
+| Property               | Value            |
+| ---------------------- | ---------------- |
+| applicable\_on\_server | ALL              |
+| applicable\_on\_server | POSTGRES\_SERVER |
+| applicable\_on\_server | ADVANCED\_SERVER |
+| operator               | >                |
+| operator               | <                |
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+## `post__alert_template_`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X POST https://PEM-SERVER-IP/pem/api/v9/alert/template/ \
+  -H 'Content-Type: application/json' \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'X-Auth-Token': 'string'
+}
+
+r = requests.post('https://PEM-SERVER-IP/pem/api/v9/alert/template/', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+const inputBody = '{
+  "name": "string",
+  "description": "string",
+  "default_history_retention": 0,
+  "object_type": 0,
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "is_auto_create": true,
+  "operator": ">",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "info_sql": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v9/alert/template/',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`POST /alert/template/`
+
+Creates alert template.
+
+**Body parameter**
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "default_history_retention": 0,
+  "object_type": 0,
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "is_auto_create": true,
+  "operator": ">",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "info_sql": "string"
+}
+```
+
+<span id="post__alert_template_-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type                                                                                                      | Required | Description            |
+| ------------ | ------ | --------------------------------------------------------------------------------------------------------- | -------- | ---------------------- |
+| X-Auth-Token | header | string                                                                                                    | true     | Token of authorization |
+| body         | body   | [AlertTemplate](https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v9/schemas/#tocs_alerttemplate) | true     | none                   |
+
+**Example responses**
+
+<span id="post__alert_template_-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description | Schema |
+| ------ | ------------------------------------------------------- | ----------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Status 200  | None   |
+
+<span id="post__alert_template_-responseschema"></span>
+
+### Response Schema
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+## `get__alert_template_{id}`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X GET https://PEM-SERVER-IP/pem/api/v9/alert/template/{id} \
+  -H 'Accept: application/json' \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json',
+  'X-Auth-Token': 'string'
+}
+
+r = requests.get('https://PEM-SERVER-IP/pem/api/v9/alert/template/{id}', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v9/alert/template/{id}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`GET /alert/template/{id}`
+
+Gets alert template identified by the ID.
+
+<span id="get__alert_template_{id}-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type    | Required | Description            |
+| ------------ | ------ | ------- | -------- | ---------------------- |
+| id           | path   | integer | true     | Alert template ID      |
+| X-Auth-Token | header | string  | true     | Token of authorization |
+
+**Example responses**
+
+<details>
+<summary>200 Response</summary>
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "default_history_retention": 0,
+  "object_type": 0,
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "is_auto_create": true,
+  "operator": ">",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "info_sql": "string"
+}
+```
+
+</details>
+
+<span id="get__alert_template_{id}-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description         | Schema                                                                                                    |
+| ------ | ------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Successful response | [AlertTemplate](https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v9/schemas/#tocs_alerttemplate) |
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+## `put__alert_template_{id}`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X PUT https://PEM-SERVER-IP/pem/api/v9/alert/template/{id} \
+  -H 'Content-Type: application/json' \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'X-Auth-Token': 'string'
+}
+
+r = requests.put('https://PEM-SERVER-IP/pem/api/v9/alert/template/{id}', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+const inputBody = '{
+  "name": "string",
+  "description": "string",
+  "default_history_retention": 0,
+  "object_type": 0,
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "is_auto_create": true,
+  "operator": ">",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "info_sql": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v9/alert/template/{id}',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`PUT /alert/template/{id}`
+
+Updates alert template.
+
+**Body parameter**
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "default_history_retention": 0,
+  "object_type": 0,
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "is_auto_create": true,
+  "operator": ">",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "info_sql": "string"
+}
+```
+
+<span id="put__alert_template_{id}-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type                                                                                                      | Required | Description            |
+| ------------ | ------ | --------------------------------------------------------------------------------------------------------- | -------- | ---------------------- |
+| id           | path   | integer                                                                                                   | true     | Alert template ID      |
+| X-Auth-Token | header | string                                                                                                    | true     | Token of authorization |
+| body         | body   | [AlertTemplate](https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v9/schemas/#tocs_alerttemplate) | true     | none                   |
+
+**Example responses**
+
+<span id="put__alert_template_{id}-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description | Schema |
+| ------ | ------------------------------------------------------- | ----------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Status 200  | None   |
+
+<span id="put__alert_template_{id}-responseschema"></span>
+
+### Response Schema
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+## `delete__alert_template_{id}`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X DELETE https://PEM-SERVER-IP/pem/api/v9/alert/template/{id} \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'X-Auth-Token': 'string'
+}
+
+r = requests.delete('https://PEM-SERVER-IP/pem/api/v9/alert/template/{id}', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+
+const headers = {
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v9/alert/template/{id}',
+{
+  method: 'DELETE',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`DELETE /alert/template/{id}`
+
+Deletes the alert template.
+
+<span id="delete__alert_template_{id}-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type    | Required | Description            |
+| ------------ | ------ | ------- | -------- | ---------------------- |
+| id           | path   | integer | true     | Alert template ID      |
+| X-Auth-Token | header | string  | true     | Token of authorization |
+
+**Example responses**
+
+<span id="delete__alert_template_{id}-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description         | Schema |
+| ------ | ------------------------------------------------------- | ------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Successful deletion | None   |
+
+<span id="delete__alert_template_{id}-responseschema"></span>
+
+### Response Schema
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+<span id="edb-postgres-enterprise-manager-rest-apis-export-custom-alert-templates"></span>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

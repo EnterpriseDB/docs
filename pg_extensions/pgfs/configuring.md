@@ -1,0 +1,127 @@
+---
+title: Configuring PGFS
+product: pgfs
+url: https://www.enterprisedb.com/docs/pg_extensions/pgfs/configuring/
+lastModified: 2026-07-02T21:55:11+05:30
+---
+
+# Configuring PGFS
+
+To configure PGFS, install the extension using the `CREATE EXTENSION` command:
+
+```sql
+CREATE EXTENSION pgfs;
+```
+
+You can check whether the extension was installed by running the `\dx` command in `psql`:
+
+```sql
+\dx
+```
+
+```output title="Output"
+                                     List of installed extensions
+       Name       | Version |   Schema   |                        Description
+------------------+---------+------------+------------------------------------------------------------
+ pgfs             | 1.0.6   | pgfs       | pgfs: enables access to filesystem-like storage locations
+```
+
+In addition to the PGFS extension listed in the output, other extensions are typically listed as well.
+
+Once the PGFS extension is created, a `pgfs` schema, functions, metadata catalog tables, and integration points for pipelines are created in the `pgfs` schema. For more information, see [Reference](https://www.enterprisedb.com/docs/pg_extensions/pgfs/reference/).
+
+## Authentication
+
+PGFS provides a seamless authentication framework for connecting to various object storage providers. The system adapts its security protocols based on the visibility and requirements of your target data.
+
+PGFS distinguishes between private and public storage to optimize for both security and performance:
+
+- **Private buckets**: Standard for sensitive or production-grade data, they require explicit authorization. The PGFS engine manages secure access by signing every request using IAM roles, environment variables, or static keys to ensure data integrity and restricted access.
+- **Public buckets**: Designed for open-access scenarios like hosting benchmark datasets or public research repositories, these buckets skip the signing process entirely, allowing for unauthenticated, high-speed read access.
+
+Authentication in PGFS is handled directly within the configuration settings for each storage location. This ensures that credentials remain mapped to the specific backend and simplifies multi-cloud or multi-account configurations.
+
+PGFS supports the following methods for authorizing access to your object storage:
+
+| Method                | Supported providers | Description                                                                       |
+| --------------------- | ------------------- | --------------------------------------------------------------------------------- |
+| Static credentials    | S3, Azure, GCS      | Stores keys directly in the `auth` block.                                         |
+| IAM roles             | AWS S3              | It uses host-level permissions only, and keys are not required for configuration. |
+| Environment variables | GCS                 | Credentials read dynamically from the environment variables.                      |
+| Managed identities    | Azure               | Uses client credentials for entra ID auth.                                        |
+| System permissions    | Local               | Managed via OS-level folder permissions, no `auth` block.                         |
+
+We recommend using IAM roles or environment variables wherever possible. These methods avoid persisting sensitive secrets in your database.
+
+If you must use static credentials, ensure the `auth` block is nested inside your specific provider settings to allow the driver to initialize correctly.
+
+### Static credentials
+
+Static credentials allow you to embed security keys directly within a storage location definition. When you pass these secrets as the `credentials` parameter in `pgfs.create_storage_location`, PGFS stores them as a Postgres user mapping. This standard database security feature ensures that your secrets remain isolated and inaccessible to other database users.
+
+While this method is highly convenient for testing and development, always ensure you manage these sensitive keys according to your organization's security policies.
+
+PGFS uses the `protocol://` prefix to identify storage providers (`s3:`, `gs:`, `file:`, `az:`, `adl:`, `adls:`, `azure:`, `abfs:`, or `abfss`). Use the following structure to define a location with static credentials:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'storage_location_name',
+    's3://bucket_name',
+    options => '{ }',
+    credentials => '{ }'
+);
+```
+
+The parameters required for static authentication vary by storage provider. For the storage provider specific syntax and usage see:
+
+- [AWS S3/non-AWS S3-compatible](https://www.enterprisedb.com/docs/pg_extensions/pgfs/using/s3/)
+- [Goggle Cloud Storage (GCS)](https://www.enterprisedb.com/docs/pg_extensions/pgfs/using/gcs/)
+- [Azure](https://www.enterprisedb.com/docs/pg_extensions/pgfs/using/azure/)
+
+## Network egress
+
+PGFS supports an optional outbound egress allowlist that restricts which hosts the extension is allowed to reach (for example, S3, Azure Blob, or GCS endpoints). When unset, no restriction is applied and PGFS can reach any host.
+
+| Parameter               | Type   | Default | Description                                                                                                                                                                                             |
+| ----------------------- | ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pgfs.egress_allowlist` | string | unset   | Comma-separated list of hosts and/or CIDR ranges that PGFS is allowed to reach. When set, any outbound request to a destination not on the list is rejected before the connection is made.              |
+| `edb.egress_allowlist`  | string | unset   | Shared fallback allowlist used by all EDB extensions when the per-extension `pgfs.egress_allowlist` is not set. Useful when PGFS and other EDB extensions (such as AIDB) share the same network policy. |
+
+### Entry format
+
+Each comma-separated entry is one of:
+
+| Form               | Matches                                                                       |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `host.example.com` | Exact hostname match (case-insensitive).                                      |
+| `.example.com`     | Any subdomain of `example.com` (does not match `example.com` itself).         |
+| `203.0.113.10`     | Exact IPv4 or IPv6 literal in the destination URL.                            |
+| `203.0.113.0/24`   | IPv4 CIDR range; matches IP literals in that range. Does not match hostnames. |
+| `2001:db8::/32`    | IPv6 CIDR range.                                                              |
+
+Whitespace around entries is ignored. CIDR entries are checked only against IP literals — hostnames are not resolved for matching. Redirects are re-checked against the same allowlist.
+
+### Resolution order
+
+For each outbound request, PGFS checks `pgfs.egress_allowlist` first. If it isn't set, PGFS falls back to `edb.egress_allowlist`. If neither is set, no check is applied.
+
+### Example
+
+Allow only `s3.amazonaws.com` and its subdomains:
+
+```sql
+SET pgfs.egress_allowlist = '.s3.amazonaws.com';
+
+SELECT pgfs.create_storage_location_with_foreign_table(
+    'my_s3',
+    's3://my-bucket',
+    options     => '{"endpoint": "http://forbidden.example.test:9000"}',
+    credentials => '{"access_key_id": "x", "secret_access_key": "x"}'
+);
+
+-- Reads against the storage location are rejected because the endpoint
+-- host is not on the allowlist.
+SELECT key FROM my_s3 LIMIT 1;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

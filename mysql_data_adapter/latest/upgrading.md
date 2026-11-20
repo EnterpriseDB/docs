@@ -1,0 +1,47 @@
+---
+title: Upgrading
+product: MySQL Foreign Data Wrapper
+version: "2"
+url: https://www.enterprisedb.com/docs/mysql_data_adapter/latest/upgrading/
+lastModified: 2024-06-26T11:08:18-04:00
+---
+
+# Upgrading
+
+<div id="updating_the_mysql_data_adapter" class="registered_link"></div>
+
+If you have an existing installation of MySQL Foreign Data Wrapper that you installed using the EDB repository, you can update your repository configuration file and then upgrade MySQL Foreign Data Wrapper to a more recent product version.
+
+To perform the process, open a terminal window and enter the commands that apply to the operating system and package manager used for the installation:
+
+To update your repository configuration file:
+
+```shell
+sudo <package-manager> upgrade edb-repo
+```
+
+Where `<package-manager>` is the package manager used with your operating system:
+
+| Package manager | Operating system         |
+| --------------- | ------------------------ |
+| dnf             | RHEL 8/9 and derivatives |
+| zypper          | SLES                     |
+| apt-get         | Debian and Ubuntu        |
+
+To upgrade to the latest product version, enter one of the following commands:
+
+| Operating system         | Upgrade command                                                         |
+| ------------------------ | ----------------------------------------------------------------------- |
+| RHEL 8/9 and derivatives | `sudo dnf -y upgrade edb-as<xx>-mysql<y>_fdw* mysql-community-devel`    |
+| SLES                     | `sudo zypper -y upgrade edb-as<xx>-mysql<y>_fdw* mysql-community-devel` |
+| Debian and Ubuntu        | `sudo apt-get upgrade edb-as<xx>-mysql<y>-fdw`                          |
+
+Where
+
+- `<package-manager>` is the package manager used with your operating system.
+
+- `<xx>` is the EDB Postgres Advanced Server version number.
+
+- `<y>` is the version of MySQL to be upgraded.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

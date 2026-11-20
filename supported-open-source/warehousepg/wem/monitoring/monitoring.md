@@ -1,0 +1,50 @@
+---
+title: Validating database responsiveness
+description: Track proactive health indicators and automated canary check results to ensure database availability.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/monitoring/monitoring/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Validating database responsiveness
+
+Proactively verify cluster health by executing active tasks that simulate real-world operations using the **Canary Checks** panel on the left sidebar. Canary checks ensure the database engine responds correctly and meets performance baselines.
+
+### Ensuring system availability with canary checks
+
+Canary checks are recurring, automated scripts that verify the end-to-end integrity of the system. Admin users can create and manage canary checks directly from this panel.
+
+The header cards provide an instant snapshot of system integrity: **Scheduler** status, **Total Results**, **Success**, **Warning**, **Critical**, and **Uptime**. If the **Scheduler** is stopped, canary checks don't run and health data becomes stale.
+
+### Viewing current check status
+
+The **Current Status** tab shows the latest result for each configured check. The table columns **Check**, **Status**, **Duration**, **Message**, and **Last Run** help you pinpoint which probe is failing and how long it took. A sudden spike in **Duration**, even if checks are still passing, serves as an early warning of resource saturation or network latency.
+
+Trigger an immediate execution of any check directly from the table to verify a fix or test real-time connectivity. Admin users can also start or stop the scheduler from the page header.
+
+### Reviewing recent results
+
+The **Recent Results** tab shows a historical log of individual check executions. Each row includes the **Check** name, **Status**, **Duration**, **Rows** returned, **Message**, and **Timestamp**, making it possible to spot intermittent failures that don't appear in the current status view.
+
+### Analyzing trends
+
+The **Trends** tab displays historical performance charts for each canary check, allowing you to identify degradation patterns over time and correlate spikes with cluster events.
+
+### Configuring canary checks
+
+> **Note**
+>
+> Creating, editing, and deleting canary checks requires the Admin role.
+
+Define automated probes to verify the end-to-end integrity of your cluster from the **Checks** tab of the **Canary Checks** panel:
+
+- Create a **Connectivity** check to verify that the database is accepting new session requests.
+- Select the **Query** type to run specific SQL statements (`SELECT count(*) FROM sales;`) at set intervals. Define warning and critical latency thresholds to trigger alerts if performance degrades.
+- Configure **Segment Health** and **Replication** checks to monitor for hardware failures or synchronization lag between primary and mirror segments.
+- The **Source** column indicates whether a check is **System**-defined or **User**-defined. System checks are protected and can't be edited or deleted.
+
+> **Important**
+>
+> A query must be a single `SELECT` statement, or a `WITH` query that doesn't modify data. WEM rejects any other statement when you save or import a check, and runs every query in a read-only transaction. Existing checks that modify data keep running, but the database refuses the write and the check shows as critical with a read-only error. Edit or delete them, because WEM validates a query only when you submit it.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

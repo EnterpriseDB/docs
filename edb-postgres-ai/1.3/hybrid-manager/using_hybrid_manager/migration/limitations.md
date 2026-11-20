@@ -1,0 +1,194 @@
+---
+title: Known issues, limitations, and notes
+description: Review unsupported data types and features.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/limitations/
+lastModified: 2026-06-24T12:48:11Z
+---
+
+# Known issues, limitations, and notes
+
+These are the known issues, limitations, and notes for:
+
+- [Data migration limitations](#data-migration-limitations)
+
+- [Oracle limitations](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/limitations/#oracle-limitations)
+
+- [Postgres limitations](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/limitations/#postgres-limitations)
+
+- [Schema ingestion known issues](#schema-ingestion-known-issues)
+
+## Data migration limitations
+
+### Case sensitivity in object names
+
+> **Tip**
+>
+> Resolved in an [Innovation Release](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/limitations/).
+
+[ET-1545, resolved in 2025.11]: #
+
+EDB DMS doesn’t currently support migrating schemas, tables, and columns that have case-sensitive names.
+
+### Upgraded destinations clusters
+
+[limitation]: #
+
+You can't use clusters provisioned in Hybrid Manager (HM) versions 1.2 and earlier as migration destinations after you upgrade the HM instance to version 1.3 or later. You must create a new cluster in the upgraded environment to use it as a valid migration destination.
+
+### Considerations and limitations for multiple migrations to a single destination
+
+[limitation]: #
+
+The DMS supports running multiple data migrations from one source to one destination database, but certain restrictions apply.
+
+- **Table usage**: You can actively use each destination table only in a single migration at any given time.
+
+- **Unique resourceID (applies to migrations to external destinations)**: When running multiple migrations to an external destination, you must assign a unique resourceID to each instance of the EDB DMS agent in writer mode with the `DBCONFIG_DATABASES_0__RESOURCEID=${Resource_ID}` parameter. Setting this parameter prevents concurrent migrations from attempting to use the same table simultaneously, which can cause data loss or duplication.
+
+  > **Note**
+  >
+  > This resourceID requirement doesn't apply to migrations targeting HM-managed Postgres instances.
+
+- **Performance planning (applies to migrations to external destinations)**: While performance generally remains strong with the [recommended specifications](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/specs/), if you run five or more migrations to the same external destination database, to prevent resource contention, consider allocating additional CPU, memory, and volume IOPS/throughput to the destination. This is especially important if the destination is an external database.
+
+- **Resource management**: Each migration job requires a dedicated, non-concurrent use of the necessary DMS agent components.
+
+  DMS agent in reader mode (source): Don't use a single running instance of the EDB DMS agent in reader mode for more than one concurrent migration from the same source database. The HM console removes a source database from the available list once it's active in a migration.
+  However, you can use a single DMS agent in reader mode for subsequent migrations or for concurrent migrations from different source databases.
+
+  DMS agent in writer mode (external destination): Each migration requires its own instance of the DMS agent in writer mode, even if the migration shares the same destination as another migration.
+
+## Oracle limitations
+
+### Unsupported Oracle data types
+
+[limitation]: #
+
+A limited number of Oracle data types and features aren't supported by EDB DMS.
+
+See the [Debezium documentation](https://debezium.io/documentation/reference/3.2/connectors/oracle.html#oracle-data-type-mappings) for detailed comments on supported data types.
+
+Unsupported Oracle data types include:
+
+- BFILE
+- LONG
+- LONG RAW
+- RAW
+- UROWID
+- User-defined types (REF, Varrays, Nested Tables)
+- ANYDATA
+- XMLTYPE
+- Spatial
+
+EDB DMS supports replicating Oracle tables that contain BLOB, CLOB, or NCLOB columns only if these also have the primary key constraint. If the tables don't have the primary key constraint, the streaming replication supports only INSERT operations.
+
+`BINARY_FLOAT` and `BINARY_DOUBLE` types in Oracle that might contain `Nan`, `+INF`, and `-INF` values aren't supported by EDB DMS.
+
+EDB DMS doesn't support values containing a null character (0x00) for text field types like `VARCHAR` and `CLOB` in Oracle.
+
+### Oracle 21c databases
+
+[PROD-386, MIG-7544]: #
+
+The DMS agent supports migrating Oracle 21c databases. However, Migration Portal doesn't. This means that to migrate 21c databases, you must manually perform the schema migration.
+
+### Oracle XE compatibility restrictions
+
+[limitation]: #
+
+Oracle XE (Express Edition) does not support enabling supplemental logging at the database level. Because this is a core requirement for Change Data Capture (CDC), EDB DMS is not fully compatible with Oracle XE as a source database.
+
+- Expected errors — When using Oracle XE, the DMS Agent (reader) will typically fail and log exceptions similar to - Debezium consumer $NAME stopped with exception: an exception occurred in the change event producer. This connector will be stopped.
+
+- Limited functionality — Only snapshot-only migrations are expected to function. Even during successful snapshots, Debezium error messages may still appear in the logs.
+
+- Usage policy — Snapshot-only migrations on Oracle XE are suitable only for testing or evaluation purposes. This configuration is not supported for production use cases.
+
+## Postgres limitations
+
+### Unsupported domain type definitions in columns
+
+> **Tip**
+>
+> Partially resolved in HM 1.3.8 and later.
+
+[ET-4363, partially resolved, follow-up ticket pending]: #
+
+The EDB DMS doesn't support migrating tables with columns that have user-defined domains as data types for the following data type domains:
+
+- DATE (Support added in HM 1.3.8)
+- TIME (Support added in HM 1.3.8)
+- TIMESTAMP (Support added in HM 1.3.8)
+- INTERVAL (Support added in HM 1.3.8)
+- UUID (Support added in HM 1.3.8)
+- ENUM
+- JSON (Support added in HM 1.3.8)
+- XML (Support added in HM 1.3.8)
+- POINT (Support added in HM 1.3.8)
+- LTREE
+- TSVECTOR
+
+### TSVECTOR type migration workaround
+
+Although we don't support migrating `TSVECTOR` type columns, you can apply this workaround to enable their migration. For example, this `messages` table in source database contains a `TSVECTOR` column:
+
+```sql
+CREATE TABLE messages (
+    title       text,
+    body        text,
+    tsv         tsvector
+);
+```
+
+Before starting the migration, create a table in the destination database without the `TSVECTOR` column:
+
+```sql
+CREATE TABLE messages (
+    title       text,
+    body        text,
+);
+```
+
+When you perform the migration, you must exclude the `TSVECTOR` column in the HM console when you review the tables on the **Review your Tables** page by clearing the `tsv` column check box.
+
+After the migration finishes, the `title` and `body` columns are migrated to the target database. Now you can add the `TSVECTOR` column to the target table:
+
+```sql
+ALTER TABLE messages ADD COLUMN tsv TSVECTOR DEFAULT NULL;
+```
+
+Then run the following `UPDATE` statement to populate the column for all migrated data:
+
+```sql
+UPDATE messages SET tsv = to_tsvector('english', CONCAT(title, ' ', body)) WHERE tsv IS NULL;
+```
+
+## Schema ingestion known issues
+
+### Additional schemas ingested for EDB Postgres Advanced Server sources
+
+> **Tip**
+>
+> Resolved in an [Innovation Release](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/limitations/).
+
+[MIG-7055, resolved in 2025.11]: #
+
+When viewing the list of schemas for a source EDB Postgres Advanced Server database that you registered with the EDB Postgres AI agent, you may observe additional schemas that don't directly correspond to schemas you explicitly created. These extra schemas are generated internally by EDB Postgres Advanced Server as part of its Oracle compatibility feature set to represent Oracle PACKAGE objects. This is a known issue that we expect to correct in a future release. In the meantime, you can disregard these generated schemas for migration purposes.
+
+## Other known issues
+
+### Data migrations supported without a Load Balancer in RHOS environments only
+
+> **Tip**
+>
+> Resolved in an [Innovation Release](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/limitations/).
+
+[ET-4075, resolved in 2026.01]: #
+
+**Description**: The primary method for exposing Kafka (which is required for data migrations) within Hybrid Manager is via Load Balancers (an exception is the RHOS environment, where a native route is used to expose Kafka). Therefore, in non-RHOS environments where the Load Balancer is disabled, the data migration workflows will not function, as there is no fallback mechanism to support exposing Kafka using NodePort mode.
+
+**Workaround**: This issue is currently targeted for implementation to ensure Kafka can be accessed even when standard Kubernetes Load Balancers are unavailable. To perform data migrations in RKE environments, you currently must have Load Balancers configured.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

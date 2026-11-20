@@ -1,0 +1,54 @@
+---
+title: Metrics latency
+description: Understand monitoring latency for database metrics with the Hybrid Manager console.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/monitoring/monitoring_console/metrics_latency/
+lastModified: 2026-03-17T17:37:45+05:30
+---
+
+# Metrics latency
+
+Hybrid Manager (HM) collects and displays a wide range of observability data to give you comprehensive visibility into your database clusters.
+
+The refresh intervals for these metrics vary depending on the metric and database type. This difference is due to the varying methods of data collection and integration.
+
+## Understanding data latency
+
+When you view your database metrics in the HM console, the data you see is the result of a two-step process, each with its own refresh interval. Understanding both steps will help you understand how up to date your metrics are.
+
+**Backend refresh:** This is the first step, where HM's internal services actively collect updated metrics and data from your database clusters. Whether your cluster is managed by HM or an external database, the backend systems are constantly gathering the latest information. This data is then stored in HM's central data stores.
+
+**HM console refresh:** This is the second step, where the HM console makes calls to your central data stores to retrieve the most recently collected data and display it to you.
+
+The actual latency of the data you see in the HM console is a combination of these two refresh intervals. The data on the screen reflects information that isn't older than the sum of these two intervals. In many cases, it's much fresher, sometimes just seconds old.
+
+## Refresh intervals
+
+**Backend refresh:** HM's internal services update the data stores as follows. The interval varies depending on the database cluster type and the metrics context.
+
+|                                            | HM-managed | External: <br/> self-managed | External: <br/> CSP-managed | External: <br/> EDB CNPG |
+| ------------------------------------------ | ---------- | ---------------------------- | --------------------------- | ------------------------ |
+| Estate page ► <br/> Postgres table         | 20s        | 5m                           | 5m                          | 5m                       |
+| Cluster view ► <br/> Monitoring tab        | 15s        | 15s                          | 30s                         | 15s                      |
+| Cluster view ► <br/> Query Diagnostics tab | 1m         | 1m                           | na                          | 1m                       |
+| Cluster view ► <br/> Recommendations tab   | 30m        | 30m                          | na                          | 30m                      |
+| Cluster view ► <br/> Logs tab              | <1s        | <1s                          | na                          | <1s                      |
+
+These intervals are configurable for self-managed and CSP-managed clusters. To customize the frequency of data collection for self-managed clusters, define the intervals in the [EDB Postgres AI agent configuration YAML](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/configure_agent/#prepare-a-configuration-file). In the case of CSP-managed clusters, define the intervals for the supported metrics through the [`beacon-csp-credentials` configuration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_ext_csp/rds/).
+
+**HM console refresh:** The HM console updates the data for all cluster types with the following frequency.
+
+|                                            | Console refresh interval    |
+| ------------------------------------------ | --------------------------- |
+| Estate page ► <br/> Postgres table         | 1m                          |
+| Cluster view ► <br/> Monitoring tab        | 30s                         |
+| Cluster view ► <br/> Query Diagnostics tab | Manual browser refresh (\*) |
+| Cluster view ► <br/> Recommendations tab   | Manual browser refresh (\*) |
+| Cluster view ► <br/> Logs tab              | 10s                         |
+
+> **Note**
+>
+> (\*) Data is updated only when you explicitly reload the browser page.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

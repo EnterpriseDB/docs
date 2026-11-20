@@ -1,0 +1,28 @@
+---
+title: DMS agent version compatibility
+description: Verify which DMS agent (`cdcagent`) version is compatible with your Hybrid Manager version before installing the agent on your auxiliary machine.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/cdcagent_compatibility/
+lastModified: 2026-11-10T13:53:54+01:00
+---
+
+# DMS agent version compatibility
+
+The DMS agent (`cdcagent`) is versioned and released independently of Hybrid Manager (HM). Using an incompatible version can cause silent failures — the HM console recognizes the database correctly, but issues appear only when a migration starts.
+
+The table shows the minimum `cdcagent` version required for each HM release. Using a newer version than the minimum is supported and recommended.
+
+| HM version             | Minimum `cdcagent` version                                                                                                                                                                                                                                                                                 |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026.11 (IR) and later | Not applicable — the `migration` scenario (and DMS/`cdcagent` support) was removed in HM 2026.11. See [HM 2026.11 release notes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.11.0_rel_notes/#migrations). HM 1.4.x (LTS) continues to support migration. |
+| 1.4.0 (LTS)            | 1.13.12                                                                                                                                                                                                                                                                                                    |
+| 2026.5 (IR)            | 1.12.40                                                                                                                                                                                                                                                                                                    |
+| 2026.4 (IR)            | 1.12.8                                                                                                                                                                                                                                                                                                     |
+| 2026.3 (IR)            | 1.10.21                                                                                                                                                                                                                                                                                                    |
+| 2026.2 (IR)            | 1.9.4                                                                                                                                                                                                                                                                                                      |
+| 1.3.x (LTS)            | 1.3.23                                                                                                                                                                                                                                                                                                     |
+
+To install the DMS agent, see [Installing the DMS agent](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/installing_agent/). To upgrade an existing installation, see [Upgrading the DMS agent](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/upgrading_agent/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

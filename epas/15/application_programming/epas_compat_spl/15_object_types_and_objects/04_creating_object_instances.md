@@ -1,0 +1,79 @@
+---
+title: Creating object instances
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/application_programming/epas_compat_spl/15_object_types_and_objects/04_creating_object_instances/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# Creating object instances
+
+<div id="creating_object_instances" class="registered_link"></div>
+
+## Creating an instance
+
+To create an instance of an object type, you must first declare a variable of the object type and then initialize the declared object variable. The syntax for declaring an object variable is:
+
+```text
+<object> <obj_type>
+```
+
+Where:
+
+`object` is an identifier assigned to the object variable.
+
+`obj_type` is the identifier of a previously defined object type.
+
+## Invoking a constructor method
+
+After declaring the object variable, you must invoke a _constructor method_ to initialize the object with values. Use the following syntax to invoke the constructor method:
+
+```sql
+[NEW] <obj_type> ({<expr1> | NULL} [, {<expr2> | NULL} ] [, ...])
+```
+
+Where:
+
+`obj_type` is the identifier of the object type’s constructor method. The constructor method has the same name as the previously declared object type.
+
+`expr1, expr2, …` are expressions that are type-compatible with the first attribute of the object type, the second attribute of the object type, and so on. If an attribute is of an object type, then the corresponding expression can be `NULL`, an object initialization expression, or any expression that returns that object type.
+
+This anonymous block declares and initializes a variable:
+
+```sql
+DECLARE
+    v_emp           EMP_OBJ_TYP;
+BEGIN
+    v_emp := emp_obj_typ (9001,'JONES',
+        addr_obj_typ('123 MAIN STREET','EDISON','NJ',08817));
+END;
+```
+
+The variable `v_emp` is declared with a previously defined object type named `EMP_OBJ_TYPE`. The body of the block initializes the variable using the `emp_obj_typ` and `addr_obj_type` constructors.
+
+You can include the `NEW` keyword when creating a new instance of an object in the body of a block. The `NEW` keyword invokes the object constructor whose signature matches the arguments provided.
+
+## Example
+
+This example declares two variables named `mgr` and `emp`. The variables are both of `EMP_OBJ_TYPE`. The `mgr` object is initialized in the declaration, while the `emp` object is initialized to `NULL` in the declaration and assigned a value in the body.
+
+```sql
+DECLARE
+    mgr  EMP_OBJ_TYPE := (9002,'SMITH');
+    emp  EMP_OBJ_TYPE;
+BEGIN
+    emp := NEW EMP_OBJ_TYPE (9003,'RAY');
+END;
+```
+
+> **Note**
+>
+> In EDB Postgres Advanced Server, you can use the following alternate syntax in place of the constructor method.
+
+```sql
+[ ROW ] ({ <expr1> | NULL } [, { <expr2> | NULL } ] [, ...])
+```
+
+`ROW` is an optional keyword if two or more terms are specified in the parenthesis-enclosed, comma-delimited list. If you specify only one term, then you must specify the `ROW` keyword.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

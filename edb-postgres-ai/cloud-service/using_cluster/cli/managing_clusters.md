@@ -1,0 +1,985 @@
+---
+title: Managing clusters using the CLI
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/cli/managing_clusters/
+lastModified: 2025-06-13T01:50:58Z
+---
+
+# Managing clusters using the CLI
+
+These examples show Azure as the cloud provider unless indicated otherwise.
+
+Although the functionality is the same when using AWS or Google Cloud, there may be additional input flags based on the cloud provider type. Use the `-h` or `--help` flags for more information on the CLI commands.
+
+## Managing single-node and primary/standby high-availability clusters
+
+Use the `cluster` commands to create, retrieve information on, and manage single-node and primary/standby high-availability clusters.
+
+### Create a cluster in interactive mode
+
+The default mode for the `cluster create` and `pgd create` commands is an interactive mode that guides you through the required cluster configuration by providing you with the valid values.
+
+> **Tip**
+>
+> You can turn off prompting using the `biganimal config set interactive_mode off` command. With prompting disabled, if any required flags are missing, the CLI exits with an error.
+
+For example, to create a primary/standby high-availability cluster:
+
+```shell
+biganimal cluster create
+```
+
+```output title="Output"
+Cluster architecture: Primary/Standby High Availability
+Number of standby replicas: 2 Replicas
+Enable read-only workloads: No
+Provider: Azure
+Cloud Provider Subscription ID: "111,222"
+Service Account IDs, (leave empty to stop adding): "id1@iam.gcp"
+Cluster Name: my-cloud-service-cluster
+Password: ****************
+PostgreSQL type: EDB Postgres Advanced Server
+PostgreSQL version: 14
+Region: East US
+Instance type: E2s v3(2vCPU, 16GB RAM)
+Volume type: Azure Premium Storage
+Volume properties: P1 (4 Gi, 120 Provisioned IOPS, 25 Provisioned MB/s)
+Networking: Public
+By default your cluster allows all inbound communications, add IP allowed list to restrict the access: Yes
+Add CIDR blocks "192.168.1.1/16=Sample Description" leave empty to stop adding: 
+Add database config in the format "application_name=sample_app&array_nulls=true", Leave empty for default configuration: 
+Backup Retention Period, note backups will incur storage charges from the cloud provider directly. e.g. "7d", "2w" or "3m": 30d 
+```
+
+You're prompted to confirm that you want to create the cluster. After the cluster creation process is complete, it generates a cluster ID.
+
+```shell
+biganimal cluster create
+```
+
+```output title="Output"
+........
+Are you sure you want to Create Cluster ? [y|N]: y
+Create Cluster operation is started
+Cluster ID is "p-gxhkfww1fe"
+To check current state, run: biganimal cluster show --id p-gxhkfww1fe
+```
+
+Check your cluster was created successfully using the `cluster show` command shown in the return message:
+
+```shell
+biganimal cluster show --id p-gxhkfww1fe
+```
+
+```output title="Output"
+
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Clusters                                                                                                                                                                                 │
+├──────────────┬──────────────────────┬──────────┬──────────────┬──────────────────────────┬─────────────┬───────────────┬───────────────────────────────┬────────────────────┬────────────┤
+│ ID           │ Name                 │ Provider │ Architecture │ Status                   │ Region      │ Instance Type │ Postgres Details              │ Maintenance Window │ FAReplicas │
+├──────────────┼──────────────────────┼──────────┼──────────────┼──────────────────────────┼─────────────┼───────────────┼───────────────────────────────┼────────────────────┼────────────┤
+│ p-gxhkfww1fe │ my-cloud-service-cluster │ Azure    │ ha           │ Cluster in healthy state │ East US     │ E2s v3        │ EDB Postgres Advanced Server  │ Disabled           │ N/A        │
+│              │                      │          │              │                          │             │               │                               │                    │            │
+└──────────────┴──────────────────────┴──────────┴──────────────┴──────────────────────────┴─────────────┴───────────────┴───────────────────────────────┴────────────────────┴────────────┘
+```
+
+### Create a cluster using a configuration file
+
+You can use the `create --config-file` command to create one or more clusters with the same configuration in a noninteractive mode.
+
+Here's a sample configuration file in YAML format with Azure specified as the provider:
+
+```yaml
+# config_file.yaml
+---
+clusterArchitecture: ha                                               # <string:  cluster architecture, valid values ["single" | "ha" ]>
+haStandbyReplicas: 2                                                  # <number:  Number of standby replicas. Field must be specified if user has selected Primary/Standby High Availability cluster type. Default value is 2, valid values [1, 2].>
+provider: azure                                                       # <string:  cloud provider id, valid values - Deployment: Your Cloud Account ["azure", "aws", "gcp"]>
+cspSubscriptionIDs:                                                   # <list:  cloud provider subscription/account ID, required when cluster is EDB Hosted>
+  - 123123123                                                         # <string>
+  - 456456456                                                         # <string>
+serviceAccountIds:                                                    # <list: A Google Cloud Service Account is used for logs. If you leave this blank, then you will be unable to access log details for this cluster. Required when cluster is EDB Hosted>
+  - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+  - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+clusterName: cloud_service_cluster                                        # <string:  cluster name>
+password: ************                                                # <string:  cluster password (must be at least 12 characters)>
+tags:                                                                 # <list: Group clusters and organise across different resource types. This will help to manage resources effectively.>
+  - name: tag1                                                        # <string: assign "tag1" property to the cluster>
+    color: "#c5eae7"                                                  # <string: color for "tag1">
+  - name: tag2                                                        # <string: assign "tag2" property to the cluster>
+    color: "#0b6ff4"                                                  # <string: color for "tag2">
+# refer following link for steps to setup IAM:  https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/postgres_access/database_authentication/#iam-authentication-for-postgres 
+iamAuthentication: true                                               # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+postgresType: epas                                                    # <string:  postgresType id, valid values ["postgres" | "epas" | "pgextended"]>
+postgresVersion: 14                                                   # <string:  postgres version>
+region: eastus                                                        # <string:  provider region id>
+instanceType: azure:Standard_E2s_v3                                   # <string:  instance type id>
+volumeType: azurepremiumstorage                                       # <string:  volume type id>
+volumeProperties: P1                                                  # <string:  Applicable to Azure Premium Storage only, volume properties id>
+volumePropertySize: 32Gi                                              # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+volumePropertyIOPS: 1000                                              # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+networking: public                                                    # <string:  input "private" or "public" network>
+allowIpRangeMap:                                                      # <list: IP Range to allow network traffic to your cluster from the public Internet>
+  - cidr: 9.9.9.9/28                                                  # <string: CIDR of allowed source IP range>
+    description: Allow traffic from App A                             # <string: The description of this allowed ip range>
+  - cidr: 10.10.10.10/27                                              # <string: CIDR of allowed source IP range>
+    description: Allow traffic from App B                             # <string: The description of this allowed ip range>
+readOnlyWorkloads: true                                               # <bool: Set True to enable read-only connection and route all read-only queries to standby replicas and reduce the workload on primary>
+pgConfigMap:                                                          # <Object: Postgres configuration>
+  application_name: test_app                                          # <string: set the database "application_name" property to "test_app">
+  array_nulls: true                                                   # <bool: set the database "array_nulls" property to True>
+backupRetentionPeriod: 30d                                            # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+customMaintenanceWindow:                                              # <Object:  Schedule a custom maintenance window>
+  isEnabled: true                                                     # <bool: Set True to enable custom maintenance window>
+  maintenanceStartDay: Monday                                         # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+  maintenanceStartTime: 02:00                                         # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+superuserAccess: true                                                 # <bool: Set True to grant superuser access to the edb_admin role. Supported when cluster is EDB Hosted>
+pgvector: true                                                        # <bool: Set True to enable pgvector extension. Adds support for vector storage and vector similarity search to Postgres.>
+postgis: true                                                         # <bool: Set True to enable postgis extension. PostGIS extends the capabilities of the PostgreSQL relational database by adding support storing, indexing and querying geographic data.>
+pgBouncer: true                                                       # <bool: Set True to enable PgBouncer and manage connections to database more efficiently>
+pgBouncerRWSettings:                                                  # <Object: Postgres configuration>
+  application_name_add_host: true                                     # <bool: set the database "application_name_add_host" property to "true">
+  max_client_conn: 100                                                # <string: set the database "max_client_conn" property to "100">
+pgBouncerROSettings:                                                  # <Object: Postgres configuration>
+  idle_transaction_timeout: 20                                        # <string: set the database "idle_transaction_timeout" property to "20">
+  log_stats: true                                                     # <bool: set the database "log_stats" property to "true"">
+ ---
+```
+
+> **Note**
+>
+> For backward compatibility, `allowIpRangeMap` and `pgConfigMap` properties also support embedded JSON format.
+>
+> ```json
+> allowIpRangeMap: [["9.9.9.9/28", "Allow traffic from App A"],["10.10.10.10/27", "Allow traffic from App B"]]
+> pgConfigMap: [["application_name","test_app"],["array_nulls","true"]] 
+> ```
+
+To create the cluster using the sample configuration file `config_file.yaml`:
+
+```shell
+biganimal cluster create --config-file "./config_file.yaml"
+```
+
+To enable you to view valid values to use in the configuration file for Cloud Service and cloud service provider-related properties, the CLI provides a series of cluster subcommands. For example, you can use `cluster show-architectures` to list all Cloud Service database architectures available in your cloud service provider account:
+
+```shell
+biganimal cluster show-architectures
+```
+
+```output title="Output"
+┌───────────────────────────────────────────────────────────────┐
+│ Architecture                                                  │
+├────────┬───────────────────────────────────────────┬──────────┤
+│ ID     │ Name                                      │ Status   │
+├────────┼───────────────────────────────────────────┼──────────┤
+│ ha     │ Primary/Standby High Availability         │ enabled  │
+│ pgd    │ Extreme High Availability                 │ disabled │
+│ single │ Single Node                               │ enabled  │
+└────────┴───────────────────────────────────────────┴──────────┘
+```
+
+> **Tip**
+>
+> You can turn off the confirmation step with the `biganimal disable-confirm` command.
+
+### Get cluster connection information
+
+To use your Cloud Service cluster, you first need to get your cluster's connection information. To get your cluster's connection information, use the `cluster show-connection` command:
+
+```shell
+biganimal cluster show-connection \
+  --name "my-cloud-service-cluster" \
+  --provider "azure" \
+  --region "eastus"
+```
+
+```output title="Output"
+┌───────────────-----------──┬──────────────────────────────────────────────────────────────────────────────────────────┐
+│ Name                       │ Details                                                                                  │
+├────────────────-----------─┼──────────────────────────────────────────────────────────────────────────────────────────┤
+│ read-write-connection      │ postgresql://edb_admin@p-gxhkfww1fe.30glixgayvwhtmn3.enterprisedb.network:5432/edb_admin │
+│ rw-service-name            │ postgresql://edb_admin@p-gxhkfww1fe.30glixgayvwhtmn3.enterprisedb.network:5432/edb_admin │
+│ read-only-connection       │ Disabled                                                                                 │
+│ ro-service-name            │ Disabled                                                                                 │
+└─────────────────-----------┴──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Tip**
+>
+> You can query the complete connection information with other output formats, like JSON or YAML. For example:
+>
+> ```shell
+> biganimal cluster show-connection \
+>   --name "my-cloud-service-cluster" \
+>   --provider "azure" \
+>   --region "eastus" \
+>   --output "json"
+> ```
+
+### Update cluster
+
+After the cluster is created, you can update attributes of the cluster, including both the cluster’s profile and its deployment architecture. You can update the following attributes:
+
+- Cluster name
+- Password of administrator account
+- Cluster architecture
+- Number of standby replicas
+- Instance type of cluster
+- Instance volume properties
+- Networking
+- Allowed IP list
+- Postgres database configuration
+- Volume properties, size, IOPS
+- Retention period
+- Read-only workloads
+- IAM authentication
+- Cloud service provider subscription IDs
+- Service account IDs
+- Tags
+
+For example, to set the public allowed IP range list, use the `--cidr-blocks` flag:
+
+```shell
+./biganimal cluster update --name "my-cloud-service-cluster" --provider "azure" \
+  --region "eastus" \
+  --cidr-blocks "9.9.9.9/28=Traffic from App A"
+```
+
+To check whether the setting took effect, use the `cluster show` command, and view the detailed cluster information output in JSON format. For example:
+
+```shell
+biganimal cluster show --name "my-cloud-service-cluster" --provider "azure" \
+  --region "eastus" \
+  --output "json" \
+| jq '.[0].allowIpRangeMap'
+```
+
+```output title="Output"
+[
+  [
+    "9.9.9.9/28",
+    "Traffic from App A"
+  ]
+]
+```
+
+### Update the Postgres configuration of a cluster
+
+To update the Postgres configuration of a Cloud Service cluster directly from the CLI:
+
+```shell
+biganimal cluster update --id "p-gxhkfww1fe" \
+  --pg-config "application_name=ba_test_app,array_nulls=false"
+```
+
+```output title="Output"
+Update Cluster operation is started
+Cluster ID is "p-gxhkfww1fe"
+```
+
+To specify multiple configurations, you can use multiple `--pg-config` flags or include multiple configuration settings as a key-value array string separated by commas in one `--pg-config` flag. If a Postgres setting contains a comma, you need to specify it with a separate `--pg-config` flag.
+
+> **Note**
+>
+> You can update the cluster architecture with the `--cluster-architecture` flag. The only supported scenario is to update a single-node cluster to a primary/standby high-availability cluster.
+
+### Delete a cluster
+
+To delete a cluster you no longer need, use the `cluster delete` command. For example:
+
+```shell
+biganimal cluster delete \
+  --name "my-cloud-service-cluster" \
+  --provider "azure" \
+  --region "eastus"
+```
+
+You can list all deleted clusters using the `biganimal cluster show --deleted` command and restore them from their history backups as needed.
+
+### Restore a cluster
+
+Cloud Service continuously backs up your PostgreSQL clusters. Using the CLI, you can restore a cluster from its backup to any point in time as long as the backups are retained in the backup storage. The restored cluster can be in another region and have different configurations. You can specify new configurations in the `cluster restore` command. For example:
+
+```shell
+biganimal cluster restore\
+  --name "my-cloud-service-cluster" \
+  --provider "azure" \
+  --region "eastus" \
+  --password "mypassword@123" \
+  --new-name "my-cloud-service-cluster-restored" \
+  --new-region="eastus2" \
+  --cluster-architecture "single" \
+  --instance-type "azure:Standard_E2s_v3" \
+  --volume-type "azurepremiumstorage" \
+  --volume-property "P1" \
+  --networking "public" \
+  --cidr-blocks="10.10.10.10/27=Traffic from App B" \
+  --restore-point "2022-01-26T15:04:05+0800" \
+  --backup-retention-period "2w" \
+  --postgis=true
+  --pgvector=true
+  --tags "tag1, tag2=blue"
+  --read-only-workloads: "true"
+  --csp-subscription-ids "123123123,456456456"
+  --service-account-ids "service-account-1234567b@development-data-123456.iam.gserviceaccount.com,
+service-account-1234567b@development-data-123456.iam.gserviceaccount.com"
+  --credential "my_credential"
+```
+
+The password for the restored cluster is mandatory. The other parameters, if not specified, inherit the source database's settings.
+
+To restore a deleted cluster, use the `--from-deleted` flag in the command.
+
+> **Note**
+>
+> You can restore a cluster in a single cluster to a primary/standby high-availability cluster and vice versa. You can restore a distributed high-availability cluster only to a cluster using the same architecture.
+
+### Pause a cluster
+
+To pause a cluster, use the `cluster pause` command. The `cluster pause` command supports `flag` or `interactive` mode. The syntax for the command is:
+
+```
+biganimal cluster pause {--id | --provider --region --name}
+```
+
+Where:
+
+- `id` is a valid cluster ID.
+- `provider` is a cloud provider of the cluster.
+- `region` is the cluster region.
+- `name` is the name of the cluster.
+
+If you don't know the `id` of the cluster, use `--provider --region --name` to identify the cluster.
+
+The following examples show common uses of the `cluster pause` command.
+
+To pausing a cluster using the ID:
+
+```
+biganimal cluster pause --id p-c5fh47nf
+```
+
+To pause a cluster using the name, provider, and region:
+
+```
+biganimal cluster pause
+--name my-cluster
+--provider azure
+--region eastus2
+```
+
+To pause a cluster in interactive mode:
+
+```
+./biganimal cluster pause
+? Provider: AWS (Your Cloud Account)
+? Region: AP South 1
+? Cluster Name: user1-test-tags-IA
+```
+
+```output title="Output"
+Pause Cluster operation succeeded, "p-94pjd2w0ty"
+```
+
+### Resume a cluster
+
+To resume a cluster, use the `cluster resume` command. The `cluster resume` command supports `flag` and `interactive` mode. The syntax for the command is:
+
+```
+biganimal cluster resume {--id | --provider --region --name}
+```
+
+Where:
+
+- `id` is a valid cluster ID.
+- `provider` is a cloud provider of the cluster.
+- `region` is the cluster region.
+- `name` is the name of the cluster.
+
+If you don't know the `id` of the cluster, use `--provider --region --name` to identify the cluster.
+
+The following examples show common uses of the `cluster resume` command.
+
+To resume a cluster using the ID:
+
+```
+biganimal cluster resume --id p-c5fh47nf
+```
+
+To resuming a cluster using the name, provider, and region:
+
+```
+biganimal cluster resume
+--name my-cluster
+--provider azure
+--region eastus2
+```
+
+To resume a cluster using interactive mode:
+
+```
+./biganimal cluster resume
+? Provider: AWS (Your Cloud Account)
+? Region: AP South 1
+? Cluster Name: user1-test-tags-IA
+```
+
+```output title="Output"
+Resume Cluster operation succeeded, "p-94pjd2w0ty"
+```
+
+## Managing distributed high-availability clusters
+
+Use the Cloud Service `pgd` commands to create, retrieve information on, and manage distributed high-availability clusters.
+
+> **Note**
+>
+> In addition to the Cloud Service `pgd` commands, you can switch over and use commands available in the [EDB Postgres Distributed CLI](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/) to perform PGD-specific operations. The only EDB Postgres Distributed CLI commands that don't apply to Cloud Service are `create-proxy` and `delete-proxy`.
+
+### Create a distributed high-availability cluster
+
+Create a distributed high-availability cluster using a YAML configuration file.
+
+The syntax of the command is:
+
+```
+biganimal pgd create --config-file <config_file>
+```
+
+Where `<config_file>` is a valid path to a YAML configuration file.
+
+#### Azure example
+
+```
+clusterName: cloud_service_cluster                                        # <string:  cluster name>
+password: ************                                                # <string:  cluster password (must be at least 12 characters)>
+postgresType: epas                                                    # <string:  postgresType id, valid values ["postgres" | "epas" | "pgextended"]> (only epas is supported in pgd preview)
+postgresVersion: 14                                                   # <string:  postgres version>
+provider: azure                                                       # <string:  cloud provider id, valid values - Deployment: Your Cloud Account ["azure", "aws", "gcp"]>
+dataNodes: 3                                                          # <number:  data nodes, valid values [2 | 3]>
+tags:                                                                 # <list: Group clusters and organize across different resource types. This will help to manage resources effectively.>
+  - name: tag1                                                        # <string: assign "tag1"  to the cluster>
+    color: blue                                                       # <string: assign "blue" color to the tag>
+  - name: tag2                                                        # <string: assign "tag2"  to the cluster>
+    color: "#FF0000"                                                  # <string: assign color associated with the hex code to the tag>
+dataGroups:                                                           # <list: pgd data groups
+  - iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    region: westus2                                                   # <string:  provider region id>
+    instanceType: azure:Standard_E2s_v3                               # <string:  instance type id>
+    volumeType: azurepremiumstorage                                   # <string:  volume type id>
+    volumeProperties: P1                                              # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+    volumePropertyIOPS: 1000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 15:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    networking: public                                                # <string:  input "private" or "public" network>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+  - iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    region: canadacentral                                             # <string:  provider region id>
+    instanceType: azure:Standard_E2s_v3                               # <string:  instance type id>
+    volumeType: azurepremiumstorage                                   # <string:  volume type id>
+    volumeProperties: P1                                              # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+    volumePropertyIOPS: 1000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 17:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: tuesday                                    # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    networking: public                                                # <string:  input "private" or "public" network>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+#    cspSubscriptionIds:                                              # <list:  cloud provider subscription/account ID, required when cluster is Cloud Service deployment.>
+#      - 123123123                                                    # <string>
+#      - 456456456                                                    # <string>
+#    serviceAccountIds:                                               # <list: A Google Cloud Service Account is used for logs. If you leave this blank, then you will be unable to access log details for this cluster. Required when cluster is Cloud Service deployment>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+witnessGroups:                                                        # <list: pgd witness groups
+  - provider: azure                                                   # <string:  cloud provider id, valid values - Deployment: Your Cloud Account ["azure", "aws", "gcp"]>
+    region: uksouth                                                   # <string:  provider region id>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window for witness group>
+      maintenanceStartTime: 18:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+```
+
+#### AWS example
+
+```
+clusterName: cloud-service-aws-pgd-cluster                                # <string:  cluster name>
+password: Meredith Palmer Memorial                                    # <string:  cluster password (must be at least 12 characters)>
+postgresType: pgextended                                              # <string:  postgresType id, valid values ["postgres" | "epas" | "pgextended"]> (only epas is supported in pgd preview)
+postgresVersion: 16                                                   # <string:  postgres version>
+provider: aws                                                         # <string:  cloud provider id>
+dataNodes: 2                                                          # <number:  data nodes, valid values [2 | 3]>
+tags:                                                                 # <list: Group clusters and organize across different resource types. This will help to manage resources effectively.>
+  - name: tag1                                                        # <string: assign "tag1"  to the cluster>
+    color: blue                                                       # <string: assign "blue" color to the tag>
+  - name: tag2                                                        # <string: assign "tag2"  to the cluster>
+    color: "#FF0000"                                                  # <string: assign color associated with the hex code to the tag>
+dataGroups:                                                           # <list: pgd data groups
+  - iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    region: ap-south-1                                                # <string:  provider region id>
+    instanceType: aws:c5.large                                        # <string:  instance type id>
+    volumeType: gp3                                                   # <string:  volume type id>
+    volumeProperties: gp3                                             # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+    volumePropertyIOPS: 3000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 15:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    networking: public                                                # <string:  input "private" or "public" network>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+
+  - iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    region: eu-south-2                                                # <string:  provider region id>
+    instanceType: aws:c5.large                                        # <string:  instance type id>
+    volumeType: gp3                                                   # <string:  volume type id>
+    volumeProperties: gp3                                             # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+    volumePropertyIOPS: 3000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 17:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: tuesday                                    # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    networking: public                                                # <string:  input "private" or "public" network>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+#    cspSubscriptionIds:                                              # <list:  cloud provider subscription/account ID, required when cluster is EDB Hosted deployment.>
+#      - 123123123                                                    # <string>
+#      - 456456456                                                    # <string>
+#    serviceAccountIds:                                               # <list: A Google Cloud Service Account is used for logs. If you leave this blank, then you will be unable to access log details for this cluster. Required when cluster is EDB Hosted deployment>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+
+witnessGroups:                                                        # <list: pgd witness groups
+  - provider: azure                                                   # <string:  provider id>
+    region: australiaeast                                                   # <string:  provider region id>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window for witness group>
+      maintenanceStartTime: 18:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+```
+
+#### Google Cloud example
+
+```
+clusterName: cloud-service-gcp-pgd-cluster                                    # <string:  cluster name>
+password: Meredith Palmer Memorial                                    # <string:  cluster password (must be at least 12 characters)>
+postgresType: epas                                                    # <string:  postgresType id, valid values ["postgres" | "epas" | "pgextended"]> (only epas is supported in pgd preview)
+postgresVersion: 16                                                   # <string:  postgres version>
+provider: gcp                                                         # <string:  cloud provider id>
+dataNodes: 3                                                          # <number:  data nodes, valid values [2 | 3]>
+tags:                                                                 # <list: Group clusters and organize across different resource types. This will help to manage resources effectively.>
+  - name: tag1                                                        # <string: assign "tag1"  to the cluster>
+    color: blue                                                       # <string: assign "blue" color to the tag>
+  - name: tag2                                                        # <string: assign "tag2"  to the cluster>
+    color: "#FF0000"                                                  # <string: assign color associated with the hex code to the tag>
+dataGroups:                                                           # <list: pgd data groups
+  - iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    region: europe-west1                                              # <string:  provider region id>
+    instanceType: gcp:e2-highcpu-4                                    # <string:  instance type id>
+    volumeType: pd-ssd                                                # <string:  volume type id>
+    volumeProperties: gp3                                             # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+#    volumePropertyIOPS: 4000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 15:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    networking: public                                                # <string:  input "private" or "public" network>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+
+  - iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    region: asia-south1                                               # <string:  provider region id>
+    instanceType: gcp:c2-standard-16                                  # <string:  instance type id>
+    volumeType: pd-ssd                                                # <string:  volume type id>
+    volumeProperties: gp3                                             # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+#    volumePropertyIOPS: 4000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 18:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    networking: public                                                # <string:  input "private" or "public" network>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+#    cspSubscriptionIds:                                              # <list:  cloud provider subscription/account ID, required when cluster is EDB Hosted deployment.>
+#      - 123123123                                                    # <string>
+#      - 456456456                                                    # <string>
+#    serviceAccountIds:                                               # <list: A Google Cloud Service Account is used for logs. If you leave this blank, then you will be unable to access log details for this cluster. Required when cluster is EDB Hosted deployment>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+
+witnessGroups:                                                        # <list: pgd witness groups
+  - provider: azure                                                   # <string:  cloud provider id, valid values - Deployment: Your Cloud Account ["azure", "aws", "gcp"]>
+    region: australiaeast                                                   # <string:  provider region id>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window for witness group>
+      maintenanceStartTime: 21:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+```
+
+### Add a data group
+
+Add a data group using a YAML configuration file.
+
+The syntax of the command is:
+
+```
+biganimal pgd add-group --config-file <config_file>
+```
+
+Where `<config_file>` is a valid path to a YAML configuration file. For example:
+
+```
+clusterId: clusterID
+password: Meredith Palmer Memorial
+dataGroups:
+  - iamAuthentication: false                                                               
+    region: centralus                             
+    instanceType: azure:Standard_E2s_v3        
+    volumeType: azurepremiumstorage
+    volumeProperties: P2
+    customMaintenanceWindow:
+      maintenanceStartTime: 18:00
+      maintenanceStartDay: Monday
+    networking: public                         
+    allowIpRangeMap:                           
+      - cidr: 9.9.9.9/28                       
+        description: Allow traffic from App A  
+      - cidr: 10.10.10.10/27                   
+        description: Allow traffic from App B  
+    pgConfigMap:                               
+      application_name: test1
+      array_nulls: true                        
+    backupRetentionPeriod: 30d 
+witnessGroups:
+  - provider: aws
+    region: ap-south-1
+    customMaintenanceWindow:
+      maintenanceStartTime: 15:00
+      maintenanceStartDay: wednesday    
+```
+
+### Update a distributed high-availability cluster
+
+Update a distributed high-availability cluster and its data groups using a YAML configuration file.
+
+The syntax of the command is:
+
+```
+pgd update [--config-file]
+```
+
+Where `<config_file>` is a valid path to a YAML configuration file. For updating a distributed high-availability cluster, clusterId and groupId are mandatory fields. All other fields are optional removing/unspecified optional fields means no change is intended for them. See the sample config file below to update a distributed high-availability cluster.
+
+```
+clusterId: p-*****                                                    # <string:  cluster id>
+clusterName: cloud_service_cluster                                        # <string:  cluster name>
+password: ************                                                # <string:  cluster password (must be at least 12 characters)>
+tags:                                                                 # <list: Group clusters and organize across different resource types. This will help to manage resources effectively.>
+  - name: tag1                                                        # <string: assign "tag1"  to the cluster>
+    color: blue                                                       # <string: assign "blue" color to the tag>
+  - name: tag2                                                        # <string: assign "tag2"  to the cluster>
+    color: "#FF0000"                                                  # <string: assign color associated with the hex code to the tag>
+dataNodes: 3                                                          # <number:  data nodes, valid values [2 | 3]>
+dataGroups:                                                           # <list: pgd data groups
+  - groupId: p-*****                                                  # <string:  data group id>
+    iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    instanceType: azure:Standard_E2s_v3                               # <string:  instance type id>
+    volumeType: azurepremiumstorage                                   # <string:  volume type id>
+    volumeProperties: P1                                              # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+    volumePropertyIOPS: 1000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 15:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    networking: public                                                # <string:  input "private" or "public" network>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+#    cspSubscriptionIds:                                              # <list:  cloud provider subscription/account ID, required when cluster is Cloud Service deployment.>
+#      - 123123123                                                    # <string>
+#      - 456456456                                                    # <string>
+#    serviceAccountIds:                                               # <list: A Google Cloud Service Account is used for logs. If you leave this blank, then you will be unable to access log details for this cluster. Required when cluster is Cloud Service deployment>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+#      - service-account-1234567b@development-data-123456.iam.gserviceaccount.com# <string>
+witnessGroups:                                                        # <list: pgd witness groups
+  - groupId: p-fpb5730uqb-c                                           # <string:  provider region id>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window for witness group>
+      maintenanceStartTime: 18:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+```
+
+### Show distributed high-availability clusters
+
+Show all active clusters or a specific cluster. You can also optionally show deleted clusters.
+
+The syntax of the command is:
+
+```
+biganimal pgd show [--id] [--deleted]
+```
+
+### Restore a distributed high-availability cluster
+
+Restore a distributed high-availability cluster or a deleted distributed high-availability cluster to a new cluster on the same cloud provider. You can restore an active cluster or a deleted cluster within its retention period. You can restore only one data group. By default, the new cluster inherits all settings of the source cluster. You can change the cluster setting and database configurations by specifying new values in the configuration file.
+
+The syntax of the command is:
+
+```
+pgd restore [--config-file]
+```
+
+Where `<config_file>` is a valid path to a YAML configuration file. For example:
+
+You can either restore an active or a deleted distributed high-availability cluster within its retention period. You can restore only 1 data group from the available data groups in the source cluster. By default the new cluster will inherit all settings of source cluster, you can change the cluster setting and database configurations by specifying new values in the restore command.
+
+To restore a distributed high-availability cluster, clusterId, sourceGroupId and password are mandatory fields. All other fields are optional. Removing the optional fields will use the corresponding source group field instead.
+
+```
+clusterName: cloud_service_cluster                                        # <string:  cluster name>
+password: ************                                                # <string:  cluster password (must be at least 12 characters)>
+dataNodes: 3                                                          # <number:  data nodes, valid values [2 | 3]>
+clusterId: p-*****                                                    # <string: cluster id of the cluster you want to restore>
+tags:                                                                 # <list: Group clusters and organize across different resource types. This will help to manage resources effectively.>
+  - name: tag1                                                        # <string: assign "tag1"  to the cluster>
+    color: blue                                                       # <string: assign "blue" color to the tag>
+  - name: tag2                                                        # <string: assign "tag2"  to the cluster>
+    color: "#FF0000"                                                  # <string: assign color associated with the hex code to the tag>
+dataGroups:                                                           # <list: pgd data groups
+  - sourceGroupId: p-*****                                            # <string: group id of the group you want to restore>
+    iamAuthentication: false                                          # <bool:  Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+    region: westus2                                                   # <string:  provider region id>
+    instanceType: azure:Standard_E2s_v3                               # <string:  instance type id>
+    volumeType: azurepremiumstorage                                   # <string:  volume type id>
+    volumeProperties: P1                                              # <string:  Applicable to Azure Premium Storage only, volume properties id>
+    volumePropertySize: 32Gi                                          # <string:  Not Applicable to Azure Premium Storage, volume size in Gibibytes or Tebibytes, you may append unit suffix Ti,Gi(the default unit).>
+    volumePropertyIOPS: 1000                                          # <number>: Not Applicable to Azure Premium Storage and GCP:[pd-ssd], volume Input/Output Operations Per Second>
+    customMaintenanceWindow:                                          # <Object:  Schedule a custom maintenance window, data-groups maintenance windows must not overlap>
+      maintenanceStartTime: 15:00                                     # <string:  Set a start time in 24 hour format in UTC (e.g. 15:00) of day to initiate>
+      maintenanceStartDay: Monday                                     # <string:  Select desired day (e.g. Monday) from a week for maintenance activities>
+    allowIpRangeMap:                                                  # <list: IP Range to allow network traffic to your cluster from the public Internet>
+      - cidr: 9.9.9.9/28                                              # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App A                         # <string: The description of this allowed ip range>
+      - cidr: 10.10.10.10/27                                          # <string: CIDR of allowed source IP range>
+        description: Allow traffic from App B                         # <string: The description of this allowed ip range>
+    pgConfigMap:                                                      # <Object: Postgres configuration>
+      application_name: test_app                                      # <string: set the database "application_name" property to "test_app">
+      array_nulls: true                                               # <bool: set the database "array_nulls" property to True>
+    backupRetentionPeriod: 30d                                        # <string: Retention period must be between 1-180 days or 1-25 weeks or 1-6 months. Using strings like "7d" or "2w" or "3m" to specify days, weeks and months respectively.>
+```
+
+### Get distributed high-availability cluster connection information
+
+To connect to and use your Cloud Service distributed high-availability cluster, you first need to get your cluster group's connection information.
+
+The syntax of the command is:
+
+```
+biganimal pgd show-group-connection {--id --group-id} [--read-only] \ 
+                                    [--read-write]
+```
+
+### Delete a distributed high-availability cluster
+
+Delete a specific Cloud Service distributed high-availability cluster.
+
+The syntax of the command is:
+
+```
+biganimal pgd delete-group {--id --group-id}
+```
+
+The `--id` and `--group-id` flags are mandatory. For example:
+
+```
+biganimal pgd delete-group --id clusterID --group-id clusterDataGroupID
+```
+
+### Pause a distributed high-availability cluster
+
+To pause a distributed high-availability cluster, use the `pgd pause` command. The `pgd pause` command supports `flag` mode only. The syntax for the command is:
+
+```
+biganimal pgd pause {--id}
+```
+
+Where `id` is a valid cluster ID. The `id` is mandatory.
+
+For example:
+
+```
+biganimal pgd pause --id p-c5fh47nf
+```
+
+### Resume a distributed high-availability cluster
+
+To resume a distributed high-availability cluster, use the `pgd resume` command. The `pgd resume` command supports `flag` mode only. The syntax for the command is:
+
+```
+biganimal pgd resume {--id}
+```
+
+Where `id` is a valid cluster ID. The `id` is mandatory.
+
+For example:
+
+```
+biganimal pgd resume --id p-c5fh47nf
+```
+
+## Creating and Managing tags
+
+Tagging is a powerful way to organize, manage, and track your resources and clusters, especially in large-scale environments. Here's how you can effectively manage tags for grouping your clusters and other resources:
+
+Here are the available commands for creating and managing tags:
+
+```
+biganimal tag -h
+Manage tags for grouping your clusters and other resources.
+
+Usage:
+  biganimal tag [flags]
+  biganimal tag [command]
+
+Available Commands:
+  create      Create a tag
+  update      Update a tag with specified ID.
+  delete      Delete a tag
+  show        Show all available tags
+
+Flags:
+  -h, --help   help for tag
+```
+
+Here are the options with tag create command:
+
+```
+biganimal tag create -h
+Create a tag with specified name and color.
+
+Usage:
+  biganimal tag create [flags]
+
+Examples:
+biganimal tag create --name my-cyan-tag --color "#30f8ef"
+tag create --name my-red-tag --color red
+
+Flags:
+  -n, --name string           Tag Name
+  -r, --color string          Tag color hex code or name (e.g. #FF0000 or red)
+  -y, --yes                   auto-confirm all confirmations
+  -c, --credential string     The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+  -P, --project string        The project that groups your clusters and other resources, the default is taken from 'context_project' (default "DummyProject")
+  -I, --interactive[=NoOpt]   Execute command interactively
+  -h, --help                  help for create
+```
+
+Here are the options with the tag update command:
+
+```
+biganimal tag update -h
+Update a tag color, name for specified tag ID.
+
+Usage:
+  biganimal tag update [flags]
+
+Examples:
+biganimal tag update --id "<tag-id>" --name "<updated-tag-name>" --color "<updated-color>" 
+
+Flags:
+  -i, --id string             Tag ID
+  -n, --name string           Updated Tag Name
+  -r, --color string          Updated Tag color hex code or name (e.g. #FF0000 or red)
+  -y, --yes                   auto-confirm all confirmations
+  -c, --credential string     The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+  -P, --project string        The project that groups your clusters and other resources, the default is taken from 'context_project' (default "DummyProject")
+  -I, --interactive[=NoOpt]   Execute command interactively
+  -h, --help                  help for update
+```
+
+Here are the options with the tag show command:
+
+```
+Usage:
+  biganimal tag show [flags]
+
+Examples:
+biganimal tags show
+
+Flags:
+  -c, --credential string   The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+  -h, --help                help for show
+  -i, --id string           Tag ID
+  -o, --output string       [table json yaml xml] (default "table")
+```
+
+Here are the options with the tag delete command:
+
+```
+Delete a tag with specified ID.
+
+Usage:
+  biganimal tag delete [flags]
+
+Examples:
+biganimal tag delete --id "TagID_123"
+
+Flags:
+  -i, --id string             Tag ID
+  -y, --yes                   auto-confirm all confirmations
+  -c, --credential string     The credential which you created via 'credential create' command, the default is fetched from 'context_credential'
+  -P, --project string        The project that groups your clusters and other resources, the default is taken from 'context_project' (default "DummyProject")
+  -I, --interactive[=NoOpt]   Execute command interactively
+  -h, --help                  help for delete
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

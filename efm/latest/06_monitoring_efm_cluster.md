@@ -1,0 +1,207 @@
+---
+title: Monitoring a Failover Manager cluster
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/06_monitoring_efm_cluster/
+lastModified: 2026-08-24T17:41:08Z
+---
+
+# Monitoring a Failover Manager cluster
+
+<div id="monitoring_efm_cluster" class="registered_link"></div>
+
+You can use either the Failover Manager `efm cluster-status` command or the PEM client interface to check the current status of a monitored node of a Failover Manager cluster.
+
+## Reviewing the cluster status report
+
+The `efm cluster-status` command returns a report that contains information about the status of the Failover Manager cluster:
+
+```text
+# efm cluster-status <cluster_name>
+```
+
+The following status report is for a cluster named edb that has three nodes running:
+
+```text
+Agent Type  Address               DB        VIP
+---------------------------------------------------------------
+Standby     172.19.10.2           UP        192.168.225.190
+Standby     172.19.12.163         UP        192.168.225.190
+Primary     172.19.14.9           UP        192.168.225.190*
+
+
+Allowed node host list:
+172.19.14.9 172.19.12.163 172.19.10.2
+
+
+Membership coordinator: 172.19.14.9
+
+
+Standby priority host list:
+172.19.12.163 172.19.10.2
+
+Promote Status:
+
+DB Type  Address         WAL Received LSN   WAL Replayed LSN   Info
+--------------------------------------------------------------------
+Primary  172.19.14.9                        0/4000638
+Standby  172.19.12.163   0/4000638          0/4000638
+Standby  172.19.10.2     0/4000638          0/4000638
+
+
+Standby database(s) in sync with primary. It is safe to promote.
+```
+
+The cluster status section provides an overview of the status of the agents that reside on each node of the cluster:
+
+```text
+Agent Type  Address             DB        VIP
+---------------------------------------------------------------
+Standby     172.19.10.2         UP        192.168.225.190
+Standby     172.19.12.163       UP        192.168.225.190
+Primary     172.19.14.9         UP        192.168.225.190*
+```
+
+The asterisk (\*) after the VIP address indicates that the address is available for connections. If a VIP address isn't followed by an asterisk, the address was associated with the node in the properties file, but the address isn't currently in use.
+
+Failover Manager agents provide the information displayed in the Cluster Status section.
+
+The `Allowed node host list` and `Standby priority host list` provide an easy way to see the nodes that can join the cluster and the promotion order of the nodes. The IP address of the membership coordinator is also displayed in the report:
+
+```text
+Allowed node host list:
+172.19.14.9 172.19.12.163 172.19.10.2
+Membership coordinator: 172.19.14.9
+Standby priority host list:
+172.19.12.163 172.19.10.2
+```
+
+The `Promote Status` section of the report includes information related to promotion in the cluster. When choosing a standby to promote, the LSN information is used, along with the `Standby priority host list`. If there's a mismatch in replay LSNs, Failover Manager doesn't allow a switchover. However, the promotion of a standby is always allowed.
+
+The LSN information is the result of a direct query from the node on which you're invoking the `cluster-status` command to each database in the cluster. The query also returns the transaction log location of each database. Because the queries to each database return at different times, the LSNs might not match even if streaming replication is working normally for the cluster. To get the latest view of replication, connect to the primary database, and execute SQL command `SELECT * FROM pg_stat_replication;`. Or see the `efm replication-status` command below.
+
+```text
+Promote Status:
+
+DB Type  Address         WAL Received LSN   WAL Replayed LSN   Info
+-------------------------------------------------------------------
+Primary   172.19.14.9                       0/4000638
+Standby  172.19.12.163   0/4000638          0/4000638
+Standby  172.19.10.2     0/4000638          0/4000638
+```
+
+If a database is down or if the database was restarted but the resume command wasn't yet invoked, the state of the agent that resides on that host is idle. If an agent is idle, the cluster status report includes a summary of the condition of the idle node. For example:
+
+```text
+Agent Type  Address             DB        VIP
+---------------------------------------------------------------
+Idle        172.19.18.105       UP        172.19.13.105
+```
+
+### Exit codes
+
+The cluster status process returns an exit code based on the state of the cluster:
+
+- An exit code of `0` indicates that all agents are running, and the databases on the primary and standby nodes are running and in sync.
+
+- A nonzero exit code indicates one or more of the following:
+
+  - There is a problem contacting the local agent to retrieve the cluster status.
+
+  - A database is down, unknown, or has an idle agent.
+
+  - An agent is in the DOWN state.
+
+  - Failover Manager can't decrypt the provided database password.
+
+  - There's a problem contacting the databases to get WAL locations.
+
+  - There's no primary agent.
+
+  - There are no standby agents.
+
+  - One or more standby nodes aren't in sync with the primary.
+
+> **Note**
+>
+> The items at the end of the list do not indicate that there is a problem with replication. They mean that the cluster is not in a safe state for Failover Manager to perform a promotion/switchover.
+
+## Viewing failed nodes in the cluster
+
+Beginning with Failover Manager version 5.0, failed nodes are no longer removed from the cluster automatically. After an agent has disappeared from the cluster, the cluster status report will include it as being `DOWN`. No database information is given in this case (if the node were previously a database node).
+
+The following status report shows a cluster with a failed node. Only the top section is shown; the rest of the information is unchanged except that the `DOWN` address is not in the standby priority or Promote Status sections:
+
+```text
+Cluster Status: efm
+
+	Agent Type  Address              DB       VIP
+	----------------------------------------------------------------
+	Primary     172.17.0.2           UP
+	Standby     172.17.0.3           UP
+	Standby     172.17.0.4           UP
+	Standby     172.17.0.5           UP
+	DOWN        172.17.0.6           N/A
+```
+
+If the `DOWN` node (or failed agent on that node) is not going to be restarted, the node can be removed from the cluster using the [efm reset-members](https://www.enterprisedb.com/docs/efm/latest/07_using_efm_utility/#efm_reset_members) command.
+
+## Retrieving streaming replication information
+
+The `efm replication-status` command returns a report that contains information about the status of streaming replication within the cluster. The following replication status report is for a healthy cluster with four nodes:
+
+```text
+# efm replication-status efm
+Address              Type        DB       VIP              Upstream             Application Name   Sync State Status     WAL Received LSN   WAL Replayed LSN   Replay Lag
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+node1                Primary     UP       172.17.0.10*                                                                                      0/7000000
+node2                Standby     UP       172.17.0.10      node1                node2              quorum     streaming  0/7000000          0/7000000
+node3                Standby     UP       172.17.0.10      node1                node3              quorum     streaming  0/7000000          0/7000000
+node4                Standby     UP       172.17.0.10      node1                node4              quorum     streaming  0/7000000          0/7000000
+
+Messages:
+[none]
+```
+
+If any problems are detected in the streaming replication status, the command will exit with a non-zero exit code. Error messages will be included in the `Messages` list at the end of the report.
+
+Errors include:
+
+- There is a problem connecting to any of the database servers for information.
+- There is a problem connecting to any of the agents in the cluster.
+- There is any other problem retrieving the information needed from a database.
+- No primary database is found.
+- Any node is in the `down` or `idle` state.
+- More than one primary or promoting database is found.
+- A standby's WAL receiver status is not "streaming."
+
+> **Note**
+>
+> Future releases may add options to allow specifying further error conditions based on the information retrieved.
+
+## Monitoring streaming replication with Postgres Enterprise Manager
+
+If you use Postgres Enterprise Manager (PEM) to monitor your servers, you can configure the Streaming Replication Analysis dashboard (part of the PEM interface) to display the state of a primary or standby node that's part of a Streaming Replication scenario.
+
+![The Streaming Replication dashboard (Primary node)](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/str_replication_dashboard_master.png)
+
+The Streaming Replication Analysis dashboard displays statistical information about activity for any monitored server on which streaming replication is enabled. The dashboard header identifies the status of the monitored server (either Replication Primary or Replication Slave) and displays the date and time that the server was last started, the date and time that the page was last updated, and a current count of triggered alerts for the server.
+
+When reviewing the dashboard for a Replication Slave (a standby node), a label at the bottom of the dashboard confirms the status of the server.
+
+![The Streaming Replication dashboard (Standby node)](https://media.githubusercontent.com/media/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/efm/5/images/str_replication_dashboard_standby.png)
+
+By default, the PEM replication probes that provide information for the Streaming Replication Analysis dashboard are disabled.
+
+To view the Streaming Replication Analysis dashboard for the primary node of a replication scenario, you must enable the following probes:
+
+- Streaming Replication
+- WAL Archive Status
+
+To view the Streaming Replication Analysis dashboard for the standby node of a replication scenario, you must enable the following probes:
+
+- Streaming Replication Lag Time
+
+For more information about PEM, see the [Postgres Enterprise Manager documentation](https://www.enterprisedb.com/docs/pem/latest/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

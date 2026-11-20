@@ -1,0 +1,68 @@
+---
+title: SAVEPOINT
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/reference/oracle_compatibility_reference/epas_compat_sql/70_savepoint/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# SAVEPOINT
+
+<div id="savepoint" class="registered_link"></div>
+
+## Name
+
+`SAVEPOINT`— Define a new savepoint in the current transaction.
+
+## Synopsis
+
+```sql
+SAVEPOINT <savepoint_name>
+```
+
+## Description
+
+`SAVEPOINT` establishes a new savepoint in the current transaction.
+
+A savepoint is a mark inside a transaction that allows all commands that are executed after it to be rolled back. This restores the transaction state to what it was at the savepoint.
+
+## Parameters
+
+`savepoint_name`
+
+The name ofo the savepoint.
+
+## Notes
+
+Use `ROLLBACK TO SAVEPOINT` to roll back to a savepoint.
+
+You can establish savepoints only when inside a transaction block. You can define multiple savepoints in a transaction.
+
+When another savepoint is established with the same name as a previous savepoint, the old savepoint is kept. However, only the more recent one is used when rolling back.
+
+`SAVEPOINT` isn't supported in SPL programs.
+
+## Examples
+
+Establish a savepoint and then undo the effects of all commands executed after it:
+
+```sql
+\set AUTOCOMMIT off
+INSERT INTO dept VALUES (50, 'HR', 'NEW YORK');
+SAVEPOINT depts;
+INSERT INTO emp (empno, ename, deptno) VALUES (9001, 'JONES', 50);
+INSERT INTO emp (empno, ename, deptno) VALUES (9002, 'ALICE', 50);
+SAVEPOINT emps;
+INSERT INTO jobhist VALUES (9001,'17-SEP-07',NULL,'CLERK',800,NULL,50,'New Hire');
+INSERT INTO jobhist VALUES (9002,'20-SEP-07',NULL,'CLERK',700,NULL,50,'New Hire');
+ROLLBACK TO depts;
+COMMIT;
+```
+
+This transaction commits a row into the `dept` table. The inserts into the `emp` and `jobhist` tables are rolled back.
+
+## See also
+
+[COMMIT](https://www.enterprisedb.com/docs/epas/15/reference/oracle_compatibility_reference/epas_compat_sql/19_commit/#commit), [ROLLBACK](https://www.enterprisedb.com/docs/epas/15/reference/oracle_compatibility_reference/epas_compat_sql/68_rollback/#rollback), [ROLLBACK TO SAVEPOINT](https://www.enterprisedb.com/docs/epas/15/reference/oracle_compatibility_reference/epas_compat_sql/69_rollback_to_savepoint/#rollback_to_savepoint)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

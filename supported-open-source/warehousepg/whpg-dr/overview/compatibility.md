@@ -1,0 +1,50 @@
+---
+title: Compatibility for WarehousePG Disaster Recovery
+description: Compatible WarehousePG versions, operating systems, storage repositories, and hardware sizing for whpg-dr.
+product: WarehousePG Disaster Recovery
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/overview/compatibility/
+lastModified: 2026-10-12T13:18:19+01:00
+---
+
+# Compatibility for WarehousePG Disaster Recovery
+
+WarehousePG Disaster Recovery (`whpg-dr`) runs on RHEL-compatible Linux and supports NFS and S3-compatible storage repositories, depending on your WarehousePG version.
+
+## Platform compatibility
+
+`whpg-dr` runs on the following operating systems (x86\_64 and ppc64le):
+
+| OS          | Versions |
+| ----------- | -------- |
+| RHEL        | 7, 8, 9  |
+| CentOS      | 7        |
+| Rocky Linux | 8, 9     |
+| AlmaLinux   | 8, 9     |
+
+> **Note**
+>
+> RHEL 7 and CentOS 7 are supported on x86\_64 with WarehousePG 6 only. On ppc64le, `whpg-dr` supports WarehousePG 7 only.
+
+## WarehousePG compatibility
+
+`whpg-dr` supports WarehousePG 6.x and 7.x.
+
+| WarehousePG version | Storage repository            |
+| ------------------- | ----------------------------- |
+| 6.x                 | POSIX (NFS) only              |
+| 7.x                 | POSIX (NFS) and S3-compatible |
+
+## Storage repository compatibility
+
+`whpg-dr` supports two storage backends. The storage repository is the only artifact shared between the primary and DR sites. Both clusters must have access to the same repository.
+
+| Backend                                  | WarehousePG version | Requirements                                                                                                                    |
+| ---------------------------------------- | ------------------: | ------------------------------------------------------------------------------------------------------------------------------- |
+| POSIX (NFS or shared filesystem)         |            6.x, 7.x | Path must be mounted read-write on all primary and DR hosts at the same mount point.                                            |
+| S3-compatible (AWS S3, MinIO, SeaweedFS) |            7.x only | All primary and DR hosts must have network access to the S3 endpoint. Supports static credentials and the AWS credential chain. |
+
+## Hardware sizing
+
+The DR cluster must run the same OS and WarehousePG patch version as the primary. It doesn't need to match the primary in host count, hardware type, or instance size. The segment count must match, but segments can be distributed differently across hosts. Consider that the DR cluster becomes the production cluster on failover, so size it accordingly. Mirrors and the standby coordinator are added after promotion.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

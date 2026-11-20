@@ -1,0 +1,316 @@
+---
+title: base_embedding_driver
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/drivers/embedding/base_embedding_driver/
+lastModified: 2025-11-07T18:06:05Z
+---
+
+# base\_embedding\_driver
+
+- `VectorOperation = Literal['query', 'upsert']` <small>module-attribute</small>  <span id="griptape.drivers.embedding.base_embedding_driver.VectorOperation"></span>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver"></span>
+
+Bases:
+[`SerializableMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/mixins/serializable_mixin/#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+,  [`ExponentialBackoffMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/mixins/exponential_backoff_mixin/#griptape.mixins.exponential_backoff_mixin.ExponentialBackoffMixin "ExponentialBackoffMixin (griptape.mixins.exponential_backoff_mixin.ExponentialBackoffMixin)")
+, <span title="abc.ABC">ABC</span>
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Type                                                                                                                                                                                                                                                                                | Description                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/drivers/embedding/base_embedding_driver/#griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.model" title="model = field(kw_only=True, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.model)"><code class="language-python">model</code></a> | `str`                                                                                                                                                                                                                                                                               | The name of the model to use.<br/>                                  |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/drivers/embedding/base_embedding_driver/#griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.tokenizer" title="tokenizer = field(default=None, kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.tokenizer)"><code class="language-python">tokenizer</code></a>    | <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/tokenizers/#griptape.tokenizers.BaseTokenizer" title="BaseTokenizer (griptape.tokenizers.BaseTokenizer)"><code class="language-python">Optional\[BaseTokenizer]</code></a> | An instance of `BaseTokenizer` to use when calculating tokens.<br/> |
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+@define
+class BaseEmbeddingDriver(SerializableMixin, ExponentialBackoffMixin, ABC):
+    """Base Embedding Driver.
+
+    Attributes:
+        model: The name of the model to use.
+        tokenizer: An instance of `BaseTokenizer` to use when calculating tokens.
+    """
+
+    model: str = field(kw_only=True, metadata={"serializable": True})
+    tokenizer: Optional[BaseTokenizer] = field(default=None, kw_only=True)
+    chunker: Optional[BaseChunker] = field(init=False)
+
+    def __attrs_post_init__(self) -> None:
+        self.chunker = TextChunker(tokenizer=self.tokenizer) if self.tokenizer else None
+
+    def embed_text_artifact(
+        self, artifact: TextArtifact, *, vector_operation: VectorOperation | None = None
+    ) -> list[float]:
+        warnings.warn(
+            "`BaseEmbeddingDriver.embed_text_artifact` is deprecated and will be removed in a future release. `BaseEmbeddingDriver.embed` is a drop-in replacement.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.embed(artifact, vector_operation=vector_operation)
+
+    def embed_string(self, string: str, *, vector_operation: VectorOperation | None = None) -> list[float]:
+        warnings.warn(
+            "`BaseEmbeddingDriver.embed_string` is deprecated and will be removed in a future release. `BaseEmbeddingDriver.embed` is a drop-in replacement.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.embed(string, vector_operation=vector_operation)
+
+    def embed(
+        self, value: str | TextArtifact | ImageArtifact, *, vector_operation: VectorOperation | None = None
+    ) -> list[float]:
+        for attempt in self.retrying():
+            with attempt:
+                if isinstance(value, str):
+                    if (
+                        self.tokenizer is not None
+                        and self.tokenizer.count_tokens(value) > self.tokenizer.max_input_tokens
+                    ):
+                        return self._embed_long_string(value, vector_operation=vector_operation)
+                    return self.try_embed_chunk(value, vector_operation=vector_operation)
+                if isinstance(value, TextArtifact):
+                    return self.embed(value.to_text(), vector_operation=vector_operation)
+                if isinstance(value, ImageArtifact):
+                    return self.try_embed_artifact(value, vector_operation=vector_operation)
+        raise RuntimeError("Failed to embed string.")
+
+    def try_embed_artifact(
+        self, artifact: TextArtifact | ImageArtifact, *, vector_operation: VectorOperation | None = None
+    ) -> list[float]:
+        # TODO: Mark as abstract method for griptape 2.0
+        if isinstance(artifact, TextArtifact):
+            return self.try_embed_chunk(artifact.value, vector_operation=vector_operation)
+        raise ValueError(f"{self.__class__.__name__} does not support embedding images.")
+
+    @abstractmethod
+    def try_embed_chunk(self, chunk: str, *, vector_operation: VectorOperation | None = None) -> list[float]:
+        # TODO: Remove for griptape 2.0, subclasses should implement `try_embed_artifact` instead
+        ...
+
+    def _embed_long_string(self, string: str, *, vector_operation: VectorOperation | None = None) -> list[float]:
+        """Embeds a string that is too long to embed in one go.
+
+        Adapted from: https://github.com/openai/openai-cookbook/blob/683e5f5a71bc7a1b0e5b7a35e087f53cc55fceea/examples/Embedding_long_inputs.ipynb
+        """
+        chunks = self.chunker.chunk(string)  # pyright: ignore[reportOptionalMemberAccess] In practice this is never None
+
+        embedding_chunks = []
+        length_chunks = []
+        for chunk in chunks:
+            embedding_chunks.append(self.embed(chunk.value, vector_operation=vector_operation))
+            length_chunks.append(len(chunk))
+
+        # generate weighted averages
+        embedding_chunks = np.average(embedding_chunks, axis=0, weights=length_chunks)
+
+        # normalize length to 1
+        embedding_chunks = embedding_chunks / np.linalg.norm(embedding_chunks)
+
+        return embedding_chunks.tolist()
+```
+
+</details>
+
+- `chunker = field(init=False)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.chunker"></span>
+
+- `model = field(kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.model"></span>
+
+- `tokenizer = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.tokenizer"></span>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.__attrs_post_init__"></span>
+
+### **attrs\_post\_init**()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+def __attrs_post_init__(self) -> None:
+    self.chunker = TextChunker(tokenizer=self.tokenizer) if self.tokenizer else None
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver._embed_long_string"></span>
+
+### \_embed\_long\_string(string, \*, vector\_operation=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+def _embed_long_string(self, string: str, *, vector_operation: VectorOperation | None = None) -> list[float]:
+    """Embeds a string that is too long to embed in one go.
+
+    Adapted from: https://github.com/openai/openai-cookbook/blob/683e5f5a71bc7a1b0e5b7a35e087f53cc55fceea/examples/Embedding_long_inputs.ipynb
+    """
+    chunks = self.chunker.chunk(string)  # pyright: ignore[reportOptionalMemberAccess] In practice this is never None
+
+    embedding_chunks = []
+    length_chunks = []
+    for chunk in chunks:
+        embedding_chunks.append(self.embed(chunk.value, vector_operation=vector_operation))
+        length_chunks.append(len(chunk))
+
+    # generate weighted averages
+    embedding_chunks = np.average(embedding_chunks, axis=0, weights=length_chunks)
+
+    # normalize length to 1
+    embedding_chunks = embedding_chunks / np.linalg.norm(embedding_chunks)
+
+    return embedding_chunks.tolist()
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.embed"></span>
+
+### embed(value, \*, vector\_operation=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+def embed(
+    self, value: str | TextArtifact | ImageArtifact, *, vector_operation: VectorOperation | None = None
+) -> list[float]:
+    for attempt in self.retrying():
+        with attempt:
+            if isinstance(value, str):
+                if (
+                    self.tokenizer is not None
+                    and self.tokenizer.count_tokens(value) > self.tokenizer.max_input_tokens
+                ):
+                    return self._embed_long_string(value, vector_operation=vector_operation)
+                return self.try_embed_chunk(value, vector_operation=vector_operation)
+            if isinstance(value, TextArtifact):
+                return self.embed(value.to_text(), vector_operation=vector_operation)
+            if isinstance(value, ImageArtifact):
+                return self.try_embed_artifact(value, vector_operation=vector_operation)
+    raise RuntimeError("Failed to embed string.")
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.embed_string"></span>
+
+### embed\_string(string, \*, vector\_operation=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+def embed_string(self, string: str, *, vector_operation: VectorOperation | None = None) -> list[float]:
+    warnings.warn(
+        "`BaseEmbeddingDriver.embed_string` is deprecated and will be removed in a future release. `BaseEmbeddingDriver.embed` is a drop-in replacement.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self.embed(string, vector_operation=vector_operation)
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.embed_text_artifact"></span>
+
+### embed\_text\_artifact(artifact, \*, vector\_operation=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+def embed_text_artifact(
+    self, artifact: TextArtifact, *, vector_operation: VectorOperation | None = None
+) -> list[float]:
+    warnings.warn(
+        "`BaseEmbeddingDriver.embed_text_artifact` is deprecated and will be removed in a future release. `BaseEmbeddingDriver.embed` is a drop-in replacement.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self.embed(artifact, vector_operation=vector_operation)
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.try_embed_artifact"></span>
+
+### try\_embed\_artifact(artifact, \*, vector\_operation=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+def try_embed_artifact(
+    self, artifact: TextArtifact | ImageArtifact, *, vector_operation: VectorOperation | None = None
+) -> list[float]:
+    # TODO: Mark as abstract method for griptape 2.0
+    if isinstance(artifact, TextArtifact):
+        return self.try_embed_chunk(artifact.value, vector_operation=vector_operation)
+    raise ValueError(f"{self.__class__.__name__} does not support embedding images.")
+```
+
+</details>
+
+<span id="griptape.drivers.embedding.base_embedding_driver.BaseEmbeddingDriver.try_embed_chunk"></span>
+
+### try\_embed\_chunk(chunk, \*, vector\_operation=None)abstractmethod
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/embedding/base\_embedding\_driver.py</code>
+
+</summary>
+
+```python
+@abstractmethod
+def try_embed_chunk(self, chunk: str, *, vector_operation: VectorOperation | None = None) -> list[float]:
+    # TODO: Remove for griptape 2.0, subclasses should implement `try_embed_artifact` instead
+    ...
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,75 @@
+---
+title: Protecting an existing key
+description: Learn how to enable a mechanism to protect the data encryption key on an existing TDE-enabled database cluster.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/key_maintenance/protecting_existing_key/
+lastModified: 2026-11-11T11:03:24+01:00
+---
+
+# Protecting an existing key
+
+TDE normally protects the data encryption key (`pg_encryption/key.bin`) as you initialize the cluster, but you can choose to [disable key wrapping](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/disabling_key/), leaving the key unprotected, for example, for testing or demo purposes. If you disabled key wrapping and now want to protect the key, update the encryption settings in the `postgresql.conf` file, as shown in this example.
+
+## Enable key wrapping with a passphrase
+
+This example shows you how to add a passphrase-based protection mechanism or key wrapping to your data encryption key (`key.bin`).
+
+1. Store the passphrase in a file accessible by initdb named `pass.bin`:
+
+   > **Important**
+   >
+   > This example stores the passphrase in plaintext, a method you should only use for testing or demonstration purposes. In production environments, don't store your passphrase in a file. See [Using a passphrase](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/passphrase/) for alternative methods.
+
+   ```
+   echo "<passphrase>" > /var/lib/postgresql/pass.bin
+   ```
+
+2. Use OpenSSL to encrypt the existing `key.bin` data encryption key with the stored passphrase and save the encrypted file as `key.bin.WRAP`:
+
+   ```
+   cat $PGDATA/pg_encryption/key.bin | openssl enc -e -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -out $PGDATA/pg_encryption/key.bin.WRAP
+   ```
+
+3. Create a backup of the unwrapped data encryption key named `key.bin.NOWRAP` in case you need to roll back to the original configuration:
+
+   ```
+   cp $PGDATA/pg_encryption/key.bin $PGDATA/pg_encryption/key.bin.NOWRAP
+   ```
+
+4. Replace the existing data encryption key with the wrapped version:
+
+   ```
+   cp $PGDATA/pg_encryption/key.bin.WRAP $PGDATA/pg_encryption/key.bin
+   ```
+
+5. Create a backup of the existing configuration file named `postgresql.conf.NOWRAP` in case you need to roll back to the original configuration:
+
+   ```
+   cp $PGDATA/postgresql.conf $PGDATA/postgresql.conf.NOWRAP
+   ```
+
+6. Modify the `data_encryption_key_unwrap_command` value of the `postgresql.conf` file with the new command:
+
+   ```
+   sed -i "s|data_encryption_key_unwrap_command.*|data_encryption_key_unwrap_command = 'openssl enc -d -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -in \"%p\"'|" $PGDATA/postgresql.conf
+   ```
+
+7. Create a backup of the modified `postgresql.conf` file that includes the key wrapping named `postgresql.conf.WRAP`:
+
+   ```
+   cp $PGDATA/postgresql.conf $PGDATA/postgresql.conf.WRAP
+   ```
+
+8. Restart your database cluster to populate the updated data encryption key configuration:
+
+   ```
+   pg_ctl start
+   ```
+
+9. Confirm the cluster starts successfully and the new key wrapping configuration works, then remove the rollback backups. `key.bin.NOWRAP` is a plaintext copy of your data encryption key, so leaving it on disk defeats the purpose of wrapping the key:
+
+   ```
+   rm $PGDATA/pg_encryption/key.bin.NOWRAP $PGDATA/postgresql.conf.NOWRAP
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

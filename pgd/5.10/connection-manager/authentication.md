@@ -1,0 +1,72 @@
+---
+title: Connection Manager Authentication
+product: EDB Postgres Distributed (PGD)
+version: 5.10.0
+url: https://www.enterprisedb.com/docs/pgd/5.10/connection-manager/authentication/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Connection Manager Authentication
+
+Connection Manager's authentication is configured through Postgres's own [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file. Connection Manager uses the same authentication methods as Postgres.
+
+> **Note**
+>
+> For Connection Manager authentication to work correctly, set or change role passwords only while connected to a PGD-enabled database with [`bdr.role_replication`](https://www.enterprisedb.com/docs/pgd/5.10/reference/pgd-settings/#bdrrole_replication) set to `on`. A password set or changed while disconnected from the PGD-enabled database, or with `bdr.role_replication` set to `off`, doesn't replicate, and Connection Manager can then fail to authenticate that role.
+
+## Connection Manager connection types
+
+Connection Manager supports the following connection types in `pg_hba.conf`:
+
+- `host` - TCP/IP connections
+- `hostssl` - TCP/IP connections with SSL
+- `hostnossl` - TCP/IP connections without SSL
+
+## Connection Manager authentication methods
+
+Connection Manager supports the following authentication methods in `pg_hba.conf`:
+
+- `trust` - No authentication
+- `reject` - Reject the connection
+- `md5` - MD5 password authentication
+- `scram-sha-256` - SCRAM-SHA-256 password authentication
+- `cert` - SSL certificate authentication
+- `ldap` - Authenticate using an LDAP server
+
+> **Note**
+>
+> Connection Manager needs to be able to authenticate to the PGD nodes as the client user. Configure the `pg_hba.conf` file on each PGD node to accept connections originating from other PGD nodes for replication and internal communications.
+>
+> When using a certificate authentication method, the Connection Manager presents its server key. You must configure the PGD node to accept this certificate from the Connection Manager address.
+
+## Connection Manager authentication options
+
+Connection Manager also supports regular expression matching for the `user` and `database` fields in `pg_hba.conf`. This allows you to specify a pattern for matching user and database names, making it easier to manage authentication for multiple users and databases.
+
+Group membership checks are also supported. This allows you to specify a group of users that can connect to the database, rather than specifying each user individually.
+
+Connection Manager supports `pg_ident.conf` for user identity mapping when using the `cert` authentication method.
+
+## TLS and client certificates
+
+Connection Manager offers TLS to clients only when `ssl` is `on` in `postgresql.conf`, as Postgres does. With `ssl` on, both `ssl_cert_file` and `ssl_key_file` must be set. If clients connect to Connection Manager over TLS, set `ssl = on` before upgrading to PGD 5.10.0. Earlier releases offered TLS whenever the certificate and key files existed, whatever `ssl` was set to. The HTTPS status port (`use_https`) isn't affected and keeps using `ssl_cert_file` and `ssl_key_file` whatever `ssl` is set to.
+
+When you use `cert` authentication, Connection Manager verifies client certificates the way Postgres does:
+
+- It checks each client certificate against `ssl_ca_file`, `ssl_crl_file`, and `ssl_crl_dir`, and applies the `clientcert` option of the `pg_hba.conf` rule. If `ssl_ca_file` isn't set, `cert` authentication fails, as it does in Postgres.
+- If Connection Manager can't parse a certificate revocation list (CRL), for example a version 1 CRL, it refuses client certificates and logs a `WARNING`. Other authentication methods keep working.
+- The HTTPS status port doesn't ask clients for a certificate.
+
+## Unsupported pg\_hba.conf rules
+
+Where a rule is not supported by Connection Manager, it will be logged as a warning and ignored.
+
+## LDAP authentication notes and constraints
+
+Connection Manager supports the same LDAP authentication features as PostgreSQL, with the following key constraints:
+
+- Connection Manager does not use the OpenLDAP library for communication with the LDAP server. As a result, standard OpenLDAP configuration files (such as `ldap.conf` or `.ldaprc`) and environment variables are ignored.
+- Connection Manager validates LDAP server certificates by default when using LDAPS or LDAP StartTLS. The necessary CA certificate for the LDAP server's SSL certificate must be in the system trust-store.
+- Suppress validation of the LDAP server's SSL certificate by setting `LDAPTLS_REQCERT=never` environment variable. Other values for this variable are ignored.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

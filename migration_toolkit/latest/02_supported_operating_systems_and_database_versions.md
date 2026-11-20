@@ -1,0 +1,92 @@
+---
+title: Supported platforms and databases
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/02_supported_operating_systems_and_database_versions/
+lastModified: 2025-11-24T18:19:42+01:00
+---
+
+# Supported platforms and databases
+
+## Supported database versions
+
+You can use the following database product versions with Migration Toolkit:
+
+- PostgreSQL versions 14, 15, 16, 17, and 18
+- EDB Postgres Advanced Server versions 14, 15, 16, 17, and 18
+- Oracle 11g
+- Oracle 12c
+- Oracle 18c
+- Oracle 19c
+- SQL Server 2014
+- SQL Server 2016
+- SQL Server 2017
+- SQL Server 2019
+- MySQL 5.5
+- MySQL 5.7
+- MySQL 8.0
+- (Sybase) SAP Adaptive Server Enterprise 15.7
+- (Sybase) SAP Adaptive Server Enterprise 16.0
+
+> **Note**
+>
+> All the PostgreSQL and EDB Postgres Advanced Server versions available as EDB Postgres AI Cloud Service single-node, primary/standby high-availability, and distributed high-availability cluster types are also supported for use with Migration Toolkit. See the Cloud Service [documentation](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/) for more information about Cloud Service’s [supported cluster types](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/references/supported_cluster_types/). See the [database version policy documentation](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/references/supported_database_versions/) for the versions of PostgreSQL and EDB Postgres Advanced Server available in Cloud Service.
+>
+> The superuser role isn't available in EDB Postgres AI Cloud Service EDB Postgres Advanced Server distributed high-availability cluster databases. As a result, the following Migration Toolkit capabilities that require superuser access aren't supported when targeting Cloud Service distributed high-availability clusters:
+>
+> - The `-copyViaDBLinkOra` option that enables data migration using the db\_link\_ora extension
+> - The Oracle-compatible SQL command `CREATE DATABASE LINK`
+
+Contact your EnterpriseDB Account Manager or <sales@enterprisedb.com> if you require support for other database products.
+
+> **Note**
+>
+> The Migration Toolkit isn't tested with and doesn't officially support use with Oracle Real Application Clusters (RAC) and Exadata. However, Migration Toolkit might work when it's connected to a single persistent node. For more information, contact your EDB representative.
+
+## Supported operating system versions
+
+Migration Toolkit supports installations on Linux and Windows platforms. See [Product Compatibility](https://www.enterprisedb.com/platform-compatibility#mtk) for details.
+
+> **Note**
+>
+> The ojdbc7.jar can cause large data migrations to be incomplete due to a limit on records over `Integer.MAX_VALUE (2147483647)` while fetching from the `ResultSet`. To avoid this issue, we recommend upgrading to ojdbc8.jar.
+
+## Supported JDBC drivers
+
+To perform a migration, you must [choose and install JDBC drivers](https://www.enterprisedb.com/docs/migration_toolkit/latest/installing/installing_jdbc_driver/#choosing-a-driver) that support your source and target databases.
+These can be [Postgres JDBC drivers](#supported-postgres-jdbc-drivers), or [non-Postgres JDBC drivers](#supported-non-postgres-database-versions).
+
+### Supported Postgres JDBC drivers
+
+For Postgres JDBC drivers, Migration Toolkit supports the following PostgreSQL and EDB Advanced Server drivers:
+
+|             | PostgreSQL JDBC driver | EDB JDBC driver          |
+| ----------- | ---------------------- | ------------------------ |
+| MTK 55.13.0 | JDBC 42.7.3 and later  | JDBC 42.7.3.3 and later  |
+| MTK 55.12.0 | JDBC 42.7.3 and later  | JDBC 42.7.3.3 and later  |
+| MTK 55.11.x | JDBC 42.7.3 and later  | JDBC 42.7.3.2 and later  |
+| MTK 55.10.0 | JDBC 42.7.3 and later  | JDBC 42.7.3.2 and later  |
+| MTK 55.9.0  | JDBC 42.5.4 and later  | JDBC 42.5.4.2 and later  |
+| MTK 55.8.0  | JDBC 42.5.4 and later  | JDBC 42.5.4.2 and later  |
+| MTK 55.7.0  | JDBC 42.5.4 and later  | JDBC 42.5.4.2 and later  |
+| MTK 55.6.0  | JDBC 42.5.4 and later  | JDBC 42.5.4.2 and later  |
+| MTK 55.5.0  | JDBC 42.5.1 and later  | JDBC 42.5.1.2 and later  |
+| MTK 55.4.0  | JDBC 42.5.1 and later  | JDBC 42.5.1.2 and later  |
+| MTK 55.3.0  | JDBC 42.5.0 and later  | JDBC 42.5.0.2 and later  |
+| MTK 55.2.0  | JDBC 42.5.0 and later  | JDBC 42.5.0.2 and later  |
+| MTK 55.1.0  | JDBC 42.2.12 and later | JDBC 42.2.12.2 and later |
+| MTK 55.0.0  | JDBC 42.2.12 and later | JDBC 42.2.12.2 and later |
+
+See [Choosing a driver](https://www.enterprisedb.com/docs/migration_toolkit/latest/installing/installing_jdbc_driver/#choosing-a-driver) for download information.
+
+### Supported non-Postgres database versions
+
+If your source or target database is a third-party, non-Postgres database, you need a third-party JDBC driver.
+
+To ensure compatibility of your Migration Toolkit version with the third-party JDBC driver version, use the latest available JDBC driver version that's compatible with the database you want to migrate from or to.
+
+Check JDBC driver and database compatibility with the third-party provider, for example, in the corresponding Oracle, Microsoft SQL Server, MySQL, or SAP Adaptive Enterprise documentation.
+
+See [Choosing a driver](https://www.enterprisedb.com/docs/migration_toolkit/latest/installing/installing_jdbc_driver/#choosing-a-driver) for download information.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

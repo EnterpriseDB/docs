@@ -1,0 +1,49 @@
+---
+title: CRDT Disk-space requirements
+product: EDB Postgres Distributed (PGD)
+version: 5.6.1
+url: https://www.enterprisedb.com/docs/pgd/5.6/conflict-management/crdt/03_crdt-disk-reqs/
+lastModified: 2025-02-26T18:09:18Z
+---
+
+# CRDT Disk-space requirements
+
+An important consideration is the overhead associated with CRDT types, particularly the on-disk size.
+
+## Operation-based CRDT disk-space reqs
+
+For [operation-based types](https://www.enterprisedb.com/docs/pgd/5.6/conflict-management/crdt/02_state-op-crdts/#operation-based-crdt-types-cmcrdt), this is trivial because the types are merely domains on top of other types. They have the same disk space requirements no matter how many nodes are there:
+
+- `crdt_delta_counter` — Same as `bigint` (8 bytes)
+- `crdt_delta_sum` — Same as `numeric` (variable, depending on precision
+  and scale)
+
+There's no dependency on the number of nodes because operation-based CRDT types don't store any per-node information.
+
+## State-based CRDT disk-space reqs
+
+For [state-based types](https://www.enterprisedb.com/docs/pgd/5.6/conflict-management/crdt/02_state-op-crdts/#state-based-crdt-types-cvcrdt), the situation is more complicated. All the types are variable length (stored essentially as a `bytea` column) and consist of a header and a certain amount of per-node information for each node that modified the value.
+
+For the `bigint` variants, formulas computing approximate size are:
+
+- `crdt_gcounter` — `32B (header) + N * 12B (per-node)`
+- `crdt_pncounter` -—`48B (header) + N * 20B (per-node)`
+
+  `N` denotes the number of nodes that modified this value.
+
+For the `numeric` variants, there's no exact formula because both the header and per-node parts include `numeric` variable-length values. To give you an idea of how many such values you need to keep:
+
+- `crdt_gsum`
+  - fixed: `20B (header) + N * 4B (per-node)`
+  - variable: `(2 + N)` `numeric` values
+- `crdt_pnsum`
+  - fixed: `20B (header) + N * 4B (per-node)`
+  - variable: `(4 + 2 * N)` `numeric` values
+
+> **Note**
+>
+> It doesn't matter how many nodes are in the cluster if the values are never updated on multiple nodes. It also doesn't matter whether the updates were concurrent (causing a conflict).
+>
+> In addition, it doesn't matter how many of those nodes were already removed from the cluster. There's no way to compact the state yet.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

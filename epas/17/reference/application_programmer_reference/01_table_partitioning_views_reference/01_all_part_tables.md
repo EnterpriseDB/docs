@@ -1,0 +1,45 @@
+---
+title: ALL_PART_TABLES
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/reference/application_programmer_reference/01_table_partitioning_views_reference/01_all_part_tables/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# ALL\_PART\_TABLES
+
+<div id="all_part_tables" class="registered_link"></div>
+
+The following table lists the information available in the `ALL_PART_TABLES` view.
+
+| Column                      | Type                      | Description                                              |
+| --------------------------- | ------------------------- | -------------------------------------------------------- |
+| `owner`                     | `name`                    | The owner of the table.                                  |
+| `schema_name`               | `name`                    | The schema in which the table resides.                   |
+| `table_name`                | `name`                    | The name of the table.                                   |
+| `partitioning_type`         | `text`                    | RANGE, LIST, or HASH.                                    |
+| `subpartitioning_type`      | `text`                    | RANGE, LIST, HASH, or NONE.                              |
+| `partition_count`           | `bigint`                  | The number of partitions.                                |
+| `def_subpartition_count`    | `integer`                 | The default subpartition count. This value is always 0.  |
+| `partitioning_key_count`    | `integer`                 | The number of columns listed in the partition by clause. |
+| `subpartitioning_key_count` | `integer`                 | The number of columns in the subpartition by clause.     |
+| `status`                    | `character varying(8)`    | This column is always VALID.                             |
+| `def_tablespace_name`       | `character varying(30)`   | This column is always NULL.                              |
+| `def_pct_free`              | `numeric`                 | This column is always NULL.                              |
+| `def_pct_used`              | `numeric`                 | This column is always NULL.                              |
+| `def_ini_trans`             | `numeric`                 | This column is always NULL.                              |
+| `def_max_trans`             | `numeric`                 | This column is always NULL.                              |
+| `def_initial_extent`        | `character varying(40)`   | This column is always NULL.                              |
+| `def_next_extent`           | `character varying(40)`   | This column is always NULL.                              |
+| `def_min_extents`           | `character varying(40)`   | This column is always NULL.                              |
+| `def_max_extents`           | `character varying(40)`   | This column is always NULL.                              |
+| `def_pct_increase`          | `character varying(40)`   | This column is always NULL.                              |
+| `def_freelists`             | `numeric`                 | This column is always NULL.                              |
+| `def_freelist_groups`       | `numeric`                 | This column is always NULL.                              |
+| `def_logging`               | `character varying(7)`    | This column is always YES.                               |
+| `def_compression`           | `character varying(8)`    | This column is always NONE.                              |
+| `def_buffer_pool`           | `character varying(7)`    | This column is always DEFAULT.                           |
+| `ref_ptn_constraint_name`   | `character varying(30)`   | This column is always NULL.                              |
+| `interval`                  | `character varying(1000)` | This column is always NULL.                              |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

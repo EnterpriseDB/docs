@@ -1,0 +1,24 @@
+---
+title: EDB PgPool-II 4.2.6 release notes
+product: PgPool-II
+version: "4"
+url: https://www.enterprisedb.com/docs/pgpool/latest/pgpool_rel_notes/09_426_rel_notes/
+lastModified: 2024-02-23T16:16:14Z
+---
+
+# EDB PgPool-II 4.2.6 release notes
+
+Released: 01 Dec 2021
+
+EDB Pgpool-II 4.2.6 includes the following upstream merge and security fix:
+
+| Type           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Upstream merge | Merged with community Pgpool-II 4.2.6. See the community [Release Notes](https://www.pgpool.net/docs/42/en/html/release-4-2-6.html#bug-fixes) for details.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Security fix   | Reject extraneous data after SSL encryption handshake.<br /><br />In the server-side implementation of SSL negotiation, it was possible for a man-in-the-middle attacker to inject arbitrary SQL commands if it was configured to use cert authentication or hostssl + trust. This addresses PostgreSQL's CVE-2021-23214.<br /> <br /> In the client-side implementation of SSL negotiation, it was possible for a man-in-the-middle attacker to inject arbitrary responses if the database server is using trust authentication with a clientcert requirement. It is not possible with cert authentication because Pgpool-II does not implement the cert authentication between Pgpool-II and PostgreSQL. This addresses PostgreSQL's CVE-2021-23222. |
+
+> **Note**
+>
+> This security fix is also available in EDB Pgpool-II 4.1.9, 4.0.16, 3.7.21, and 3.6.28.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

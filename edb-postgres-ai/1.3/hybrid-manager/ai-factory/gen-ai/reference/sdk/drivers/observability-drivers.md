@@ -1,0 +1,78 @@
+---
+title: Observability
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/drivers/observability-drivers/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# Observability
+
+## Overview
+
+Observability Drivers are used by [Observability](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/structures/observability/) to send telemetry (metrics and traces) related to the execution of an LLM application. The telemetry can be used to monitor the application and to diagnose and troubleshoot issues. All Observability Drivers implement the following methods:
+
+- `__enter__()` sets up the Driver.
+- `__exit__()` tears down the Driver.
+- `observe()` wraps all functions and methods marked with the `@observable` decorator. At a bare minimum, implementations call the wrapped function and return its result (a no-op). This enables the Driver to generate telemetry related to the invocation's call arguments, return values, exceptions, latency, etc.
+
+## Observability Drivers
+
+### Gen AI Builder
+
+> **Note: Info**
+>
+> This driver requires the `drivers-observability-griptape-cloud` [extra](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/#installing-optional-dependencies).
+
+The Gen AI Builder Observability Driver instruments `@observable` functions and methods with metrics and traces for use with the Gen AI Builder.
+
+> **Note**
+>
+> For the Gen AI Builder Observability Driver to function as intended, it must be run from within either a Managed Structure on Gen AI Builder
+> or locally via the [Skatepark Emulator](https://github.com/griptape-ai/griptape-cli?tab=readme-ov-file#skatepark-emulator).
+
+Here is an example of how to use the `GriptapeCloudObservabilityDriver` with the `Observability` context manager to send the telemetry to Gen AI Builder:
+
+```python
+from griptape.drivers.observability.griptape_cloud import GriptapeCloudObservabilityDriver
+from griptape.observability import Observability
+from griptape.rules import Rule
+from griptape.structures import Agent
+
+observability_driver = GriptapeCloudObservabilityDriver()
+
+with Observability(observability_driver=observability_driver):
+    agent = Agent(rules=[Rule("Output one word")])
+    agent.run("Name an animal")
+
+```
+
+### OpenTelemetry
+
+> **Note: Info**
+>
+> This driver requires the `drivers-observability-opentelemetry` [extra](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/#installing-optional-dependencies).
+
+The [OpenTelemetry](https://opentelemetry.io/) Observability Driver instruments `@observable` functions and methods with metrics and traces for use with OpenTelemetry. You must configure a destination for the telemetry by providing a `SpanProcessor` to the Driver.
+
+Here is an example of how to use the `OpenTelemetryObservabilityDriver` with the `Observability` context manager to output the telemetry directly to the console:
+
+```python
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+
+from griptape.drivers.observability.open_telemetry import OpenTelemetryObservabilityDriver
+from griptape.observability import Observability
+from griptape.rules import Rule
+from griptape.structures import Agent
+
+observability_driver = OpenTelemetryObservabilityDriver(
+    service_name="name-an-animal", span_processor=BatchSpanProcessor(ConsoleSpanExporter())
+)
+
+with Observability(observability_driver=observability_driver):
+    agent = Agent(rules=[Rule("Output one word")])
+    agent.run("Name an animal")
+
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

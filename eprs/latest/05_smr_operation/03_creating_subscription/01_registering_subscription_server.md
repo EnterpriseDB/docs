@@ -1,0 +1,47 @@
+---
+title: Registering a subscription server
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/01_registering_subscription_server/
+lastModified: 2024-06-26T11:18:56-04:00
+---
+
+# Registering a subscription server
+
+<div id="registering_subscription_server" class="registered_link"></div>
+
+When you register a subscription server, you're identifying the network location, admin user name, and password of a specific, running, subscription server instance that you want to use to manage all aspects of the subscriptions you create subordinate to it.
+
+It's important that you record the login information for the subscription server. You must always use this same subscription server instance to manage all subscriptions created subordinate to it as represented in the Replication Server console replication tree.
+
+1. Start the subscription server if it's not already running. Repeat the same process as in Step 1 of [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server).
+
+   > **Note**
+   >
+   > If you're using Oracle publication or subscription databases and the subscription server wasn't restarted after copying the Oracle JDBC driver to the `lib/jdbc` subdirectory of your Replication Server installation, restart the subscription server.
+
+   **For Linux only:** Use the `systemctl` command for RHEL/Rocky Linux/AlmaLinux 8.x or later, and the service command for previous Linux versions to start, stop, or restart `edb-xdbsubserver` for the subscription server. See [Registering a Publication Server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) for information on how these commands are used.
+
+   **For Windows only:** Open **Control Panel > System and Security > Administrative Tools > Services**. Use the **Start** or **Restart** link for the service named Subscription Service for Replication Server.
+
+   If the subscription server doesn't start, see [Publication and subscription server startup failures](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/02_resolving_problems/02_where_to_look_for_errors/#pub_and_sub_startup_failures).
+
+2. Register the subscription server. Open the Replication Server console from the system’s application menu. For Replication Server installed from a Replication Server RPM package, start the Replication Server console by invoking the script `XDB_HOME/bin/runRepConsole.sh`.
+
+3. Select the top-level Replication Servers node. Select **File > Subscription Server > Register Server**.
+
+   In the `Register Subscription Server` dialog box, enter the values you supplied during the Replication Server installation unless otherwise specified.
+
+   - **Host**. Network IP address of the host running the subscription server. This is the network IP address used for `sub_ipaddr` in the `pg_hba.conf` file in [Postgres server authentication](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/01_prerequisites/06_verifying_host_accessibility/#postgres_server_auth). Don't use `localhost` for this field.
+   - **Port**. Port number the subscription server is using. You can find the port number in the `xdbReplicationServer-xx.config file`. See [Installation details](https://www.enterprisedb.com/docs/eprs/latest/installing/installation_details/) for the location of the file.
+   - **User Name**. Admin user name used to authenticate your use of this subscription server. You can find the user name in the `edb-repl.conf` file. See [Installation details](https://www.enterprisedb.com/docs/eprs/latest/installing/installation_details/) for the location of the file.
+   - **Password**. Password of the admin user given in the **User Name** field.
+   - **Save login information**. Select this box if you don't want to register the subscription server each time you open the Replication Server console. See [Saving server login information](https://www.enterprisedb.com/docs/eprs/latest/04_intro_xdb_console/#saving_server_login_info) for additional information on the advantages and disadvantages of saving server login information.
+
+   > **Note**
+   >
+   > The user name and password combination you enter is authenticated against the admin user name and password in the Replication Server configuration file residing on the host with the IP address you enter in the **Host** field.
+
+   After you fill in the fields, select **Register**. A Subscription Server node appears in the replication tree of the Replication Server console.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

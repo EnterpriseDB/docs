@@ -1,0 +1,105 @@
+---
+title: Observability
+description: Observability in EDB Postgres AI Pipelines provides detailed insights into the status and health of automated workflows, enabling users to track processing progress, identify bottlenecks, and troubleshoot errors effectively through comprehensive status tracking and audit logs.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/observability/
+lastModified: 2026-11-02T12:47:22+05:30
+---
+
+# Observability
+
+See detailed status and progress output for all auto-processing modes.
+
+Two views cover most on-demand observability needs — each computes its numbers at query time:
+
+- [`aidb.pipeline_metrics`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbpipeline_metrics) (alias `aidb.pipem`) — one row per pipeline with backlog, source/destination counts, status, and error counts. This is the primary view for tracking processing progress.
+- [`aidb.knowledge_base_metrics`](https://www.enterprisedb.com/docs/aidb/latest/reference/knowledge-bases/#aidbknowledge_base_metrics) (alias `aidb.kbm`) — one row per knowledge base with pipeline count, embedding count, and aggregated status across all attached pipelines.
+
+## On-demand metrics
+
+### Per-pipeline progress
+
+```sql
+SELECT * FROM aidb.pipem;
+```
+
+```output title="Output"
+      pipeline       | auto processing | table: unprocessed rows | volume: scans completed | count(source records) | count(destination records) |  Status  | count(record errors) | count(blocking errors) |    last run completed
+---------------------+-----------------+-------------------------+-------------------------+-----------------------+----------------------------+----------+----------------------+------------------------+----------------------------
+ feedback_na_pipe    | Live            |                       0 |                         |                   412 |                        412 | UpToDate |                    0 |                      0 | 2026-07-21 10:14:58.001+00
+ product_docs_pipe   | Background      |                         |                       6 |                  1842 |                       1842 | UpToDate |                    0 |                      0 | 2026-07-21 10:10:02.774+00
+(2 rows)
+```
+
+The [change detection](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/background-workers/#change-detection) mechanism is different for volume and table sources, so the view exposes these metrics:
+
+- `table: unprocessed rows`: How many unique rows are listed in the backlog of change events. Auto-processing captures no new change events when `Disabled`.
+- `volume: scans completed`: How many full listings of the source have been completed.
+- `count(source records)`: How many records exist in the source. Accurate for table sources at all times; updated after each full scan for volume sources.
+- `count(destination records)`: How many rows the pipeline has written to its destination (embeddings, chunks, and so on).
+
+### Knowledge base overview
+
+```sql
+SELECT * FROM aidb.kbm;
+```
+
+```output title="Output"
+             name             | pipelines | embeddings |  status
+------------------------------+-----------+------------+----------
+ public.product_catalog_kb    |         1 |       1842 | UpToDate
+ public.customer_feedback_kb  |         2 |        915 | UpToDate
+(2 rows)
+```
+
+The `status` column rolls up the worst pipeline status across all pipelines attached to that KB — drill into `aidb.pipeline_metrics` to find which pipeline is responsible.
+
+## Materialized metrics
+
+`aidb.pipeline_metrics` and `aidb.knowledge_base_metrics` compute their numbers on demand, at query time. For external monitoring — Prometheus scraping through the EDB Postgres AI agent, for example — polling those views on an interval means recomputing every pipeline's stats on every scrape, and requires the scraping role to reach each pipeline owner's underlying tables.
+
+`aidb.pipeline_metrics_collection` avoids both costs. A background worker snapshots the same statistics from every pipeline, querying as that pipeline's owning role, and writes them into this table every 15 seconds. Any role granted access to the table — `pg_monitor` gets `SELECT` by default — can then read pre-computed metrics without recalculating anything or needing per-pipeline permissions.
+
+```sql
+SELECT * FROM aidb.pipeline_metrics_collection;
+```
+
+```output title="Output"
+      pipeline       | auto processing | table: unprocessed rows | volume: scans completed | count(source records) | count(destination records) | count(record errors) | count(blocking errors) |  Status  |  owner_role   |          collected_at
+---------------------+-----------------+-------------------------+-------------------------+-----------------------+----------------------------+----------------------+------------------------+----------+---------------+-------------------------------
+ feedback_na_pipe    | Live            |                       0 |                         |                   412 |                        412 |                    0 |                      0 | UpToDate | app_owner     | 2026-07-21 10:15:03.221+00
+ product_docs_pipe   | Background      |                         |                       6 |                  1842 |                       1842 |                    0 |                      0 | UpToDate | app_owner     | 2026-07-21 10:15:03.402+00
+(2 rows)
+```
+
+Columns match `aidb.pipeline_metrics`, plus:
+
+- `owner_role`: the pipeline's owning role, same as [`aidb.pipelines.owner_role`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbpipelines).
+- `collected_at`: when this row was last refreshed.
+
+Rows for deleted pipelines are removed automatically on the next collection cycle.
+
+### Enabling the collector
+
+The collector is opt-in and disabled by default, so `aidb.pipeline_metrics_collection` stays empty until you turn it on. Enable it for the whole instance:
+
+```sql
+ALTER SYSTEM SET aidb.enable_background_metrics_collector = on;
+```
+
+Restart Postgres to apply this change. A reload isn't enough.
+
+Or enable it for one database, which overrides the instance-wide default for that database. No restart is needed. The collector starts within two minutes:
+
+```sql
+ALTER DATABASE my_db SET aidb.enable_background_metrics_collector = on;
+```
+
+Turning the setting off doesn't stop a collector that's already running.
+
+## Inspecting failed records
+
+Per-record failure details (which step failed, the operation, the underlying error message, and retry state) live in the [Error log](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/error-log/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

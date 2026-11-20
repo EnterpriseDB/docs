@@ -1,0 +1,30 @@
+---
+title: Conflict-resolution strategies
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/04_conflict_resolution_strategies/
+lastModified: 2023-05-15T12:05:19-04:00
+---
+
+# Conflict-resolution strategies
+
+<div id="conflict_resolution_strategies" class="registered_link"></div>
+
+Several built-in conflict-resolution options are available to support automatic conflict resolution. The conflict-resolution options apply to update/update and delete/delete conflicts.
+
+Uniqueness (insert/insert), update/delete, and delete/update conflicts are marked unresolved. You must reconcile them manually.
+
+The following are the built-in, automatic conflict resolution options.
+
+- **Earliest timestamp.** When you select the earliest-timestamp option, the relevant rows involved in an update conflict from the source and target primary nodes are compared based on the timestamp of when the update occurred on that particular node. The row change that occurred earliest is applied. The row changes with the later timestamps are discarded.
+- **Latest timestamp.** This option takes the same approach as earliest timestamp except the row change with the latest timestamp is accepted. The row changes with earlier timestamps are discarded.
+- **Node priority.** The row change of the primary node with the highest node priority level is applied while the lower-priority-level primary node changes are discarded. The node priority level is an integer in the range of 1 to 10, where 1 is the highest priority level and 10 is the lowest priority level.
+- **Custom.** Custom conflict handling applies to update/update conflicts only. You must supply a PL/pgSQL program to resolve any conflicts that occur resulting from an update/update conflict. See [Custom conflict handling](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/08_custom_conflict_handling/#custom_conflict_handling) for information on using custom conflict handling.
+
+The delete/delete conflict is always resolved implicitly regardless of the conflict resolution option in effect. The net impact of a delete/delete conflict is the removal of a given row, and the row in question was already removed from the source and target nodes.
+
+For the earliest timestamp and latest timestamp conflict resolution strategies, the transaction timestamp is tracked in a column with data type `TIMESTAMP` in the shadow table.
+
+Once you select it, you can later change the conflict resolution strategy for a given table to a different strategy. See [Updating the conflict-resolution options](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/12_update_conflict_resolution_options/)).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

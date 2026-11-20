@@ -1,0 +1,230 @@
+---
+title: EDB .NET Connector logging
+product: .NET Connector
+version: 10.0.1.1
+url: https://www.enterprisedb.com/docs/net_connector/latest/17_advanced_server_net_connector_logging/
+lastModified: 2026-02-16T12:16:04+01:00
+---
+
+# EDB .NET Connector logging
+
+<div id="advanced_server_net_connector_logging" class="registered_link"></div>
+
+EDB .NET Connector supports the use of logging to help resolve issues with the .NET Connector when used in your application. EDB .NET Connector supports logging using the standard .NET `Microsoft.Extensions.Logging` package. For more information about logging in .Net, see [Logging in C# and .NET](https://learn.microsoft.com/en-us/dotnet/core/extensions/logging?tabs=command-line) in the Microsoft documentation.
+
+> **Note**
+>
+> For versions earlier than 7.x, EDB .NET Connector had its own, custom logging API.
+
+## Console logging provider
+
+The .NET logging API works with a variety of built-in and third-party logging providers. The console logging provider logs output to the console.
+
+To use this provider in your application, make sure you have added a reference to the `Microsoft.Extensions.Logging.Console` nuget package.
+
+### Console logging with EDBDataSource
+
+Create a `Microsoft.Extensions.Logging.LoggerFactory` and configure an `EDBDataSource` with it. Any use of connections opened through this data source log using this logger factory.
+
+#### .NET
+
+```csharp
+using EnterpriseDB.EDBClient;
+using Microsoft.Extensions.Logging;
+
+namespace EnterpriseDB;
+
+internal static class Program
+{
+    public static async Task Main(string[] args)
+    {
+        // not for production, move connection string to app settings
+        var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+
+        var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+        dataSourceBuilder.UseLoggerFactory(loggerFactory);
+
+        await using var dataSource = dataSourceBuilder.Build();
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var command = new EDBCommand("SELECT 1", connection);
+
+        _ = await command.ExecuteScalarAsync();
+
+    }
+}
+```
+
+#### .NET Framework
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+using Microsoft.Extensions.Logging;
+
+namespace EnterpriseDB
+{
+    internal static class Program
+    {
+        public static async Task Main(string[] args)
+        {
+            // not for production, move connection string to app settings
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+
+            var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+            dataSourceBuilder.UseLoggerFactory(loggerFactory);
+
+            using (var dataSource = dataSourceBuilder.Build())
+            using (var connection = await dataSource.OpenConnectionAsync())
+            {
+                using (var command = new EDBCommand("SELECT 1", connection))
+                {
+                    _ = await command.ExecuteScalarAsync();
+                }
+            }
+        }
+    }
+}
+```
+
+This program should display the following result in the Console :
+
+```text
+info: EnterpriseDB.EDBClient.Command[<ID>]
+      Command execution completed (duration=761ms): SELECT 1
+```
+
+### Console logging without EDBDataSource
+
+Create a `Microsoft.Extensions.Logging.LoggerFactory` and configure EDB .NET Connector's logger factory globally using `EDBLoggingConfiguration.InitializeLogging`. Configure it at the start of your program, before using any other EDB .NET Connector API.
+
+#### .NET
+
+```csharp
+using System;
+using EnterpriseDB.EDBClient;
+using Microsoft.Extensions.Logging;
+
+namespace EnterpriseDB
+{
+    internal static class Program
+    {
+        public static async Task Main(string[] args)
+        {
+            // not for production, move connection string to app settings
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+            EDBLoggingConfiguration.InitializeLogging(loggerFactory);
+
+            await using var conn = new EDBConnection(connectionString);
+            await conn.OpenAsync();
+
+            await using var command = new EDBCommand("SELECT 1", conn);
+
+            _ = await command.ExecuteScalarAsync();
+        }
+    }
+}
+```
+
+#### .NET Framework
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+using Microsoft.Extensions.Logging;
+
+namespace EnterpriseDB
+{
+    internal static class Program
+    {
+        public static async Task Main(string[] args)
+        {
+            // not for production, move connection string to app settings
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+            EDBLoggingConfiguration.InitializeLogging(loggerFactory);
+
+            using (var conn = new EDBConnection(connectionString))
+            {
+                await conn.OpenAsync();
+                using (var command = new EDBCommand("SELECT 1", conn))
+                {
+                    _ = await command.ExecuteScalarAsync();
+                }
+            }
+        }
+    }
+}
+```
+
+## Log levels
+
+The following log levels are available:
+
+- Trace
+- Debug
+- Information
+- Warning
+- Error
+- Critical
+
+This example shows how to change the log level to Trace:
+
+```csharp
+var loggerFactory = LoggerFactory.Create(builder => builder
+	.SetMinimumLevel(LogLevel.Trace)
+	.AddSimpleConsole()
+	);
+```
+
+## Formatting the log output
+
+This example shows how to format your log output. Create a `LoggerFactory` to restrict each log message to a single line and add a date and time to the log:
+
+```csharp
+var loggerFactory = LoggerFactory.Create(builder =>
+builder
+.SetMinimumLevel(LogLevel.Trace)
+.AddSimpleConsole(
+	options =>
+	{
+		options.SingleLine = true;
+		options.TimestampFormat = "yyyy/MM/dd HH:mm:ss ";
+	}
+	));
+```
+
+This program should display the following result in the Console. Output may vary depending on your connection settings.
+
+```text
+trce: EnterpriseDB.EDBClient.Connection[1000] Opening connection to 127.0.0.1:5444/edb...
+trce: EnterpriseDB.EDBClient.Connection[1110] Opening physical connection to 127.0.0.1:5444/edb...
+trce: EnterpriseDB.EDBClient.Connection[0] Attempting to connect to 127.0.0.1:5444
+trce: EnterpriseDB.EDBClient.Connection[0] Socket connected to 127.0.0.1:5444
+trce: EnterpriseDB.EDBClient.Connection[1420024510] Start user action
+trce: EnterpriseDB.EDBClient.Connection[534767465] End user action
+dbug: EnterpriseDB.EDBClient.Connection[1111] Opened physical connection to 127.0.0.1:5444/edb (in 157ms)
+dbug: EnterpriseDB.EDBClient.Connection[1001] Opened connection to 127.0.0.1:5444/edb
+trce: EnterpriseDB.EDBClient.Connection[1420024510] Start user action
+dbug: EnterpriseDB.EDBClient.Command[2000] Executing command: SELECT 1
+trce: EnterpriseDB.EDBClient.Command[1049610950] Cleaning up reader
+info: EnterpriseDB.EDBClient.Command[2001] Command execution completed (duration=68ms): SELECT 1
+trce: EnterpriseDB.EDBClient.Connection[534767465] End user action
+trce: EnterpriseDB.EDBClient.Connection[1003] Closing connection to 127.0.0.1:5444/edb...
+trce: EnterpriseDB.EDBClient.Connection[1420024510] Start user action
+trce: EnterpriseDB.EDBClient.Connection[534767465] End user action
+dbug: EnterpriseDB.EDBClient.Connection[1004] Closed connection to 127.0.0.1:5444/edb
+trce: EnterpriseDB.EDBClient.Connection[1112] Closing physical connection to 127.0.0.1:5444/edb...
+trce: EnterpriseDB.EDBClient.Connection[0] Cleaning up connector
+dbug: EnterpriseDB.EDBClient.Connection[1113] Closed physical connection to 127.0.0.1:5444/edb
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

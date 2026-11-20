@@ -1,0 +1,22 @@
+---
+title: MySQL Foreign Data Wrapper 2.7.0 release notes
+product: MySQL Foreign Data Wrapper
+version: "2"
+url: https://www.enterprisedb.com/docs/mysql_data_adapter/latest/mysql_rel_notes/mysql2.7.0_rel_notes/
+lastModified: 2023-09-28T10:23:28+01:00
+---
+
+# MySQL Foreign Data Wrapper 2.7.0 release notes
+
+Released: 02 Dec 2021
+
+Enhancements, bug fixes, and other changes in MySQL Foreign Data Wrapper 2.7.0 include:
+
+| Type        | Description                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enhancement | Support for EDB Postgres Advanced Server 14.                                                                                                                                                                                                                                                                                                                                              |
+| Enhancement | MySQL Foreign Data Wrapper now supports min, max, sum, avg, and count aggregate function pushdown. You can now push aggregates to the remote MySQL server instead of fetching all of the rows and aggregating them locally. This improves performance for the cases where aggregates can be pushed down. Aggregate filters and orders are not pushed down as MySQL does not support them. |
+| Bug fix     | Function expression deparsing implicit/explicit coercion sending wrong query to the MySQL server.                                                                                                                                                                                                                                                                                         |
+| Bug fix     | Import foreign schema failure due to SET type.                                                                                                                                                                                                                                                                                                                                            |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

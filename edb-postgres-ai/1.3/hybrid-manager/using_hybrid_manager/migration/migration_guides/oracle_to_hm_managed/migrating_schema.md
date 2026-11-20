@@ -1,0 +1,124 @@
+---
+title: Migrating Oracle schemas with Migration Portal
+description: Use the Migration Portal integration to prepare and migrate your Oracle schemas.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/migrating_schema/
+lastModified: 2026-03-17T17:37:45+05:30
+---
+
+# Migrating Oracle schemas with Migration Portal
+
+## Schema handling for Oracle databases
+
+You can use several different methods to prepare your schema, exclude unsupported constraints, and import it to the destination database. The following are guidelines for how to export and import your schemas for Oracle using Migration Portal.
+
+Other valid routes for migrating DDL to import Postgres schemas include:
+
+- Manually creating the schemas in the destination database
+- Performing a [pg\_dump](https://www.postgresql.org/docs/current/app-pgdump.html) to obtain the schemas and [pg\_restore](https://www.postgresql.org/docs/current/app-pgrestore.html) to restore them
+- Using [pgAdmin](https://www.pgadmin.org/docs/pgadmin4/latest/index.html) or [psql](https://www.postgresql.org/docs/7.0/app-psql.htm)
+
+## Export
+
+Use the collaborative [project-scoped workspace](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/access_mp/#project-scoped-workspace-vs-users-workspace) of Migration Portal to convert and migrate schemas. Hybrid Manager (HM) provides an integration that lets you use the HM console to create a Migration Portal project. In that project, you can easily add source database schemas preloaded by the [EDB Postgres AI agent](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/) while you're performing a database migration.
+
+### Prerequisites
+
+- You [registered an Oracle database](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/) with Hybrid Manager.
+
+- Optional: The HM administrator [enabled and configured the AI Copilot with the AI/LLM of your organization](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/). This configuration helps to resolve schema incompatibilities in Migration Portal.
+
+### Creating a Migration Portal project
+
+You can create Migration Portal projects from Hybrid Manager.
+
+1. In the **Estate** page, select the **Migrations** tab.
+
+2. To open the database's detailed view, select the name of the database you want to migrate .
+
+3. In the detailed view of the database, select the **Schemas** tab.
+
+4. Select **New MP Project** or the plus sign next to one of the schemas you want to migrate.
+
+   > **Tip**
+   >
+   > The **Dependencies** column shows the other schemas the current schema relies on. We recommend grouping a schema with all its dependencies in a single Migration Portal project to ensure that all referenced objects exist in the destination database.
+
+5. In the pop-up window, enter the details for the Migration Portal project that will host the assessment, conversion, and migration of the schemas. Select **Continue**.
+
+6. Select all the schemas you want to add to this Migration Portal project. You can select only schemas that the EDB Postgres AI agent has ingested successfully and schemas that aren't already part of a different Migration Portal project.
+
+   > **Note**
+   >
+   > You can't add schemas to the existing project later. Instead, use a different project to migrate other schemas to the same destination database.
+
+7. Select **Create New Project**.
+
+- A Migration Portal project is created in the background with the source schemas loaded into it for analysis.
+
+After HM finishes loading the schemas and creating a project in Migration Portal, a link is added with the name of the project. Select the link to open Migration Portal.
+
+The selected schemas were uploaded and assessed by the Migration Portal. Use the AI Copilot or QuickHelp to help you resolve incompatibilities.
+
+## Import
+
+### Standard schema import procedure
+
+If you plan to keep schema, table, and column names unaltered, use the **Online migration** option to directly connect to the destination database and migrate schema.
+
+1. After you resolve all compatibility issues, select **Migrate to**.
+
+2. Select the **Online migration** option (recommended).
+
+3. Select the schemas you want to migrate, but disable **Constraints** from the list of objects underneath the database. Select **Next**.
+
+   > **Note**
+   >
+   > Ensure you exclude foreign key, check, and exclusion constraints from the SQL-formatted DDL before importing the schema to the destination database.
+
+4. In the **Connect to your cluster** page, enter the host name of the database cluster you want to use as a destination.
+
+   > **Tip**
+   >
+   > If you're migrating to an HM-managed database cluster, you can find the read/write host and other connection data by selecting **Clusters**, the cluser name, and then **Connect**.
+
+   > **Warning: Distributed high-availability and advanced high-availability PGD destinations in HM**
+   >
+   > This warning applies when using the Migration Portal online migration option to migrate schemas into an HM-managed distributed high-availability or advanced high-availability database cluster running EDB Postgres Advanced Server. Both the **Target Database** and **Maintenance Database** fields must point at the default `bdrdb` database. This ensures the migrated schemas are created in the primary PGD database that will be replicated across the cluster.
+
+5. Select **Next** and wait until the schemas are imported successfully.
+
+6. Connect to the target database cluster and ensure the schemas were migrated.
+
+> **Note**
+>
+> You must reapply the excluded foreign key, check, and exclusion constraints on the destination database later in the migration process, after the migration is performed successfully. Therefore, keep track of the excluded constraints. The documentation will guide you on when and how to reapply them.
+
+### Schema import procedure with object renaming (optional)
+
+If you plan to map schemas, tables, or columns to different names in the destination, use the **Offline migration** option. This allows you to download a DDL file to edit.
+
+1. After you resolve all compatibility issues, select **Migrate to**.
+
+2. Select the **Offline migration** option.
+
+3. Select the schemas you want to migrate, but disable **Constraints** from the list of objects underneath the database. Select **Next**.
+
+   > **Note**
+   >
+   > Ensure you exclude foreign key, check, and exclusion constraints from the SQL-formatted DDL before importing the schema to the destination database.
+
+4. Select **Download SQL file**.
+
+5. After the SQL script is generated, edit the object names directly in the script (DDL) before applying it to the destination. Ensure that the structure and data types of the renamed object in the script exactly match the source. See [Mapping schema, tables and columns during a migration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration) for more information.
+
+   If you manually update object names in the DDL scripts, ensure that you also update the names in other objects that reference the updated objects. For example, if you rename a table, also update any views or constraints that reference the original table name.
+
+6. Connect to the destination database, and apply the modified DDL file.
+
+> **Note**
+>
+> You must reapply the excluded foreign key, check, and exclusion constraints on the destination database later in the migration process, after the migration is performed successfully. Therefore, keep track of the excluded constraints. The documentation will guide you on when and how to reapply them.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

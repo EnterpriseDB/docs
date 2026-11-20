@@ -1,0 +1,33 @@
+---
+title: ip4r
+description: Provides IPv4 and IPv6 data types, range index types, and related functions and operators.
+product: Supported Open Source
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/ip4r/
+lastModified: 2026-09-25T15:14:11+01:00
+---
+
+# ip4r
+
+The `ip4r` module provides IPv4 and IPv6 data types, IPv4 and IPv6 range index data types, and related functions and operators.
+
+The WarehousePG `ip4r` module is equivalent to version 2.4.2 of the `ip4r` module used with PostgreSQL. There are no WarehousePG or MPP-specific considerations for the module.
+
+<a id="topic_reg"></a>
+
+## Installing and Registering the Module
+
+The `ip4r` module is installed when you install WarehousePG. Before you can use any of the data types defined in the module, you must register the `ip4r` extension in each database in which you want to use the types:
+
+```
+CREATE EXTENSION ip4r;
+```
+
+Refer to [Installing Extensions](https://www.enterprisedb.com/docs/warehousepg/6/install_guide/additional_modules/) for more information.
+
+<a id="topic_info"></a>
+
+## Module Documentation
+
+Refer to the [ip4r github documentation](https://github.com/RhodiumToad/ip4r) for detailed information about using the module.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

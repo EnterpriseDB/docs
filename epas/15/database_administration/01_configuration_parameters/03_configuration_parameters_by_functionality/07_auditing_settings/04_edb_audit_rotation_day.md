@@ -1,0 +1,27 @@
+---
+title: edb_audit_rotation_day
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/database_administration/01_configuration_parameters/03_configuration_parameters_by_functionality/07_auditing_settings/04_edb_audit_rotation_day/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# edb\_audit\_rotation\_day
+
+<div id="edb_audit_rotation_day" class="registered_link"></div>
+
+**Parameter type:** String
+
+**Default value:** `every`
+
+**Range:** `{none | every | sun | mon | tue | wed | thu | fri | sat} ...`
+
+**Minimum scope of effect:** Cluster
+
+**When value changes take effect:** Reload
+
+**Required authorization to activate:** EDB Postgres Advanced Server service account
+
+Specifies the day of the week on which to rotate the audit files. Valid values are `sun`, `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `every`, and `none`. To disable rotation, set the value to `none`. To rotate the file every day, set the `edb_audit_rotation_day` value to `every`. To rotate the file on a specific day of the week, set the value to the desired day of the week.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,54 @@
+---
+title: Auditing system logs
+description: Access, filter, and analyze system and database telemetry through integrated log viewers.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/monitoring/logs/
+lastModified: 2026-09-22T14:04:10+01:00
+---
+
+# Auditing system logs
+
+Correlate system-level events with specific query failures by searching coordinator and segment logs stored in ClickHouse. Use the **Logs** panel on the left sidebar to identify the root cause of execution errors and monitor real-time cluster telemetry.
+
+> **Note**
+>
+> Searching logs requires ClickHouse installed, configured, and reachable. See [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/).
+
+### Understanding log levels
+
+WarehousePG Enterprise Manager (WEM) displays severity levels generated directly by the underlying WarehousePG (WHPG) engine. These levels categorize every log entry based on its impact on database operations:
+
+- `DEBUG`: Contains granular technical details used primarily for deep-dive troubleshooting and development analysis.
+- `INFO`: Provides standard informational messages regarding routine system operations.
+- `LOG`: Reports standard engine-level events and process completions.
+- `NOTICE`: Highlights informational messages that may require attention.
+- `WARNING`: Highlights non-fatal events that can indicate potential configuration issues or approaching resource limits.
+- `ERROR`: Reports a problem that prevented a specific command or query from completing successfully.
+- `FATAL`: Indicates an error that caused a specific session to be terminated, though the rest of the database remains operational.
+- `PANIC`: Indicates a critical error that caused all database sessions to be disconnected. The system usually attempts a restart after a `PANIC`.
+
+### Searching and filtering logs
+
+Search across coordinator and segment logs using the **Search Logs** section.
+
+- Set a time range using the relative dropdown (for example, the last 24 hours), or the custom date range picker.
+- Filter by **Severity**, **Host**, or **Segment** using the multi-select dropdowns. The **Host** and **Segment** options populate from the values ClickHouse has collected in the selected time range.
+- Narrow further with the **Database**, **User**, **Session**, and **Error State** text fields, or search the log message text itself in **Search**.
+- Set **Limit** to cap how many entries a search returns, up to **All**, which pages through every matching entry in batches and can be canceled mid-fetch. A search stops early and warns you if it passes 100,000 rows, so narrow the time range or add filters to see every matching entry beyond that.
+- Select **Search** to run the query against the filters and time range you've set.
+
+### Reviewing summary counts
+
+Review **Total Entries**, **Errors**, **Warnings**, **Fatal/Panic**, **Unique Users**, and **Unique Databases** for the current time range and filters, shown above the results table.
+
+- Select the **Errors**, **Warnings**, or **Fatal/Panic** card to toggle that severity in the filter and immediately rerun the search, without opening the **Severity** dropdown separately. Select it again to remove that severity from the filter.
+- These counts update only when you select **Search** or a summary card, not on every filter change, so they always reflect the last search you ran rather than your in-progress filter edits.
+
+### Reviewing and exporting results
+
+Review matching entries in the **Log Entries** table, showing **Time**, **Severity**, **User**, **Host**, **Database**, **Segment**, and **Message** for each one. Use these columns to trace activity back to a specific user or client, and to correlate errors with a particular application or service account.
+
+- Select the details icon on a row to see its full message and, when it differs from the parsed message, the original raw log line.
+- Select **Export CSV** to download the currently displayed results for deeper investigation or bulk analysis in external tools.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

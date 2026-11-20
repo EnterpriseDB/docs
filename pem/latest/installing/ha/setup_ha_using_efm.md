@@ -1,0 +1,698 @@
+---
+title: HA PEM using the C1 architecture with EFM and a Virtual IP
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/installing/ha/setup_ha_using_efm/
+lastModified: 2026-06-24T22:34:07+05:30
+---
+
+# HA PEM using the C1 architecture with EFM and a Virtual IP
+
+This page provides detailed instructions to install and configure a High Availability (HA) PEM deployment according to reference architecture C1.
+
+This example uses EDB Failover Manager (EFM 5.2) for cluster management, EDB Postgres Advanced Server (EPAS 17) as the PEM backend database and Virtual IP (VIP) as the mechanism for routing traffic to the primary on RHEL like systems.
+Please see [High Availability Patterns for PEM Deployment](https://www.enterprisedb.com/docs/pem/latest/considerations/ha_pem/) to understand other options.
+
+Also refer to [Deciding on an SSL model](https://www.enterprisedb.com/docs/pem/latest/considerations/ssl_certs/) to determine how you will provide SSL certificates and keys prior to starting installation.
+
+> **Note: Witness nodes vs standby nodes**
+>
+> In this example we configured a primary, two standbys, and a witness node.
+> In reality, you only need a witness node if you have only two data nodes.
+> If you are configuring three or more data nodes (e.g. a primary and two standbys), you may omit the steps pertaining to the witness node.
+> If you are configuring only two data nodes, include the steps pertaining to the witness node.
+
+The examples that follow use these IP addresses:
+
+- 172.16.161.200 - PEM Primary
+- 172.16.161.201 - PEM Standby 1
+- 172.16.161.202 - PEM Standby 2
+- 172.16.161.203 - EFM Witness Node
+- 172.16.161.245 - PEM VIP (used by agents and users to connect)
+
+The following must use the VIP address:
+
+- The PEM agent binding of the monitored database servers
+- Accessing the PEM web client
+- Accessing the webserver services
+
+## Deploying an EFM cluster
+
+Before installing PEM, you should have a working EFM cluster on the
+hosts. This section provides instructions to deploy such a cluster. You
+do not have to follow these steps if you have your own processes to
+provision EFM clusters. However, if you plan to use sslutils you should
+ensure it is installed on your cluster before proceeding.
+
+### Initial package installation and Postgres configuration
+
+Perform the following steps on all hosts.
+Postgres is not required for witnesses.
+
+1. Install the following packages:
+
+   - [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/installing/) (backend database for PEM Server)
+   - [EDB Failover Manager](https://www.enterprisedb.com/docs/efm/latest/installing/)
+
+   ```shell
+   dnf -qy module disable postgresql
+   dnf -y install epel-release
+   dnf config-manager --set-enabled crb
+   dnf -y install edb-as17-server edb-efm52
+   ```
+
+2. Initialize a Postgres database and start the service.
+
+   ```shell
+   PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as17/bin/edb-as-17-setup initdb
+   systemctl start edb-as-17
+   systemctl enable edb-as-17
+   ```
+
+3. Open the following ports on the firewall:
+
+   - `5444` for EPAS
+   - `7800` for EFM
+
+   For example:
+
+   ```shell
+   firewall-cmd --zone=public --add-port=5444/tcp --permanent 
+   firewall-cmd --zone=public --add-port=7800/tcp --permanent
+   firewall-cmd --reload      
+   ```
+
+### Optional: install sslutils
+
+If you wish PEM to act as a certificate authority and automatically issue client certificates, you will need to configure [sslutils](https://www.enterprisedb.com/docs/pem/latest/installing/linux_x86_64/pem_rhel_9/#prerequisites).
+If you plan to provide your own certificates, then you may skip this step.
+
+1. Install the sslutils package on all non-witness hosts.
+
+   ```sh
+   dnf install edb-as17-server-sslutils
+   ```
+
+### Set up the primary node for streaming replication
+
+Perform these steps on the primary only.
+
+1. Create the replication role:
+
+   ```sql
+   CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password';
+   ```
+
+   Give the password of your choice.
+
+2. Configure the following in the `postgresql.conf` file:
+
+   ```ini
+   wal_level = replica
+   max_wal_senders = 10
+   wal_keep_size = 500
+   max_replication_slots = 10
+   ```
+
+   For more information on configuring parameters for streaming replication, see the [PostgreSQL documentation](https://www.postgresql.org/docs/17/warm-standby.html#STREAMING-REPLICATION).
+
+3. Add the following entries in the host-based authentication (`/var/lib/edb/as17/data/pg_hba.conf`) file to allow the replication user to connect from all the standbys:
+
+   ```
+   host  replication  repl  172.16.161.200/32  scram-sha-256
+   host  replication  repl  172.16.161.201/32  scram-sha-256
+   host  replication  repl  172.16.161.202/32  scram-sha-256
+   ```
+
+4. Restart the EPAS server.
+
+   ```shell
+   systemctl restart edb-as-17.service
+   ```
+
+### Add a .pgpass file
+
+Perform these steps on all non-witness nodes.
+
+1. Create the `.pgpass` file in the home directory of the enterprisedb user and add the following content.
+   Replace `<password>` with the password of the replication user created previously.
+
+   ```
+   172.16.161.200:5444:replication:repl:<password>
+   172.16.161.201:5444:replication:repl:<password>
+   172.16.161.202:5444:replication:repl:<password>
+   ```
+
+2. Set the permissions on the file to restrict access:
+   ```shell
+   chmod 600 ~/.pgpass
+   ```
+
+### Set up the standby nodes for streaming replication
+
+Use the pg\_basebackup utility to create replicas of the PEM backend database server on the standby servers.
+
+1. Stop the service for EPAS on all the standby nodes:
+
+   ```shell
+   systemctl stop edb-as-17.service
+   ```
+
+2. Remove the data directory of the database server on all the standby nodes:
+
+   ```shell
+   su - enterprisedb
+       
+   rm -rf /var/lib/edb/as17/data/*
+   ```
+
+3. Take a backup of the primary node on each of the standby nodes using pg\_basebackup:
+
+   ```shell
+   su - enterprisedb -c "\
+       /usr/edb/as17/bin/pg_basebackup \
+       -h 172.16.161.200 \
+       -D /var/lib/edb/as17/data \
+       -U repl \
+       -v -P -Fp -R -p 5444\
+       "
+   ```
+
+4. Start the EPAS database server on each of the standby nodes:
+
+   ```shell
+   systemctl start edb-as-17
+   ```
+
+### Set up EFM to manage failover
+
+Perform the following steps to set up EFM:
+
+1. On the primary, create a database user `efm` to connect to the database servers.
+   Grant execute privileges on the functions related to WAL logs, and monitoring privileges, to the user.
+   As a superuser:
+
+   ```sql
+   CREATE ROLE efm LOGIN PASSWORD 'password';
+
+   -- Give privilege to 'efm' user to connect to a database
+   GRANT CONNECT ON DATABASE edb TO efm;
+
+   -- Give privilege to 'efm' user to do backup operations
+   GRANT EXECUTE ON FUNCTION pg_current_wal_lsn() TO efm;
+   GRANT EXECUTE ON FUNCTION pg_last_wal_replay_lsn() TO efm;
+   GRANT EXECUTE ON FUNCTION pg_wal_replay_resume() TO efm;
+   GRANT EXECUTE ON FUNCTION pg_wal_replay_pause() TO efm;
+   GRANT EXECUTE ON FUNCTION pg_reload_conf() TO efm;
+
+   -- Grant monitoring privilege to the 'efm' user
+   GRANT pg_monitor TO efm;
+   ```
+
+   This change will be replicated to the standbys.
+
+2. On the primary, add entries in `pg_hba.conf` to allow the `efm` database user to connect to the database server from all nodes.
+   These entries will be replicated to the standbys.
+
+   ```
+   host      edb     efm     172.16.161.200/32     scram-sha-256
+   host      edb     efm     172.16.161.201/32     scram-sha-256
+   host      edb     efm     172.16.161.202/32     scram-sha-256
+   host      edb     efm     172.16.161.203/32     scram-sha-256
+   ```
+
+3. Reload the configurations on all the database servers.
+
+   ```sql
+   SELECT pg_reload_conf();
+   ```
+
+4. On all nodes, create an `efm.nodes` file using the sample file (`/etc/edb/efm-5.2/efm.nodes.in`), and give read-write access to the EFM OS user:
+
+   ```shell
+   cp /etc/edb/efm-5.2/efm.nodes.in /etc/edb/efm-5.2/efm.nodes
+   chown efm:efm /etc/edb/efm-5.2/efm.nodes
+   chmod 600 /etc/edb/efm-5.2/efm.nodes
+   ```
+
+5. On the standby nodes, add the IP address and EFM port of the primary node in the `/etc/edb/efm-5.2/efm.nodes` file:
+
+6. On all nodes, create the `efm.properties` file using the sample file (`/etc/edb/efm-5.2/efm.properties.in`).
+   Grant read access to all users:
+
+   ```shell
+   cp /etc/edb/efm-5.2/efm.properties.in /etc/edb/efm-5.2/efm.properties
+   chown efm:efm /etc/edb/efm-5.2/efm.properties
+   chmod a+r /etc/edb/efm-5.2/efm.properties
+   ```
+
+7. On any node, encrypt the `efm` database user's password (as defined in Step 1 above) using the `efm` utility, make a note of the output for the next step.
+
+   ```shell
+   export EFMPASS=password
+   /usr/edb/efm-5.2/bin/efm encrypt efm --from-env
+   ```
+
+8. On all nodes, edit the following parameters in the `efm.properties` file.
+   Replace `<encrypted-password>` with the output of the previous step.
+   Replace `<ip-addr>` with the IP address of each node.
+
+   > **Note**
+   >
+   > If your hosts are not connected to the internet, replace the value of `ping.server` with the address of a reliable server accessible on your network that will respond to pings.
+   >
+   > For more detail on EFM configuration please refer to [the documentation](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/).
+
+   ```ini
+   db.user=efm
+   db.password.encrypted=<encrypted-password>
+   db.port=5444
+   db.database=edb
+   db.service.owner=enterprisedb
+   db.service.name=edb-as-17
+   db.bin=/usr/edb/as17/bin
+   db.data.dir=/var/lib/edb/as17/data
+   jdbc.sslmode=require
+   user.email=username@example.com
+   from.email=node1@efm-pem
+   notification.text.prefix=[PEM/EFM] 
+   bind.address=<ip-addr>:7800
+   is.witness=false
+   encrypt.agent.messages=true
+   stop.isolated.primary=true
+   stop.failed.primary=true
+   primary.shutdown.as.failure=false
+   ping.server.ip=8.8.8.8
+
+   # VIP configuration
+   virtual.ip=172.16.161.245
+   virtual.ip.interface=ens33
+   virtual.ip.prefix=24
+   virtual.ip.single=true
+   check.vip.before.promotion=true
+
+   ```
+
+9. On the witness node, set the value of the `is.witness` configuration parameter to `true`:
+
+   ```ini
+       is.witness=true
+   ```
+
+10. On the primary node, enable and start the EFM service:
+
+    ```shell
+    systemctl enable edb-efm-5.2
+    systemctl start edb-efm-5.2
+    ```
+
+11. On the primary node, allow the standbys to join the cluster:
+
+    ```shell
+    /usr/edb/efm-5.2/bin/efm allow-node  efm  172.16.161.201
+    /usr/edb/efm-5.2/bin/efm allow-node  efm  172.16.161.202
+    /usr/edb/efm-5.2/bin/efm allow-node  efm  172.16.161.203
+    ```
+
+12. Enable and start the EFM service on the standby nodes and the EFM witness node:
+
+    ```shell
+    systemctl enable edb-efm-5.2
+    systemctl start edb-efm-5.2
+    ```
+
+13. Check the EFM cluster status by running the following command on any node.
+
+    ```shell
+    /usr/edb/efm-5.2/bin/efm cluster-status efm
+    ```
+
+    The output should look like this:
+
+    ```
+    Cluster Status: efm
+        Agent Type  Address              DB       VIP
+        ----------------------------------------------------------------
+        Primary     172.16.161.200      UP       172.16.161.245*
+        Standby     172.16.161.201      UP       172.16.161.245
+        Standby     172.16.161.202      UP       172.16.161.245
+        Witness     172.16.161.203      N/A      172.16.161.245
+
+    Allowed node host list:
+        172.16.161.200 172.16.161.201 172.16.161.202 172.16.161.203
+
+    Membership coordinator: 172.16.161.200
+
+    Standby priority host list:
+        172.16.161.201 172.16.161.202
+
+    Promote Status:
+
+        DB Type     Address              WAL Received LSN   WAL Replayed LSN   Info
+        ---------------------------------------------------------------------------
+        Primary     172.16.161.200                         0/F7A3808          
+        Standby     172.16.161.201      0/F7A3808          0/F7A3808          
+        Standby     172.16.161.202      0/F7A3808          0/F7A3808          
+
+        Standby database(s) in sync with primary. It is safe to promote.
+    ```
+
+This status confirms that EFM is set up successfully and managing the failover for the PEM server.
+
+In case of failover, any of the standbys are promoted as the primary node, and PEM agents connect to the new primary node. You can replace the failed primary node with a new standby using the procedure above.
+
+## Prepare the EFM cluster for PEM installation
+
+Before installing PEM in HA mode, we must ensure that the cluster meets two requirements:
+
+- SSL is configured so that the `cert` auth method can be used for connections from PEM agents to the PEM backend database.
+- HBA rules are in place to allow agents and web application instances to connect to the PEM backend.
+
+### Prepare SSL files
+
+Follow the instructions in [Generating SSL files for HA PEM backend hosts](https://www.enterprisedb.com/docs/pem/latest/installing/ha/ssl/).
+
+### Modify the EFM cluster to add SSL and HBA rules
+
+Perform the following actions on each PEM node (excluding the witness).
+
+1. Modify `postgresql.conf` to enable SSL and set the paths to the SSL files created above.
+
+   ```ini
+   ssl = on
+   ssl_ca_file = 'root.crt'
+   ssl_cert_file = 'server.crt'
+   ssl_key_file = 'server.key'
+   ```
+
+   If you have a CRL, also set:
+
+   ```ini
+   ssl_crl_file = 'root.crl'
+   ```
+
+2. Modify `pg_hba.conf` to add the rules required by PEM.
+   Add this block at the top of the file, above any existing content, adjusting the IP addresses to match your cluster.
+
+   ```
+   # Allow users of the web interface to connect to pem and postgres databases
+   hostssl pem      +pem_user   127.0.0.1/32           scram-sha-256
+   hostssl postgres +pem_user   127.0.0.1/32           scram-sha-256
+
+   # Allow the PEM server agents to register and connect to send data to PEM server
+   hostssl pem      +pem_agent  127.0.0.1/32           cert
+   hostssl pem      +pem_admin  172.16.161.200/32      scram-sha-256
+   hostssl pem      +pem_agent  172.16.161.200/32      cert
+   hostssl pem      +pem_admin  172.16.161.201/32      scram-sha-256
+   hostssl pem      +pem_agent  172.16.161.201/32      cert
+   hostssl pem      +pem_admin  172.16.161.202/32      scram-sha-256
+   hostssl pem      +pem_agent  172.16.161.202/32      cert
+
+   # Allow our superuser to connect to perform cluster configuration
+   hostssl pem,postgres      pemsuper   172.16.161.200/32    scram-sha-256
+   hostssl pem,postgres      pemsuper   172.16.161.201/32    scram-sha-256
+   hostssl pem,postgres      pemsuper   172.16.161.202/32    scram-sha-256
+
+   # Allow monitoring agents to connect to PEM
+   # Specify a subnet that includes all your monitored servers
+   # Duplicate these lines for multiple subnets
+   hostssl pem      +pem_user   0.0.0.0/0               scram-sha-256
+   hostssl pem      +pem_agent  0.0.0.0/0               cert
+   ```
+
+3. If using a common agent user, add one additional line to allow the first agent to connect during PEM installation.
+   This line can be removed later if required.
+
+   ```
+   hostssl pem      common_agent_user  127.0.0.1/32           cert
+   ```
+
+4. Modify the HBA rules added in the previous sections (for replication and EFM) to `hostssl` instead of `host` to enforce SSL for all connections.
+
+### Restart the cluster
+
+> **Note**
+>
+> ```
+> By default, EFM will trigger a failover if the database service stops.
+> During this rolling restart, stop the EFM agent before restarting Postgres to prevent an unintended failover.
+> ```
+
+Perform a rolling restart of the cluster. On each non-witness host, starting with the standbys and concluding with the primary, do the following:
+
+1. Stop the EFM agent service
+
+   ```sh
+   systemctl stop edb-efm-5.2
+   ```
+
+2. Restart Postgres
+
+   ```sh
+   systemctl restart edb-as-17
+   ```
+
+3. Start the EFM agent service
+
+   ```sh
+   systemctl start edb-efm-5.2
+   ```
+
+## Prepare agent users and certificates
+
+If you are providing your own SSL certificates, follow these steps to
+prepare for PEM deployment. If you are using sslutils, you may skip this
+section.
+
+### Using a common agent user
+
+On the primary, create the common agent user.
+Grant superuser permission to the common agent user.
+This is only required temporarily and will be revoked later.
+
+```sql
+CREATE USER common_agent_user WITH SUPERUSER;
+```
+
+Generate a certificate and key pair for this user and save them on all
+the hosts.
+
+See [Generating agent certificates manually](https://www.enterprisedb.com/docs/pem/latest/certificates/manual_cert_generation/) for guidance on how to generate certificates.
+
+### Using one certificate per agent
+
+PEM will automatically generate unique, numbered Postgres users (agent1 through agent3) for the agents deployed across your three hosts.
+
+To support this setup, you must manually generate three distinct certificate/key pairs—one for each specific agent user—and install one unique pair on each corresponding host.
+
+## Install PEM on the primary
+
+Perform the following steps on the primary host only.
+
+1. Install the PEM package.
+
+   ```shell
+   dnf install edb-pem --allowerasing
+   ```
+
+2. Create a superuser that can login using a password. This is the user we will use to install PEM.
+   It will also become the agent-server binding user for the agents running on PEM hosts.
+
+   ```shell
+   su - enterprisedb -c "psql -c \"create role pemsuper login superuser password 'your-password-here';\""
+   ```
+
+3. To configure the PEM server, run the configuration script using the Database option (Option 3) and set the host to your Virtual IP (VIP).
+
+   To ensure the system is correctly set up for High Availability (HA), you must include the following flags:
+
+   - **`--replication-solution efm` & `--replication-role primary`**: These flags force the script into HA mode, ensuring compatibility with your failover manager.
+
+   - **`-srp --efm-cluster-name` & `-srp --efm-install-path`**: These options are used to ensure PEM can monitor its own backend cluster properly.
+
+   - **`--skip-db-certificate`**: This prevents the script from attempting to automatically configure SSL, as you are managing certificates manually in an HA environment.
+
+   ### Using sslutils
+
+   When using sslutils you must include \`--use-existing-sslutils\`. This ensures that while the script skips the database SSL setup, it still utilizes the sslutils extension to handle agent certificate generation.
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                            -ho 172.16.161.245 \
+                                            -p 5444 \
+                                            -su pemsuper \
+                                            --asb-host-name '127.0.0.1' \
+                                            --replication-solution efm \
+                                            -srp --efm-cluster-name=efm \
+                                            -srp --efm-install-path='/usr/edb/efm-5.2/' \
+                                            --replication-role primary \
+                                            --skip-db-certificate \
+                                            --use-existing-sslutils \
+                                            --db-install-path '/usr/edb/as17/' \
+                                            --db-unitfile edb-as-17
+   ```
+
+   ### Using a common agent user
+
+   When using a common agent user you must supply the username and path to the certificate and key generated for that user.
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                            -ho 172.16.161.245 \
+                                            -p 5444 \
+                                            -su pemsuper \
+                                            --asb-host-name '127.0.0.1' \
+                                            --replication-solution efm \
+                                            -srp --efm-cluster-name=efm \
+                                            -srp --efm-install-path='/usr/edb/efm-5.2/' \
+                                            --replication-role primary \
+                                            --db-unitfile edb-as-17 \
+                                            --db-install-path '/usr/edb/as17/' \
+                                            --skip-db-certificate \
+                                            --use-agent-user 'common_agent_user' \
+                                            --use-agent-sslcert '/path/to/agent/cert' \
+                                            --use-agent-sslkey '/path/to/agent/key'
+   ```
+
+   After running this command, grant the common agent user the pem\_agent role and revoke superuser status.
+
+   ```sql
+   GRANT pem_agent to common_agent_user;
+   ALTER USER common_agent_user WITH NOSUPERUSER;
+   ```
+
+   You may also remove the HBA rule we added for the common agent user at this stage if desired as it will now match the `+pem_agent` rules.
+
+   ### Using one certificate per agent
+
+   When using your own certificate you should specify the agent\_id as `1` and path to the certificate and key generated for the corresponding `agent1` user.
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                            -ho 172.16.161.245 \
+                                            -p 5444 \
+                                            -su pemsuper \
+                                            --asb-host-name '127.0.0.1' \
+                                            --replication-solution efm \
+                                            -srp --efm-cluster-name=efm \
+                                            -srp --efm-install-path='/usr/edb/efm-5.2/' \
+                                            --replication-role primary \
+                                            --db-unitfile edb-as-17 \
+                                            --db-install-path '/usr/edb/as17/' \
+                                            --skip-db-certificate \
+                                            --use-agent-sslcert '/path/to/agent/cert' \
+                                            --use-agent-sslkey '/path/to/agent/key' \
+                                            -aro agent_id=1
+
+   ```
+
+   You will be prompted for various additional details.
+   For configuration options see, [Configuring the PEM server on Linux](https://www.enterprisedb.com/docs/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+4. Optionally, to synchronize PEM web application user preferences between instances, [configure central storage of user preferences](https://www.enterprisedb.com/docs/pem/latest/installing/ha/user_settings/).
+   At this stage, you can only complete the backend configuration.
+   We will configure the web application later.
+
+## Install PEM on the standbys
+
+Perform the following steps on the standby hosts only.
+
+1. Install the PEM package.
+
+   ```shell
+   dnf install edb-pem --allowerasing
+   ```
+
+2. Run the PEM configuration script, specifying option 3 (Database) and the VIP as the host.
+   You must specify the `--replication-solution efm` and `--replication-role standby` options to ensure HA mode is used.
+
+   ### Using sslutils
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                            -ho 172.16.161.245 \
+                                            -p 5444 \
+                                            -su pemsuper \
+                                            --asb-host-name '127.0.0.1' \
+                                            --replication-solution efm \
+                                            -srp --efm-cluster-name=efm \
+                                            -srp --efm-install-path='/usr/edb/efm-5.2/' \
+                                            --replication-role standby \
+                                            --db-unitfile edb-as-17 \
+                                            --db-install-path '/usr/edb/as17/'
+   ```
+
+   ### Using a common agent user
+
+   When using a common agent user you must supply the username and path to the certificate and key generated for that user.
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                            -ho 172.16.161.245 \
+                                            -p 5444 \
+                                            -su pemsuper \
+                                            --asb-host-name '127.0.0.1' \
+                                            --replication-solution efm \
+                                            -srp --efm-cluster-name=efm \
+                                            -srp --efm-install-path='/usr/edb/efm-5.2/' \
+                                            --replication-role standby \
+                                            --db-unitfile edb-as-17 \
+                                            --db-install-path '/usr/edb/as17/' \
+                                            --use-agent-user 'common_agent_user' \
+                                            --use-agent-sslcert '/path/to/agent/cert' \
+                                            --use-agent-sslkey '/path/to/agent/key'
+   ```
+
+   ### Using one certificate per agent
+
+   When using your own certificate you should specify the agent\_id as
+   the next integer `N` and path to the certificate and key generated
+   for the corresponding `agentN` user.
+
+   ```shell
+   /usr/edb/pem/bin/configure-pem-server.sh -t 1 \
+                                            -ho 172.16.161.245 \
+                                            -p 5444 \
+                                            -su pemsuper \
+                                            --asb-host-name '127.0.0.1' \
+                                            --replication-solution efm \
+                                            -srp --efm-cluster-name=efm \
+                                            -srp --efm-install-path='/usr/edb/efm-5.2/' \
+                                            --replication-role standby \
+                                            --db-unitfile edb-as-17 \
+                                            --db-install-path '/usr/edb/as17/' \
+                                            --use-agent-sslcert '/path/to/agent/cert' \
+                                            --use-agent-sslkey '/path/to/agent/key' \
+                                            -aro agent_id=2
+   ```
+
+   You will be prompted for various additional details.
+   For configuration options see, [Configuring the PEM server on Linux](https://www.enterprisedb.com/docs/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+## Final steps for PEM Web Application
+
+Perform the following steps on all web application hosts.
+
+1. Open the following ports on the firewall:
+
+   - `8443` for PEM Server (HTTPS)
+
+   For example:
+
+   ```shell
+   firewall-cmd --zone=public --add-port=8443/tcp --permanent
+   firewall-cmd --reload      
+   ```
+
+2. Run the `configure-selinux.sh` script to configure the SELinux policy for PEM.
+
+   ```shell
+   USE_NGINX=1 /usr/edb/pem/bin/configure-selinux.sh
+   ```
+
+3. You can now login to any of the web application instances using the `pemsuper` superuser we created earlier.
+
+4. If you chose to synchronize PEM web application user preferences between instances,
+   complete the setup now by [configuring each web application instance to use the backend for user settings](https://www.enterprisedb.com/docs/pem/latest/installing/ha/user_settings/#configure-the-pem-web-applications).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,103 @@
+---
+title: Cluster recommendations
+description: Learn how to use recommendations that can improve performance of a Hybrid Manager cluster.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/cluster_management/view_clusters/cluster-recommendations-tab/
+lastModified: 2026-01-12T16:20:29+05:30
+---
+
+# Cluster recommendations
+
+## Recommendations
+
+The **Recommendations** tab shows a scorecard and a list of recommendations that can help to improve the Postgres cluster performance.
+
+The scorecard and recommendation are directly related. A cluster scores lower than Excellent only if any recommendations appear.
+After you apply or dismiss the recommendations, the score shows Excellent.
+
+### Scorecard
+
+In the scorecard, a score is assigned to a given cluster for each grading category:
+
+- Indexes
+- Statistics
+- Configuration
+- Security
+- Workload
+
+> **Note**
+>
+> Only the first Indexes and Statistics are currently available.
+
+Generally, grades are assigned on an A-F scale.
+
+For the Indexes category, the possible grades are:
+
+- Excellent (A) if no recommendations were generated to tune indexes
+- Good (B), Fair (C), and Poor (D), depending on how many recommendations were generated
+
+These scores are computed by considering only primary nodes in the case of PSR and write leaders in the case of PGD/AHA. Furthermore, the score is related to the database in the PG cluster that's performing the worst, not an average over all databases created in such a cluster.
+
+For the Statistics category, the possible grades are:
+
+- Excellent (A) if no recommendations were generated to add statistics
+- Good (B) if at least one recommendation was generated
+
+> **Note**
+>
+> - Fail (F) isn't currently used. It's reserved for unhealthy cluster states that require immediate action.
+> - Unknown (U) means information needed to evaluate a cluster is unavailable.
+
+When you select a category, the displayed text helps you to understand the relevance of the recommendations in addition to providing context on how the score was computed.
+
+A radar chart shows the global score of the cluster across all categories.
+
+### Recommendations list
+
+Below the scorecard, a list of recommendations is displayed, depending on the category selected in the scorecard:
+
+- Status: Status of a recommendation (New, Ignored, Applied).
+- Database Name.
+- Node ID.
+- Size Increase (for indexes): Estimated index size.
+- Absolute Benefit (for indexes): Absolute cost reduction that applying this index can produce.
+- Total Cost (for indexes): Execution time plus plan time for running this query.
+- Cost Reduction (for indexes): Estimated percentage cost reduction computed as (abs\_benefit/total\_cost) \* 100, which is relative to all the workloads executed in a database.
+- Weight (for statistics): Rough estimation of the potential benefit of applying the statistics.
+- Recommended Time: Creation time for this recommendation.
+- Query: Text of the query to create an index or a statistic.
+
+Use the cog icon to show/hide columns.
+
+CTA buttons in each row let you:
+
+- Mark the recommendation as completed
+- Ignore the recommendation
+- Copy the text of the recommendation
+
+> **Note**
+>
+> You can't apply recommendations from the web interface. You must manually copy and execute them in the terminal or an admin UI.
+
+Use the filters to restrict data by database, node, or status.
+
+### Understanding recommendations
+
+#### Mark the recommendation as applied/ignored
+
+Use the **applied** option to tell Hybrid Manager (HM) that you applied the recommended change.
+If you mark a recommendation as applied, it disappears from the list. When the page is next reloaded, the score increases to reflect the change.
+If the same recommendation appears again, this means the change was not applied or it was undone. The score will drop again.
+
+Use the **ignored** option to tell HM that you reviewed the recommended change and decided not to apply it.
+If you mark a recommendation as ignored, it disappears from the list. When the page is next reloaded, the score increases.
+If the same recommendation is received again, it's ignored and doesn't reappear.
+
+#### Where does this data come from?
+
+The Index and Statistics recommendations are sourced from the Query Advisor extension. Make sure this extension is enabled in the monitored database.
+
+In future releases, recommendations will be generated from other data sources, including historical metrics and Query Diagnostics.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

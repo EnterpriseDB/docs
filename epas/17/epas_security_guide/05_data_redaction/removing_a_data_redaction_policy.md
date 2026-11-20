@@ -1,0 +1,63 @@
+---
+title: Removing a data redaction policy
+description: How to use the DROP REDACTION POLICY command to remove a data redaction policy from a table
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/epas_security_guide/05_data_redaction/removing_a_data_redaction_policy/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# Removing a data redaction policy
+
+The `DROP REDACTION POLICY` command removes a data redaction policy from a table.
+
+## Synopsis
+
+```sql
+DROP REDACTION POLICY [ IF EXISTS ] <name> ON <table_name>
+  [ CASCADE | RESTRICT ]
+```
+
+## Description
+
+`DROP REDACTION POLICY` removes the specified data redaction policy from the table.
+
+To use `DROP REDACTION POLICY`, you must own the table that the redaction policy applies to.
+
+## Parameters
+
+`IF EXISTS`
+
+Don't throw an error if the data redaction policy doesn't exist. A notice is issued in this case.
+
+`name`
+
+The name of the data redaction policy to drop.
+
+`table_name`
+
+The optionally schema-qualified name of the table that the data redaction policy is on.
+
+`CASCADE`
+
+`RESTRICT`
+
+These keywords don't have any effect, as there are no dependencies on the data redaction policies.
+
+## Examples
+
+To drop the data redaction policy called `redact_policy_personal_info` on the table named `employees`:
+
+```sql
+DROP REDACTION POLICY redact_policy_personal_info ON employees;
+```
+
+## Compatibility
+
+`DROP REDACTION POLICY` is an EDB extension.
+
+## See also
+
+[`CREATE REDACTION POLICY`](https://www.enterprisedb.com/docs/epas/17/epas_security_guide/05_data_redaction/creating_a_data_redaction_policy/), [`ALTER REDACTION POLICY`](https://www.enterprisedb.com/docs/epas/17/epas_security_guide/05_data_redaction/modifying_a_data_redaction_policy/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

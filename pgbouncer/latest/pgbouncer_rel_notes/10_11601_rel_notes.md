@@ -1,0 +1,29 @@
+---
+title: EDB PgBouncer 1.16.0.1 release notes
+product: PgBouncer
+version: "1"
+url: https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/10_11601_rel_notes/
+lastModified: 2023-09-28T10:23:28+01:00
+---
+
+# EDB PgBouncer 1.16.0.1 release notes
+
+Released: 10 Jun 2021
+
+New features, enhancements, bug fixes, and other changes in EDB PgBouncer 1.16.0.1 include the following:
+
+| Type           | Description                                                                                                                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upstream merge | Merged with community PgBouncer 1.16.0.1. See the community [Release Notes](https://www.pgbouncer.org/changelog.html#pgbouncer-116x) for details.                                              |
+| Feature        | Support hot reloading of TLS settings. When the configuration file is reloaded, updated TLS settings are automatically enforced.                                                               |
+| Feature        | Add support for abstract Unix-domain sockets. Prefix a Unix-domain socket path with `@` to use a socket in the abstract namespace.                                                             |
+| Feature        | The maximum length of passwords and user names have been increased to 996 and 128, respectively. Various cloud services require this.                                                          |
+| Feature        | The minimum pool size can now be set per database, similar to the regular pool size and the reserve pool size.                                                                                 |
+| Feature        | The number of pending query cancellations is shown in SHOW POOLS.                                                                                                                              |
+| Bug fix        | Configuration parsing now has tighter error handling in many places. Previously, it might have logged an error and proceeded. Those configuration errors would now result in startup failures. |
+| Bug fix        | Query cancel handling has been fixed. Under some circumstances, cancel requests would seemingly get stuck for a long time.                                                                     |
+| Bug fix        | Mixed use of md5 and scram via hba has been fixed.                                                                                                                                             |
+| Bug fix        | The “FIXME: query end, but query\_start == 0” messages have been fixed. The cause of these messages is now known.                                                                              |
+| Bug fix        | Fix reloading of default\_pool\_size, min\_pool\_size, and res\_pool\_size. Previously when these properties were reloaded, it didn’t work.                                                    |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

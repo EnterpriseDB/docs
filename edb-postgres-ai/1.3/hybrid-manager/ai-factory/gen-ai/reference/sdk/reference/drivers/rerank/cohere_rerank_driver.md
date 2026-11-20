@@ -1,0 +1,92 @@
+---
+title: cohere_rerank_driver
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/rerank/cohere_rerank_driver/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# cohere\_rerank\_driver
+
+<span id="griptape.drivers.rerank.cohere_rerank_driver.CohereRerankDriver"></span>
+
+Bases:
+[`BaseRerankDriver`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/rerank/#griptape.drivers.rerank.BaseRerankDriver "BaseRerankDriver (griptape.drivers.rerank.BaseRerankDriver)")
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/rerank/cohere\_rerank\_driver.py</code>
+
+</summary>
+
+```python
+@define(kw_only=True)
+class CohereRerankDriver(BaseRerankDriver):
+    model: str = field(default="rerank-english-v3.0", metadata={"serializable": True})
+    top_n: Optional[int] = field(default=None)
+
+    api_key: str = field(metadata={"serializable": True})
+    client: Client = field(
+        default=Factory(lambda self: import_optional_dependency("cohere").Client(self.api_key), takes_self=True),
+    )
+
+    def run(self, query: str, artifacts: list[TextArtifact]) -> list[TextArtifact]:
+        # Cohere errors out if passed "empty" documents or no documents at all
+        artifacts_dict = {str(hash(a.to_text())): a for a in artifacts if a}
+
+        if artifacts_dict:
+            response = self.client.rerank(
+                model=self.model,
+                query=query,
+                documents=[a.to_text() for a in artifacts_dict.values()],
+                return_documents=True,
+                top_n=self.top_n,
+            )
+            return [artifacts_dict[str(hash(r.document.text))] for r in response.results if r.document is not None]
+        return []
+```
+
+</details>
+
+- `api_key = field(metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.rerank.cohere_rerank_driver.CohereRerankDriver.api_key"></span>
+
+- `client = field(default=Factory(lambda self: import_optional_dependency('cohere').Client(self.api_key), takes_self=True))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.rerank.cohere_rerank_driver.CohereRerankDriver.client"></span>
+
+- `model = field(default='rerank-english-v3.0', metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.rerank.cohere_rerank_driver.CohereRerankDriver.model"></span>
+
+- `top_n = field(default=None)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.rerank.cohere_rerank_driver.CohereRerankDriver.top_n"></span>
+
+<span id="griptape.drivers.rerank.cohere_rerank_driver.CohereRerankDriver.run"></span>
+
+### run(query, artifacts)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/rerank/cohere\_rerank\_driver.py</code>
+
+</summary>
+
+```python
+def run(self, query: str, artifacts: list[TextArtifact]) -> list[TextArtifact]:
+    # Cohere errors out if passed "empty" documents or no documents at all
+    artifacts_dict = {str(hash(a.to_text())): a for a in artifacts if a}
+
+    if artifacts_dict:
+        response = self.client.rerank(
+            model=self.model,
+            query=query,
+            documents=[a.to_text() for a in artifacts_dict.values()],
+            return_documents=True,
+            top_n=self.top_n,
+        )
+        return [artifacts_dict[str(hash(r.document.text))] for r in response.results if r.document is not None]
+    return []
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

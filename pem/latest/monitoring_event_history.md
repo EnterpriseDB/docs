@@ -1,0 +1,477 @@
+---
+title: Monitoring event history
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/monitoring_event_history/
+lastModified: 2026-06-22T21:47:06+05:30
+---
+
+# Monitoring event history
+
+You can monitor the executed event details in the `pem.event_history` table. It provides the username, execution time of the event, type of the event occurred, and the details regarding the event. The fields in the table are:
+
+| Field name     | Description                                                                                            | Example                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| recorded\_time | Records the execution time of the event. Displays the date and time along with the fractional seconds. | `2025‑11‑27 09:14:32`                           |
+| user\_name     | The username of the user who executed or scheduled the event.                                          | `alice@company.com`                             |
+| component      | The specific PEM feature involved.                                                                     | `profile / alert_blackout / HA Monitoring`.     |
+| operation      | The action taken for the event.                                                                        | `assign / disable_alert_blackout / Switchover`. |
+| message        | The description of the action taken for the event.                                                     | `Enabled the alert blackout for the server`.    |
+| details        | The JSON output of the event that occurred.                                                            | `{"ProfileId":42,"ServerId":10}`                |
+
+> **Note**
+>
+> You do not need to be a JSON expert to use this feature. Think of the **details** field as a collection of "extra information" that automatically adjusts based on the specific action performed.
+
+## Why is it important?
+
+This `event_history` table helps you quickly answer key operational questions:
+
+- Who turned an alert blackout on or off?
+- When was a monitoring profile applied, removed, or changed?
+- Did the HA cluster switch leaders? When, and between which servers?
+
+## Core benefits
+
+- **Troubleshooting:** Quickly identify if missing alerts were due to an active blackout.
+- **Configuration tracking:** See exactly which profiles were recently applied to a server.
+- **HA visibility:** Audit role changes and failovers that occurred during off-hours.
+- **Accountability:** Identify the specific user or system process behind any change.
+
+## Supported functionalities
+
+Event history currently tracks changes and actions for the following PEM functionalities:
+
+### Profile management
+
+- **Assign Profile:** When a configuration profile is assigned to a server or agent.
+- **Remove Profile:** When a profile assignment is removed.
+- **Update Profile:** When profile settings or categories are modified.
+- **Delete Profile:** When a draft or published profile is deleted.
+- **Publish Profile:** When a draft profile is published for production use.
+- **Clone Profile:** When an existing profile is cloned via the UI or REST API.
+- **Export Profile:** When one or more profiles are exported as a `.pemprf` bundle. The `details` field records the count of exported profiles and their names.
+- **Import Profile (new name):** When a profile from a `.pemprf` bundle is imported under a name that doesn't already exist. The `details` field records the new profile name and its assigned ID.
+- **Import Profile (overwrite):** When a profile from a `.pemprf` bundle is imported over an existing profile, creating a draft. The `details` field records the existing profile ID and the new draft ID.
+
+> **Note**
+>
+> Skipped and failed import results are not audited. Only successful import operations write to `pem.event_history`.
+
+### Alert blackout management
+
+The `user_name` column identifies who performed the action. A real login (for example, `enterprisedb`) means a user acted via the UI or REST API. The value `system` means a system job performed the action automatically.
+
+| Operation                   | Trigger                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `enable_alert_blackout`     | Alert Blackout checkbox toggled on, or `alert_blackout` flag synced by the **Process alert blackouts** system job  |
+| `disable_alert_blackout`    | Alert Blackout checkbox toggled off, or `alert_blackout` flag synced by the **Process alert blackouts** system job |
+| `schedule_alert_blackout`   | Scheduled blackout created via the Schedule Alert Blackout dialog                                                  |
+| `delete_scheduled_blackout` | Scheduled blackout deleted via the Schedule Alert Blackout dialog                                                  |
+| `create_blackout`           | Blackout created via REST API POST                                                                                 |
+| `end_blackout`              | Blackout ended via REST API DELETE                                                                                 |
+| `expire_manual_blackout`    | Manual blackout auto-expired because `max_manual_blackout` was exceeded                                            |
+| `blackout_ended`            | Checkbox uncheck ended an active scheduled or auto blackout early                                                  |
+| `blackout_completed`        | Scheduled blackout naturally completed when its end time was reached                                               |
+| `auto_enable_blackout`      | Auto blackout created for an unreachable server or agent                                                           |
+| `auto_disable_blackout`     | Auto blackout cleared after the server or agent recovered                                                          |
+
+### High availability (HA) monitoring
+
+- **Switchover/Failover:** Planned or unplanned role changes in HA clusters (primary ↔ replica).
+
+Each recorded event includes:
+
+- **Timestamp** of when it occurred.
+- **User** who initiated the action (or `system` for automatic events).
+- **Affected resources** such as server IDs, agent IDs, or cluster names.
+- **Previous and new values,** where applicable.
+- **Additional context** stored in the JSON details field.
+
+## Typical operational scenarios
+
+The following entries are captured in the `event_history` log:
+
+- **Profile assignment:** Applying a monitoring profile (Production CPU & Memory) to a server. The log captures the user, the profile ID, and the exact time the configuration was applied.
+- **Alert blackout:** Enabling an alert blackout for a server or agent. This provides a clear audit record of why notifications were suppressed during a specific maintenance period.
+- **High availability (HA) transitions:** A standby node assuming the primary role. The event documents the role change, identifying both the previous and current roles of the servers involved.
+- **Administrative cleanup:** Deleting an obsolete or unused draft profile. A permanent record of the deletion is maintained to ensure a complete historical paper trail.
+
+## Event entry reference
+
+The following sections provide a breakdown of how different activities are recorded within the log:
+
+### 1. Profile assignment
+
+**Message:** "Assign profile 42 on server 10".
+
+When a monitoring profile (ID 42) is newly applied to a server (ID 10), the log generates the following entry:
+
+**`details` (JSON):**
+
+```json
+{
+  "ProfileId": 42,
+  "PreviousProfileId": null,
+  "ServerId": 10,
+  "TargetType": "server",
+  "ChangedCategories": ["assigned_profile"]
+}
+```
+
+### 2. Profile clone
+
+**Message:** "Cloned profile 42".
+
+When a profile (ID 42) is cloned — either via the UI **Copy from** dialog or the REST API — both paths write the same audit row. To find clone events in the audit history, filter on `operation = 'clone_profile'`. A normal (non-clone) profile create uses `operation = 'create'` instead.
+
+**`details` (JSON):**
+
+```json
+{
+  "SourceProfileId": 42,
+  "SourceName": "Production Server Profile",
+  "NewProfileId": 55,
+  "NewName": "Copy of Production Server Profile",
+  "TargetKind": "server",
+  "ChangedCategories": ["metadata", "probe", "alert"]
+}
+```
+
+> **Note**
+>
+> Audit logging is best-effort: if the audit row fails to write, the clone still succeeds. The failure is logged server-side.
+
+### 3. Profile export
+
+**Message:** "Exported 2 profile(s): Production Server Profile, Staging Server Profile".
+
+When one or more profiles are exported as a `.pemprf` bundle, the log records the count and names of the exported profiles.
+
+**`details` (JSON):**
+
+```json
+{
+  "Count": 2,
+  "ExportedNames": ["Production Server Profile", "Staging Server Profile"]
+}
+```
+
+### 4. Profile import (new name)
+
+**Message:** "Imported profile 'Staging Server Profile'".
+
+When a profile from a `.pemprf` bundle is imported under a name that doesn't already exist on the target instance, the log records the new profile's name and assigned ID.
+
+**`details` (JSON):**
+
+```json
+{
+  "Name": "Staging Server Profile",
+  "ProfileId": 67
+}
+```
+
+### 5. Profile import (overwrite → draft)
+
+**Message:** "Imported profile 'Production Server Profile' as draft over existing profile 42".
+
+When an import overwrites an existing profile by name (with **Skip existing?** unchecked), the imported configuration is saved as a draft. The log records both the existing profile ID and the new draft ID.
+
+**`details` (JSON):**
+
+```json
+{
+  "ExistingProfileId": 42,
+  "DraftId": 68
+}
+```
+
+> **Note**
+>
+> Skipped and failed import results do not generate an audit entry. Only successful imports are recorded in `pem.event_history`.
+
+### 6. Alert blackout enabled (checkbox)
+
+**Message:** "Enabled the alert blackout for the server".
+
+Recorded when a user checks the Alert Blackout checkbox on the Global Overview dashboard.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "ObjectId": 10
+}
+```
+
+### 7. Alert blackout disabled (checkbox)
+
+**Message:** "Disabled the alert blackout for the server".
+
+Recorded when a user unchecks the Alert Blackout checkbox. Because unchecking ends all active blackouts on the object, `EndedBlackouts` lists every record that was closed, with its source and whether it was ended before its scheduled end time.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "ObjectId": 10,
+  "EndedBlackouts": [
+    { "Id": 42, "Source": "manual", "ScheduledEnd": null, "EndedEarly": false },
+    { "Id": 43, "Source": "scheduled", "ScheduledEnd": "2026-04-24T02:00:00+00:00", "EndedEarly": true }
+  ],
+  "EndedCount": 2,
+  "EndedSources": ["manual", "scheduled"]
+}
+```
+
+### 8. Scheduled blackout created (dialog)
+
+**Message:** "Created scheduled alert blackout".
+
+Recorded when a scheduled blackout is saved via the Schedule Alert Blackout dialog. `BlackoutGroups` captures the objects, start time, and duration for each group in the batch.
+
+**`details` (JSON):**
+
+```json
+{
+  "BlackoutGroups": [
+    {
+      "ObjectType": "server",
+      "ObjectIds": [5, 7],
+      "StartTime": "2026-04-23T10:00:00Z",
+      "Duration": "2 hours"
+    }
+  ],
+  "CreatedCount": 2
+}
+```
+
+### 9. Scheduled blackout deleted (dialog)
+
+**Message:** "Deleted scheduled alert blackout".
+
+Recorded when a scheduled blackout is removed via the Schedule Alert Blackout dialog.
+
+**`details` (JSON):**
+
+```json
+{
+  "DeletedIds": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"],
+  "AgentIds": [],
+  "ServerIds": [5, 7]
+}
+```
+
+### 10. Manual blackout expired
+
+**Message:** "Manual blackout expired (max\_manual\_blackout exceeded)".
+
+Recorded by the **Process alert blackouts** system job when a manual blackout has been active longer than the `max_manual_blackout` threshold. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "MaxManualBlackoutHours": 24
+}
+```
+
+### 11. Scheduled blackout completed
+
+**Message:** "Scheduled blackout completed".
+
+Recorded by the system job when a scheduled blackout reaches its end time naturally. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "Source": "scheduled",
+  "BatchId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+### 12. Auto blackout enabled
+
+**Message:** "Auto-blackout enabled for unreachable server".
+
+Recorded by the **Blackout unreachable servers/agents** system job when a server or agent exceeds the `server_contact_timeout` threshold. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "Source": "auto"
+}
+```
+
+### 13. Auto blackout disabled
+
+**Message:** "Auto-blackout cleared for recovered server".
+
+Recorded by the system job when a previously unreachable server or agent resumes heartbeats within the timeout window. The `user_name` is `system`.
+
+**`details` (JSON):**
+
+```json
+{
+  "IsAgent": false,
+  "Ids": "10",
+  "Source": "auto"
+}
+```
+
+### 14. HA switchover
+
+**Message:** "Switchover observed for cluster prod\_patroni".
+
+Logs node role changes, which are essential for auditing high-availability and failover events.
+
+**`details` (JSON):**
+
+```json
+{
+  "ClusterType": "patroni",
+  "ClusterName": "prod_patroni",
+  "OldRole": "primary",
+  "NewRole": "replica",
+  "NodeIp": "10.2.3.15"
+}
+```
+
+## How to glance at recent activity
+
+You can run these queries from any SQL query window within PEM to quickly audit recent changes. These operations are read-only and won't modify your data.
+
+### Recent profile events
+
+Use this query to see the 20 most recent actions related to configuration profiles (assignments, updates, or deletions).
+
+```sql
+SELECT recorded_time, user_name, message
+FROM pem.event_history
+WHERE component = 'profile'
+ORDER BY recorded_time DESC
+LIMIT 20;
+```
+
+### Recent profile clone events
+
+Use this query to see all profiles that have been cloned, along with the source and new profile IDs from the `details` field.
+
+```sql
+SELECT recorded_time, user_name,
+       details::json->>'SourceName' AS source_profile,
+       details::json->>'NewName' AS cloned_profile
+FROM pem.event_history
+WHERE component = 'profile' AND operation = 'clone_profile'
+ORDER BY recorded_time DESC
+LIMIT 20;
+```
+
+### Recent alert blackout changes
+
+Use this query to see all blackout state changes, most recent first.
+
+```sql
+SELECT recorded_time, user_name, operation, message
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+ORDER BY recorded_time DESC
+LIMIT 20;
+```
+
+To see who changed blackout state for a specific server (for example, object ID 10):
+
+```sql
+SELECT recorded_time, user_name, operation, message
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND (
+    details::jsonb->>'Ids' = '10'
+    OR details::jsonb->>'ObjectId' = '10'
+    OR details::jsonb->'ServerIds' @> '[10]'::jsonb
+  )
+ORDER BY recorded_time DESC;
+```
+
+To find all manual blackout expirations in the last 7 days:
+
+```sql
+SELECT recorded_time, details
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND operation = 'expire_manual_blackout'
+  AND recorded_time > now() - interval '7 days';
+```
+
+To see the full lifecycle of a scheduled blackout batch:
+
+```sql
+SELECT recorded_time, operation, message, details
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND details::jsonb->>'BatchId' = '<batch-id>'
+ORDER BY recorded_time;
+```
+
+To audit auto-blackout activity (unreachable servers and agents):
+
+```sql
+SELECT recorded_time, operation, message, details
+FROM pem.event_history
+WHERE component = 'alert_blackout'
+  AND operation IN ('auto_enable_blackout', 'auto_disable_blackout')
+ORDER BY recorded_time DESC;
+```
+
+### Recent HA switchovers
+
+Use this query to identify when an HA cluster changed its leader (primary/replica roles).
+
+```sql
+SELECT recorded_time, message
+FROM pem.event_history
+WHERE component = 'HA Monitoring' AND operation = 'Switchover'
+ORDER BY recorded_time DESC
+LIMIT 10;
+```
+
+## Reading the details field
+
+If you need to extract a specific value from the JSON data, such as a `ProfileId`, you can use Postgres JSON operators to pull it out directly into its own column.
+
+```sql
+SELECT recorded_time,
+       details::json->>'ProfileId' AS profile_id,
+       message
+FROM pem.event_history
+WHERE component = 'profile'
+ORDER BY recorded_time DESC
+LIMIT 10;
+```
+
+> **Note**
+>
+> `NULL` values in the results indicate that those specific events do not contain that particular key in their JSON data.
+
+## Considerations
+
+- **Monitor for change spikes:** A sudden increase in blackout toggles or profile changes may indicate configuration confusion or environment instability.
+- **Use meaningful names:** Assign clear, descriptive names to your profiles. This ensures the `message` column is easy to read at a glance, rather than relying solely on IDs.
+- **Data maintenance:** Periodically export or archive older rows if the table becomes exceptionally large. Consult your administrator for the best local policy.
+- **Maintain integrity:** Always treat the table as a permanent history. Avoid manually editing or modifying existing rows.
+- **Event deletion and auditing**: While deleting old events is possible, it is not recommended as it removes your audit trail. Instead, archive old data to a secondary storage location to maintain history while managing table size.
+- **System-generated events**: Events listing an `unknown` user typically indicate that PEM could not identify a specific user account. This commonly occurs with system-generated tasks or legacy migration scripts.
+- **Interpreting event data**: The `message` column provides the primary event details in plain English. You only need to parse the JSON data if you require specific, low-level technical details for a deep-dive analysis.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

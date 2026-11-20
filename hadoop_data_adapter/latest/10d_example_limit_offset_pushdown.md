@@ -1,0 +1,172 @@
+---
+title: "Example: LIMIT OFFSET pushdown"
+product: Hadoop Data Adapter
+version: "2"
+url: https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/10d_example_limit_offset_pushdown/
+lastModified: 2024-07-18T12:11:01+02:00
+---
+
+# Example: LIMIT OFFSET pushdown
+
+This example shows LIMIT OFFSET pushdown between the foreign tables of the same remote HIVE/SPARK server as the remote HIVE/SPARK server:
+
+Tables on HIVE/SPARK server:
+
+```sql
+0: jdbc:hive2://localhost:10000> describe emp;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| empno     | int        | NULL     |
+| ename     | string     | NULL     |
+| job       | string     | NULL     |
+| mgr       | int        | NULL     |
+| hiredate  | date       | NULL     |
+| sal       | int        | NULL     |
+| comm      | int        | NULL     |
+| deptno    | int        | NULL     |
++-----------+------------+----------+--+
+8 rows selected (0.747 seconds)
+0: jdbc:hive2://localhost:10000> describe dept;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| deptno    | int        | NULL     |
+| dname     | string     | NULL     |
+| loc       | string     | NULL     |
++-----------+------------+----------+--+
+3 rows selected (0.067 seconds)
+```
+
+Tables on Postgres server:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION hdfs_fdw;
+
+-- create server object
+CREATE SERVER hdfs_server FOREIGN DATA WRAPPER hdfs_fdw OPTIONS(host 'localhost', port '10000', client_type 'spark', auth_type 'LDAP');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER hdfs_server OPTIONS (username 'user1', password 'pwd123');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (
+    empno           INTEGER,
+    ename           VARCHAR(10),
+    job             VARCHAR(9),
+    mgr             INTEGER,
+    hiredate        DATE,
+    sal             INTEGER,
+    comm            INTEGER,
+    deptno          INTEGER
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'emp');
+```
+
+Query plan with LIMIT OFFSET pushdown:
+
+```sql
+-- LIMIT OFFSET
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT empno FROM emp e ORDER BY empno LIMIT 5 OFFSET 2;
+```
+
+```output title="Output"
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Foreign Scan on public.emp e
+   Output: empno
+   Remote SQL: SELECT `empno` FROM `fdw_db`.`emp` ORDER BY `empno` ASC NULLS LAST LIMIT 2, 5
+(3 rows)
+```
+
+Query execution:
+
+```sql
+SELECT empno FROM emp e ORDER BY empno LIMIT 5 OFFSET 2;
+```
+
+```output title="Output"
+ empno 
+-------
+  7521
+  7566
+  7654
+  7698
+  7782
+(5 rows)
+```
+
+Query plan with GUC for LIMIT OFFSET pushdown queries disabled at the session level (by default, LIMIT OFFSET pushdown is enabled):
+
+```sql
+SET hdfs_fdw.enable_limit_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM emp ORDER BY empno LIMIT 5 OFFSET 2;
+```
+
+```output title="Output"
+QUERY PLAN
+----------------------------------------------------------------------------------
+ Limit
+   Output: empno, ename, job, mgr, hiredate, sal, comm, deptno
+   ->  Foreign Scan on public.emp
+         Output: empno, ename, job, mgr, hiredate, sal, comm, deptno
+         Remote SQL: SELECT * FROM `fdw_db`.`emp` ORDER BY `empno` ASC NULLS LAST
+(5 rows)
+```
+
+Query execution:
+
+```sql
+SELECT * FROM emp ORDER BY empno LIMIT 5 OFFSET 2;
+```
+
+```output title="Output"
+ empno | ename  |   job    | mgr  |  hiredate  | sal  | comm | deptno
+-------+--------+----------+------+------------+------+------+--------
+  7521 | WARD   | SALESMAN | 7698 | 02-22-1981 | 1250 |  500 |     30
+  7566 | JONES  | MANAGER  | 7839 | 04-02-1981 | 2975 |      |     20
+  7654 | MARTIN | SALESMAN | 7698 | 09-28-1981 | 1250 | 1400 |     30
+  7698 | BLAKE  | MANAGER  | 7839 | 05-01-1981 | 2850 |      |     30
+  7782 | CLARK  | MANAGER  | 7839 | 06-09-1981 | 2450 |      |     10
+(5 rows)
+```
+
+Query plan with GUC for LIMIT OFFSET pushdown queries enabled at the session level:
+
+```sql
+SET hdfs_fdw.enable_limit_pushdown TO ON;
+-- LIMIT/OFFSET scenarios eligible for pushdown
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM emp ORDER BY empno LIMIT 5;
+```
+
+```output title="Output"
+QUERY PLAN
+------------------------------------------------------------------------------------
+ Foreign Scan on public.emp
+   Output: empno, ename, job, mgr, hiredate, sal, comm, deptno
+   Remote SQL: SELECT * FROM `fdw_db`.`emp` ORDER BY `empno` ASC NULLS LAST LIMIT 5
+(3 rows)
+```
+
+Query execution:
+
+```sql
+SELECT * FROM emp ORDER BY empno LIMIT 5;
+```
+
+```output title="Output"
+ empno | ename  |   job    | mgr  |  hiredate  | sal  | comm | deptno
+-------+--------+----------+------+------------+------+------+--------
+  7369 | SMITH  | CLERK    | 7902 | 12-17-1980 |  800 |      |     20
+  7499 | ALLEN  | SALESMAN | 7698 | 02-20-1981 | 1600 |  300 |     30
+  7521 | WARD   | SALESMAN | 7698 | 02-22-1981 | 1250 |  500 |     30
+  7566 | JONES  | MANAGER  | 7839 | 04-02-1981 | 2975 |      |     20
+  7654 | MARTIN | SALESMAN | 7698 | 09-28-1981 | 1250 | 1400 |     30
+(5 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

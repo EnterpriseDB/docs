@@ -1,0 +1,77 @@
+---
+title: DROP TRIGGER
+product: WarehousePG
+version: "7.6"
+url: https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/DROP_TRIGGER/
+lastModified: 2026-10-14T08:34:33Z
+---
+
+# DROP TRIGGER
+
+Removes a trigger.
+
+<a id="section2"></a>
+
+## Synopsis
+
+<div id="sql_command_synopsis"></div>
+
+```
+DROP TRIGGER [IF EXISTS] <name> ON <table> [CASCADE | RESTRICT]
+```
+
+<a id="section3"></a>
+
+## Description
+
+`DROP TRIGGER` will remove an existing trigger definition. To run this command, the current user must be the owner of the table for which the trigger is defined.
+
+<a id="section4"></a>
+
+## Parameters
+
+### IF EXISTS
+
+Do not throw an error if the trigger does not exist. A notice is issued in this case.
+
+### name
+
+The name of the trigger to remove.
+
+### table
+
+The name (optionally schema-qualified) of the table for which the trigger is defined.
+
+### CASCADE
+
+Automatically drop objects that depend on the trigger.
+
+### RESTRICT
+
+Refuse to drop the trigger if any objects depend on it. This is the default.
+
+<a id="section5"></a>
+
+## Examples
+
+Remove the trigger `sendmail` on table `expenses`;
+
+```
+DROP TRIGGER sendmail ON expenses;
+```
+
+<a id="section6"></a>
+
+## Compatibility
+
+The `DROP TRIGGER` statement in WarehousePG is not compatible with the SQL standard. In the SQL standard, trigger names are not local to tables, so the command is simply `DROP TRIGGER name`.
+
+<a id="section7"></a>
+
+## See Also
+
+[ALTER TRIGGER](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/ALTER_TRIGGER/), [CREATE TRIGGER](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/CREATE_TRIGGER/)
+
+**Parent topic:** [SQL Commands](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/sql_commands/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

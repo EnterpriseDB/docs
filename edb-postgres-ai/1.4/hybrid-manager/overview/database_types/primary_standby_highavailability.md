@@ -1,0 +1,35 @@
+---
+title: High availability
+description: Primary/standby high-availability clusters are designed to minimize downtime in cases of failures.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/overview/database_types/primary_standby_highavailability/
+lastModified: 2026-07-23T19:28:07Z
+---
+
+# High availability
+
+Primary/standby high availability minimizes downtime in cases of failures. Primary/standby high-availability clusters—one _primary_ and one or two _standby replicas_—are configured automatically. Standby replicas stay up to date through physical streaming replication.
+
+If read-only workloads are enabled, standby replicas serve the read-only workloads. In a two-node cluster, the single standby replica serves read-only workloads. In a three-node cluster, both standby replicas serve read-only workloads. The connections are made to the two standby replicas randomly and on a per-connection basis. You can enable this functionality by configuring a [read-only connection](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/cluster-settings/#connections-read-only) for your cluster, which provides a dedicated read-only endpoint alongside the standard read/write connection string.
+
+In cloud regions with availability zones, clusters are provisioned across zones to provide fault tolerance in the face of a data center failure.
+
+In case of temporary or permanent unavailability of the primary, a standby replica becomes the primary.
+
+![Primary/standby high availability](https://raw.githubusercontent.com/EnterpriseDB/docs/5618e00d5f562efaf494471f7323120558be1d3d/product_docs/docs/edb-postgres-ai/1.4/hybrid-manager/images/high-availability.svg)
+
+Incoming client connections are always routed to the current primary. In case of failure of the primary, a standby replica is promoted to primary, and new connections are routed to the new primary. When the old primary recovers, it rejoins the cluster as a standby replica.
+
+## Standby replicas
+
+By default, replication is synchronous to one standby replica and asynchronous to the other. That is, one standby replica must confirm that a transaction record was written to disk before the client receives acknowledgment of a successful commit.
+
+In a cluster with one primary and one replica (a two-node primary/standby high-availability cluster), you run the risk of the cluster being unavailable for writes because it doesn't have the same level of reliability as a three-node cluster.
+Hybrid Manager disables synchronous replication during maintenance operations of a two-node cluster to ensure write availability. You can also change from the default synchronous replication for a two-node cluster to asynchronous replication on a per-session or per-transaction basis.
+
+In PostgreSQL terms, `synchronous_commit` is set to `on`, and `synchronous_standby_names` is set to `ANY 1 (replica-1, replica-2)`. You can modify this behavior on a per-transaction, per-session, per-user, or per-database basis using `SET` or `ALTER` commands.
+
+Since Hybrid Manager replicates to only one node synchronously, some standby replicas in three-node clusters might experience replication lag. Also, if you override the Hybrid Manager synchronous replication configuration, then the standby replicas are inconsistent.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

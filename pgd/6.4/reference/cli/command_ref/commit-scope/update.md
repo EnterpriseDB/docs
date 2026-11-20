@@ -1,0 +1,57 @@
+---
+title: pgd commit-scope update
+product: EDB Postgres Distributed (PGD)
+version: 6.4.0
+url: https://www.enterprisedb.com/docs/pgd/6.4/reference/cli/command_ref/commit-scope/update/
+lastModified: 2026-08-21T09:22:11+02:00
+---
+
+# pgd commit-scope update
+
+## Synopsis
+
+The `pgd commit-scope update` command is used to update a commit scope in the EDB Postgres Distributed cluster.
+
+## Syntax
+
+```plaintext
+pgd commit-scope <COMMIT_SCOPE> update [OPTIONS] <RULE_DEFINITION>[GROUP_NAME]
+```
+
+Where `<COMMIT_SCOPE>` is the name of the commit scope to update.
+
+The `<RULE_DEFINITION>` is the rule that defines the commit scope. The rule specifies the conditions that must be met for a transaction to be considered committed. See [Commit Scopes](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/) and [Commit Scope Rules](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/commit-scope-rules/) for more information on the rule syntax.
+
+The optional `[GROUP_NAME]` is the name of the group to which the commit scope belongs. If omitted, it defaults to the top-level group.
+
+## Options
+
+No command specific options. See [Global Options](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/#global-options).
+
+## Examples
+
+### Updating a Commit Scope
+
+The following example updates the commit scope `abc1` with the rule `ANY 1 (dc1_subgroup) SYNCHRONOUS COMMIT`:
+
+```shell
+pgd commit-scope abc1 update "ANY 1 (dc1_subgroup) SYNCHRONOUS COMMIT" dc1_subgroup
+```
+
+```output title="Output"
+Command executed successfully
+```
+
+### Updating a Commit Scope in the Top-Level Group
+
+The following example updates the commit scope `abc2` with the rule `ANY 1 (dc1_subgroup) SYNCHRONOUS COMMIT` in the top-level group:
+
+```shell
+pgd commit-scope abc2 update "ANY 1 (dc1_subgroup) SYNCHRONOUS COMMIT"
+```
+
+```output title="Output"
+Command executed successfully
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,33 @@
+---
+title: pg_verifybackup and pg_rewind TDE options
+description: Learn about the pg_verifybackup and pg_rewind options for TDE-encrypted backups.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/reference/backup_file_options/
+lastModified: 2026-11-02T10:35:00+01:00
+---
+
+# pg\_verifybackup and pg\_rewind TDE options
+
+These options help you work with transparent data encryption when using [pg\_verifybackup](https://www.postgresql.org/docs/current/app-pgverifybackup.html) and [pg\_rewind](https://www.postgresql.org/docs/current/app-pgrewind.html) on a TDE-encrypted cluster. See [Working with encrypted backup files](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/encrypted_files/backup_files/) for usage examples.
+
+## pg\_verifybackup
+
+### Option: `--key-unwrap-command=<command>`
+
+Provides the command to unwrap (decrypt) the data encryption key. It must be the same unwrap command you specified when initializing the cluster.
+
+#### Supported values
+
+`<command>` is customizable, but it must contain the placeholder `%p`, which specifies the file to read the wrapped key from. The command must write the unwrapped key to its standard output. Use the special value `-` if you don't want to apply any key unwrapping command. See [Choosing a key protection mechanism](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/) for more information.
+
+If you don't use this option, `pg_verifybackup` falls back on the environment variable `PGDATAKEYUNWRAPCMD`. You must specify this option or the environment variable fallback if you're using data encryption.
+
+## pg\_rewind
+
+### Option: `--key-unwrap-command=<command>`
+
+Works the same way as for [pg\_verifybackup](#pg_verifybackup), earlier on this page.
+
+If you don't use this option, `pg_rewind` falls back on the environment variable `PGDATAKEYUNWRAPCMD`. You must specify this option or the environment variable fallback if you're using data encryption.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).
