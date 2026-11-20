@@ -623,58 +623,58 @@ relnotes:
   addresses: ""
   type: Bug Fix
   impact: Medium
-- relnote: Leader DML locks also lock the relation.
+- relnote: Fixed leader DML locks not locking the relation.
   details: |
-    A DML lock taken in "leader" mode, the default path when `bdr.ddl_locking = 'auto'` and routing is enabled, takes the relation lock on the write leader in addition to registering globally. DDL that relies on a DML lock waits for in-flight writes, as it does in "all" mode.
+    Fixed an issue where a DML lock taken in "leader" mode (the default path when `bdr.ddl_locking = 'auto'` and routing is enabled) registered globally but did not take the relation lock. DDL that relies on a DML lock could then be granted while a write was still in progress on the write leader. The DDL now waits for in-flight writes, as it does in "all" mode.
   jira: BDR-8884
   addresses: ""
   type: Bug Fix
   impact: High
-- relnote: The writer keeps memory use bounded when applying changes to partitioned tables.
+- relnote: Fixed a memory leak when applying changes to partitioned tables.
   details: |
-    The native writer sets up each partition once per transaction and reuses that setup for later rows. Large bulk loads into partitioned tables apply with stable memory use.
+    Fixed a memory leak in the native writer when applying changes to partitioned tables. Rows landing on different partitions repeatedly triggered per-relation setup that left memory allocated until the end of the transaction. Large bulk loads into partitioned tables could therefore grow memory without bound and cause out-of-memory failures.
   jira: BDR-9030
   addresses: ""
   type: Bug Fix
   impact: Medium
-- relnote: Connection Manager keeps cached credentials across a reload.
+- relnote: Fixed Connection Manager failing to connect to Postgres after a credential change on reload.
   details: |
-    With SCRAM authentication, Connection Manager keeps the cached credentials of users whose password hasn't changed when a reload picks up a user or password change. New backend connections for connected clients continue to authenticate.
+    With SCRAM authentication, a user or password change while clients were connected could make a new backend connection fail with `SCRAM client key is not available`. Connection Manager now keeps the cached credentials of users whose password hasn't changed across a reload.
   jira: BDR-8485
   addresses: ""
   type: Bug Fix
   impact: Medium
-- relnote: A global DML lock on a partitioned table locks the whole partition hierarchy.
+- relnote: A global DML lock on a partitioned table now locks the whole partition hierarchy.
   details: |
-    The global DML lock taken by DDL such as `ALTER TABLE ... SET NOT NULL` applies to the partitioned table and all of its partitions, including after a node restart. Writes on other nodes that go directly into a partition wait for the DDL, so the replicated DDL finds the rows it expects.
+    Previously, the global DML lock taken by DDL such as `ALTER TABLE ... SET NOT NULL` was registered on the partitioned table only. Another node could keep writing directly into a partition while the DDL was in flight, so the replicated DDL could meet rows it didn't expect and break replication. The lock now applies to the partitioned table and all of its partitions, including after a node restart.
   jira: [BDR-8890, BDR-9448]
   addresses: ""
   type: Bug Fix
   impact: Medium
-- relnote: Conflict detection supports EXCLUDE constraints over an index expression.
+- relnote: Fixed conflict detection for EXCLUDE constraints over an index expression.
   details: |
-    Conflicts on an EXCLUDE constraint that indexes an expression, for example `tstzrange(time_from, time_to)`, are detected, logged to `bdr.conflict_history`, and resolved by the configured conflict resolver, like other EXCLUDE conflicts. Replication from the peer continues.
+    Conflicts on an EXCLUDE constraint that indexes an expression, for example a `tstzrange(time_from, time_to)` column, weren't detected. The writer failed with a plain `23P01` error and retried until it exited, no conflict was logged to `bdr.conflict_history`, the configured conflict resolver wasn't used, and replication from that peer was blocked. Conflict detection now supports EXCLUDE constraints over an index expression, and these conflicts are resolved like other EXCLUDE conflicts.
   jira: BDR-9244
   addresses: ""
   type: Bug Fix
   impact: High
-- relnote: A node can part itself while a writer is logging a conflict.
+- relnote: Fixed a hang when a node parts itself while a writer is logging a conflict.
   details: |
-    Parting releases its lock on `bdr.event_history` before it waits for the receiver and writer processes to exit. A writer that logs an apply conflict at that moment can finish, the part completes, and the node's replication origins are removed.
+    When a node parted itself, cleanup waited for the receiver and writer processes to exit while still holding a lock on `bdr.event_history`. A writer logging an apply conflict at that moment needed the same lock, so the part could hang and leave replication origins behind. Parting now releases the lock before waiting.
   jira: BDR-8564
   addresses: ""
   type: Bug Fix
   impact: Low
-- relnote: The writer recovers from an error while switching the forwarded replication origin.
+- relnote: Fixed a writer crash after an error while switching the forwarded replication origin.
   details: |
-    When an error is raised while a writer switches between replication origins for forwarded changes, the writer clears its origin state as part of handling the error and continues with a valid origin session.
+    If an error was raised while a writer was switching between replication origins for forwarded changes, the writer could be left without an origin session and crashed when it next advanced the origin. The writer now clears its origin state when handling the error.
   jira: BDR-8652
   addresses: ""
   type: Bug Fix
   impact: Medium
-- relnote: Receiver and writer startup is safe when a worker slot is reused.
+- relnote: Fixed a rare receiver or writer crash at startup.
   details: |
-    Worker cleanup checks that a worker slot still belongs to the exiting worker. A new receiver or writer that reuses the slot of a worker that is still exiting keeps its slot data and starts normally.
+    A race between a worker exiting and a new worker reusing the same worker slot could clear the new worker's slot data, causing it to crash while starting. The cleanup now checks that the slot still belongs to the worker it is cleaning up.
   jira: BDR-8571
   addresses: ""
   type: Bug Fix
