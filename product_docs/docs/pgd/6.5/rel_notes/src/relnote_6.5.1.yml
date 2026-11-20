@@ -1,0 +1,679 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: EDB Postgres Distributed
+version: 6.5.1
+date: 19 November 2026
+intro: |
+  EDB Postgres Distributed (PGD) 6.5.1 includes enhancements and bug fixes focused on improving stability and reliability. For a list of known issues, see [Known issues and limitations](/pgd/current/overview/known_issues/).
+
+highlights: |
+  - [Progress-based write leader election](/pgd/current/connection-manager/overview/#understanding-write-leader-failover): the Raft leader now elects the write leader from each candidate's reported replication progress, removing edge cases in which a lagging node could be selected during failover. Elections honor `route_priority` and take effect once all nodes in the group run PGD 6.5.1.
+  - New group options: [`route_writer_election_timeout`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) sets how long the Raft leader waits for candidate bids (default 500ms, minimum 100ms). [`route_writer_election_quorum`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes), off by default, ensures the elected write leader holds every transaction acknowledged under a majority Quorum Commit.
+  - [Smarter switchovers](/pgd/current/reference/tables-views-functions/functions/#bdrrouting_leadership_transfer): leadership transfers without a specified target, including `bdr.transfer_all_leaderships()`, now select the furthest-ahead candidate and honor `route_priority`.
+
+relnotes:
+- relnote: Added the [`route_writer_election_quorum`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes) group option.
+  details: |
+    New group option, off by default and inherited from the parent group. When on, the Raft leader doesn't close a write leader election before it has enough bids to include a node that holds every transaction acknowledged under a majority Quorum Commit. Requires data nodes with synchronous commit, equal `route_priority`, and consensus protocol 6007. Set it with [`bdr.alter_node_group_option()`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) or [`pgd group set-option`](/pgd/current/reference/cli/command_ref/group/set-option/).
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Added the [`route_writer_election_timeout`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) group option.
+  details: |
+    New group option that sets how long the Raft leader waits for candidates' progress bids before electing a write leader. The default is 500ms, the minimum is 100ms, and a group that doesn't set it inherits the parent group's value. A failover takes at least as long as the timeout unless the failed leader returns. Set it with [`bdr.alter_node_group_option()`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) or [`pgd group set-option`](/pgd/current/reference/cli/command_ref/group/set-option/).
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Nodes now send [progress bids](/pgd/current/connection-manager/overview/#understanding-write-leader-failover) to the Raft leader when the write leader is unset.
+  details: |
+    When the write leader is lost, every routable data node reports to the Raft leader how far it durably applied the previous leader's changes, instead of relying on advertised progress that can be a second old. Bids are resent on changes and while the leader stays unset, independent of `leader_progress_tracking_enable`.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: The [write leader is now elected from the candidates' progress bids](/pgd/current/connection-manager/overview/#understanding-write-leader-failover).
+  details: |
+    The Raft leader elects once, after `route_writer_election_timeout`, ranking candidates by highest `route_priority`, then highest bid position, then a node that isn't the Raft leader, then lowest node ID. A previous leader that returns closes the round as soon as it bids, unless a candidate has a higher `route_priority`. Previously, a failover could elect a lagging node. The new election takes effect once all nodes in the group run PGD 6.5.1.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: High
+- relnote: '[Switchover targets that PGD selects automatically](/pgd/current/connection-manager/overview/#understanding-write-leader-failover) are now elected from progress bids.'
+  details: |
+    Leadership transfers without a target, including `bdr.transfer_all_leaderships()`, run an election round and pick the furthest-ahead candidate, so they now honor `route_priority`. The `strict` transfer method waits for the target to catch up, and the `fast` method switches at once.
+  jira: BDR-8512
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: '[Quorum Commit and CAMO transactions are now applied with `keep_retrying`](/pgd/current/commit-scopes/quorum-commit/how-quorum-commit-works/#apply-errors).'
+  details: |
+    Quorum Commit transactions on every applying node, and CAMO transactions on the CAMO partner, use `keep_retrying` regardless of `apply_error_policy`. Previously, another policy could skip or disable the subscription for a transaction whose outcome the origin decides from the votes of its peers. A `WARNING` is logged when the policy is overridden. Other transactions keep the configured policy.
+  jira: BDR-9346
+  addresses: ""
+  type: Change
+  impact: High
+- relnote: Fixed a retried leadership transfer changing the write leader twice.
+  details: |
+    A retried `bdr.routing_leadership_transfer()` request, for example across a Raft leader change, could run again after the transfer completed and elect another, possibly lagging, node. Requests now carry the `write_leader_version` their caller saw, and the Raft leader drops a request that is behind. Requests from nodes older than 6.5.1 are processed unchecked.
+  jira: BDR-8992
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: PGD CLI now honors `ssl_password_command` from its configuration file.
+  details: |
+    The `cluster.ssl.ssl_password_command` setting in `pgd-cli-config.yml` was accepted but ignored, so an obfuscated `sslpassword` failed with "bad decrypt" for users without a libpq deobfuscation preload, such as `root`. The CLI again runs the command with `sslpassword` on standard input and uses its output as the passphrase. Passwords are no longer shown in `--debug` output.
+  jira: BDR-9328
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Lag values in `bdr.node_slots` are no longer reset when a peer reconnects.
+  details: |
+    During the catch-up phase, the `write_lag`, `flush_lag`, and `replay_lag` fields in [`bdr.node_slots`](/pgd/current/reference/tables-views-functions/catalogs-visible/#bdrnode_slots) now report the calculated `offline_lag` until the slot goes back to the streaming state and lag can be measured again, instead of being reset to 0.
+  jira: BDR-7634
+  addresses: "57149"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a deadlock between Quorum Commit transactions doing DDL, the manager, and consensus.
+  details: |
+    Quorum Commit can cause prepared transactions that happen to do DDL to contend for a lock on the `bdr.leader` table until the transaction is resolved. The PGD manager and consensus processes also access this table. If these prepared transactions are orphaned, the manager is the process that resolves them, which caused a deadlock. This is now fixed.
+  jira: BDR-8922
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a memory leak and stuck replication in Quorum Commit transactions.
+  details: |
+    Quorum Commit transactions could cause a memory leak in the walsender. A Quorum Commit transaction could also be streamed to a writer before a commit scope was assigned, so the writer didn't know the commit scope, which could get replication stuck. Both issues were present in 6.5.0 and not in earlier versions.
+  jira: BDR-8927
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a hard hang between a writer and the receiver in CAMO.
+  details: |
+    A receiver restart, for example after the origin node was partitioned and then recovered, could hang when the downstream node had CAMO transactions in its commit decisions. The receiver waited on a flush while the writers waited for the full commit decision feedback queues that the receiver never emptied. The deadlock detector didn't detect this hang, and only a server restart resolved it. This issue has been present since 5.9.1.
+  jira: BDR-8942
+  addresses: "65610"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a hang when a writer restarts while a global lock is held.
+  details: |
+    If a writer or a node restarted after a global lock was acquired (after `ACQUIRE` or `ACQUIRE FINISH`, or after DDL had committed or prepared but before the lock was released), the manager or the writer doing DDL could hang forever. Locks recovered after a restart are now rebuilt without re-acquiring them, writers for the lock's origin are let through, and `FINISH` and `RELEASE` are routed to the same writer.
+  jira: BDR-8700
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a Quorum Commit transaction being confirmed as durable before its prepare is on disk.
+  details: |
+    With the `ON DURABLE` confirmation level of Quorum Commit, a node could confirm a prepared transaction as durable before the `PREPARE` was flushed to disk. If such nodes crashed after confirming, they could lose the prepared transaction while the origin had already committed it, leaving the nodes diverged. The prepare is now flushed before the confirmation is sent.
+  jira: BDR-9180
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a subscription wedged by a Quorum Commit transaction that a node voted down.
+  details: |
+    When a node voted a Quorum Commit (two-phase) transaction down, for example because of a unique violation on a row it already has, its writer exited. On reconnect, the origin decoded the transaction again at `PREPARE`, even though it had since aborted, and re-sent its changes. The node failed on them on every reconnect, never reached the rollback, and stopped applying anything further from that origin. The same applied to aborted transactions streamed again after a reconnect. Changes of an already aborted transaction are no longer forwarded or streamed.
+  jira: BDR-9238
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed Quorum Commit transactions streamed to a file being applied as plain transactions.
+  details: |
+    A Quorum Commit transaction streamed to a file on the peer was applied without the Quorum Commit rules: conflict resolution was asynchronous, and the peer didn't use the commit timestamp and clock skew handling of Quorum Commit. The hint that tells the origin's decoder to stream to a file could also be lost across a reconnect, so the transaction was streamed to a writer and failed at `PREPARE`. In addition, a peer that received a streamed transaction that had already committed could abort it on every reconnect when it hit an `update_origin_change` conflict. All three issues are fixed.
+  jira: BDR-9248
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed inconsistent commit timestamps across nodes for Quorum Commit transactions that use `commit_decision=raft`.
+  details: |
+    For Quorum Commit transactions with `commit_decision=raft`, nodes could record different commit timestamps for the same transaction instead of agreeing on one value. Because this timestamp drives last-writer-wins conflict resolution, the mismatch could resolve the same conflict differently on different nodes. This is fixed.
+  jira: BDR-9348
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a crash-restart loop on EDB Postgres Extended when a Quorum Commit transaction aborts during a forward-mode subscription.
+  details: |
+    On EDB Postgres Extended, a crash-restart loop could occur when a Quorum Commit transaction aborted concurrently while a forward-mode subscription was in progress. This is fixed.
+  jira: BDR-8806
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Prevented DDL from creating galloc sequences with the `CYCLE` option.
+  details: |
+    The `CYCLE` option on galloc sequences could cause duplicate `nextval()` values across nodes. PGD now prevents DDL that results in a galloc sequence with the `CYCLE` option, unless it's replicated DDL from another node.
+  jira: BDR-8594
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the receiver skipping cleanup when it exits with a broken upstream connection.
+  details: |
+    When a receiver exited gracefully while its upstream connection was already broken, sending standby status or CAMO feedback raised an `ERROR` inside the exit callback. That unwound out of the finish function and skipped writer cleanup, closing the connection, and the remaining exit callbacks. The same could happen when the writers were already gone. During process exit, these failures are now logged as warnings and the cleanup runs to completion.
+  jira: BDR-8956
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a Quorum Commit pre-commit message being reported as applied before it is handled.
+  details: |
+    A Quorum Commit pre-commit message is handed to a writer asynchronously. Feedback could report it as written, applied, and flushed before any writer handled it. After a restart, the message was never delivered again, and the origin could count a commit confirmation from a peer that hadn't committed the transaction yet. Non-transactional messages could be skipped this way. This is fixed.
+  jira: BDR-9196
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed global DML lock acquisition failing after a lock holder exits abnormally.
+  details: |
+    The cleanup that clears the per-database global lock group leader never ran in PGD workers and backends. If the leader (a writer dying in the middle of a drain, or a backend disconnecting while holding a DML lock) exited without clearing it, every DML global lock acquisition on that database failed with `cannot drain replication queue for DML lock, another lock is already draining` until the postmaster was restarted. The leader entry is now cleared when its owner exits.
+  jira: BDR-9118
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Allowed pgaudit's event triggers in guarded DDL.
+  details: |
+    DDL run by `bdr.replicate_ddl_command()` or applied by the writer is guarded against changing the current role. The guard also rejected the user ID switch of pgaudit's `SECURITY DEFINER` event trigger functions, so DDL failed whenever pgaudit was installed. PGD now allows a `SECURITY DEFINER` switch to the owner of pgaudit's functions. `SET ROLE` and other switches stay rejected.
+  jira: BDR-9228
+  addresses: "66530"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed prepared transactions of a parted origin not being resolved on some nodes.
+  details: |
+    For a commit scope with commit decision `group`, there were scenarios in which prepared transactions corresponding to an origin that was parted might not get resolved on some nodes in the cluster. This is fixed.
+  jira: null
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the coordinator not being able to reconcile transactions in some scenarios.
+  details: |
+    For a commit scope with commit decision `group`, if remote nodes that have prepared transactions for a down origin are parted after the coordinator has started reconciling that origin, the reconciliation might not complete. This is fixed.
+  jira: null
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed an assertion failure on subtransaction order in file-streamed transactions.
+  details: |
+    The receiver asserted that the subtransactions of a transaction streamed to a file are in XID order. They are added in the order of their first change, which can differ: after `SAVEPOINT a; SAVEPOINT b; INSERT; RELEASE b; INSERT`, both get XIDs with a < b, but the change for b comes first. The receiver then crashed on assert-enabled builds. The receiver no longer checks the XID order and only checks that positions in the changes file increase, comparing the file number as well as the offset.
+  jira: BDR-9144
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed a writer assertion failure when preparing a Quorum Commit transaction drained under a global DML lock.
+  details: |
+    A writer could hit `Assert(proclock->groupLeader == proclock->tag.myProc)` when preparing a Quorum Commit transaction that had been drained under a global DML lock, because the lock group leader was still recorded on its heavyweight locks. This affects assert-enabled builds. The leader is now reset before the transaction is prepared, which also avoids deadlocks during the drain.
+  jira: BDR-9114
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed an out-of-order writer flush that caused an assertion failure on non-transactional messages.
+  details: |
+    When a receiver handled a non-transactional message, it flushed all writers before and after it, but an earlier asynchronous flush request could satisfy a flush. Writers could then keep running transactions and push out-of-order positions into the flush queue, hitting `Assert(pos->local_end < local_pos)` on assert-enabled builds. Flushes are now acknowledged with a flush sequence number, and the receiver waits for its own flush.
+  jira: BDR-8919
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed a misdirected signal from the writer that could restart an instance in a container.
+  details: |
+    After a flush, the writer woke the receiver with a `kill()` call whose two arguments were swapped. On a normal host the call failed, since receiver PIDs are larger than the highest signal number, and the receiver waited up to 1 s for the flush confirmation unless something else woke it. In a container or another fresh PID namespace, the call could hit a Postgres process: with a receiver at PID 24, the writer sent signal 24 (`SIGXCPU`) to the checkpointer at PID 10, and the postmaster restarted the instance. The writer now wakes the receiver with the arguments in order, and only after it has confirmed the flush.
+  jira: BDR-7360
+  addresses: "66414"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed the Raft term of exported consensus snapshots.
+  details: |
+    `bdr.consensus_snapshot_export()` labeled a snapshot with the node's current Raft term instead of the term of the last entry the snapshot includes. After an election the two differ. Nodes that imported such a snapshot then disagreed with the exporting node about that entry, and when the exporting node was elected leader again, the Raft group committed no entries until the next snapshot sync. `pgd raft sync-snapshot` exports and imports snapshots this way. Snapshots now carry the term of their last entry.
+  jira: BDR-9020
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed the loss of a committed Raft entry when the first node joins a Raft group.
+  details: |
+    A Raft leader treated a node added while it was leader as silent until the node's first response. When the first node to join a Raft group became a voter before the leader's first heartbeat, the leader stepped down without having sent a heartbeat. The joining nodes then elected a leader with an empty log while the old leader held a committed entry, and that entry was truncated. The leader now counts a node it adds as heard from, as it does for the nodes present at its election.
+  jira: BDR-9049
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed `pgd node upgrade` restoring replication origins at the wrong position.
+  details: |
+    `pgd node upgrade` restores each replication origin at the highest progress of its writer origins, but its patterns for the writer origins didn't match their names:
+
+    - An origin whose ID contains a hex letter lost its writer origins and was restored behind them.
+    - An origin could take the progress of another origin's writers (origin `0x2` matched the writers of `0x21`). Its subscription then started ahead in the wrong peer's WAL and skipped transactions.
+    - A writer origin without recorded progress was taken as the furthest ahead.
+    - The origins of a database whose name starts with `writer` weren't restored at all.
+
+    The writer origins are now matched by their exact names.
+  jira: BDR-9079
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a corrupted slot name in `bdr.node_local_info` after concurrent joins.
+  details: |
+    In the promote step of a node join, PGD kept a pointer to a short-lived copy of the replication slot name, and a later update of `bdr.node_local_info` wrote whatever that memory held by then. After concurrent joins, a row could hold a truncated slot name followed by garbage bytes, and the replication slot checks then failed. PGD now keeps its own copy of the name.
+  jira: BDR-9002
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed switching between `bdr.raft_election_timeout` and `bdr.raft_global_election_timeout`.
+  details: |
+    `bdr.raft_election_timeout` is a deprecated alias of `bdr.raft_global_election_timeout`, and only one of the two can be set. Replacing one name by the other in the configuration file failed on every reload until a restart: the postmaster shut down, and in other processes the statement that processed the reload failed. Meanwhile the node ran with the default timeout. With both names in the configuration file, the server didn't start. Now:
+
+    - A conflicting line in the configuration file is logged and skipped, at startup and on reload. On a reload the name already in effect wins; at startup, `bdr.raft_global_election_timeout`.
+    - One reload applies an edit of the file that replaces one name by the other.
+    - `ALTER SYSTEM` still refuses to set the second name. `RESET` the first one and reload before you set it.
+    - Raft applies a new timeout at the next consensus restart, as before.
+  jira: BDR-9072
+  addresses: "66284"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `pgd group set-option` for the proxy fallback options.
+  details: |
+    `pgd group set-option` with `proxy_fallback_node_groups` or `proxy_fallback_node_group_timeout` always failed with "unknown proxy configuration key", because the CLI passed names that `bdr.alter_proxy_option()` doesn't know. The CLI now passes the server's names, `fallback_groups` and `fallback_group_timeout`. Proxy options exist only on PGD 5 nodes, so in 6.5.1 this fix applies to the CLI connected to a PGD 5 cluster.
+  jira: BDR-9101
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Connection Manager now says which server closed a connection during the handshake.
+  details: |
+    When a Postgres server closed the connection before the startup handshake or the SCRAM exchange had completed, Connection Manager logged `connection failed: ProtocolError("")`. The `WARNING` now names the server address and the handshake phase, and shows the error as text (`protocol error: ...`) rather than in its internal form.
+  jira: BDR-8071
+  addresses: "60716"
+  type: Enhancement
+  impact: Low
+- relnote: Connection Manager now keeps routes for `read_write_consensus_timeout` after the Raft leader is lost.
+  details: |
+    `read_write_consensus_timeout` keeps the last known routes alive for that long after the Raft leader goes away. Connection Manager measured it from its last routing read instead, and it reads routing only when signaled. On a quiet cluster that read was older than any timeout, so Connection Manager dropped the routes at once and disconnected every client for a Raft election that took seconds. The window now starts when the local node lost its Raft leader, also for a Connection Manager that starts or is signaled during the outage.
+  jira: BDR-8631
+  addresses: "63770"
+  type: Bug Fix
+  impact: High
+- relnote: Connection Manager now raises its open-file limit at start.
+  details: |
+    The Connection Manager worker inherited the postmaster's soft open-file limit (`RLIMIT_NOFILE`), which is 1024 with the systemd defaults. Connection Manager needs one descriptor per client and one per pooled server connection, so in transaction pooling it ran out at a few hundred clients. It now raises the soft limit to the hard limit at start and logs the result. If the hard limit can't cover the configured client connections, it logs a `WARNING` at start and on reload. In that case, raise `LimitNOFILE` in the Postgres service unit.
+  jira: BDR-8951
+  addresses: ""
+  type: Enhancement
+  impact: High
+- relnote: Connection Manager now restarts in full when it runs out of file descriptors.
+  details: |
+    When accepting a client failed with too many open files (`EMFILE` or `ENFILE`), Connection Manager was meant to stop, wait out its grace period, and restart. Only the read-write listener stopped: the read-only listener and the HTTP status port kept serving, Connection Manager didn't restart, and it accepted no more read-write clients. Now all of Connection Manager stops and restarts.
+  jira: BDR-8952
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed "unnamed prepared statement does not exist" errors through Connection Manager.
+  details: |
+    Connection Manager skips a client's `Parse` of an unnamed statement when the backend already holds the same one. It kept that statement in its cache across its own simple queries, which it sends to set a new client's settings on a backend or to roll back at release, although a simple query destroys the unnamed statement. When a client parsed the same text as the previous client, Connection Manager skipped the `Parse`, and the client's `Bind` failed with "unnamed prepared statement does not exist".
+  jira: BDR-9033
+  addresses: "65846"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed Connection Manager skipping an unnamed `Parse` that a pipeline needed.
+  details: |
+    Connection Manager skips a client's unnamed `Parse` when the backend's unnamed statement has the same text. It updated its record of that statement only on the backend's replies, so it missed the messages it had forwarded in between that replace or destroy the statement: another unnamed `Parse` in the same pipeline, an unnamed `Parse` that fails, or an unnamed `Close`. The `Bind` of a skipped `Parse` then ran the other statement. It failed with `08P01` `bind message supplies N parameters, but prepared statement "" requires 0`, or, without parameters, returned the other statement's result without an error. Such pipelines come, for example, from the `BEGIN` that the EDB JDBC and pgjdbc drivers send in front of a first one-shot statement, and from a `Statement` batch with mixed SQL. Connection Manager now records the unnamed statement as of the last message it forwarded.
+  jira: BDR-9183
+  addresses: "65846"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed "prepared statement already exists" errors through Connection Manager.
+  details: |
+    At every `ReadyForQuery`, Connection Manager forgot the statements whose `Parse` it had forwarded and the backend hadn't answered yet. When a `Parse` forwarded behind that `ReadyForQuery` was still in flight as the client's `Bind` of it arrived, Connection Manager sent the `Parse` again. The backend refused it with `42P05` "prepared statement already exists", and the client's transaction failed. The EDB JDBC driver produced this order with `autosave`, `cleanupSavepoints` or `preferQueryMode=extendedForPrepared`, whenever a `Bind` was large enough to reach Connection Manager in a later read. Connection Manager now keeps a statement until its `Parse` is answered.
+  jira: BDR-9185
+  addresses: "65846"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed wrong date and time results from prepared statements shared with `server_reset_mode = fast`.
+  details: |
+    With `server_reset_mode = fast`, Connection Manager keeps prepared statements on a backend from one client session to the next, and a session that prepares the same text with the same parameter types reuses the statement. Postgres converts untyped literals when it parses a statement, so the statement keeps the `TimeZone`, `DateStyle`, client encoding and other settings of the session that prepared it. After a UTC session had prepared `'2024-01-02 10:00'::timestamptz::text`, an `Asia/Tokyo` session that prepared the same statement read `2024-01-02 19:00:00+09` instead of `2024-01-02 10:00:00+09`. Sessions now share a prepared statement only when their tracked settings match. When a session changes its own settings, its named statements are parsed again with the new settings, where a direct connection to Postgres would keep the old parse.
+  jira: BDR-9055
+  addresses: "65846"
+  type: Bug Fix
+  impact: High
+- relnote: Connection Manager now keeps a client's `default_transaction_read_only`, `scram_iterations` and `db_dialect` across backends.
+  details: |
+    Connection Manager sets a client's reported settings again on each backend the client gets, but only the settings it tracks. `default_transaction_read_only`, `scram_iterations` and, on EDB Postgres Advanced Server, `db_dialect` weren't tracked. In transaction pooling with `server_reset_mode = discard_all`, the reset at release cleared a client's `SET` of one of them, and the client's next transaction ran with the default: a client that had made itself read-only could write. Connection Manager now tracks the three. Related change:
+
+    - A new client now starts from the settings the backend reported at its own startup. Previously, with `server_reset_mode = fast`, a new client took over the previous client's `SET` of a reported setting and kept it for its whole session: another client's `default_transaction_read_only = on` made it read-only, and another client's `db_dialect` became its dialect. With the fast reset, a configuration reload that changes one of these settings reaches a new client only on a backend that started, or had a full reset, after the reload. Session settings that aren't reported still stay on the backend for later clients with the fast reset.
+  jira: BDR-9111
+  addresses: "65846"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed client settings lost with `server_reset_mode = fast`.
+  details: |
+    With `server_reset_mode = fast`, Connection Manager could lose track of a client's reported settings, so that the client ran with another client's value or lost its own:
+
+    - When Connection Manager had set a setting on a backend for an earlier client, a new client got the default through a `RESET`, and Connection Manager waited for the backend to report the result. A backend that already showed the default reported nothing, and the new client was left with no value of its own. This followed an earlier client's `SET` back to the default (EDB JDBC's `setReadOnly(false)` with `readOnlyMode=always`), a Connection Manager `SET` of a value the backend shows as its default (EDB JDBC's startup `DateStyle` `ISO`, shown as `ISO, MDY`), or a configuration reload. For `default_transaction_read_only`, the client ran read-only on a backend that another client had made read-only, or lost its own read-only setting, so that its next transaction could write.
+    - When a client left inside a transaction, the `ROLLBACK` at release put back the settings changed in that transaction, but Connection Manager kept the values from inside it. A read-only client could then write after another client had set `default_transaction_read_only` inside a transaction and disconnected, and the other way round.
+
+    Connection Manager now sets a new client's defaults back on the backend when they differ, without waiting for a report, and tracks the settings that the release `ROLLBACK` puts back. `server_reset_mode = discard_all` wasn't affected.
+  jira: BDR-9189
+  addresses: "65846"
+  type: Bug Fix
+  impact: High
+- relnote: Connection Manager no longer hands out pooled backends that have ended.
+  details: |
+    A backend can end between transactions, through `pg_terminate_backend()`, `idle_session_timeout` or a crash. The pool handed such a backend to the next client: a new client failed to connect with the dead backend's `FATAL` error, and a client between transactions failed its next statement. When Connection Manager takes a backend from the pool, it now checks, without waiting, whether the backend sent anything or closed its connection while idle, and replaces it if so. One `LOG` line per checkout names the discarded backends and the last reason (`discarded N idle server connection(s) to ... whose backend ended: ...`). This affects session and transaction pooling.
+  jira: BDR-9189
+  addresses: "65846"
+  type: Bug Fix
+  impact: Medium
+- relnote: Removed two spurious Connection Manager warnings.
+  details: |
+    Connection Manager no longer causes these two warnings:
+
+    - When a client left inside a transaction, Connection Manager pooled the backend still marked as inside a transaction after its `ROLLBACK`, and the next release sent a second `ROLLBACK`. That cost a round trip and logged `WARNING: there is no transaction in progress` in the server log. Connection Manager now takes the transaction state from the reply to its release, and discards a backend that isn't idle after the release.
+    - With `server_pool_mode = none`, a client that had used large objects ended with `WARNING: dropping tainted server connection: N outstanding request(s)`. The warning was the only effect.
+  jira: BDR-9189
+  addresses: "65846"
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed EDB JDBC `CallableStatement` calls through Connection Manager on EDB Postgres Advanced Server.
+  details: |
+    For a `CallableStatement` on EDB Postgres Advanced Server, the EDB JDBC driver sends `ParseOut` instead of `Parse`, and adds `DescribeOut` and `ExecuteOut` around `Execute`. Connection Manager didn't know these messages. In session and transaction pooling it matches every server reply to a request it forwarded, so it dropped the client with `ProtocolError("unexpected ParseComplete: front is Some(Bind)")`. A `DescribeOut` without parameters failed the same way. Connection Manager now handles `ParseOut` and `DescribeOut` as a `Parse` and a `Describe`, so transaction pooling also caches and replays a named `ParseOut`. `server_pool_mode = none` wasn't affected.
+  jira: BDR-9110
+  addresses: "65684"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed leader DML locks timing out with a data node down.
+  details: |
+    With any data node down, the node that requested a leader DML lock (`TRUNCATE`, `ALTER TABLE ... ADD COLUMN`, `LOCK TABLE` and others) waited for all data nodes, as for a plain DML lock, instead of for the write leaders. The statement failed with a global lock timeout although all write leaders had answered. The requesting node now finds the lock type from its own lock.
+  jira: BDR-9316
+  addresses: "63619"
+  type: Bug Fix
+  impact: High
+- relnote: Leader locks no longer wait for a node group whose nodes are all parted.
+  details: |
+    A leader lock waits for the write leader of every node group with routing enabled. When all nodes of such a group were lost and parted, the group stayed in the quorum, and every leader DDL and DML lock timed out. A group whose write leader can't answer now counts only while another of its nodes takes part in global locking, so a group whose nodes are all parting or parted is left out. Nodes not yet upgraded to 6.5.1 still count the group.
+  jira: BDR-9317
+  addresses: "63619"
+  type: Bug Fix
+  impact: Medium
+- relnote: Leader locks now report a node group they can't reach.
+  details: |
+    When no node of a node group with routing enabled was connected, a leader lock waited for the whole global lock timeout and didn't say which group it waited for. It held its DDL epoch meanwhile, so every other DDL in the cluster queued behind it. Before it requests the lock, PGD now checks for such a group and reports it at the level of [`bdr.predictive_checks`](/pgd/current/reference/tables-views-functions/pgd-settings/#bdrpredictive_checks):
+
+    - `ERROR`: the lock fails with an error that names the group and its write leader, also when the group becomes unreachable while the lock waits.
+    - `WARNING`, the default: the same message as a `WARNING`, and the lock waits until its timeout.
+    - `LOG` or `DEBUG`: nothing is reported.
+
+    A node counts as connected when it streams from the local node or the local node from it. A group whose write leader is down but which has other connected nodes still waits for the failover.
+  jira: BDR-9317
+  addresses: "63619"
+  type: Enhancement
+  impact: Medium
+- relnote: Fixed `pgd node setup` taking a physically joined node as promoted too early.
+  details: |
+    Right after `pg_basebackup`, while the new node didn't accept connections yet, `pgd node setup` read the node's `pg_control`. The file was still the source node's copy and said "in production", so `pgd node setup` took the node as promoted while it was about to enter archive recovery. The cleanup that followed, `SELECT bdr.remove_unwanted_data(true)`, then failed on the node with `ERROR: cannot acquire lock mode ShareRowExclusiveLock on database objects while recovery is in progress`. `pgd node setup` now takes the node as promoted only when `pg_is_in_recovery()` on the node says so.
+  jira: BDR-9003
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: '`pgd node setup` now runs every physical join step against one node behind a proxy or load balancer.'
+  details: |
+    `pgd node setup` accepts a proxy or load balancer as `--cluster-dsn` and finds the data node behind it. The physical join then gave the `--cluster-dsn` itself to `pg_basebackup` and to the metadata copy, and looked the data node up again for its cleanup and checks. Behind a balancer that sends successive sessions to different nodes, the base backup came from another node, the metadata copy imported a snapshot on a node that hadn't exported it, and after a failure the cleanup reported the replication slot dropped while it stayed on the source node and retained WAL. All these steps now use the data node found first.
+  jira: BDR-9082
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: '`pgd node upgrade` now recreates only the PGD replication slots.'
+  details: |
+    After `pg_upgrade`, `pgd node upgrade` recreated every logical slot of the old instance as a slot with the `bdr` plugin in the database it was connected to. A slot that PGD doesn't own, such as a `pgoutput` slot for CDC in another database, came back with the wrong plugin and database, at the new cluster's current WAL position, when the old cluster ran PostgreSQL 16 or earlier. From PostgreSQL 17, where `pg_upgrade` migrates such slots itself, the upgrade failed after `pg_upgrade` had run. `pgd node upgrade` now recreates only the `bdr` and `pglogical` slots of the PGD database, and lists the other logical slots, which `pg_upgrade` or you handle.
+  jira: BDR-9090
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: '`pgd raft restore` now compares replication lag as a number.'
+  details: |
+    `pgd raft restore` removes the down nodes that are furthest behind first, but compared their lag as text (`'4000000'` sorted above `'14000000'`). Given a choice, it could remove a node that was less behind, and its recovery plan showed the smaller lag. A node with an empty lag in every row also made the command panic. It now compares the lag as a number.
+  jira: BDR-9092
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: '`pgd raft show --journal` now shows the journals of all Raft groups.'
+  details: |
+    A node in a subgroup with its own Raft holds two journals, the top group's and its subgroup's. `pgd raft show --journal` without `--group`, and the journal section of `pgd raft show`, took the first `--limit` entries sorted by group name, so the top group's entries filled the result and the subgroup's journal was missing. The CLI now takes the newest entries of each group in turn, at most `--limit` in total, and still shows them by group.
+  jira: BDR-9096
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: '`pgd node set-config` now refuses a `--dsn` that reaches another node.'
+  details: |
+    `pgd node <name> set-config` ran `ALTER SYSTEM` on whichever node `--dsn` or `PGD_CLI_DSN` connected to, whatever node was named. With a DSN for `n1`, `pgd node n2 set-config` changed `n1` and reported success, and so did an unknown node name. The CLI now checks the connected node's name and refuses a mismatch. The check is skipped on an instance that isn't a PGD node yet, and for a role that can't read `bdr.local_node_summary`.
+  jira: BDR-9097
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: PGD CLI now shows joining and parting nodes as "Not checked" instead of "Unreachable".
+  details: |
+    `bdr.run_on_all_nodes()` skips nodes that are joining or parting. `pgd nodes list`, `pgd node show` and `pgd group show` took the missing answer for a failed connection and showed such a node as `Unreachable` while it was up. The Connections check of `pgd cluster show --health` reported "All BDR nodes are accessible" while a joining node was down. These nodes now show as `Not checked`, and the Connections check warns about them by name and state. Parted nodes are left out of the check.
+  jira: BDR-9098
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: The `bdr.get_min_required_*()` functions now count every PGD process.
+  details: |
+    Nodes sized from these functions could run out of worker processes or replication origins during a join. The new [`bdr.get_min_required_settings()`](/pgd/current/reference/tables-views-functions/functions-internal/#bdrget_min_required_settings) function returns all minimums as `jsonb` keyed by setting name.
+  jira: BDR-8166
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed the PGD CLI's Raft leader lookup when some nodes don't answer.
+  details: |
+    The CLI took the Raft leader from the first row of `bdr.group_raft_details`, which is ordered by node name and has an empty row for each node that doesn't answer. When the first nodes by name were unreachable, for example with a whole region down, the CLI concluded that the group had no leader:
+
+    - `pgd groups list --verbose` showed an empty Raft leader.
+    - `pgd raft set-leader` didn't recognize the current leader and requested a transfer to it.
+    - `pgd raft set-leader --wait-for-completion` reported a failure after a successful transfer.
+    - `pgd raft show --followers` and `pgd raft sync-snapshot` failed with "no leader" errors.
+
+    The CLI now takes the leader known in the newest Raft term that any node reports.
+  jira: BDR-9071
+  addresses: "66386"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed missing replication slots for witness nodes after concurrent joins.
+  details: |
+    Witnesses skipped join serialization, though they need slots in both directions. A witness joining concurrently with other nodes could end up without some slots, breaking later operations such as node parting. Witnesses are now serialized like data nodes.
+  jira: BDR-6628
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: '`pgd_bench` now prepares statements without blocking its other clients.'
+  details: |
+    In `-M prepared` mode without a pipeline, [`pgd_bench`](/pgd/current/reference/tables-views-functions/testingandtuning/#pgd_bench) prepared each client's script with synchronous calls that blocked the other clients of the same thread. Through a transaction-pooling Connection Manager with more clients than pooled server connections, the benchmark could deadlock. `pgd_bench` now prepares the statements asynchronously. The new option `--compat=on` restores the synchronous prepare. The default is `--compat=off`.
+  jira: BDR-8513
+  addresses: ""
+  type: Enhancement
+  impact: Low
+- relnote: Fixed cancel requests through Connection Manager.
+  details: |
+    Connection Manager mishandled cancel requests in two ways:
+
+    - In transaction pooling, a cancel request went to the backend the client got at connection start, not to the one running its query, so it could cancel another client's statement. Connection Manager now forwards a cancel to the backend the client holds at that moment, and waits for Postgres to close the cancel connection before the client goes on, as with a direct connection. A cancel from a client that holds no backend is dropped, since a cancel only interrupts a running statement. A cancel sent while the client's query still waits for a pooled backend is dropped too, and the query then runs.
+    - libpq 17 and later send a cancel over TLS when the session uses TLS (the new cancel API, `PQcancelCreate`). Connection Manager refused such a cancel with a protocol error, and the query ran on. It now accepts it.
+  jira: BDR-8225
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed `update_recently_deleted` conflicts detected as `update_missing`.
+  details: |
+    An update to a recently deleted row could be classified as `update_missing`, so the default `insert_or_skip` resolver inserted the deleted row again. The conflict is now detected correctly.
+  jira: BDR-8794
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed streamed transactions failing to apply with the WAL decoder enabled.
+  details: |
+    With the WAL decoder enabled and transaction streaming in use, two problems could break replication of large or catalog-only transactions:
+
+    -   A streamed transaction whose changes were all filtered out, such as an autoanalyze that touches only catalogs, could make the receiving node fail an assertion or crash.
+    -   If a node reconnected while a large transaction was still open, the WAL sender could stop with "encountered incomplete transaction", and the transaction reached the node only after another reconnect.
+  jira: BDR-9490
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed subscriptions staying disabled after internal operations.
+  details: |
+    PGD temporarily disables subscriptions during some internal operations, and didn't enable them again when:
+
+    -   Several nodes went down together and the source node of their sync ran out of replication slots. The source now runs the syncs one at a time.
+    -   On a subscriber-only node, write leaders changed and changed back before topology reconfiguration finished.
+  jira: [BDR-9338, BDR-9340]
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed [client certificate checks](/pgd/6.5/connection-manager/authentication/#using-client-certificate-authentication) in Connection Manager.
+  details: |
+    Connection Manager now checks client certificates the way Postgres does. Before, it accepted a client certificate without checking who issued it. The problem affected only `cert` rules in the Connection Manager HBA configuration, on nodes where the Postgres server uses `trust` authentication for connections from Connection Manager. Other related changes:
+
+    -   Client certificates are checked against `ssl_ca_file`, `ssl_crl_file`, and `ssl_crl_dir`, and the `clientcert` HBA option is applied. Without `ssl_ca_file`, `cert` authentication fails, as in Postgres.
+    -   If a CRL can't be parsed, for example a version 1 CRL, client certificates are refused and a `WARNING` is logged. Other authentication methods keep working.
+    -   The HTTPS status port (`use_https`) no longer asks for a client certificate. If the certificate or key file is missing, it serves plain HTTP and logs a `WARNING`.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Connection Manager now follows the [`ssl` setting](/pgd/6.5/ensuring-security/access-controls/client-connections/#enabling-ssl) for client connections.
+  details: |
+    Connection Manager now offers TLS to clients only when `ssl` is on, as Postgres does. Before, it offered TLS whenever `ssl_cert_file` and `ssl_key_file` pointed to existing files, whatever `ssl` was set to. With `ssl` on, both files must be set. If clients connect to Connection Manager over TLS, set `ssl = on` before upgrading. The HTTPS status port (`use_https`) isn't affected and keeps using `ssl_cert_file` and `ssl_key_file` whatever `ssl` is set to.
+  jira: BDR-9482
+  addresses: ""
+  type: Change
+  impact: Medium
+- relnote: Fixed `monitor_use_https` and node eviction group options lost on nodes that receive a Raft snapshot.
+  details: |
+    Consensus snapshots didn't include `monitor_use_https`, `evict_node_lag_bytes`, and `evict_node_action`. Fixed once all nodes run PGD 6.5.1.
+  jira: BDR-9066
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Removed password hashes and cached credentials from Connection Manager log messages.
+  details: |
+    When a connection to Connection Manager matched no HBA rule, the "no matching HBA rule found" error written to the server log included the role's stored password hash. It also included credentials cached from the role's earlier logins, such as the password itself after a login with the cleartext `password` method. The log messages now show only the role name, password type, and role memberships.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Connection Manager now applies renewed TLS certificates on reload.
+  details: |
+    -   A reload during certificate replacement no longer drops TLS or fails. The current certificate is kept and a `WARNING` logged.
+    -   The HTTP status port serves the reloaded certificate, and `use_https` changes apply on reload.
+    -   Server connection pools are rebuilt when the client certificate, key, or CA of the node DSNs changes.
+  jira: [BDR-9356, BDR-9357, BDR-9358]
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed commit scopes with `require_write_lead` not degrading in a [primary/DR deployment](/pgd/current/planning/deployment-patterns/primary-dr/).
+  details: |
+    Degrade permission was asked from the Raft of the node's own group instead of the group that routes it. With one primary node down, that Raft had no majority, so commits kept blocking instead of degrading.
+  jira: BDR-9339
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a regression in 6.5.0 where row versioning couldn't be used with a commit scope.
+  details: |
+    If a transaction involved a change in any table that had row versioning and ran under any commit scope, including Synchronous Commit, Quorum Commit, Lag Control, and CAMO, it gave a `WARNING` and ran without the commit scope. The regression is fixed.
+  jira: BDR-9521
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: PGD CLI no longer panics when its output pipe closes early.
+  details: |
+    Piping `pgd` output into a command such as `head` panicked with "Broken pipe". The CLI now exits quietly, so it works in scripts and pipelines.
+  jira: BDR-9354
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `leader_id` being reported as 0 on the Raft leader.
+  details: |
+    A node that granted a prevote request cleared its record of the current leader, even though a prevote doesn't change who leads the term. On the sitting leader, the node recorded its own `leader_id` as 0 and kept that value until the next leadership change. As a result, `bdr.get_raft_status()` reported a `leader_id` of 0 on the leader, and the PGD CLI clock-drift check failed. Granting a prevote no longer changes the known leader.
+  jira: BDR-8824
+  addresses: "65124"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a consensus worker crash when reconciling prepared transactions of a dropped node.
+  details: |
+    If a node was dropped, for example with `bdr.drop_node(force := true)`, while its request to reconcile prepared (two-phase commit) transactions was still waiting in the Raft log, the consensus worker crashed once the remaining nodes elected a leader and applied the request. The consensus worker now skips reconcile requests for nodes that no longer exist.
+  jira: null
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed PGD ignoring the `failover` option of logical replication slots on Postgres 17 and later.
+  details: |
+    On EDB Postgres Extended and EDB Postgres Advanced Server 17 and later, with `failover_slot_scope` set to `global`, PGD registered every new non-temporary logical replication slot as a failover slot, even if it was created with `failover` set to `false`, the Postgres default. These slots were created on every node, holding back WAL on each one, and creating them required Raft consensus. PGD now honors the `failover` option, as documented: create slots with `failover => true` to make them failover slots. Slots already listed in `bdr.failover_replication_slots` remain failover slots. To make one local, drop it and re-create it without the option.
+  jira: BDR-9487
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a potential crash in the local node lookup.
+  details: |
+    An internal lookup of the local node could crash the backend instead of returning cleanly when the database had the BDR extension installed but no local node, for example before [`bdr.create_node()`](/pgd/current/reference/tables-views-functions/nodes-management-interfaces/#bdrcreate_node) or after the node was parted. No known user operation reached this code path. The lookup is now safe for such callers.
+  jira: BDR-8536
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed `bdr.monitor_group_raft()` reporting OK while a node follows a stale Raft leader.
+  details: |
+    `bdr.monitor_group_raft()` now checks the leader of every follower node. Before, it checked only every other follower. If a follower with a stale or missing leader was one of the skipped nodes, the function returned OK. It should have returned CRITICAL with "There are node(s) following a leader different than the node set as RAFT_LEADER". The problem affected PGD 5.0.0 and later. Other related changes:
+
+    -   When more voting nodes are unreachable than the group contains, the function now returns CRITICAL with "The BDR group raft does not reach the quorum". Before, it returned OK.
+  jira: BDR-9311
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed leader DML locks not locking the relation.
+  details: |
+    Fixed an issue where a DML lock taken in "leader" mode (the default path when `bdr.ddl_locking = 'auto'` and routing is enabled) registered globally but did not take the relation lock. DDL that relies on a DML lock could then be granted while a write was still in progress on the write leader. The DDL now waits for in-flight writes, as it does in "all" mode.
+  jira: BDR-8884
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a memory leak when applying changes to partitioned tables.
+  details: |
+    Fixed a memory leak in the native writer when applying changes to partitioned tables. Rows landing on different partitions repeatedly triggered per-relation setup that left memory allocated until the end of the transaction. Large bulk loads into partitioned tables could therefore grow memory without bound and cause out-of-memory failures.
+  jira: BDR-9030
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed Connection Manager failing to connect to Postgres after a credential change on reload.
+  details: |
+    With SCRAM authentication, a user or password change while clients were connected could make a new backend connection fail with `SCRAM client key is not available`. Connection Manager now keeps the cached credentials of users whose password hasn't changed across a reload.
+  jira: BDR-8485
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: A global DML lock on a partitioned table now locks the whole partition hierarchy.
+  details: |
+    Previously, the global DML lock taken by DDL such as `ALTER TABLE ... SET NOT NULL` was registered on the partitioned table only. Another node could keep writing directly into a partition while the DDL was in flight, so the replicated DDL could meet rows it didn't expect and break replication. The lock now applies to the partitioned table and all of its partitions, including after a node restart.
+  jira: [BDR-8890, BDR-9448]
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed conflict detection for EXCLUDE constraints over an index expression.
+  details: |
+    Conflicts on an EXCLUDE constraint that indexes an expression, for example a `tstzrange(time_from, time_to)` column, weren't detected. The writer failed with a plain `23P01` error and retried until it exited, no conflict was logged to `bdr.conflict_history`, the configured conflict resolver wasn't used, and replication from that peer was blocked. Conflict detection now supports EXCLUDE constraints over an index expression, and these conflicts are resolved like other EXCLUDE conflicts.
+  jira: BDR-9244
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a hang when a node parts itself while a writer is logging a conflict.
+  details: |
+    When a node parted itself, cleanup waited for the receiver and writer processes to exit while still holding a lock on `bdr.event_history`. A writer logging an apply conflict at that moment needed the same lock, so the part could hang and leave replication origins behind. Parting now releases the lock before waiting.
+  jira: BDR-8564
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed a writer crash after an error while switching the forwarded replication origin.
+  details: |
+    If an error was raised while a writer was switching between replication origins for forwarded changes, the writer could be left without an origin session and crashed when it next advanced the origin. The writer now clears its origin state when handling the error.
+  jira: BDR-8652
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a rare receiver or writer crash at startup.
+  details: |
+    A race between a worker exiting and a new worker reusing the same worker slot could clear the new worker's slot data, causing it to crash while starting. The cleanup now checks that the slot still belongs to the worker it is cleaning up.
+  jira: BDR-8571
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Updated the FIPS cryptographic module of Connection Manager to AWS-LC FIPS 3.6.0.
+  jira: BDR-9305
+  addresses: ""
+  type: Security
+  impact: Medium

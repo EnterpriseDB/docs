@@ -64,11 +64,13 @@ In a geo-distributed cluster, write leadership can move between locations due to
 
 ### Handling failover
 
-When a write leader failure occurs, PGD detects it through TCP keepalives and connection timeouts, then elects a new write leader via Raft consensus. Tune the following parameters to match your cross-location latency and acceptable failover time:
+When a write leader failure occurs, PGD detects it through TCP keepalives and connection timeouts, then elects a new write leader via Raft consensus. The Raft leader elects from the progress that the candidate nodes report. See [Understanding write leader failover](/pgd/current/connection-manager/overview/#understanding-write-leader-failover). Tune the following parameters to match your cross-location latency and acceptable failover time:
 
 - `bdr.global_keepalives_idle`, `bdr.global_keepalives_interval`, and `bdr.global_keepalives_count` control how quickly a failed connection is detected.
 - `bdr.global_connection_timeout` sets the maximum time to wait when establishing a connection. In high-latency deployments, lower this value to detect failures faster without waiting for the full TCP timeout.
 - `bdr.raft_global_election_timeout` controls how long before a new write leader is elected at the top-level group. `bdr.raft_group_election_timeout` applies to per-location subgroup elections. Increase these values if expected cross-location latency is causing false elections from network jitter.
+
+While the election runs, the group has no write leader, and Connection Manager rejects new read-write connections with "no nodes available" for up to `route_writer_election_timeout` (default `500ms`). A failover takes at least as long as the timeout, unless the failed write leader returns. Make sure applications retry connections that fail during a failover.
 
 ### Maintaining quorum
 
@@ -82,7 +84,7 @@ Don't fence or stop nodes if doing so reduces the number of remaining voting nod
 
 ### Performing a planned switchover
 
-Before a planned switchover, verify that the target node is healthy and caught up. Ensure no long-running transactions are active on the current leader, and perform the switchover during a low-traffic period where possible.
+Before a planned switchover, verify that the target node is healthy and caught up. A switchover also runs without a write leader for a short time, so applications must retry connections that fail during it. Ensure no long-running transactions are active on the current leader, and perform the switchover during a low-traffic period where possible.
 
 1. Check that the target node's replication slot is active, streaming, and close to zero lag:
 
