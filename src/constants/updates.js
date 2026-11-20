@@ -3,7 +3,7 @@ import IconNames from "../components/icon/iconNames";
 export const updates = [
   {
     title: "Analytics Accelerator 1.12",
-    icon: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+    icon: IconNames.BIG_DATA,
     description:
       "Analytics Accelerator 1.12 adds native replication of Postgres tables to Delta Lake or Iceberg without PGD, INSERT support on PGAA tables, AWS Glue Data Catalog compatibility, and broader query pushdown, including over partitioned tables.",
     url: "/pgaa/latest/",
@@ -11,9 +11,9 @@ export const updates = [
   },
   {
     title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.2",
-    icon: IconNames.MODULE,
+    icon: IconNames.KUBERNETES_MONO,
     description:
-      "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.2 makes PostgreSQL 18.7 the default image and ends support for PostgreSQL 14. The 1.30 line introduces a primary Lease for safe primary election, a DatabaseRole resource for declarative role management with TLS client certificates, and PgBouncer image management through image catalogs.",
+      "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.2 makes PostgreSQL 18.7 the default image and ends support for PostgreSQL 14. The 1.30 line adds a primary Lease for safe primary election and a DatabaseRole resource for declarative role management.",
     url: "/postgres_for_kubernetes/latest/",
     moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_30_2_rel_notes/",
   },
@@ -21,7 +21,7 @@ export const updates = [
     title: "Hybrid Manager 2026.11",
     icon: IconNames.MODULE,
     description:
-      "This Innovation Release of EDB Postgres® AI Hybrid Manager adds project-level resource quotas, more disaster-recovery options including control plane recovery and a Force failover option, new backup-failure alerts that now cover AWS RDS, and a ClickHouse-backed metrics and alerting backend.",
+      "This Innovation Release of EDB Postgres® AI Hybrid Manager adds project-level resource quotas, control plane recovery, backup-failure alerts that cover AWS RDS, and a ClickHouse-backed metrics and alerting backend.",
     url: "/edb-postgres-ai/innovation-release/hybrid-manager/",
     moreUrl:
       "/edb-postgres-ai/innovation-release/hybrid-manager/release_notes/hm_2026.11.0_rel_notes/",
