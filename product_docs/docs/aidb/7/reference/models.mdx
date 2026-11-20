@@ -179,7 +179,7 @@ To connect to HTTPS model endpoints, include a `tls_config` field inside `config
 }
 ```
 
-A model whose credential holds a secret can't use `insecure_skip_verify: true`. Use `ca_path` for a private CA instead.
+A model whose credential holds a secret, or that signs requests with AWS credentials, can't use `insecure_skip_verify: true`. Use `ca_path` for a private CA instead, or install the CA certificate on the server. AIDB trusts the certificate authorities installed on the server's operating system.
 
 #### Validation
 
@@ -254,9 +254,10 @@ Removes a model from the registry. Doesn't affect pipelines or knowledge bases t
 
 #### Parameters
 
-| Parameter    | Type | Description                  |
-|--------------|------|------------------------------|
-| `model_name` | TEXT | Name of the model to delete, either schema-qualified or a bare name found through `search_path`. |
+| Parameter    | Type    | Default  | Description                  |
+|--------------|---------|----------|------------------------------|
+| `model_name` | TEXT    | Required | Name of the model to delete, either schema-qualified or a bare name found through `search_path`. |
+| `if_exists`  | BOOLEAN | `false`  | If `true` and the model doesn't exist, raises a notice instead of an error and returns no rows. |
 
 #### Returns
 
@@ -338,6 +339,30 @@ SELECT aidb.create_credential(
 
 ---
 
+### `aidb.create_aws_credential`
+
+Creates a credential for models that sign requests with the PostgreSQL server's AWS credentials. The credential holds no secret. Only superusers and members of `aidb_admins` can call it. The calling role owns it. See [AWS IAM authentication](../integrating-models/remote-models#aws-iam-authentication).
+
+#### Parameters
+
+| Parameter  | Type    | Default  | Description                                                                                       |
+|------------|---------|----------|---------------------------------------------------------------------------------------------------|
+| `name`     | TEXT    | Required | Credential name. Must not exist yet.                                                              |
+| `endpoint` | TEXT    | Required | AWS hosts the model may call, as an [endpoint pattern](../integrating-models/credentials#endpoint-patterns). Every host must end in `amazonaws.com` or `amazonaws.com.cn`. |
+| `share`    | BOOLEAN | `false`  | If `true`, every member of `aidb_users` can use the credential.                                   |
+
+#### Example
+
+```sql
+SELECT aidb.create_aws_credential(
+    name     => 'bedrock_iam',
+    endpoint => 'bedrock-runtime.us-east-1.amazonaws.com',
+    share    => true
+);
+```
+
+---
+
 ### `aidb.update_credential`
 
 Changes a credential's secret, endpoint, or sharing. Only the owner, or a role that has the owner role's privileges, can call it. Changes take effect on the next call in every session.
@@ -377,6 +402,7 @@ Deletes a credential and its secret. Only the owner, or a role that has the owne
 |-----------|---------|----------|-----------------------------------------------------------------------------|
 | `name`    | TEXT    | Required | Credential name.                                                            |
 | `cascade` | BOOLEAN | `false`  | If `true`, also deletes every model that uses the credential, including models other roles created. Required if any model uses the credential. |
+| `if_exists` | BOOLEAN | `false` | If `true` and the credential doesn't exist, raises a notice instead of an error and returns `NULL`. |
 
 The built-in `none` credential can't be deleted.
 
@@ -489,6 +515,8 @@ Synchronizes the AIDB model registry with models currently running on HCP. Creat
 
 ## Inference functions
 
+The encode functions return pgvector's `vector` type, so you can use their results with pgvector operators without a cast.
+
 !!!note
 `aidb.generate_text()` and `aidb.generate_text_batch()` were previously named `aidb.decode_text()` and `aidb.decode_text_batch()`. The old names still work but are deprecated and will be removed in a future version — use the new names in new code.
 !!!
@@ -506,7 +534,7 @@ Encodes a single text string into a vector using the specified model. It's `STAB
 
 #### Returns
 
-`real[]` — the embedding for the input text. Cast to `vector` to use with pgvector operators.
+`vector` — the embedding for the input text.
 
 #### Example
 
@@ -529,12 +557,60 @@ Encodes an array of text strings into vectors in a single call. It's `STABLE`, b
 
 #### Returns
 
-`SETOF real[]` — one row per input, in input order. The result column is named `encode_text_batch`.
+`SETOF vector` — one row per input, in input order. The result column is named `encode_text_batch`.
 
 #### Example
 
 ```sql
 SELECT * FROM aidb.encode_text_batch('bert', ARRAY['The quick brown fox', 'Lorem ipsum dolor sit amet']);
+```
+
+---
+
+### `aidb.encode_text_query`
+
+Encodes a search query into a vector using the model's query encoding. Use it for the query side of a similarity search, and `aidb.encode_text()` for the stored documents. It's `STABLE` and reuses its last result. See [`aidb.encode_memo`](../install/configure#aidbencode_memo).
+
+#### Parameters
+
+| Parameter    | Type | Description                   |
+|--------------|------|-------------------------------|
+| `model_name` | TEXT | Name of the registered model. |
+| `input`      | TEXT | Query text to encode.         |
+
+#### Returns
+
+`vector` — the embedding for the query.
+
+#### Example
+
+```sql
+SELECT id FROM docs
+ORDER BY embedding <=> aidb.encode_text_query('bert', 'fast animals')
+LIMIT 5;
+```
+
+---
+
+### `aidb.encode_text_query_batch`
+
+Encodes an array of search queries into vectors in a single call. It's `STABLE`, but unlike [`aidb.encode_text_query`](#aidbencode_text_query) it doesn't reuse its last result.
+
+#### Parameters
+
+| Parameter    | Type   | Description                   |
+|--------------|--------|-------------------------------|
+| `model_name` | TEXT   | Name of the registered model. |
+| `input`      | TEXT[] | Array of queries to encode.   |
+
+#### Returns
+
+`SETOF vector` — one row per input, in input order.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.encode_text_query_batch('bert', ARRAY['fast animals', 'latin text']);
 ```
 
 ---
@@ -552,7 +628,7 @@ Encodes a binary image into a vector using a multimodal model (for example, CLIP
 
 #### Returns
 
-`real[]` — the embedding for the input image. Cast to `vector` to use with pgvector operators.
+`vector` — the embedding for the input image.
 
 #### Example
 
@@ -572,7 +648,7 @@ Generates a text response from a prompt using the specified model.
 |--------------------|------|----------|-------------------------------------------------------------------------------------|
 | `model_name`       | TEXT | Required | Name of the registered model.                                                       |
 | `input`            | TEXT | Required | Text prompt or input.                                                               |
-| `inference_config` | JSON | NULL     | Runtime inference settings. Use [`aidb.inference_config()`](#aidbinference_config). Cast the result to `json`. |
+| `inference_config` | JSON | NULL     | Runtime inference settings. Use [`aidb.inference_config()`](#aidbinference_config). Also accepts `JSONB` and `TEXT`. |
 
 #### Returns
 
@@ -608,7 +684,7 @@ Generates text responses for an array of prompts in a single call.
 |--------------------|--------|----------|-------------------------------------------------------------------------------------|
 | `model_name`       | TEXT   | Required | Name of the registered model.                                                       |
 | `input`            | TEXT[] | Required | Array of text prompts.                                                              |
-| `inference_config` | JSON   | NULL     | Runtime inference settings. Use [`aidb.inference_config()`](#aidbinference_config). Cast the result to `json`. |
+| `inference_config` | JSON   | NULL     | Runtime inference settings. Use [`aidb.inference_config()`](#aidbinference_config). Also accepts `JSONB` and `TEXT`. |
 
 #### Returns
 
@@ -665,7 +741,7 @@ SELECT * FROM aidb.rerank_text(
 
 ### `aidb.inference_config`
 
-Builds a JSONB configuration object for runtime inference settings. Pass the result (cast to `json`) to `aidb.generate_text()`, `aidb.generate_text_batch()`, or use it with `aidb.summarize_text_config()`.
+Builds a JSONB configuration object for runtime inference settings. Pass the result to `aidb.generate_text()` or `aidb.generate_text_batch()`, or use it with `aidb.summarize_text_config()`.
 
 All parameters are optional — omit any you don't need.
 
@@ -685,7 +761,7 @@ All parameters are optional — omit any you don't need.
 
 #### Returns
 
-`JSONB` — cast to `::json` before passing to inference functions.
+`JSONB`.
 
 #### Examples
 
@@ -785,6 +861,23 @@ These functions return a `JSONB` configuration object for the `config` parameter
 Several helpers accept `api_key` and `basic_auth` parameters. Don't use them: `aidb.create_model()` rejects a `config` that contains either key. Pass the secret through `create_model()`'s `credentials` argument instead.
 
 For the local providers `bert_local`, `clip_local`, `t5_local`, and `llama_instruct_local`, the config key that names the Hugging Face repository is `hf_model`. The helpers below write it under the old name `model`, which these providers still accept with a deprecation warning. To avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead of the helper.
+
+### `aidb.aws_default_credentials`
+
+Returns the config keys that make a model sign its requests with the PostgreSQL server's AWS credentials instead of an API key. Merge the result into the model's `config` with `||`. The model must use a credential made with [`aidb.create_aws_credential()`](#aidbcreate_aws_credential). See [AWS IAM authentication](../integrating-models/remote-models#aws-iam-authentication).
+
+| Parameter    | Type | Default | Description                                                                 |
+|--------------|------|---------|-----------------------------------------------------------------------------|
+| `aws_region` | TEXT | NULL    | AWS region to sign for. If `NULL`, AIDB takes the region from the URL host. |
+
+#### Example
+
+```sql
+SELECT aidb.anthropic_messages_config(
+    model => 'anthropic.claude-opus-4-6-v1:0',
+    url   => 'https://bedrock-runtime.us-east-1.amazonaws.com'
+) || aidb.aws_default_credentials();
+```
 
 ### `aidb.embeddings_config`
 
@@ -1167,7 +1260,7 @@ For the `anthropic_messages`, `anthropic_messages_azure`, and `anthropic_message
 | Parameter                 | Type             | Default  | Description                                                                          |
 |---------------------------|------------------|----------|----------------------------------------------------------------------------------------|
 | `model`                   | TEXT             | Required | Model identifier (for example, `claude-opus-4-6`, or a Bedrock model ID for the Bedrock variant). |
-| `api_key`                 | TEXT             | NULL     | API key for authentication. For `anthropic_messages_bedrock`, this is a Bedrock API key (bearer token), not an AWS SigV4 credential. |
+| `api_key`                 | TEXT             | NULL     | API key for authentication. For `anthropic_messages_bedrock`, this is a Bedrock API key (bearer token). To sign requests with AWS IAM credentials instead, see [`aidb.aws_default_credentials`](#aidbaws_default_credentials). |
 | `basic_auth`              | TEXT             | NULL     | Basic auth credentials (`user:password`).                                            |
 | `url`                     | TEXT             | NULL     | API endpoint URL. Defaults to `api.anthropic.com` for `anthropic_messages`. Required for `anthropic_messages_azure` (your resource's Messages endpoint) and `anthropic_messages_bedrock` (the regional `bedrock-runtime` base endpoint — the model ID is appended automatically). |
 | `max_concurrent_requests` | INTEGER          | `25`     | Maximum concurrent requests to the endpoint.                                          |

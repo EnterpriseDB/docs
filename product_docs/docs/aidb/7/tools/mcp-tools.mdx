@@ -32,10 +32,15 @@ SELECT aidb.create_agent('trip_planner', 'Help plan trips, checking weather when
 | `tool_filter`     | TEXT    | `NULL`                   | Import only these tool names. Omit to import everything the server advertises.                                                             |
 | `headers_env`     | TEXT      | `NULL`                   | Name of an environment variable holding the headers JSON, read fresh on each use instead of storing it. Superusers and members of `aidb_admins` only. Mutually exclusive with `headers` and `headers_k8s_secret`. |
 | `headers_k8s_secret` | TEXT   | `NULL`                   | Path to a file holding the headers JSON, read on each use instead of storing it. Meant for a Kubernetes Secret mounted into the Postgres pod. Superusers and members of `aidb_admins` only. The path must start with the prefix set by [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths). Mutually exclusive with `headers` and `headers_env`. |
+| `share`           | BOOLEAN   | `NULL`                   | Whether every member of `aidb_users` can call the server's tools. `NULL` shares the server only when no headers are passed. See [Sharing a server](#sharing-a-server). |
 
 `import_mcp_tools` validates the server by calling its `tools/list` endpoint before registering anything — if it's unreachable or advertises nothing matching `tool_filter`, nothing is stored. The tools it returns are cached immediately, so they show up in `aidb.tools` right away rather than after a separate refresh.
 
 Only the `streamable_http` transport (the default) actually works end-to-end today; `sse` is accepted as a value but isn't fully implemented yet.
+
+AIDB sends `Accept: application/json, text/event-stream` with every request, and accepts a plain JSON or a server-sent events response. Before each call, AIDB runs the MCP `initialize` handshake and uses the session ID that the server returns, if any. If a server doesn't complete the handshake, AIDB calls it without one. AIDB sets the `Accept`, `Mcp-Session-Id`, and `MCP-Protocol-Version` headers itself and ignores them in `headers`.
+
+A server can't advertise a tool with the name of an existing SQL tool. `import_mcp_tools` and `refresh_mcp_tools` raise an error for it. Use `tool_filter` to leave that tool out.
 
 Reaching an MCP server is an outbound network call — subject to the same [`aidb.egress_allowlist`](../install/configure#network-egress) restriction as model provider calls and HuggingFace downloads.
 
@@ -65,6 +70,18 @@ Only superusers and members of [`aidb_admins`](../install/configure#managing-cre
 The role that calls `aidb.import_mcp_tools()` owns the registration. Only the owner, or a member of the owner role, can refresh or delete it. AIDB stores the owner by role name. Once the owner role is renamed or dropped, no role can refresh or delete the registration until a role with that name exists again, for example after you rename the role back.
 
 A new role created with that name also becomes the owner. To avoid both cases, delete a role's MCP server registrations before you drop or rename the role.
+
+### Sharing a server
+
+A registration that stores headers isn't shared by default. Its tools can be called only by the owner role, members of the owner role, members of `aidb_admins`, and superusers. Other roles don't see the tools in `aidb.tools`. This applies to `headers`, `headers_env`, and `headers_k8s_secret`. A registration without headers is shared by default, so every member of `aidb_users` can call its tools.
+
+To change this, pass `share` to `aidb.import_mcp_tools()`, or call [`aidb.set_mcp_shared()`](../reference/tools#aidbset_mcp_shared) later:
+
+```sql
+SELECT aidb.set_mcp_shared('internal_crm', true);
+```
+
+Only the owner role, or a member of it, can change sharing.
 
 ## Filtering which tools are imported
 

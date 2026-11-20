@@ -94,8 +94,8 @@ Each `agent_converse` call is capped by four budgets, all optional and set on [`
 |-----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `input_token_budget`  | Input tokens for the call.                                                                                                                                                                                   |
 | `output_token_budget` | Output tokens for the call.                                                                                                                                                                                  |
-| `max_iterations`      | Reasoning rounds — one model call plus any tools it calls in that round, not individual tool calls. A hard ceiling of 25 always applies, regardless of configuration, as a backstop against a runaway agent. |
-| `timeout`             | Wall-clock seconds for the call. Defaults to 300 seconds if unset.                                                                                                                                           |
+| `max_iterations`      | Reasoning rounds — one model call plus any tools it calls in that round, not individual tool calls. The call stops after at most 25 rounds, or after `max_iterations` + 4 rounds if that's higher. The extra rounds leave room for the `attempt_complete` grace rounds. |
+| `timeout`             | Wall-clock seconds for the whole call, including loading history, compaction, model requests, tool calls, and delegates. Defaults to 300 seconds if unset. See [Timeout](#timeout).                         |
 
 What happens when a budget is exceeded depends on `budget_strategy`:
 
@@ -110,6 +110,16 @@ MCP clients can also reach `agent_converse` by calling an agent as a tool. The M
 
 To end a call that's waiting on a chat model whose provider never answers, set a Postgres `statement_timeout` or cancel the query, for example with Ctrl+C in `psql`. This works however the call arrives, for the `openai_responses`, `anthropic_messages`, `gemini`, `openai_completions`, `nim_completions`, `openrouter_chat`, and `completions` providers, including their Azure and Bedrock variants. It doesn't work for embedding, reranking, or OCR models.
 
+### Timeout
+
+The timeout is one deadline for the whole `agent_converse` call. Each model request gets only the time that's left. If the model doesn't answer in time, AIDB stops waiting and the call ends with a timeout error. This applies to the `anthropic_messages`, `openai_responses`, `openai_completions`, `nim_completions`, `openrouter_chat`, and `gemini` provider families. It doesn't apply to `llamacpp_generate`.
+
+A tool that hasn't started when the deadline passes is skipped with the error `agent time budget exhausted before this tool could run`. A tool that's already running isn't interrupted.
+
 ## Context length
 
-Long conversations are bounded automatically: once a task's assembled prompt would exceed an internally tracked size estimate, AIDB asks the model to summarize the older part of the history and continues with that summary in place of the original turns. This is basic, automatic bounding to keep long-running conversations from blowing past a model's context window — there's nothing to configure. A `compaction` entry appears in the activity log when this happens (see [debug mode](#debug-mode), or query `aidb_internal.action_log` directly for the full activity history behind a conversation — every model request/response and tool call/response, not just the user-facing messages `aidb.get_conversation()` returns).
+Long conversations are bounded automatically. Once a task's prompt grows past a size threshold, AIDB asks the model to summarize the older part of the history and continues with that summary in place of the original turns. The summary request includes the agent's instructions, so the summary keeps what the agent needs. A `compaction` entry appears in the activity log when this happens (see [debug mode](#debug-mode), or query `aidb_internal.action_log` directly for the full activity history behind a conversation — every model request/response and tool call/response, not just the user-facing messages `aidb.get_conversation()` returns).
+
+The threshold starts at 16,000 characters. To base it on the model's real context window, set `context_window` in the model's config. See [Context window](../integrating-models/remote-models#context-window). For `llamacpp_generate` models, AIDB uses the model's `n_ctx` setting.
+
+AIDB always keeps the most recent model response, its tool calls, and their results, so the model sees the data it just asked for. If a tool result is too large to fit, AIDB cuts it in the prompt and ends it with `...(truncated, N bytes total)`, where `N` is the original length. The activity log still has the full result.

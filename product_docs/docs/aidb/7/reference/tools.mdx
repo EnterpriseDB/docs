@@ -34,6 +34,9 @@ Backs registered SQL tools. `aidb.tools` is the union view most queries should u
 | `params`             | `aidb.ToolParam[]`| The tool's declared parameters.                         |
 | `created_at`         | timestamp         | Creation time.                                          |
 | `updated_at`         | timestamp         | Last update time.                                       |
+| `owner_role`         | text              | Role that owns the tool. Defaults to the role that created it. |
+
+Every member of `aidb_users` can read every SQL tool. Only a role that can `SET ROLE` to a tool's `owner_role` can change or delete it, with `aidb.delete_tool()` or with `UPDATE` and `DELETE` on the table. A direct write by any other role affects 0 rows. If the owner role is renamed or dropped, a superuser or a member of `aidb_admins` can delete the tool.
 
 ### `aidb.mcp_registry`
 
@@ -48,6 +51,8 @@ Registered external MCP servers.
 | `headers_env`   | text       | Environment variable name to read headers from instead. Mutually exclusive with `headers` and `headers_k8s_secret`. |
 | `headers_k8s_secret` | text  | File path to read headers from instead. Mutually exclusive with `headers` and `headers_env`. |
 | `tool_filter`   | text[]     | Tool names imported from this server, if filtered.                           |
+| `owner`         | text       | Role that registered the server.                                              |
+| `shared`        | boolean    | If `true`, every member of `aidb_users` can call the server's tools. If `false`, only the owner role, its members, members of `aidb_admins`, and superusers can. See [`aidb.set_mcp_shared`](#aidbset_mcp_shared). |
 | `created_at`    | timestamp  | Registration time.                                                            |
 | `updated_at`    | timestamp  | Last update time.                                                             |
 
@@ -74,6 +79,8 @@ Registers a parameterized SQL query as a tool.
 
 `TEXT` — the tool's name, on success. Raises if the name is already taken (by any tool type) or the statement isn't a single, invocable, read-only-compliant (if `read_only => true`) statement.
 
+Also raises if the statement uses positional placeholders such as `$1`. Write each parameter as `${name}` and declare it in `params`. If the statement has a syntax error and uses another placeholder style, such as `:name`, `$name`, or `{{name}}`, the error shows the `${name}` form.
+
 #### Example
 
 ```sql
@@ -98,15 +105,18 @@ Deletes a SQL tool or an MCP server registration by name (removing every tool th
 
 You also can't delete the SQL tools that a [semantic knowledge base](../semantic-knowledge-bases) publishes with its managed [agent plugin](../agents/plugins#managing-a-semantic-kb-plugin). Those tools are named `semkb_<kb_name>_search`, `semkb_<kb_name>_join_path`, and `semkb_<kb_name>_suggest_joins`. AIDB removes them when you delete the knowledge base.
 
+Only a role that can `SET ROLE` to a SQL tool's `owner_role` can delete it.
+
 #### Parameters
 
-| Parameter | Type | Description             |
-|-----------|------|---------------------------|
-| `name`    | TEXT | The tool or server name. |
+| Parameter   | Type    | Default  | Description                                                                         |
+|-------------|---------|----------|-------------------------------------------------------------------------------------|
+| `name`      | TEXT    | Required | The tool or server name.                                                            |
+| `if_exists` | BOOLEAN | `false`  | If `true` and no such tool or server exists, raises a notice and returns `NULL`.    |
 
 #### Returns
 
-`TEXT` — the deleted name, on success. Raises if no such tool or server exists, or if `name` is a native tool.
+`TEXT` — the deleted name, on success. Raises if no such tool or server exists (unless `if_exists` is `true`), or if `name` is a native tool.
 
 ---
 
@@ -125,10 +135,11 @@ Registers an external MCP server and imports the tools it advertises.
 | `tool_filter`  | TEXT[]  | NULL                 | Import only these tool names. Omit to import everything the server advertises.        |
 | `headers_env`  | TEXT    | NULL                 | Environment variable holding the headers JSON, read fresh on each use instead of storing it. Mutually exclusive with `headers` and `headers_k8s_secret`. Name must start with the [`aidb.env_var_allowed_prefix`](../install/configure#credential-environment-variables) prefix. |
 | `headers_k8s_secret` | TEXT | NULL               | Path to a file holding the headers JSON, read on each use instead of storing it. Meant for a Kubernetes Secret mounted into the Postgres pod. Path must start with the [`aidb.k8s_secret_allowed_path_prefix`](../install/configure#kubernetes-secret-paths) prefix. Mutually exclusive with `headers` and `headers_env`. |
+| `share`        | BOOLEAN | NULL                 | If `true`, every member of `aidb_users` can call the server's tools. If `false`, only the owner role, its members, members of `aidb_admins`, and superusers can. `NULL` shares the server only when you pass none of `headers`, `headers_env`, and `headers_k8s_secret`. |
 
 #### Returns
 
-`TEXT` — the server's name, on success. Raises if the name is taken, the URL is unreachable, or no advertised tool matches `tool_filter`.
+`TEXT` — the server's name, on success. Raises if the name is taken, the URL is unreachable, or no advertised tool matches `tool_filter`. Also raises if one of the server's tools has the name of an existing SQL tool. Use `tool_filter` to leave that tool out.
 
 #### Example
 
@@ -140,7 +151,8 @@ SELECT aidb.import_mcp_tools(
     headers     => NULL,               -- optional; request headers to send, for example, an auth token. Mutually exclusive with headers_env and headers_k8s_secret. Default: NULL
     tool_filter => NULL,               -- optional; import only these tool names. Default: NULL (import everything the server advertises)
     headers_env => NULL,               -- optional; env var holding the headers JSON instead of storing it. Mutually exclusive with headers and headers_k8s_secret. Default: NULL
-    headers_k8s_secret => NULL         -- optional; file path to a mounted Kubernetes Secret holding the headers JSON. Mutually exclusive with headers and headers_env. Default: NULL
+    headers_k8s_secret => NULL,        -- optional; file path to a mounted Kubernetes Secret holding the headers JSON. Mutually exclusive with headers and headers_env. Default: NULL
+    share       => NULL                -- optional; let every aidb_users member call the tools. Default: NULL (shared only when no headers are passed)
 );
 ```
 
@@ -158,7 +170,30 @@ Re-fetches an already-registered MCP server's advertised tools and refreshes the
 
 #### Returns
 
-`INTEGER` — the number of tools now cached (after `tool_filter` applies).
+`INTEGER` — the number of tools now cached (after `tool_filter` applies). Raises if one of the server's tools has the name of an existing SQL tool.
+
+---
+
+### `aidb.set_mcp_shared`
+
+Changes whether every member of `aidb_users` can call a registered MCP server's tools. Only the role that registered the server, or a member of that role, can call it. The cached tools stay as they are.
+
+#### Parameters
+
+| Parameter | Type    | Description                                                                                          |
+|-----------|---------|------------------------------------------------------------------------------------------------------|
+| `name`    | TEXT    | The registered server's name.                                                                        |
+| `share`   | BOOLEAN | `true` lets every member of `aidb_users` call the tools. `false` limits them to the owner role, its members, members of `aidb_admins`, and superusers. |
+
+#### Returns
+
+`TEXT` — the server's name, on success. Raises if the server doesn't exist or the caller isn't allowed to change it.
+
+#### Example
+
+```sql
+SELECT aidb.set_mcp_shared('weather', true);
+```
 
 ---
 
@@ -192,6 +227,8 @@ Runs any tool in `aidb.tools` by name, whether native, SQL, or MCP, and returns 
 - `arguments` has a key the tool doesn't declare.
 - `arguments` leaves out a required argument.
 - An MCP tool returns an `isError` result.
+- The tool is an MCP tool whose server isn't shared, and the caller isn't the owner role, a member of it, a member of `aidb_admins`, or a superuser.
+- The name belongs to both a SQL tool and an MCP tool. Delete the SQL tool, or leave the MCP tool out with `tool_filter`.
 
 #### Example
 

@@ -12,6 +12,8 @@ Reference for agent-related functions, views, and types. For guide-style documen
 
 Agent configuration. There's no dedicated "list agents" function — query this table directly.
 
+Every member of `aidb_users` can read every agent. Only a role that can `SET ROLE` to an agent's `owner_role` can update or delete it, with the functions or with `UPDATE` and `DELETE` on the table. A direct write by any other role affects 0 rows. If the owner role is renamed or dropped, a superuser or a member of `aidb_admins` can delete the agent.
+
 | Column                | Type                   | Description                                                                 |
 |------------------------|------------------------|-------------------------------------------------------------------------------|
 | `id`                   | uuid                    | Internal identifier.                                                        |
@@ -31,6 +33,7 @@ Agent configuration. There's no dedicated "list agents" function — query this 
 | `preset`               | text                    | Stored, but not currently resolved to any behavior.                         |
 | `created_at`           | timestamptz             | Creation time.                                                              |
 | `updated_at`           | timestamptz             | Last update time.                                                           |
+| `owner_role`           | text                    | Role that owns the agent. Defaults to the role that created it.             |
 
 ### `aidb.agent_plugins`
 
@@ -45,6 +48,8 @@ Agent configuration. There's no dedicated "list agents" function — query this 
 | `tools`          | text[]      | Names of existing tools (from `aidb.tools`) that the plugin adds to every agent it's attached to. An empty array means no tools. |
 | `created_at`     | timestamptz | Creation time.                                                                                                           |
 | `updated_at`     | timestamptz | Last update time.                                                                                                        |
+| `managed_by`     | text        | Set for a plugin that a semantic knowledge base manages. `NULL` for plugins you create.                                  |
+| `owner_role`     | text        | Role that owns the plugin. Defaults to the role that created it. Only a role that can `SET ROLE` to it can update or delete the plugin. |
 
 For plugins that a [semantic knowledge base](../semantic-knowledge-bases) publishes, the view lists the managed `semkb_<kb_name>` plugin like any other.
 
@@ -64,6 +69,8 @@ Purposes an agent can hold. Each purpose maps a name to the Postgres role that a
 ### `aidb.agent_tasks`
 
 One row per `agent_converse` call (a "task"), including its lifecycle status.
+
+The view shows only the tasks that the session user started. Members of `aidb_governance` and `aidb_admins`, and superusers, see all tasks.
 
 | Column               | Type                | Description                                                        |
 |-----------------------|---------------------|----------------------------------------------------------------------|
@@ -131,7 +138,7 @@ Registers a new agent.
 | `output_type`         | JSONB   | NULL                          | Structured output schema, built with [`aidb.output_type()`](#aidboutput_type).                                                                                                                                                                         |
 | `input_token_budget`  | INTEGER | NULL (no limit)               | Input token budget per `agent_converse` call.                                                                                                                                                                                                          |
 | `output_token_budget` | INTEGER | NULL (no limit)               | Output token budget per call.                                                                                                                                                                                                                          |
-| `max_iterations`      | INTEGER | NULL                          | Maximum reasoning iterations per call. A hard ceiling of 25 always applies regardless.                                                                                                                                                                 |
+| `max_iterations`      | INTEGER | NULL                          | Maximum reasoning iterations per call. The agent stops after 25 rounds, or after `max_iterations` + 4 rounds if that's higher.                                                                                                                       |
 | `timeout`             | INTEGER | NULL (300 applied at runtime) | Maximum wall-clock seconds per call.                                                                                                                                                                                                                   |
 | `budget_strategy`     | TEXT    | `'attempt_complete'`          | One of `'ignore'`, `'error'`, `'summarize'`, `'attempt_complete'`. See [Budgets and limits](../agents/conversing-with-agents#budgets-and-limits).                                                                                                      |
 | `preset`              | TEXT    | NULL                          | Stored, but not currently resolved to any behavior.                                                                                                                                                                                                    |
@@ -154,7 +161,7 @@ SELECT aidb.create_agent(
     output_type          => NULL,                    -- optional; structured output schema from aidb.output_type(). Default: NULL (plain-text answer)
     input_token_budget   => NULL,                    -- optional; input token cap per agent_converse call. Default: NULL (no limit)
     output_token_budget  => NULL,                    -- optional; output token cap per agent_converse call. Default: NULL (no limit)
-    max_iterations       => NULL,                    -- optional; reasoning-round cap per call. Default: NULL (a hard ceiling of 25 always applies)
+    max_iterations       => NULL,                    -- optional; reasoning-round cap per call. Default: NULL (the agent stops after 25 rounds)
     timeout              => NULL,                    -- optional; wall-clock seconds cap per call. Default: NULL (300 seconds applied at runtime)
     budget_strategy      => 'attempt_complete',      -- optional; behavior when a budget is exceeded. Default: 'attempt_complete'
     preset               => NULL,                    -- optional; reserved for future use, has no effect today. Default: NULL
@@ -172,6 +179,10 @@ Updates an existing agent. Every parameter except `name` is optional and default
 
 Same parameters as `create_agent`, all optional (defaulting to `NULL`) except `name`.
 
+Only a role that can `SET ROLE` to the agent's `owner_role` can update it.
+
+When an agent calls `update_agent` on itself, it can keep or remove tools, but it can't add a tool, either directly or by attaching a plugin. A user can still add the tool with `aidb.update_agent()`.
+
 #### Returns
 
 `TABLE(error TEXT)` — no rows on success; a single row with `error` set on failure (agent not found, invalid field value).
@@ -186,14 +197,15 @@ SELECT aidb.update_agent('db_helper', model => 'my_new_gpt', max_iterations => 1
 
 ### `aidb.delete_agent`
 
-Deletes an agent by name.
+Deletes an agent by name. Only a role that can `SET ROLE` to the agent's `owner_role` can delete it.
 
 #### Parameters
 
-| Parameter | Type    | Default | Description                                                                                          |
-|-----------|---------|---------|--------------------------------------------------------------------------------------------------------|
-| `name`    | TEXT    | Required | Name of the agent to delete.                                                                         |
-| `force`   | BOOLEAN | NULL (false) | If `true`, also deletes the agent's internal task/action-queue records so deletion can proceed even if it has conversation history. The conversation transcript itself (`aidb.conversation_log`) is preserved either way. |
+| Parameter   | Type    | Default | Description                                                                                          |
+|-------------|---------|---------|--------------------------------------------------------------------------------------------------------|
+| `name`      | TEXT    | Required | Name of the agent to delete.                                                                         |
+| `force`     | BOOLEAN | NULL (false) | If `true`, also deletes the agent's internal task/action-queue records so deletion can proceed even if it has conversation history. This includes tasks that other roles started. The conversation transcript itself (`aidb.conversation_log`) is preserved either way. |
+| `if_exists` | BOOLEAN | `false` | If `true` and the agent doesn't exist, raises a notice and returns no rows instead of an error.      |
 
 #### Returns
 
@@ -203,6 +215,7 @@ Deletes an agent by name.
 
 ```sql
 SELECT aidb.delete_agent('db_helper', force => true);
+SELECT aidb.delete_agent('old_helper', if_exists => true);
 ```
 
 ---
@@ -210,6 +223,8 @@ SELECT aidb.delete_agent('db_helper', force => true);
 ## Agent plugin functions
 
 Manage [agent plugins](../agents/plugins). All three functions return `TABLE(error TEXT)`: no rows on success, and a single row with `error` set on failure. They don't raise for a validation failure.
+
+Only a role that can `SET ROLE` to a plugin's `owner_role` can update or delete it. If the owner role is renamed or dropped, a superuser or a member of `aidb_admins` can delete the plugin.
 
 You can't change or delete the managed plugin that a semantic knowledge base publishes with these functions. See [Managing a semantic KB plugin](../agents/plugins#managing-a-semantic-kb-plugin).
 
@@ -282,6 +297,7 @@ Deletes a plugin by name.
 |-----------|---------|----------|----------------------------------------------------------------------------------------------------------------------------------------------|
 | `name`    | TEXT    | Required | Name of the plugin to delete.                                                                                                                |
 | `force`   | BOOLEAN | `NULL`   | Delete the plugin even when agents use it. AIDB detaches it from every agent that lists it, then deletes it. `NULL` is treated as `false`.    |
+| `if_exists` | BOOLEAN | `false` | If `true` and the plugin doesn't exist, raises a notice and returns no rows instead of an error.                                            |
 
 #### Returns
 
@@ -353,13 +369,14 @@ Deletes a purpose. The row stays in `aidb.purpose_registry` with `deleted_at` se
 
 #### Parameters
 
-| Parameter | Type | Default  | Description                    |
-|-----------|------|----------|--------------------------------|
-| `name`    | TEXT | Required | Name of the purpose to delete. |
+| Parameter   | Type    | Default  | Description                                                                                             |
+|-------------|---------|----------|---------------------------------------------------------------------------------------------------------|
+| `name`      | TEXT    | Required | Name of the purpose to delete.                                                                          |
+| `if_exists` | BOOLEAN | `false`  | If `true` and the purpose doesn't exist or is already deleted, raises a notice instead of an error.      |
 
 #### Returns
 
-`VOID`. Raises an error if the purpose doesn't exist or is already deleted.
+`VOID`. Raises an error if the purpose doesn't exist or is already deleted, unless `if_exists` is `true`.
 
 #### Example
 
