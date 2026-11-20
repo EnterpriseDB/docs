@@ -2,6 +2,73 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Analytics Accelerator 1.12",
+    icon: IconNames.BIG_DATA,
+    description:
+      "Analytics Accelerator 1.12 adds native replication of Postgres tables to Delta Lake or Iceberg without PGD, INSERT support on PGAA tables, AWS Glue Data Catalog compatibility, and broader query pushdown, including over partitioned tables.",
+    url: "/pgaa/latest/",
+    moreUrl: "/pgaa/latest/release_notes/",
+  },
+  {
+    title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.2",
+    icon: IconNames.KUBERNETES_MONO,
+    description:
+      "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.2 makes PostgreSQL 18.7 the default image and ends support for PostgreSQL 14. The 1.30 line adds a primary Lease for safe primary election and a DatabaseRole resource for declarative role management.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_30_2_rel_notes/",
+  },
+  {
+    title: "Hybrid Manager 2026.11",
+    icon: IconNames.MODULE,
+    description:
+      "This Innovation Release of EDB Postgres® AI Hybrid Manager adds project-level resource quotas, control plane recovery, backup-failure alerts that cover AWS RDS, and a ClickHouse-backed metrics and alerting backend.",
+    url: "/edb-postgres-ai/innovation-release/hybrid-manager/",
+    moreUrl:
+      "/edb-postgres-ai/innovation-release/hybrid-manager/release_notes/hm_2026.11.0_rel_notes/",
+  },
+  {
+    title:
+      "EDB Postgres Advanced Server 18.7 and EDB Postgres Extended Server 18.7",
+    icon: IconNames.EDB_EPAS,
+    description:
+      "EDB Postgres Advanced Server and EDB Postgres Extended Server 18.7.0 merge community PostgreSQL 18.7 with its security fixes and fix incomplete initialization of the Transparent Data Encryption key used for temporary files. Matching minor releases are available for EPAS 14 to 17 and PGE 15 to 17.",
+    url: "/epas/latest/",
+    moreUrl: "/epas/latest/epas_rel_notes/epas18_7_rel_notes/",
+  },
+  {
+    title: "LiveCompare 4.0",
+    icon: IconNames.INTEGRATION,
+    description:
+      "LiveCompare 4.0.0 compares tables whose columns are in a different order on each connection, adds an Oracle thick mode for Oracle 11g and national character set columns, improves comparison performance, and fixes several issues that could hide or invent differences.",
+    url: "/livecompare/latest/",
+    moreUrl: "/livecompare/latest/rel_notes/livecompare_4.0.0_rel_notes/",
+  },
+  {
+    title: "Hybrid Manager 1.4.5",
+    icon: IconNames.MODULE,
+    description:
+      "Hybrid Manager 1.4.5 is a maintenance release of the 1.4 LTS with fixes for the platform, console and observability, plus migration support for Postgres large objects and for optionally carrying over roles, ownership, and privileges. The upcoming 1.5.0 LTS is expected to restart every Postgres cluster during the upgrade.",
+    url: "/edb-postgres-ai/latest/hybrid-manager/",
+    moreUrl:
+      "/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_1.4.5_rel_notes/",
+  },
+  {
+    title: "EDB Postgres® AI for ClickHouse® 26.8",
+    icon: IconNames.IMPROVE,
+    description:
+      "EDB Postgres® AI for ClickHouse® 26.8 is the new LTS release. It updates the ClickHouse server from 26.3, adds Debian 13 packages, and updates the Kubernetes operator, MCP server, and pg_stat_ch.",
+    url: "/clickhouse/latest/",
+    moreUrl: "/clickhouse/latest/release_notes/",
+  },
+  {
+    title: "AIDB 7.9",
+    icon: IconNames.BRAIN_CIRCUIT,
+    description:
+      "AIDB 7.9 adds WarehousePG 7 support, external telemetry ingest through an OTLP/HTTP receiver, OAuth for the MCP server and OTLP receiver, reusable agent plugins, and new semantic knowledge base context, plugin, and query history features.",
+    url: "/aidb/latest/",
+    moreUrl: "/aidb/latest/release-notes/7/aidb_7.9.0_rel_notes/",
+  },
+  {
     title: "Hybrid Manager 1.4",
     icon: IconNames.MODULE,
     description:
