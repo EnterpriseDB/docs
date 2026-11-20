@@ -2,6 +2,55 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Analytics Accelerator 1.12",
+    icon: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+    description:
+      "Analytics Accelerator 1.12 adds native replication of Postgres tables to Delta Lake or Iceberg without PGD, INSERT support on PGAA tables, AWS Glue Data Catalog compatibility, and broader query pushdown, including over partitioned tables.",
+    url: "/pgaa/latest/",
+    moreUrl: "/pgaa/latest/release_notes/",
+  },
+  {
+    title: "Hybrid Manager 2026.11",
+    icon: IconNames.MODULE,
+    description:
+      "This Innovation Release of EDB Postgres® AI Hybrid Manager adds project-level resource quotas, more disaster-recovery options including control plane recovery and a Force failover option, new backup-failure alerts that now cover AWS RDS, and a ClickHouse-backed metrics and alerting backend.",
+    url: "/edb-postgres-ai/innovation-release/hybrid-manager/",
+    moreUrl:
+      "/edb-postgres-ai/innovation-release/hybrid-manager/release_notes/hm_2026.11.0_rel_notes/",
+  },
+  {
+    title: "LiveCompare 4.0",
+    icon: IconNames.INTEGRATION,
+    description:
+      "LiveCompare 4.0.0 compares tables whose columns are in a different order on each connection, adds an Oracle thick mode for Oracle 11g and national character set columns, improves comparison performance, and fixes several issues that could hide or invent differences.",
+    url: "/livecompare/latest/",
+    moreUrl: "/livecompare/latest/rel_notes/livecompare_4.0.0_rel_notes/",
+  },
+  {
+    title: "EDB Postgres® AI for ClickHouse® 26.8",
+    icon: IconNames.IMPROVE,
+    description:
+      "EDB Postgres® AI for ClickHouse® 26.8 is the new LTS release. It updates the ClickHouse server from 26.3, adds Debian 13 packages, and updates the Kubernetes operator, MCP server, and pg_stat_ch.",
+    url: "/clickhouse/latest/",
+    moreUrl: "/clickhouse/latest/release_notes/",
+  },
+  {
+    title: "AIDB 7.9",
+    icon: IconNames.BRAIN_CIRCUIT,
+    description:
+      "AIDB 7.9 adds WarehousePG 7 support, external telemetry ingest through an OTLP/HTTP receiver, OAuth for the MCP server and OTLP receiver, reusable agent plugins, and new semantic knowledge base context, plugin, and query history features.",
+    url: "/aidb/latest/",
+    moreUrl: "/aidb/latest/release-notes/7/aidb_7.9.0_rel_notes/",
+  },
+  {
+    title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.0",
+    icon: IconNames.MODULE,
+    description:
+      "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.0 introduces a primary Lease for safe primary election, a DatabaseRole resource for declarative role management with TLS client certificates, and PgBouncer image management through image catalogs.",
+    url: "/postgres_for_kubernetes/latest/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_30_0_rel_notes/",
+  },
+  {
     title: "Hybrid Manager 1.4",
     icon: IconNames.MODULE,
     description:
