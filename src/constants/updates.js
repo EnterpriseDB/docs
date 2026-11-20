@@ -43,12 +43,12 @@ export const updates = [
     moreUrl: "/aidb/latest/release-notes/7/aidb_7.9.0_rel_notes/",
   },
   {
-    title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.0",
+    title: "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.2",
     icon: IconNames.MODULE,
     description:
-      "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.0 introduces a primary Lease for safe primary election, a DatabaseRole resource for declarative role management with TLS client certificates, and PgBouncer image management through image catalogs.",
+      "EDB Postgres® AI for CloudNativePG™ Cluster 1.30.2 makes PostgreSQL 18.7 the default image and ends support for PostgreSQL 14. The 1.30 line introduces a primary Lease for safe primary election, a DatabaseRole resource for declarative role management with TLS client certificates, and PgBouncer image management through image catalogs.",
     url: "/postgres_for_kubernetes/latest/",
-    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_30_0_rel_notes/",
+    moreUrl: "/postgres_for_kubernetes/latest/rel_notes/1_30_2_rel_notes/",
   },
   {
     title: "Hybrid Manager 1.4",
