@@ -155,33 +155,9 @@ __OUTPUT__
 (4 rows)
 ```
 
-The function compares the names in each alias's stored SQL with the live catalog. It parses the SQL but never plans or runs it, and it never returns the SQL itself. The `status` column holds one of these values:
+The `status` column is `orphan`, `unverified`, or `partial`. When an alias has more than one finding, `orphan` takes precedence over `unverified`, which takes precedence over `partial`. The function compares names in each alias's stored SQL with the live catalog. It never plans or runs the SQL, so a verified alias isn't guaranteed to run.
 
-| `status`     | Meaning                                                                                                                                                                                                                                                                                                                                       |
-|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `orphan`     | A schema, relation, or column that the alias refers to is missing. The `missing` array lists each one as `schema:<name>`, `relation:<name>`, or `column:<relation>.<column>`.                                                                                                                                                                 |
-| `unverified` | AIDB couldn't check the alias. `reason` says why: `unparseable`, `invalid_alias_sql` (the SQL parses but isn't a read-only `SELECT`, or reads an object a `SELECT` can't read), `unsupported_syntax`, or `outside_kb_schemas` (an unqualified table name exists only outside the semantic KB's schemas, or the SQL names a temporary object). |
-| `partial`    | AIDB checked the tables but not every column reference. `unchecked` lists the column references that AIDB skipped and why.                                                                                                                                                                                                                           |
-
-When an alias has more than one finding, `orphan` takes precedence over `unverified`, which takes precedence over `partial`. The other columns keep every finding. For example:
-
-```sql
-SELECT alias_name, status, reason, detail, unchecked
-FROM aidb.semantic_kb_alias_diagnostics('analytics_kb')
-WHERE alias_name IN ('malformed_query', 'subquery_total');
-__OUTPUT__
-   alias_name    |   status   |   reason   |             detail              |     unchecked
------------------+------------+------------+---------------------------------+--------------------
- malformed_query | unverified | unparseable | syntax error at or near "SELEC" | {}
- subquery_total  | partial    |            |                                 | {"s.n (subquery)"}
-(2 rows)
-```
-
-`unchecked` entries name the reason that the column reference couldn't be tied to a table, such as `cte`, `subquery`, `function`, `join_alias`, or `ambiguous_table`.
-
-`detail` holds the parser or validator message behind `reason`, and `unchecked` repeats column references from the alias SQL. Because both columns can quote the alias SQL, both are `NULL` unless your login can itself read the alias store, with `USAGE` on the `aidb_internal` schema and `SELECT` on `aidb_internal.semantic_aliases`. A login that has to use `SET ROLE` to read the store doesn't qualify, and neither does membership in the extension owner's role that doesn't inherit its privileges. The other four columns are still returned to a member of the owner role.
-
-The check compares names, so a `verified` result isn't a guarantee that an alias runs. A `verified` status means only that the objects the check could see exist. The check can also miss a problem: if an unqualified table an alias reads is dropped, and a table of the same name exists in another of the semantic KB's schemas, the name still resolves and the alias isn't flagged.
+For what each status means, how to repair an alias, who can read the `detail` and `unchecked` columns, and the limits of the check, see [Detecting orphaned aliases](semantic-aliases#detecting-orphaned-aliases).
 
 ## Reviewing recorded object usage
 
