@@ -75,7 +75,11 @@ AIDB writes each audit record in the same transaction as the operation it descri
 
 ## Reading the audit log
 
-Use `aidb.semantic_kb_audit()` to read audit records. You can call it as a superuser, as the extension owner, or as a role that has been granted `EXECUTE` on the function. `aidb_users` members can't call it unless they have that grant.
+Use `aidb.semantic_kb_audit()` to read audit records. AIDB grants the function to `aidb_users`, but your login must also belong to the semantic KB's owner role. A superuser also passes. An explicit `EXECUTE` grant or a direct table grant doesn't replace that membership. A login that fails the check gets an error with SQLSTATE `42501`.
+
+The check uses your authenticated login (`session_user`), so `SET ROLE` alone doesn't grant access. For the full rules, including what happens when the owner role is dropped, renamed, or recreated, see [Access to health details](health#access-to-health-details).
+
+When the database has one semantic KB, an authorized owner can omit `kb_name`. When it has several, specify the semantic KB you own. A call without `kb_name` is an all-semantic-KB operator view, available to superusers and members of the extension owner's role.
 
 The following example returns recent description changes for `analytics_kb`:
 
@@ -107,7 +111,7 @@ The `detail` column holds JSON that's specific to each operation. AIDB doesn't s
 
 All filters are optional:
 
-- `kb_name` limits results to one semantic KB. When it's `NULL`, the function returns records from all semantic KBs.
+- `kb_name` limits results to one semantic KB. When it's `NULL`, the function returns records from all semantic KBs, a view that only superusers and members of the extension owner's role can use.
 - `op` limits results to one operation category.
 - `func` limits results to the exact value recorded in the `func` column.
 - `since` returns records from the specified time onward.
@@ -162,4 +166,4 @@ A zero interval in `aidb.semkb_audit_retention` makes the function delete nothin
 
 The function works on one semantic KB at a time. It returns the number of deleted records, not counting the record it writes about itself. It deletes records in batches of 5,000 rows, and it writes one `admin` audit record with the retention interval, the number of deleted records, and the number of batches. It writes that record even when it deletes nothing.
 
-The caller must be a member of the semantic KB's owner role. `aidb.create_semantic_kb()` sets that role to the extension owner, so in practice only the extension owner, members of the extension owner's role, and superusers can prune. To prune the records of a semantic KB that no longer exists, you must be the extension owner or a superuser. A caller who isn't authorized gets an error with SQLSTATE `42501`.
+The caller's authenticated login (`session_user`) must be a member of the semantic KB's owner role, the same check that [`aidb.semantic_kb_audit()` uses](#reading-the-audit-log). `aidb.create_semantic_kb()` sets that role to the extension owner, so in practice only the extension owner, members of the extension owner's role, and superusers can prune. To prune the records of a semantic KB that no longer exists, you must be the extension owner or a superuser. A caller who isn't authorized gets an error with SQLSTATE `42501`.

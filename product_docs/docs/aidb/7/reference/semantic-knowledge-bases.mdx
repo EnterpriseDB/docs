@@ -1,7 +1,7 @@
 ---
 title: Semantic knowledge bases reference
 navTitle: Semantic knowledge bases
-description: API reference for AIDB semantic knowledge base functions — creating and managing a KB, relationships, comment curation, and search.
+description: API reference for AIDB semantic knowledge base functions — creating and managing a KB, relationships, comment curation, search, and health checks.
 ---
 
 Reference for semantic knowledge base (semantic KB) functions. For guide-style documentation, see [Semantic knowledge bases](../semantic-knowledge-bases).
@@ -123,6 +123,10 @@ SELECT aidb.update_semantic_kb_context(NULL, 'analytics_kb');
 ### `aidb.semantic_kb_stats`
 
 Returns entity counts and pending-change status for a KB.
+
+!!!note
+This function is deprecated. It remains callable in SQL, but it's no longer an agent tool, and a later release will remove it. Use [`aidb.semantic_kb_health_report`](#aidbsemantic_kb_health_report) instead. The report doesn't return the `tables`, `views`, `columns`, `drifted`, or `queries` counts, and its relationship total excludes retired relationships, which `relationships` here counts.
+!!!
 
 #### Parameters
 
@@ -1070,13 +1074,13 @@ SELECT aidb.update_semantic_kb_curation('bank_kb', true);
 
 ### `aidb.semantic_kb_audit`
 
-Lists recorded semantic KB operations. A superuser, the extension owner, or a role that has been granted `EXECUTE` on the function can call it. For concepts, see [Auditing semantic KB operations](../semantic-knowledge-bases/auditing).
+Lists recorded semantic KB operations. AIDB grants the function to `aidb_users`, but the caller's authenticated login (`session_user`) must also belong to the semantic KB's owner role, or be a superuser. An explicit `EXECUTE` grant doesn't replace that membership. A call without `kb_name` is an all-semantic-KB operator view, available to superusers and members of the extension owner's role. A login that fails the check gets SQLSTATE `42501`. For concepts, see [Auditing semantic KB operations](../semantic-knowledge-bases/auditing).
 
 #### Parameters
 
 | Parameter    | Type        | Default | Description                                                                                                                   |
 | ------------ | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. `NULL` returns records for all knowledge bases.                                  |
+| `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. `NULL` returns records for all knowledge bases, which only superusers and members of the extension owner's role can request.                                  |
 | `op`         | TEXT        | `NULL`  | Only return this operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`. |
 | `func`       | TEXT        | `NULL`  | Only return records with this exact `func` value. It isn't always the name of the SQL function you called. See [What's recorded](../semantic-knowledge-bases/auditing#whats-recorded).                                                                                |
 | `since`      | TIMESTAMPTZ | `NULL`  | Only return records from this time on.                                                                                        |
@@ -1147,7 +1151,7 @@ ORDER BY ts DESC LIMIT 3;
 
 ### `aidb.semkb_audit_prune`
 
-Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller must be a member of the knowledge base's owner role, which `aidb.create_semantic_kb()` sets to the extension owner. To prune the records of a deleted knowledge base, you must be the extension owner or a superuser. A caller who isn't authorized gets SQLSTATE `42501`. The function deletes records in batches and writes one `admin` audit record that contains the retention interval, the number of deleted records, and the number of batches, even when it deletes nothing. A negative or invalid interval raises an error before any records are deleted. See [Retention and pruning](../semantic-knowledge-bases/auditing#retention-and-pruning).
+Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller's authenticated login (`session_user`) must be a member of the knowledge base's owner role, which `aidb.create_semantic_kb()` sets to the extension owner. To prune the records of a deleted knowledge base, you must be the extension owner or a superuser. A caller who isn't authorized gets SQLSTATE `42501`. The function deletes records in batches and writes one `admin` audit record that contains the retention interval, the number of deleted records, and the number of batches, even when it deletes nothing. A negative or invalid interval raises an error before any records are deleted. See [Retention and pruning](../semantic-knowledge-bases/auditing#retention-and-pruning).
 
 #### Parameters
 
@@ -1164,6 +1168,217 @@ Deletes the audit records of one knowledge base that are older than a given age.
 
 ```sql
 SELECT aidb.semkb_audit_prune('bank_kb', '90 days');
+```
+
+---
+
+## Inspecting KB health
+
+For concepts, including when to use each function, see [Inspecting semantic KB health](../semantic-knowledge-bases/health). All of these functions are read-only and granted to `aidb_users`. Every function takes `kb_name`, which you can omit when the database has exactly one semantic KB. An unknown name raises an error.
+
+Except for the health report, each function also requires the caller's authenticated login (`session_user`) to belong to the semantic KB's owner role. A login that fails the check gets SQLSTATE `42501`. See [Access to health details](../semantic-knowledge-bases/health#access-to-health-details).
+
+### `aidb.semantic_kb_health_report`
+
+Returns one row that summarizes the health of a semantic KB. The function never raises an access error: for a login that fails the owner-role check, `audit_window_start`, `retrieve_ops`, and `execute_ops` are `NULL` and `audit_metrics_available` is `false`.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to report on. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column                      | Description                                                                                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kb_name`                   | The semantic KB name.                                                                                                                                                                                  |
+| `auto_processing`           | The [auto-processing mode](#auto-processing-modes): `Disabled`, `Live`, or `Background`.                                                                                                               |
+| `total_objects`             | Live tables, views, and columns. Semantic aliases are excluded.                                                                                                                                        |
+| `commented_objects`         | Objects with a description embedding.                                                                                                                                                                  |
+| `comment_coverage`          | `commented_objects` divided by `total_objects`, rounded to three decimal places. `NULL` when there are no live objects.                                                                                |
+| `coverage_gaps`             | Objects without a description embedding. Equals the number of rows `semantic_kb_coverage_gaps` returns.                                                                                                |
+| `pending_events`            | Queued DDL events. Meaningful for `Background` processing only.                                                                                                                                        |
+| `stale_objects`             | Distinct objects named by the queued events. Meaningful for `Background` processing only.                                                                                                              |
+| `total_relationships`       | Relationships that aren't `retired`.                                                                                                                                                                   |
+| `orphan_relationships`      | Relationships that aren't `retired` and have a missing relation or column endpoint.                                                                                                                    |
+| `total_aliases`             | Semantic aliases that have an embedding row for this semantic KB.                                                                                                                                      |
+| `orphan_aliases`            | Aliases that name a missing schema, relation, or column.                                                                                                                                               |
+| `unverified_aliases`        | Aliases that couldn't be checked.                                                                                                                                                                      |
+| `partially_checked_aliases` | Aliases whose tables were checked but not every column.                                                                                                                                                |
+| `oldest_embedded_at`        | The earliest time an eligible object's vector was computed.                                                                                                                                            |
+| `newest_embedded_at`        | The latest time an eligible object's vector was computed.                                                                                                                                              |
+| `audit_window_start`        | The earliest retained audit record for the semantic KB. `NULL` when `audit_metrics_available` is `false`.                                                                                              |
+| `retrieve_ops`              | Recorded search operations, including a search that returned no objects. `NULL` when `audit_metrics_available` is `false`.                                                                             |
+| `execute_ops`               | Recorded alias executions. `NULL` when `audit_metrics_available` is `false`.                                                                                                                          |
+| `audit_metrics_available`   | Whether the caller passes the owner-role check, so the three audit-derived columns are populated.                                                                                                      |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.semantic_kb_health_report('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_coverage_gaps`
+
+Lists live tables, views, and columns that have no description embedding, ordered by entity type and then by name. It's also a read-only agent tool.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column                 | Description                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `object_ref`           | The object's display name, such as `sales.orders` or `sales.orders.customer_id`.                             |
+| `entity_type`          | `Table`, `View`, or `Column`.                                                                                |
+| `schema_name`          | The object's schema.                                                                                         |
+| `relation_name`        | The object's table or view.                                                                                  |
+| `column_name`          | The column name, or `NULL` for a table or view.                                                              |
+| `has_pending_proposal` | Whether a description is awaiting review. A proposal remains a gap until it's approved.                      |
+| `embedded_at`          | When the metadata row was embedded. It doesn't mean a description is present.                                |
+
+#### Example
+
+```sql
+SELECT object_ref, entity_type, has_pending_proposal
+FROM aidb.semantic_kb_coverage_gaps('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_stale_objects`
+
+Lists objects that have DDL events queued but not yet re-embedded, with the longest-waiting first. The result describes `Background` processing only. For a `Live`, `Disabled`, or trigger-bypassed semantic KB, an empty result doesn't mean the embeddings are current.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column               | Description                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `object_ref`         | The affected schema, relation, or column.                                                                                 |
+| `schema_name`        | The schema.                                                                                                               |
+| `relation_name`      | The relation, or `NULL` for a schema-level event.                                                                         |
+| `column_name`        | The column, or `NULL` for a table-level or schema-level event.                                                            |
+| `pending_events`     | The number of queued events for the object.                                                                               |
+| `event_types`        | The types of the queued events.                                                                                           |
+| `oldest_event_at`    | When the first event was queued.                                                                                          |
+| `oldest_embedded_at` | The oldest matching metadata embedding time. `NULL` when nothing matches, which is always the case for a schema rename.   |
+
+#### Example
+
+```sql
+SELECT object_ref, pending_events, oldest_event_at
+FROM aidb.semantic_kb_stale_objects('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_orphan_relationships`
+
+Lists relationships whose relation endpoint, junction endpoint, or a listed column no longer exists in the live catalog, including `retired` relationships. The function is read-only and never changes a relationship's status.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column            | Description                                                                                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `relationship_id` | The relationship's ID.                                                                                                                                                                                       |
+| `left_object`     | The left endpoint, as `schema.relation`.                                                                                                                                                                     |
+| `right_object`    | The right endpoint, as `schema.relation`.                                                                                                                                                                    |
+| `junction_object` | The junction relation for a junction relationship, or `NULL`.                                                                                                                                                |
+| `kind`            | The relationship kind.                                                                                                                                                                                       |
+| `source`          | The relationship source.                                                                                                                                                                                     |
+| `status`          | `proposed`, `approved`, `stale`, or `retired`.                                                                                                                                                               |
+| `missing`         | The endpoints that no longer exist, such as `right_relation` or `left_column:customer_id`.                                                                                                                   |
+| `last_referenced` | The latest recorded schema-source, relation-level search hit on either endpoint. `NULL` when there's no such hit or an endpoint name contains a dot. It's a limited usage signal, not proof of disuse.         |
+
+#### Example
+
+```sql
+SELECT relationship_id, left_object, right_object, status, missing
+FROM aidb.semantic_kb_orphan_relationships('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_alias_diagnostics`
+
+Lists the semantic aliases of a semantic KB that aren't verified against the live catalog, ordered by alias name. The function parses each alias's stored SQL but never plans or runs it, and never returns it.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column       | Description                                                                                                                                                                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alias_name` | The semantic alias name.                                                                                                                                                                                                                                                     |
+| `status`     | `orphan`, `unverified`, or `partial`. `orphan` takes precedence over `unverified`, which takes precedence over `partial`.                                                                                                                                                    |
+| `missing`    | Missing objects, as `schema:<name>`, `relation:<name>`, or `column:<relation>.<column>`.                                                                                                                                                                                     |
+| `reason`     | Why the alias couldn't be verified: `unparseable`, `invalid_alias_sql`, `unsupported_syntax`, or `outside_kb_schemas`. `NULL` otherwise.                                                                                                                                     |
+| `detail`     | The parser or validator message behind `reason`. `NULL` unless the login can itself read the alias store (`USAGE` on `aidb_internal` and `SELECT` on `aidb_internal.semantic_aliases`).                                                                                       |
+| `unchecked`  | The column references that weren't checked, each with the reason. `NULL` unless the login can itself read the alias store.                                                                                                                                                    |
+
+The report's `orphan_aliases`, `unverified_aliases`, and `partially_checked_aliases` counts each equal the number of rows here with that status.
+
+#### Example
+
+```sql
+SELECT alias_name, status, missing, reason
+FROM aidb.semantic_kb_alias_diagnostics('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_object_usage`
+
+Reports how often each object appeared in recorded search results and alias executions, and when it last did. The counts are lower bounds, so `lower_bound` is always `true`.
+
+#### Parameters
+
+| Parameter | Type        | Default | Description                                                                    |
+| --------- | ----------- | ------- | ------------------------------------------------------------------------------ |
+| `kb_name` | TEXT        | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists.             |
+| `since`   | TIMESTAMPTZ | `NULL`  | Only count records from this time on. `NULL` counts every retained record.     |
+
+#### Returns
+
+| Column           | Description                                                                                                                                                           |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `object_ref`     | The object's display name. Objects whose display names are identical share one row, and their counts are combined.                                                    |
+| `source_type`    | The source of the hit, such as `schema`, `alias`, `relationship`, `history`, or `concept`. A result found through both schema and concept sources is a `schema` hit. |
+| `retrieve_count` | How many recorded searches returned the object. One search can increase the count of several objects.                                                                 |
+| `execute_count`  | How many recorded executions of the alias.                                                                                                                            |
+| `last_retrieved` | When a search last returned the object.                                                                                                                               |
+| `last_executed`  | When the alias last ran.                                                                                                                                              |
+| `window_start`   | The earliest retained audit record in the selected window, including operations other than search or execution.                                                       |
+| `lower_bound`    | Always `true`. See [Why the counts are lower bounds](../semantic-knowledge-bases/health#why-the-counts-are-lower-bounds).                                             |
+
+#### Example
+
+```sql
+SELECT object_ref, source_type, retrieve_count, execute_count
+FROM aidb.semantic_kb_object_usage(
+    'analytics_kb', since => now() - interval '30 days');
 ```
 
 ---
