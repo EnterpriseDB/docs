@@ -5,84 +5,69 @@ description: Watch the execution plan, processes, and disk I/O of a running quer
 deepToC: true
 ---
 
-Watch a running query execute to follow its progress through the plan, see how many rows each step has processed, and check whether work is spread evenly across the segments, without waiting for the query to finish or stopping it to run `EXPLAIN ANALYZE`. In **Query Monitoring** > **Active Queries**, select the plan icon on a running query to open its live plan, which updates every two seconds.
+Watch a running query execute to follow its progress through the plan, see how many rows each step has processed, and check whether work is spread evenly across the segments, without waiting for the query to finish or stopping it to run `EXPLAIN ANALYZE`. You open the live plan from **Active Queries**.
 
 ## Prerequisites
 
-To use the live query plan, you must [install the `whpg_live_query_plan` extension](../installing/live-query-plan) on your WarehousePG cluster. If a step is missing, the live plan dialog tells you which one: the extension isn't installed or is too old, the library isn't preloaded, or `gp_enable_query_metrics` is off.
+- The [`whpg_live_query_plan` extension](../installing/live-query-plan) is installed on your WarehousePG cluster.
+- Your WEM role has the **Explain / Analyze** permission under **Query Editor**, to detect the planner and run `EXPLAIN` from the live plan. Viewers can see the live plans of their own queries only. See [Defining role-based access control](../system-access/management#defining-role-based-access-control).
 
-To see conditions, join keys, and filters of long statements, you might also need to raise `track_activity_query_size`. See [Viewing the details of a step](#viewing-the-details-of-a-step).
+## Watching a running query
 
-!!! Note
-    You need the **Explain / Analyze** permission to detect the planner and run `EXPLAIN` from the live plan. Viewers can see the live plans of their own queries only.
-
-## Opening the live plan
-
-1. Go to **Query Monitoring** > **Active Queries**.
-1. Select the plan icon (**View live plan**) in the row of a running query. The icon is disabled for queries that aren't running, with the tooltip **Only running queries have a live plan**.
+Go to **Query Monitoring** > **Active Queries** and select the plan icon (**View live plan**) in the row of a running query to open its live plan. The icon is disabled for queries that aren't running.
 
 The dialog refreshes every two seconds until the query ends, then keeps showing its last state. When the backend goes idle or the query ends, the dialog says so and stops refreshing.
 
-Only top-level statements that have reached the executor have a plan. While a query is planning, queued, or waiting on a lock, the dialog waits and fills in the plan by itself once the query runs. A utility command, or a query that started after the plan registry filled up (`whpg_live_query_plan.max_slots`), has no plan, and the dialog keeps waiting.
+A query has a plan once it starts running. While it's planning, queued, or waiting on a lock, the dialog waits and shows the plan when the query starts.
+
+Some queries never get a plan, and the dialog keeps waiting for them:
+
+- Utility commands, such as `CREATE TABLE`, `CREATE TABLE ... AS`, `CREATE INDEX`, `COPY`, and `VACUUM`.
+- Statements that run inside a function. Only the outer statement has a plan.
+- Queries that start while the plan registry is full. To add slots, raise [`whpg_live_query_plan.max_slots`](../reference/live-query-plan-extension).
 
 ## Reading the plan
 
-The **Plan** tab draws the plan as a graph of steps.
+The **Plan** tab draws the plan as a graph of boxes. Each box is a step of the plan.
 
 - Each step is colored by its slice. A step stays white until a process reports it. A white step can also belong to a slice that has already finished and no longer reports counters.
 - The header of each slice shows a pulse while its steps run and a check mark once they have all finished. The corner of a running step shows the longest elapsed time of a step in its slice. A finished step shows the time it took.
 - **Actual rows** is the number of rows processed so far, summed over all segments.
 - Counters are approximate and update as each step processes rows, so a running step can appear to pause.
+- While a step runs, **Estimated completion** compares the actual rows with the planner's estimate for the whole step, scaled by the number of segments. It disappears when the step finishes, because stale statistics can make a finished step differ from 100 percent.
+- Select a step to expand it. The step lists the details that `EXPLAIN` reports for it, such as its sort key, group key, join condition, and filter. **Planner** in the **General Information** card shows the planner that `EXPLAIN` reports for the statement.
+- If a step doesn't list its sort key, filter, or other `EXPLAIN` details, a line above the plan says why. For example, the optimizer would choose a different plan today, or `EXPLAIN` failed. WEM can't run `EXPLAIN` on statements longer than 1,024 characters, because WarehousePG keeps only that many. To raise the limit, set [`track_activity_query_size`](../reference/live-query-plan-extension).
 - Use **Expand all** and **Collapse all** to open or close every step at once. Use **Full canvas** to enlarge the plan, and **Fill the browser window** or **Restore size** to resize the dialog.
-- Next to the plan, a column of cards shows the query's status, run time, queued time, submission time, user, database, workload (resource group), coordinator PID, CPU time, memory, spill, and disk read and write, with a rate once two refreshes are in. Use **Hide details** and **Show details** to collapse it. When the query waits on a lock or blocks others, a **Locks and Blocks** section lists them.
+- To the right of the plan, three cards show details of the query: **General Information** (status, user, database, workload, coordinator PID, and planner), **Timing** (run time, queued time, submission time, and CPU time), and **Resources** (memory, spill, and disk read and write, with a rate once two refreshes are in). When the query waits on a lock or blocks others, a **Locks and Blocks** section lists them.
 
-### Finding skew
+Use the **Tables** tab to see the tables the plan reads, the **Query** tab to copy the whole statement, the **Text Plan** tab to see the `EXPLAIN` output and run `EXPLAIN` again with **Run EXPLAIN**, and the **I/O** tab to see disk read and write and block counters per segment, including shared and temporary blocks. The **Text Plan** tab is off for statements over 100,000 characters or with more than one statement.
 
-Open a step to see how its work is spread across the segments.
+## Checking for skew
 
-- **Top N segments by rows** lists the busiest segments first, and **Slowest N segments by time** lists the segments that spent the most time in the step. Each shows the segment's rows and time. A segment can be in both lists.
-- **Row skew** is `(1 - average rows / maximum rows) * 100` over all segments. A skew above 30 percent is marked with a warning icon and shown at the bottom of the step. Hover over it for an explanation.
-- **Estimated completion** compares the actual rows with the planner's estimate for the whole step, scaled by the number of segments. It appears only while the step runs, because stale statistics can make a finished step differ from 100 percent.
+Skew means a few segments process much more data than the others, so the query waits for them to finish. Follow these steps to check a running query for skew.
 
-The extension reports only a limited number of segments for each list: 5 by default, set by `whpg_live_query_plan.summary_max_segments`. On a large cluster, the lists don't include every segment, but the totals, the skew, and the number of segments that spilled still cover all of them.
+1. Look for a warning icon on the **Row skew** at the bottom of a step. A row skew above 30 percent is marked.
+1. Select the step, one of the boxes in the plan graph, to expand it. If **Top segments by rows** shows one segment with far more rows than the others, the data isn't evenly distributed across the segments.
+1. Compare it with **Slowest segments by time**. A segment that's slow but isn't among the segments with the most rows is slow for another reason. Find its process on the **Processes** tab in the live plan dialog. See [Finding stuck and straggling processes](#finding-stuck-and-straggling-processes).
 
-### Viewing the details of a step
+!!! Note
+    **Top segments by rows** and **Slowest segments by time** list up to 5 segments each by default, set by [`whpg_live_query_plan.summary_max_segments`](../reference/live-query-plan-extension). On a large cluster, the lists don't include every segment, but the totals, the skew, and the number of segments that spilled still cover all of them.
 
-The running plan doesn't contain a step's hash keys, join conditions, filters, group keys, or sort keys, or the planner that produced the plan. To add them:
+## Finding stuck and straggling processes
 
-1. In the summary, select **Detect** next to **Planner**, or select **Run EXPLAIN** on the **Text Plan** tab.
-1. WEM runs `EXPLAIN` on the same statement once and copies the details across, but only when that plan has the same steps as the running one. WEM never runs `EXPLAIN` on its own. It runs as the database user who runs the query, not as WEM's own role, because planning a statement can run the functions the statement calls.
-
-If the optimizer would choose a different plan today, or `EXPLAIN` fails, WEM copies nothing and a line above the plan says why.
-
-The server keeps only the first `track_activity_query_size` characters (1,024 by default) of a running statement. WEM doesn't run `EXPLAIN` on a statement that might be incomplete, and the **Text Plan** tab is off. Raise the setting to see the details for longer queries. For example, run `gpconfig -c track_activity_query_size -v 8kB`, then restart the cluster.
-
-## Using the other tabs
-
-| Tab | What it shows |
-|-----|---------------|
-| **Plan** | The live plan graph described above. |
-| **Tables** | The tables the plan reads. |
-| **Query** | The whole statement, with a copy button. |
-| **Text Plan** | An on-demand `EXPLAIN` of the statement. It plans the query again now, so it can differ from the running plan. It's off for text over 100,000 characters or for more than one statement. |
-| **I/O** | Disk read and write and block counters per segment, including shared and temporary blocks read and written. |
-| **Processes** | The operating system processes behind the query, with their host, segment, slice, state, CPU, I/O wait, memory, and disk I/O, and a per-slice skew summary. |
-
-### Finding stuck and straggling processes
-
-Use the **Processes** tab to find out why a query is slow.
+Use the **Processes** tab in the live plan dialog to find out why a query is slow. It lists the operating system processes behind the query, with their host, segment, slice, state, CPU, I/O wait, memory, and disk I/O.
 
 - The tab ranks the **Top 5 slices** by CPU time, memory, or disk I/O. Use the option list to change the ranking.
-- A slice with fewer active segments than the cluster has means most segments finished and a few stragglers remain, which is a sign of data skew.
+- A slice with fewer active segments than the cluster has means most segments finished and a few stragglers remain, which is a sign of [data skew](#checking-for-skew).
 - A process is marked **No CPU progress** when it isn't running and has used no CPU for several refreshes in a row. Idle processes in the upper slices wait for the slices below them, which is normal. Look at the idle processes in the slice furthest down the plan.
 
 CPU and I/O are measured from the start of the statement, not from the start of the backend process, so a reused backend doesn't show its earlier history.
 
 ## Monitoring disk activity and sessions
 
-The live query plan extension also adds information to the **Active Queries** and **Sessions** tabs, without opening a plan:
+The live query plan extension also helps you find problems outside the live plan dialog:
 
-- The **Disk Activity** section on **Active Queries**, next to **Spill Activity**, shows **Disk Read**, **Disk Write**, and **Queries Using Disk**. The **Disk Read** and **Disk Write** columns show the physical disk I/O of each query. WEM reads at most 25 queries per refresh, and only while a disk column is visible.
-- The **Sessions** tab shows each session's **OS State**, **Wait Event**, **Processes**, and **CPU Time**. WEM marks a session **No CPU progress** when it's active but none of its processes is running and none used CPU since the last refresh. The tab samples every 5 seconds. This finds sessions blocked on a lock, a disk, or the network, including sessions that never reach the executor. Hide these columns to stop the extra lookups.
+- To find the queries that read or write the most data, compare **Disk Read** and **Disk Write** across the queries on **Active Queries**. WEM reads the disk activity of at most 25 queries per refresh, and only while a disk column is visible.
+- To find sessions blocked on a lock, a disk, or the network, including sessions that never reach the executor, check **OS State**, **Wait Event**, and **CPU Time** on the **Sessions** tab. WEM marks a session **No CPU progress** when it's active but none of its processes is running and none used CPU since the last refresh.
 
 For the other **Active Queries** and **Sessions** features, see [Monitoring and evaluating queries](query-monitor).
