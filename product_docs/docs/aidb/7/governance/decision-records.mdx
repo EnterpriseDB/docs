@@ -47,7 +47,7 @@ Each record is a span named `purpose_decision`, carrying these attributes:
 | `aidb.agent.decision.interaction_point` | Always `sql_exec` — the only interaction point AIDB records against today.                                                                                                                      |
 | `aidb.agent.decision.principal` | The calling user's Postgres identity, captured before switching to the purpose's role. |
 | `aidb.agent.decision.agent_role`        | The role the purpose resolved to.                                                                                                                                                               |
-| `aidb.agent.decision.purpose_version`   | The version of the effective purpose that resolved to `agent_role`. Added in AIDB 7.10.0. See [Finding the role a purpose had at decision time](#finding-the-role-a-purpose-had-at-decision-time).                                                                                                                                                               |
+| `aidb.agent.decision.purpose_version`   | The version of the effective purpose that resolved to `agent_role`. Added in AIDB 7.10.0. See [Finding the role a purpose had at decision time](#finding-the-role-a-purpose-had-at-decision-time). |
 | `aidb.agent.decision.denial_reason`     | Present only when `action_status = denied`.                                                                                                                                                     |
 | `db.query.text`                         | The SQL text the agent's tool call submitted, present whenever that text is known — including on a denial recorded before the statement reached Postgres. See [Seeing the attempted SQL](#seeing-the-attempted-sql). |
 
@@ -74,13 +74,15 @@ AIDB 7.8.0 and later record the effective purpose used for the decision. This ca
 
 AIDB 7.9.0 adds the relations referenced by the SQL statement and more detail about PostgreSQL privilege errors. See [Relation and denial attributes](#relation-and-denial-attributes).
 
-AIDB 7.10.0 adds the version of the effective purpose. Each purpose change is stored in [`aidb.purpose_history`](/aidb/current/reference/purposes/#aidbpurpose_history), and a decision's `purpose_version` identifies which version it ran under. The role is resolved once per agent run, so every decision in a run names the same version, even if the purpose changes during the run. Separate calls in one conversation resolve again and can name different versions.
+AIDB 7.10.0 adds the version of the effective purpose. Each purpose change is stored in [`aidb.purpose_history`](../reference/purposes#aidbpurpose_history), and a decision's `purpose_version` identifies which version it ran under.
 
-Older records don't gain these fields after an upgrade. Records written before 7.10.0 have no `purpose_version`, so the history can't say what the purpose allowed for them. For field names, limits, and availability, see [Decision attributes](/aidb/latest/reference/observability/#recording-purpose-enforcement-decisions).
+AIDB resolves the role once per agent run, so every decision in a run names the same version, even if the purpose changes during the run. Separate calls in one conversation resolve the role again and can name different versions.
+
+Older records don't gain these fields after an upgrade. Records written before AIDB 7.10.0 have no `purpose_version`, so the history can't show which version of the purpose applied to them. For field names, limits, and availability, see [Decision attributes](../reference/observability#recording-purpose-enforcement-decisions).
 
 ## Finding the role a purpose had at decision time
 
-A decision record names a purpose and, starting in AIDB 7.10.0, the version of that purpose. Join the two to `aidb.purpose_history` to see the role, description, and change details in force for that decision:
+A decision record names a purpose and, starting in AIDB 7.10.0, the version of that purpose. Join the purpose name and version to `aidb.purpose_history` to see the role, description, and change details in force for that decision:
 
 ```sql
 SELECT t.decision_id, h.role, h.description, h.valid_from, h.valid_to, h.changed_by
@@ -95,13 +97,12 @@ WHERE t.decision_id = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
   AND t.source = 'internal';
 ```
 
-OTLP JSON stores 64-bit integers as strings, so the query reads `intValue` as text and casts it to `int`.
+Keep these points in mind when you use the query:
 
-This query reads `payload_json`. With `aidb.otel_client_storage_format = 'binary'`, `payload_json` is `NULL` and the query returns no rows. Use `'json'` or `'both'` if you need to resolve decisions in SQL.
-
-The query also returns no rows for records written before AIDB 7.10.0, which have no `purpose_version`.
-
-The result shows the role the purpose resolved to, not the privileges that role held at decision time. Changes to the role's grants aren't tracked, so use the result together with a log of `GRANT` and `REVOKE` statements, for example from pgAudit or EDB Audit, if you need to establish what the decision could access. See [What the history records](/aidb/current/reference/purposes/#what-the-history-records).
+- OTLP JSON stores 64-bit integers as strings, so the query reads `intValue` as text and casts it to `int`.
+- The query reads `payload_json`. With `aidb.otel_client_storage_format = 'binary'`, `payload_json` is `NULL` and the query returns no rows. To resolve decisions in SQL, use `'json'` or `'both'`.
+- The query returns no rows for records written before AIDB 7.10.0, which have no `purpose_version`.
+- The result shows the role the purpose resolved to, not the privileges that role held at decision time. To establish what a decision could access, combine the result with a log of `GRANT` and `REVOKE` statements, for example from pgAudit or EDB Audit. See [Understanding what the history records](../reference/purposes#understanding-what-the-history-records).
 
 ## Relation and denial attributes
 
