@@ -10,7 +10,7 @@ Use the **FlowServer** panel to run [FlowServer](../flowserver/) jobs from the W
 See [Loading data with FlowServer](../flowserver/loading/) for how FlowServer works, how to build a job configuration file, and how to use `flowcli` instead.
 
 !!! Note
-    FlowServer keeps jobs in memory only, so a job disappears if FlowServer stops or restarts, and you have to create it again.
+    FlowServer 1.1.x keeps jobs in memory only, so a job disappears if FlowServer stops or restarts, and you have to create it again.
 
     If you create a Kafka job again for the same topic and table, the default offset option continues from where the previous job stopped, because the load position is kept in the target database.
 
@@ -20,8 +20,8 @@ See [Loading data with FlowServer](../flowserver/loading/) for how FlowServer wo
 
 - A [supported FlowServer version](overview/supported_platforms#flowserver) is installed on every host and running on the coordinator only, not on the standby or a dedicated host. See [Installing FlowServer](../flowserver/installing).
 - Your WEM role has permission to manage FlowServer jobs. Viewers can see jobs and their activity, but can't create, start, stop, or remove them. An action you don't have permission for is disabled. See [Defining role-based access control](system-access/management#defining-role-based-access-control).
-- Your Kafka or RabbitMQ source, the target database, and the target table already exist. WEM doesn't create them.
-- The target table exists, and the role the job uses has the privileges it needs. See [Creating the target table and configuring role privileges](../flowserver/loading/target_table).
+- Your Kafka or RabbitMQ source and the target database already exist. WEM doesn't create them.
+- The target table exists, and the role the job uses has the privileges it needs. WEM doesn't create the table. See [Creating the target table and configuring role privileges](../flowserver/loading/target_table).
 
 !!! Note
     WEM manages jobs through FlowServer's own interface and shows what FlowServer reports. It doesn't replace the FlowServer configuration file, which you still write yourself.
@@ -46,7 +46,7 @@ Create a job from a FlowServer configuration file. WEM validates the file and ch
 
     - If validation fails, WEM lists the problems under **Fix these problems before creating the job**, with line numbers where it can. Correct the YAML and validate again.
     - If the job file points to a different server than the cluster WEM monitors, WEM can't check that server's catalog, so it shows target problems as notes and doesn't block the job.
-    - If a job with the same source, database host and port, and target table already exists, creating the job replaces it. WEM warns you, or reports an error if the existing job is running.
+    - If a job with the same source, database host and port, and first target table already exists, creating the job replaces it. WEM warns you, or reports an error if the existing job is running.
     - If validation passes, WEM shows **The job configuration is valid** with the job's source and target.
 
 1. Select **Create**. The job appears in the jobs table with the status **Submitted**. Creating a job doesn't start it. Start it from the **Actions** menu.
@@ -99,7 +99,7 @@ When a job fails, **Job Details** shows **The job failed**, or **The last start 
 
 | Error | What to do |
 |-------|------------|
-| Segment reject limit reached | The `error_limit` applies to each segment. WEM rolled back the whole batch, and the invalid messages are still in the queue or topic. Raise `error_limit` or remove the invalid messages. For Kafka, starting from the latest offset skips the invalid messages, but also the valid messages that follow. |
+| Segment reject limit reached | The `error_limit` applies to each segment. WarehousePG aborted the load, so no rows from the batch were loaded, and the invalid messages are still in the queue or topic. Raise `error_limit` or remove the invalid messages. For Kafka, starting from the latest offset skips the invalid messages, but also the valid messages that follow. |
 | `gpfdist` connection refused | Segments couldn't reach the FlowServer `gpfdist` port. Check the `gpfdist` host in the FlowServer configuration. |
 | RabbitMQ channel or connection isn't open | Check the RabbitMQ user, password, and vhost. |
 | The FlowServer address must be on the coordinator itself | The **FlowServer Address** setting points to another host. See [Configuring the FlowServer connection](#configuring-the-flowserver-connection). |
@@ -116,7 +116,7 @@ After you fix the cause, start the job again.
 
 Stop a running job to pause loading data. Select **Stop** in its **Actions** menu and confirm with **Stop Job**. FlowServer stops reading from the source, and you can start the job again later. You can't stop a job while it's preparing.
 
-To remove a job, stop it if it's running, then select **Remove Job** in its **Actions** menu and confirm. Removing a job can't be undone. For a Kafka job, FlowServer also removes its consumer group, but the load position stays in the target database, so a new job for the same topic and table continues from where this one stopped. Removing a job leaves its external tables (`whpgfs_ext_*`) and, for a Kafka job, its history table (`whpgfs_hs_*`) in the target database. Drop these tables yourself if you don't need them.
+To remove a job, stop it if it's running, then select **Remove Job** in its **Actions** menu and confirm. Removing a job can't be undone. For a Kafka job, FlowServer also removes its consumer group, but the load position stays in the target database, so a new job for the same topic and table continues from where this one stopped. Removing a Kafka job leaves its history table (`whpgfs_hs_*`) in the target database. If `Gpfdist.ReuseTables` is set in the FlowServer configuration, removing a job also leaves its external tables (`whpgfs_ext_*`). Drop these tables yourself if you don't need them.
 
 ## Reviewing job activity
 

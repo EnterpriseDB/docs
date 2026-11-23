@@ -1,0 +1,91 @@
+---
+title: Installing the live query plan extension
+navTitle: Installing the live query plan extension
+description: Install and enable the whpg_live_query_plan extension on your WarehousePG cluster to use the live query plan in WEM.
+---
+
+Install the `whpg_live_query_plan` extension on your WarehousePG (WHPG) cluster to use the [live query plan](../queries/live-query-plan) in WEM. The extension is optional.
+
+Run these steps as `gpadmin` on the coordinator:
+
+1. Download the package from the EDB repository:
+
+    <TabContainer syncKey="install">
+    <Tab title="RHEL 8, 9">
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo dnf download edb-whpg<major_version>-live-query-plan
+    ```
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash
+    export EDB_SUBSCRIPTION_TOKEN=<your-token>
+    export EDB_REPO=gpsupp
+    curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+    sudo yumdownloader edb-whpg<major_version>-live-query-plan
+    ```
+
+    </Tab>
+    </TabContainer>
+
+    `<your-token>` is the token you received when you registered for the EDB subscription, and `<major_version>` is your WHPG version, 6 or 7.
+
+1. Create a file `all_hosts` on the coordinator, listing all hosts in the cluster. For example:
+
+    ```ini
+    cdw
+    scdw
+    sdw1
+    sdw2
+    sdw3
+    ```
+
+1. Use the `gpsync` utility to transfer the package to all hosts in the cluster, then use the `gpssh` utility to install it:
+
+    <TabContainer syncKey="install">
+    <Tab title="RHEL 8, 9">
+
+    ```bash
+    gpsync -f all_hosts <package-name> =:/tmp
+    gpssh -f all_hosts -e 'sudo dnf install -y /tmp/<package-name>'
+    ```
+
+    </Tab>
+    <Tab title="RHEL 7">
+
+    ```bash
+    gpsync -f all_hosts <package-name> =:/tmp
+    gpssh -f all_hosts -e 'sudo yum install -y /tmp/<package-name>'
+    ```
+
+    </Tab>
+    </TabContainer>
+
+    `<package-name>` is the name of the package file you downloaded.
+
+1. Load the extension as a shared library. Check for existing shared libraries:
+
+    ```bash
+    gpconfig -s shared_preload_libraries
+    ```
+
+1. Use the output of the previous command to enable `whpg_live_query_plan`, along with any other shared libraries. Turn on query metrics, and restart WHPG:
+
+    ```bash
+    gpconfig -c shared_preload_libraries -v '<other_libraries>, whpg_live_query_plan'
+    gpconfig -c gp_enable_query_metrics -v on
+    gpstop -raf
+    ```
+
+1. In the database that WEM connects to, create the extension:
+
+    ```sql
+    CREATE EXTENSION whpg_live_query_plan;
+    ```
+
+    The extension is created per database. It must be a version that provides the `whpg_live_query_plan_summary` function.
