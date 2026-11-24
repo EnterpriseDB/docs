@@ -1,6 +1,5 @@
 import React, { useEffect } from "react";
 import { Container, Navbar } from "react-bootstrap";
-import algoliasearch from "algoliasearch/lite";
 import { InstantSearch, Configure } from "react-instantsearch";
 import { Footer, Layout, SideNavigation } from "../components";
 import {
@@ -11,15 +10,11 @@ import {
   writeStateToQueryParams,
 } from "../components/advanced-search";
 import useSiteMetadata from "../hooks/use-sitemetadata";
+import useSearchClient from "../hooks/use-search-client";
 import { trackSearchPageview } from "../components/search/analytics";
 import { products } from "../constants/products";
 // loaded client-side for use by Algolia
 import aa from "search-insights"; // eslint-disable-line no-unused-vars
-
-const searchClient = algoliasearch(
-  "HXNAF5X3I8",
-  "fb05499144f0399f5985485b624a0290",
-);
 
 const excludedFacets = Object.entries(products)
   .filter(([id, { noSearch }]) => noSearch)
@@ -28,6 +23,7 @@ const excludedFacets = Object.entries(products)
 const Search = (data) => {
   const paramSearchState = queryParamsToState(data.location.search);
   const { algoliaIndex } = useSiteMetadata();
+  const searchClient = useSearchClient();
 
   // Attribute advanced-search sessions in Fathom as soon as the page loads.
   useEffect(() => {

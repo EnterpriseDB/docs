@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Container } from "react-bootstrap";
-import algoliasearch from "algoliasearch/lite";
 import {
   InstantSearch,
   Configure,
@@ -10,15 +9,11 @@ import {
 import { Footer, Layout, Link, MainContent } from "../components";
 import Icon, { iconNames } from "../components/icon";
 import useSiteMetadata from "../hooks/use-sitemetadata";
+import useSearchClient from "../hooks/use-search-client";
 import usePathPrefix from "../hooks/use-path-prefix";
 import { products } from "../constants/products";
 // loaded client-side for use by Algolia
 import aa from "search-insights"; // eslint-disable-line no-unused-vars
-
-const searchClient = algoliasearch(
-  "HXNAF5X3I8",
-  "fb05499144f0399f5985485b624a0290",
-);
 
 const buildQuery = (pathname, pathPrefix) => {
   // legacy URLs (Docs 1.0)
@@ -85,6 +80,7 @@ const Ascii404 = () => (
 
 const SuggestedLinksSearch = ({ queryParams }) => {
   const { algoliaIndex } = useSiteMetadata();
+  const searchClient = useSearchClient();
 
   return (
     <InstantSearch
