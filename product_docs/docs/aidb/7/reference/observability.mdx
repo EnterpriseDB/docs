@@ -107,6 +107,29 @@ Agents outside AIDB can write their own OTLP telemetry into the same tables, so 
 
 Each array element is one complete OTLP request, and each function returns the number of rows it stored. Most senders reach these functions through the [OTLP/HTTP receiver](../otlp-server), which calls them for you. Only members of the `aidb_otel_writer` role can run them. For the grant, and for how the functions store what they receive, see [How AIDB stores received telemetry](../otlp-server#how-aidb-stores-received-telemetry).
 
+## Protecting telemetry from direct changes
+
+Only a superuser, or a role that holds the table owner's privileges, can change data in the `aidb_otel` tables directly. The `store_*` functions, the `ingest_*` functions, and the cleanup function run as the table owner, and the exporter and cleaner workers run as a superuser, so none of them is affected.
+
+AIDB enforces this in three ways, because table privileges alone don't stop a role that someone granted write access by mistake, or a member of `pg_write_all_data`, which bypasses table privileges:
+
+- AIDB revokes every privilege except `SELECT` from every role except the owner, including `PUBLIC`, on the `aidb_otel` tables, their columns, and their `id` sequences. `SELECT` stays with `aidb_governance` and the roles it granted it to. The upgrade to 7.10.0 also drops triggers and foreign keys that roles other than the owner or a superuser created on these tables, with a `WARNING` that names each trigger it drops, because such a trigger or key could run a role's code as the owner, or make retention deletes fail.
+- A `deny_direct_write` trigger on each table refuses `INSERT`, `UPDATE`, `DELETE`, and `TRUNCATE` from any other role with an `insufficient_privilege` error that names the role and the statement. It's always enabled, so setting `session_replication_role` doesn't skip it. On WarehousePG the triggers aren't created.
+- The `store_*` functions only run while AIDB's own telemetry flush holds an internal-write mark that no SQL can set. A direct call is refused. This means that only AIDB can write a row with `source = 'internal'`. Every row from `ingest_*` is `external`.
+
+This guards against other roles. It doesn't make the data tamper-evident: a superuser can still change anything without a trace. A member of `pg_write_all_data` can still make writes fail without changing a row, by setting an `id` sequence to its maximum value or by holding a lock on a table. Only not granting that role prevents this. To recover, as the owner or a superuser, reset each sequence and end the session that holds the lock:
+
+```sql
+SELECT pg_catalog.setval(
+    pg_catalog.pg_get_serial_sequence('aidb_otel.traces', 'id'),
+    (SELECT pg_catalog.max(id) FROM aidb_otel.traces)
+);
+```
+
+Repeat for `metrics`, `logs`, and `cleanup_log`. On an empty table, use `setval(..., 1, false)`. Find the lock holder in `pg_locks` and end it with `pg_terminate_backend()`.
+
+`principal` is a database role. Behind a shared login or a connection pooler, it names the login, not the person.
+
 ## Triggering retention cleanup
 
 The cleaner background worker deletes old rows automatically (see [Running background workers](#running-background-workers)), but this function lets you trigger a cleanup pass immediately instead of waiting for its next tick.
@@ -116,6 +139,8 @@ The cleaner background worker deletes old rows automatically (see [Running backg
 Manually triggers a full retention cleanup pass, deleting rows older than `aidb.otel_cleaner_retention_days` from all three `aidb_otel` tables, in the same bounded batches the [cleaner background worker](#cleaning-up-expired-rows) uses. Runs immediately, regardless of `aidb.otel_cleaner_enabled` — useful for an ops task or a test that shouldn't wait for the worker's own wake-up interval.
 
 Requires the `aidb_governance` role (see [Managing audit access](../install/configure#managing-audit-access-with-the-aidb_governance-role)) — `aidb_users` has no `EXECUTE` on this function.
+
+Each call writes one row to [`aidb_otel.cleanup_log`](#auditing-retention-cleanups). The cleanup uses the configured value of `aidb.otel_cleaner_retention_days`, not a value that a session set with `SET` or `SET LOCAL`. If the session's value differs, AIDB raises a `WARNING` that names both values, and the call uses the configured one. A session that connected with a connection option such as `PGOPTIONS` or `options=-c` can't run a manual cleanup, because Postgres treats that option's value as the configured one. Reconnect without it.
 
 Takes no arguments and returns `void`. Safe to call while the cleaner background worker is running — the two don't compete over the same rows.
 
@@ -127,7 +152,30 @@ SELECT aidb.run_otel_retention_cleanup();
 There's no equivalent manual trigger for the exporter. Forwarding to an external collector only ever runs from the exporter worker's own tick, so that a delivery in progress never shares a transaction with anything else that could roll it back and risk sending the same row twice.
 !!!
 
-Internally, the `database` client writes through `aidb_otel.store_metrics()`, `aidb_otel.store_logs()`, and `aidb_otel.store_traces()`. These aren't meant to be called directly — `aidb_users` has `EXECUTE` on them (needed for any traced call to work) but no `SELECT` on the tables they write to.
+Internally, the `database` client writes through `aidb_otel.store_metrics()`, `aidb_otel.store_logs()`, and `aidb_otel.store_traces()`. You can't call these directly: they refuse to run outside AIDB's own telemetry flush, even for a superuser, with an `insufficient_privilege` error that points to the `ingest_*` functions. `aidb_users` still has `EXECUTE` on them, which a traced call needs, but no `SELECT` on the tables they write to.
+
+## Auditing retention cleanups
+
+`aidb_otel.cleanup_log` records every retention cleanup. AIDB inserts each row in the same transaction as the `DELETE`, so a deletion always has a row, and a rolled-back cleanup leaves none. `aidb_governance` can read it, and the cleaner never deletes from it. `pg_dump` includes it, though not the telemetry tables, so the record survives a restore. A restore writes it through the `deny_direct_write` trigger, so it must run as a superuser or the table owner.
+
+`aidb.run_otel_retention_cleanup()` writes one row per call, even when it deleted nothing. The cleaner worker writes one row per batch that deleted rows, and none for an empty hourly pass.
+
+| Column | Description |
+|--------|-------------|
+| `trigger_kind` | `manual` for a call to `aidb.run_otel_retention_cleanup()`, or `worker`. |
+| `worker_name` | The cleaner worker's name. `NULL` for a manual call. |
+| `caller` | The `session_user` that ran a manual cleanup. A `SECURITY DEFINER` function doesn't change it. |
+| `pg_session_id`, `backend_pid`, `client_addr`, `txid` | Which session ran the cleanup. `pg_session_id` has the same value as the `db.postgresql.session_id` span attribute and the `%c` log prefix. |
+| `started_at`, `finished_at` | When the cleanup started and finished. |
+| `retention_days`, `batch_size`, `cutoff` | The retention, the batch size, and the cutoff time that the cleanup used. |
+| `retention_source`, `retention_source_file` | Where the retention value came from. |
+| `ignored_session_retention_days` | A different value that the session had set with `SET` and the cleanup ignored. When this is set, `retention_source` is `NULL`. |
+| `outcome` | `completed`, `nothing_eligible`, or `retention_disabled`. |
+| `metrics_*`, `logs_*`, `traces_*` | Per table: the rows deleted (`_deleted`), how many of them were never marked `exported` (`_not_exported`, which counts every row when the exporter doesn't run), and the oldest and newest `recorded_at` deleted (`_oldest`, `_newest`). |
+
+A manual call that fails writes no row, because the row rolls back with the error. It writes a `LOG` line that names the caller's `session_user` instead.
+
+Per-database retention still takes effect through `ALTER DATABASE ... SET` for sessions that start afterward. A value set with `ALTER ROLE ... SET` is trusted the same way, so granting a role `SET` on `aidb.otel_cleaner_retention_days` lets it control the retention of its own cleanups.
 
 ## Running background workers
 
@@ -144,6 +192,33 @@ Failed deliveries back off per row (not per tick), so one row's retry schedule n
 ```sql
 SELECT * FROM aidb_otel.traces WHERE export_status = 'failed';
 ```
+
+### Exporting to Langfuse
+
+To view agent runs in [Langfuse](https://langfuse.com), set `aidb.otel_exporter_langfuse_endpoint` to its OTLP/HTTP base URL. The exporter then sends traces to Langfuse instead of to `aidb.otel_exporter_endpoint`. Logs and metrics, which Langfuse doesn't ingest, still go to the general endpoint, and a signal with no destination stays `pending` until the cleaner deletes it by age.
+
+Put the authentication headers in the `AIDB_OTEL_EXPORTER_LANGFUSE_HEADERS` environment variable of the Postgres server, and restart Postgres. The general endpoint has `AIDB_OTEL_EXPORTER_HEADERS`, in the same format. See [Exporter headers](../install/configure#exporter-headers) for the format and rules.
+
+```sh
+AIDB_OTEL_EXPORTER_LANGFUSE_HEADERS="Authorization=Basic <base64 of public_key:secret_key>,x-langfuse-ingestion-version=4"
+```
+
+```sql
+ALTER SYSTEM SET aidb.otel_exporter_enabled = on;
+ALTER SYSTEM SET aidb.otel_exporter_langfuse_endpoint = 'http://langfuse:3000/api/public/otel';
+```
+
+If a header list is invalid, the exporter holds back only the signals sent to that destination, leaves their rows `pending`, and logs a warning that names the variable and the entry number, never the value. The other destination keeps delivering.
+
+While the Langfuse endpoint is set, or `aidb.otel_langfuse_attributes_enabled` is `on`, AIDB adds these attributes so Langfuse can group and classify the spans. With neither, none of them are recorded, so the `aidb_otel` tables and other backends don't see them.
+
+| Attribute                   | Description                                                                                                                                  |
+|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `langfuse.session.id`       | The conversation ID, on every span of an agent conversation. Langfuse groups traces into a session with it. A delegate keeps its caller's.   |
+| `langfuse.user.id`          | The database user (`session_user`) who ran the conversation, on every span of it. A read-only run has no conversation ID, so it gets only this attribute. |
+| `langfuse.observation.type` | `agent` on the conversation span and `tool` on native, SQL, and MCP tool spans, so Langfuse's agent and tool views count them.                |
+
+Every outbound request goes through AIDB's [egress allowlist](../install/configure#network-egress).
 
 ### Cleaning up expired rows
 
@@ -165,7 +240,7 @@ Set once per process, shared by every signal (traces, logs, and metrics):
 |------------------------|---------------------------------------------------------------------|
 | `service.version`      | The AIDB extension version that produced the data.                  |
 | `service.name` | Always `aidb`. Identifies AIDB when a monitoring system receives data from multiple services. |
-| `aidb.otel_schema_version` | The telemetry schema version: `1` in AIDB 7.8.0 and `2` starting in 7.9.0. |
+| `aidb.otel_schema_version` | The telemetry schema version: `1` in AIDB 7.8.0, `2` in AIDB 7.9.0, and `3` starting in 7.10.0. |
 | `aidb.database.name`   | Name of the database the backend is connected to.                   |
 | `aidb.database.oid`    | OID of that database.                                                |
 
@@ -189,9 +264,11 @@ Set on spans for agent conversations, tasks, and messages, and on the failure lo
 | `gen_ai.agent.name`          | Agent name.                                                            |
 | `gen_ai.agent.id`            | Agent ID.                                                              |
 | `gen_ai.conversation.id`     | Conversation ID. Promoted to the indexed `gen_ai_conversation_id` column on `aidb_otel.traces`. |
-| `gen_ai.usage.input_tokens` | Integer. Input tokens consumed by all model calls of the run, summed across the loop, as reported by the provider. Not set on the span, rather than set to `0`, when no model call returned a count. |
-| `gen_ai.usage.output_tokens` | Integer. Output tokens consumed by all model calls of the run, same rule. |
+| `gen_ai.request.model`       | The registered AIDB model name the agent runs on, not the provider's model ID. Set on the conversation span only. A delegate's span carries its own. Added in AIDB 7.10.0. |
+| `gen_ai.usage.input_tokens`  | Input tokens that the model provider reported, summed over every model call of the run. These are the same numbers that the agent's `input_token_budget` is enforced against. Set on the conversation span only, and absent when no call reported usage. A delegate's usage is on its own span. Added in AIDB 7.10.0. |
+| `gen_ai.usage.output_tokens` | Output tokens that the provider reported, with the same rules as `gen_ai.usage.input_tokens`. Added in AIDB 7.10.0. |
 | `aidb.agent.model`           | Model used by the agent.                                               |
+| `aidb.agent.decision.count`  | On a conversation span, the number of `purpose_decision` spans that the run recorded itself, allowed and denied, not counting the decisions of agents it delegated to. Compare it with the stored decisions of the run to find missing ones. Absent when the run ended before its reasoning loop started. Added in AIDB 7.10.0. |
 | `aidb.agent.purpose`         | The agent's declared purpose (see [Permissions](../agents/creating-agents#permissions)). |
 | `aidb.agent.status` | Outcome of the agent call: `COMPLETE`, `TIMEOUT`, or `ERROR`. |
 | `aidb.agent.task.id` | ID of one agent invocation, distinct from the conversation ID. Absent for read-only calls. |
@@ -230,6 +307,7 @@ With telemetry enabled, purpose-scoped tool SQL produces `purpose_decision` span
 | `aidb.agent.decision.agent_role`        | The purpose-resolved Postgres role the action ran (or would have run) as.                                            |
 | `aidb.agent.decision.denial_reason`     | Present only when denied. One of `role_not_found` (the purpose's role doesn't exist), `not_role_member` (the caller isn't a member of the purpose's role), `escalation_blocked` (the SQL tried to change the running role with `SET ROLE`, `RESET ROLE`, or `SET SESSION AUTHORIZATION`, or to change a privilege-restricted setting), `engine_privilege_denied` (Postgres rejected the SQL with a `42501` permission error), or `pre_execution_rejected` (the tool SQL failed validation before execution). Not promoted to its own column. |
 | `aidb.agent.decision.effective_purpose` | The purpose actually enforced for the decision. It can differ from the agent's configured purpose when a delegated agent runs under its caller's purpose. Added in AIDB 7.8.0. |
+| `aidb.agent.decision.purpose_version` | The version of `effective_purpose` that `agent_role` was resolved from. Added in AIDB 7.10.0. |
 | `aidb.agent.decision.referenced_relations` | A JSON array stored as a string, listing distinct schema-qualified relations named by the SQL statement after parsing and analysis. The list is limited to 5 KiB. Added in AIDB 7.9.0. See [Referenced relations](../governance/decision-records#referenced-relations) and its [limitations](../governance/decision-records#limitations). |
 | `aidb.agent.decision.referenced_relations_total` | The number of distinct relations before the list is shortened to fit the limit. Added in AIDB 7.9.0. |
 | `aidb.agent.decision.denial_class` | A category for a PostgreSQL privilege error, such as `object_privilege`, `sequence_privilege`, or `rls_policy`. Added in AIDB 7.9.0. See [Denial class](../governance/decision-records#denial-class). |
