@@ -6,7 +6,6 @@ import React, {
   useRef,
   useEffect,
 } from "react";
-import algoliasearch from "algoliasearch/lite";
 import {
   InstantSearchSSRProvider,
   InstantSearch,
@@ -18,15 +17,11 @@ import Icon, { iconNames } from "../icon/";
 import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import { trackSearchPageview, trackSearchEvent } from "./analytics";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
+import useSearchClient from "../../hooks/use-search-client";
 import { products } from "../../constants/products";
 import { Dropdown, DropdownButton } from "react-bootstrap";
 // loaded client-side for use by Algolia
 import aa from "search-insights"; // eslint-disable-line no-unused-vars
-
-const searchClient = algoliasearch(
-  "HXNAF5X3I8",
-  "fb05499144f0399f5985485b624a0290",
-);
 
 const useClickOutside = (ref, handler, events) => {
   if (!events) events = [`mousedown`, `touchstart`];
@@ -269,6 +264,7 @@ const SearchBar = ({ searchProduct, searchVersion, className }) => {
   const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
+  const searchClient = useSearchClient();
   const searchConfig = useMemo(() => {
     let facets = currentProduct
       ? [`product:${currentProduct}`]
