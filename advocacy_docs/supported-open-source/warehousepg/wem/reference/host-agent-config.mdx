@@ -4,7 +4,21 @@ navTitle: Host agent configuration
 description: Complete reference for all acp-host-agent configuration variables.
 ---
 
-The host agent reads its configuration from `/etc/edb/acp-host-agent/acp-host-agent.conf`. Set variables using `KEY=value` syntax, one per line. Lines beginning with `#` are comments. See [Installing the host agent](../installing/host-agent) for setup instructions.
+## Configuration files
+
+The host agent reads its configuration from two files in `/etc/edb/acp-host-agent`. Set variables using `KEY=value` syntax, one per line. Lines beginning with `#` are comments. See [Installing the host agent](../installing/host-agent) for setup instructions.
+
+| File | Contains |
+|------|----------|
+| `wem.conf` | The settings that connect the agent to WEM: `WEM_CONNECT_ADDRESS`, `WEM_TASK_QUEUES`, and `WEM_DATABASE`. This file is separate from the WEM server's own `/etc/edb/wem/wem.conf`. |
+| `acp-host-agent.conf` | The common settings: agent identity, the WarehousePG data directory and installation path, and logging. The agent loads this file last, so a variable that appears in both files takes the value from `acp-host-agent.conf`. |
+
+After you change either file, restart the agent with `sudo systemctl restart acp-host-agent`.
+
+!!! Note "Upgrading from host agent 1.1.0"
+    Before host agent 1.2.0, all of these settings lived in `acp-host-agent.conf`. The upgrade moves `WEM_CONNECT_ADDRESS`, `WEM_TASK_QUEUES`, and `WEM_DATABASE` to `wem.conf` and keeps your values. It leaves a `# moved to wem.conf:` comment in `acp-host-agent.conf` for each one. Update any scripts that edit these settings to use `wem.conf`.
+
+### wem.conf
 
 ```ini
 # =============================================================================
@@ -12,7 +26,7 @@ The host agent reads its configuration from `/etc/edb/acp-host-agent/acp-host-ag
 # =============================================================================
 # host:port of WEM's relay to its internal job-execution engine. This address
 # is WEM's listen port plus 1 (for example, WEM on 8080 -> wem-host:8081).
-WEM_CONNECT_ADDRESS=localhost:8081
+WEM_CONNECT_ADDRESS=wem-host:8081
 
 # Task queue(s) this agent polls for activities (optional).
 # Leave unset to self-register with WEM instead, which derives a queue
@@ -26,6 +40,16 @@ WEM_CONNECT_ADDRESS=localhost:8081
 # WEM_TASK_QUEUES=
 
 # =============================================================================
+# WEM Database (optional)
+# =============================================================================
+# WHPG database the agent's psql invocations connect to for WEM data.
+# WEM_DATABASE=wem
+```
+
+### acp-host-agent.conf
+
+```ini
+# =============================================================================
 # Agent Identity (optional)
 # =============================================================================
 # Stable per-host identifier sent as this agent's worker identity.
@@ -35,12 +59,6 @@ WEM_CONNECT_ADDRESS=localhost:8081
 # Directory where the agent's enrollment keypair is stored. Must be writable
 # by the acp-host-agent OS user.
 # AGENT_STATE_DIR=/var/lib/edb/acp-host-agent
-
-# =============================================================================
-# WEM Database (optional)
-# =============================================================================
-# WHPG database the agent's psql invocations connect to for WEM data.
-# WEM_DATABASE=wem
 
 # =============================================================================
 # WarehousePG Hub (optional)
@@ -66,12 +84,16 @@ AGENT_LOG_LEVEL=info
 
 ## WEM connection
 
+Set these variables in `wem.conf`.
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `WEM_CONNECT_ADDRESS` | Yes | `localhost:8081` | Host:port of WEM's relay to its internal job-execution engine. Set this parameter to WEM's listen port plus 1. The shipped default assumes the host agent runs on the same host as WEM. If it doesn't, set this parameter to WEM's hostname or IP address, for example `WEM_CONNECT_ADDRESS=wem-host:8081`. |
+| `WEM_CONNECT_ADDRESS` | Yes | — | Host:port of WEM's relay to its internal job-execution engine. Set this parameter to WEM's hostname or IP address and its listen port plus 1, for example `WEM_CONNECT_ADDRESS=wem-host:8081`. The package ships this line commented out, so uncomment it and set it. The agent doesn't start without it. |
 | `WEM_TASK_QUEUES` | No | — | Task queue or queues this agent polls for activities. Comma-separate multiple queues. Leave unset to self-register with WEM instead, which derives a queue automatically for the coordinator (`coordinator-tasks`), the standby coordinator (`standby-tasks`), and each segment host (`segment-<content>-<p\|m>-tasks`, for example `segment-3-p-tasks`), based on the cluster's segment configuration. Set this manually only for a DR standby coordinator (`dr-standby-tasks`), since WEM can't introspect a DR cluster's segment configuration to derive this automatically. If a host isn't found in the segment configuration and no queue is set, registration fails until you set this variable explicitly. |
 
 ## WEM database
+
+Set this variable in `wem.conf`.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -79,11 +101,15 @@ AGENT_LOG_LEVEL=info
 
 ## WarehousePG Hub
 
+Set these variables in `acp-host-agent.conf`.
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `WHPG_DATA_DIR` | No | Derived from the local cluster | WarehousePG data directory, for example `/data/whpg/gpseg-1`. WEM derives this value by running `psql -U gpadmin -d postgres -c "SHOW data_directory;"` against the local cluster. Set this parameter explicitly only if that derivation is unreliable in your environment. |
 
 ## Agent identity
+
+Set these variables in `acp-host-agent.conf`.
 
 By default, the host agent derives its unique identifier from the host's DMI product UUID or NIC MAC address. Set `AGENT_ID` only if the default derivation produces inconsistent results across restarts.
 
@@ -95,6 +121,8 @@ On first start, the agent also generates a join token at `/etc/edb/acp-host-agen
 | `AGENT_STATE_DIR` | `/var/lib/edb/acp-host-agent` | Directory where the agent's enrollment keypair is stored. Must be writable by the `acp-host-agent` OS user. |
 
 ## Logging
+
+Set this variable in `acp-host-agent.conf`.
 
 Control the verbosity of host agent logs. Use `debug` or `trace` for troubleshooting, and `error` or `warn` in production to reduce noise.
 

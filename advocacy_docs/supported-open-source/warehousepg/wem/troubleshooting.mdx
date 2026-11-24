@@ -388,7 +388,7 @@ WEM's dashboards, charts, and log search all read from ClickHouse. A single pipe
     sudo systemctl status acp-host-agent
     ```
 
-2. Check `/etc/edb/acp-host-agent/acp-host-agent.conf`. `WEM_CONNECT_ADDRESS` must be a hostname or IP address in the form `<wem-host>:<wem-port + 1>` (default `8081`). The hostname must resolve from the node, and that port must be reachable from every cluster node. Test it directly:
+2. Check `/etc/edb/acp-host-agent/wem.conf`. `WEM_CONNECT_ADDRESS` must be a hostname or IP address in the form `<wem-host>:<wem-port + 1>` (default `8081`). The hostname must resolve from the node, and that port must be reachable from every cluster node. Test it directly:
 
     ```bash
     curl -k https://<wem-host>:8081/
@@ -410,6 +410,28 @@ WEM's dashboards, charts, and log search all read from ClickHouse. A single pipe
 
 2. If it shows a connection failure, verify connectivity with `curl -k https://<wem-host>:8081/`, as above.
 3. If it shows `awaiting TLS material`, the agent registered correctly and is only waiting on approval. Go to **Management > Host Agents** and approve it. Once approved, check the **Telemetry** and **Last Seen** columns to confirm it's active.
+
+### Issue: A backup fails with "no agent is currently polling for backup jobs"
+
+**Cause:** The host agent's certificate has expired and WEM still lists the agent as **Approved**, so the agent can't renew the certificate or register again. A node that was offline for a long time can end up in this state. The agent log shows `cert renewal failed` warnings and then `cert expired while agent is still marked approved in WEM`.
+
+**Solution:**
+
+1. Check the agent log on the affected node:
+
+    ```bash
+    sudo grep -E "cert renewal failed|cert expired|worker running" /var/log/edb/acp-host-agent/acp-host-agent.log | tail
+    ```
+
+2. In WEM, go to **Management** > **Host Agents**, and revoke the agent from its row's actions menu.
+3. The agent registers again and appears as **Pending**. If it doesn't, restart it:
+
+    ```bash
+    sudo systemctl restart acp-host-agent
+    ```
+
+4. Compare the agent's **Verification Token** against `sudo cat /etc/edb/acp-host-agent/join-token` on the node, then approve it.
+5. Confirm that the log shows `worker running` for the agent's task queue, and run the backup again.
 
 ### Error: `verification_token must be 1-255 chars of [a-zA-Z0-9._-]`
 
