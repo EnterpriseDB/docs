@@ -3,8 +3,6 @@ title: 'Postgres Instance Manager'
 originalFilePath: 'src/instance_manager.md'
 ---
 
-
-
 {{name.ln}} does not rely on an external tool for failover management.
 It simply relies on the Kubernetes API server and a native key component called:
 the **Postgres instance manager**.
@@ -23,14 +21,23 @@ of the Pod, the instance manager acts as a backend to handle the
 ## Startup Probe
 
 The startup probe ensures that a PostgreSQL instance, whether a primary or
-standby, has fully started.
+standby, has started up.
 
 !!!info
+
 By default, the startup probe uses
 [`pg_isready`](https://www.postgresql.org/docs/current/app-pg-isready.html).
 However, the behavior can be customized by specifying a different startup
 strategy.
 !!!
+
+With the default `pg_isready` strategy, an instance is considered started as
+soon as PostgreSQL is alive, even if it is still rejecting connections while
+it completes its startup sequence (for example, a standby performing crash
+recovery or replaying WAL). This prevents the kubelet from repeatedly
+restarting an instance that is legitimately recovering. The instance remains
+unready, and therefore excluded from the ready endpoints of the services,
+until the readiness probe reports that it accepts connections.
 
 While the startup probe is running, the liveness and readiness probes remain
 disabled. Following Kubernetes standards, if the startup probe fails, the
@@ -40,13 +47,16 @@ The `.spec.startDelay` parameter specifies the maximum time, in seconds,
 allowed for the startup probe to succeed.
 
 By default, the `startDelay` is set to `3600` seconds. It is recommended to
-adjust this setting based on the time PostgreSQL needs to fully initialize in
-your specific environment.
+adjust this setting based on the time PostgreSQL needs to start in your
+specific environment. With the default `pg_isready` strategy, this only
+needs to cover the time required for the postmaster to come alive, while
+with the `query` and `streaming` strategies it must also account for the
+time needed to complete recovery and accept connections.
 
 !!!warning
-Setting `.spec.startDelay` too low can cause the liveness probe to activate
-prematurely, potentially resulting in unnecessary Pod restarts if PostgreSQL
-hasn’t fully initialized.
+
+Setting `.spec.startDelay` too low can cause the startup probe to fail
+before PostgreSQL has started up, resulting in unnecessary Pod restarts.
 !!!
 
 {{name.ln}} configures the startup probe with the following default parameters:
@@ -65,11 +75,13 @@ You can customize any of the probe settings in the `.spec.probes.startup`
 section of your configuration.
 
 !!!warning
+
 Be sure that any custom probe settings are tailored to your cluster's
 operational requirements to avoid unintended disruptions.
 !!!
 
 !!!info
+
 For more details on probe configuration, refer to the
 [probe API documentation](pg4k.v1.md#probewithstrategy).
 !!!
@@ -103,8 +115,11 @@ To accommodate these requirements, {{name.ln}} extends the
 -   `type`: specifies the criteria for considering the probe successful. Accepted
     values, in increasing order of complexity/depth, include:
 
-    -   `pg_isready`: marks the probe as successful when the `pg_isready` command
-        exits with `0`. This is the default for primary instances and replicas.
+    -   `pg_isready`: relies on the exit code of the `pg_isready` command. The
+        startup probe is successful when the server is either accepting
+        connections or alive but rejecting them, as described above. The
+        readiness probe is successful only when the server is accepting
+        connections. This is the default for primary instances and replicas.
     -   `query`: marks the probe as successful when a basic query is executed on
         the `postgres` database locally.
     -   `streaming`: marks the probe as successful when the replica begins
@@ -117,12 +132,14 @@ To accommodate these requirements, {{name.ln}} extends the
     considered successfully started as soon as it begins streaming.
 
 !!!info Important
+
 The `.spec.probes.startup.maximumLag` option is validated and enforced only
 during the startup phase of the pod, meaning it applies exclusively when the
 replica is starting.
 !!!
 
 !!!warning
+
 Incorrect configuration of the `maximumLag` option can cause continuous
 failures of the startup probe, leading to repeated replica restarts. Ensure
 you understand how this option works and configure appropriate values for
@@ -140,6 +157,15 @@ probes:
     type: streaming
     maximumLag: 16Mi
 ```
+
+!!!info
+
+The `query` and `streaming` strategies require PostgreSQL to accept
+connections, so a startup probe using them keeps failing while an
+instance replays WAL after a crash. When using these strategies, make
+sure that `startDelay` (or your custom `failureThreshold`) allows enough
+time for recovery to complete.
+!!!
 
 ## Liveness Probe
 
@@ -174,11 +200,13 @@ You can customize any of the probe settings in the `.spec.probes.liveness`
 section of your configuration.
 
 !!!warning
+
 Be sure that any custom probe settings are tailored to your cluster's
 operational requirements to avoid unintended disruptions.
 !!!
 
 !!!info
+
 For more details on probe configuration, refer to the
 [probe API documentation](pg4k.v1.md#probe).
 !!!
@@ -209,7 +237,7 @@ following conditions are met:
 1.  The instance manager cannot reach the Kubernetes API server
 2.  The instance manager cannot reach **any** other instance via the instance manager’s REST API
 
-The effect of this behavior is to consider an isolated primary to be not alive and subsequently **shut it down** when the liveness probe fails.
+The effect of this behavior is to consider an isolated primary to be not alive: the liveness probe fails, and the kubelet restarts the container through its normal termination path. That path is a **smart** shutdown: it refuses new connections but lets sessions that are already open keep committing until `.spec.smartShutdownTimeout` elapses (180 seconds by default). Set `.spec.smartShutdownTimeout: 0` if you need the restart to skip straight to a fast shutdown instead of waiting out that window.
 
 It is **enabled by default** and can be disabled by adding the following:
 
@@ -222,6 +250,7 @@ spec:
 ```
 
 !!!info Important
+
 Be aware that the default liveness probe settings—automatically derived from `livenessProbeTimeout`—might
 be aggressive (30 seconds). As such, we recommend explicitly setting the
 liveness probe configuration to suit your environment.
@@ -245,9 +274,11 @@ spec:
 !!!info
 
 Primary isolation is distinct from the [safe primary election](failover.md#safe-primary-election)
-mechanism. The isolation check *fences* a primary that has lost connectivity to
-both the API server and the other instances, while the primary lease coordinates
-*which instance is allowed to promote*. The two mechanisms are complementary.
+mechanism. The isolation check reports a primary that has lost connectivity to
+both the API server and the other instances as unhealthy, leaving the kubelet
+to restart it through the normal container-termination path described above;
+the primary lease coordinates *which instance is allowed to promote*. The two
+mechanisms are complementary.
 !!!
 
 ## Readiness Probe
@@ -257,6 +288,7 @@ Its primary purpose is to check whether the PostgreSQL instance is ready to
 accept traffic and serve requests at any point during the pod's lifecycle.
 
 !!!info
+
 By default, the readiness probe uses
 [`pg_isready`](https://www.postgresql.org/docs/current/app-pg-isready.html).
 However, the behavior can be customized by specifying a different readiness
@@ -291,11 +323,13 @@ spec:
 ```
 
 !!!warning
+
 Ensure that any custom probe settings are aligned with your cluster’s
 operational requirements to prevent unintended disruptions.
 !!!
 
 !!!info
+
 For more information on configuring probes, see the
 [probe API](pg4k.v1.md#probewithstrategy).
 !!!
@@ -313,12 +347,14 @@ To accommodate these requirements, {{name.ln}} extends the
 section for detailed information on these options.
 
 !!!info Important
+
 Unlike the startup probe, the `.spec.probes.readiness.maximumLag` option is
 continuously monitored. A lagging replica may become unready if this setting is
 not appropriately tuned.
 !!!
 
 !!!warning
+
 Incorrect configuration of the `maximumLag` option can lead to repeated
 readiness probe failures, causing serious consequences, such as:
 
@@ -330,6 +366,7 @@ readiness probe failures, causing serious consequences, such as:
 !!!
 
 !!!note Recommendation
+
 Use the `streaming` and `maximumLag` options with extreme caution. If
 you're unfamiliar with PostgreSQL replication, rely on the default
 strategy. Seek professional advice if unsure.
@@ -373,6 +410,7 @@ The shutdown procedure is composed of two steps:
     seconds.
 
 !!!info Important
+
 In order to avoid any data loss in the Postgres cluster, which impacts
 the database [RPO](before_you_start.md#postgresql-terminology), don't delete the Pod where
 the primary instance is running. In this case, perform a switchover to
@@ -392,6 +430,7 @@ the  time given to the former primary to shut down gracefully and archive all
 the WAL files. By default it is set to `3600` (1 hour).
 
 !!!warning
+
 The `.spec.switchoverDelay` option affects the [RPO](before_you_start.md#postgresql-terminology)
 and [RTO](before_you_start.md#postgresql-terminology) of your PostgreSQL database. Setting it to
 a low value, might favor RTO over RPO but lead to data loss at cluster level
@@ -399,6 +438,11 @@ and/or backup level. On the contrary, setting it to a high value, might remove
 the risk of data loss while leaving the cluster without an active primary for a
 longer time during the switchover.
 !!!
+
+If PostgreSQL on the former primary is unreachable, the `CHECKPOINT` and the fast
+shutdown are skipped and an immediate shutdown is issued right away. Since
+`.spec.switchoverDelay` is the timeout of that fast shutdown, it does not apply
+to this path. See the ["Failover" section](failover.md) for details.
 
 ## Failover
 
@@ -418,11 +462,13 @@ provides details on checking the disk space used by WAL segments and standard
 metrics on disk usage exported to Prometheus.
 
 !!!info Important
+
 In a production system, it is critical to monitor the database
 continuously. Exhausted disk storage can lead to a database server shutdown.
 !!!
 
 !!!note
+
 The detection of exhausted storage relies on a storage class that
 accurately reports disk size and usage. This may not be the case in simulated
 Kubernetes environments like Kind or with test storage class implementations

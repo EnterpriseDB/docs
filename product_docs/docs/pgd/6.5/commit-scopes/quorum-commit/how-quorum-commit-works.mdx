@@ -26,13 +26,19 @@ To make the guarantees above possible, Quorum Commit doesn't support [`DEGRADE T
 
 Rather than detecting conflicts after the fact, Quorum Commit aborts one of the conflicting transactions during the quorum phase, before either commits. Eager conflict resolution is always active with Quorum Commit and can't be disabled. Configure your application to handle serialization errors at commit time and retry failed transactions. See [Quorum Commit](/pgd/current/geo-replication-dev/using-commit-scopes/#quorum-commit) in the developer guide for a transaction template that wraps commits in a retry loop and handles serialization errors.
 
+## Apply errors
+
+Quorum Commit transactions ignore the [`apply_error_policy`](/pgd/current/recovering-from-failures/apply-error-policy/) node group option. PGD always applies them with `keep_retrying` on every node that applies them, and does the same for [CAMO](/pgd/current/commit-scopes/camo/) transactions on the CAMO partner. The origin node decides the outcome from its peers' votes, so a peer-local skip or disable must not override it. For example, `record_all_and_skip` aborts the prepare but still votes yes, so the origin would count a transaction that the peer never applied. The policies that disable the subscription would stop it on eager conflicts, which are normal under Quorum Commit. Other transactions keep the configured policy.
+
+PGD writes a `WARNING` to the log once per writer process when it overrides the policy. `bdr.alter_node_group_option()` also warns when a node group has an `apply_error_policy` other than `keep_retrying` and a default Quorum Commit or CAMO commit scope, whichever you set second. PGD still applies the setting.
+
 ## Transaction lifecycle
 
 Quorum Commit uses [two-phase commit (2PC)](/pgd/current/overview/terminology/#two-phase-commit-2pc) internally. No node commits until quorum is achieved. In the prepare phase, the origin node prepares the transaction locally, making the data durable but not yet visible to other transactions. The prepared transaction is replicated to all participating nodes, each of which prepares its own local copy.
 
 The origin node then collects confirmations from the required commit scope group. Once it receives the required number, it makes the commit decision and propagates it to all participating nodes, which then all commit together. When Raft consensus is used for the commit decision, PGD's built-in Raft makes the decision rather than the origin node.
 
-Configure [`max_prepared_transactions`](/pgd/current/postgres-configuration/#max_prepared_transactions) to at least as high as `max_connections` to handle all Quorum Commit transactions originating per node.
+Configure [`max_prepared_transactions`](/pgd/current/reference/postgres-configuration/#max_prepared_transactions) to at least as high as `max_connections` to handle all Quorum Commit transactions originating per node.
 
 ## Automatic reconciliation
 

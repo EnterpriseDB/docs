@@ -174,7 +174,7 @@ In short: **HTTP CP ingress is centralized via Istio; PSQL DP ingress is dedicat
 
 Lifecycle isolation is the most operationally significant distinction between the two planes.
 
-The CP and every DP it manages are on **independent upgrade lifecycles**. We publish patches on a monthly cadence for the Long Term Support (LTS) release. Customers are strongly encouraged to apply these promptly, and the architecture makes this practical: **upgrading the CP does not restart customer Postgres on the DP.** Applications continue serving connections through the upgrade, and there's no maintenance window required for Postgres availability when the CP is patched. This separation holds because the embedded CloudNativePG (CNPG) operator that manages Postgres on the DP is configured for **in-place instance-manager updates**. When the operator is upgraded, the instance manager binary inside each Postgres pod is swapped while the running postmaster continues serving traffic. No pod restart, no switchover, no application-visible event.
+The CP and every DP it manages are on **independent upgrade lifecycles**. We publish patches on a monthly cadence for the Long Term Support (LTS) release. Customers are strongly encouraged to apply these promptly, and the architecture makes this practical: **by design, upgrading the CP doesn't restart customer Postgres on the DP.** When Postgres isn't restarted, applications continue serving connections through the upgrade, and you don't need a maintenance window for Postgres availability. This separation holds because the embedded CloudNativePG (CNPG) operator that manages Postgres on the DP is configured for **in-place instance-manager updates**. When the operator is upgraded, the instance manager binary inside each Postgres pod is swapped while the running postmaster continues serving traffic. No pod restart, no switchover, no application-visible event. Some releases are exceptions. Before you upgrade, check the [service availability notes](../../using_hybrid_manager/upgrading_hm/#service-availability-during-upgrades) for your target release.
 
 These monthly CP patches carry two categories of content:
 
@@ -183,9 +183,11 @@ These monthly CP patches carry two categories of content:
 
 Once new images are available in the CP, it's **the customer's decision** when to use the CP's orchestration capabilities to roll those images out to their DP Postgres deployments. This preserves full customer control over Postgres upgrade timing while ensuring that hardened images are always available on demand.
 
-**Exception to the rule**
+**Exceptions to the rule**
 
-A small fraction of CNPG operator releases — historically well under 10% — change the Postgres **Pod specification itself**, for example modifications to anti-affinity rules, container probes, or init containers. In these releases, Kubernetes must recreate the pods to match the new spec, and a rolling restart of HA Postgres clusters is unavoidable as part of the CP upgrade, even with in-place instance-manager updates enabled.  When an HM release embeds one of these CNPG versions, **EDB calls this out explicitly in the HM upgrade documentation and in pre-upgrade guidance to affected customers.** This means customers know in advance whether a given HM upgrade is fully non-disruptive or whether a rolling Postgres restart will occur as part of it — and can plan a maintenance window only when one is actually required.
+**CNPG Pod specification changes.** Some CNPG operator releases change the Postgres **Pod specification itself**, for example modifications to anti-affinity rules, container probes, or init containers. In these releases, Kubernetes must recreate the pods to match the new spec, and a rolling restart of HA Postgres clusters is unavoidable as part of the CP upgrade, even with in-place instance-manager updates enabled. Check the upgrade guide for your target release for a restart warning, and plan a maintenance window if one is needed.
+
+**Barman Cloud Plugin updates.** Upgrading to HM 1.4.0 triggers a rolling restart of all managed Postgres clusters, because it updates the bundled `barman-cloud-plugin` sidecar image. See the upgrade guides [from 1.3.x](../../using_hybrid_manager/upgrading_hm/1.3.x_to_1.4/) and [from 2026.5.1](../../using_hybrid_manager/upgrading_hm/2026.5.1_to_1.4/).
 
 * * *
 
@@ -195,15 +197,15 @@ CP availability and DP availability are independent concerns, and the two planes
 
 *Control Plane*
 
-The CP doesn't sit in the data path of customer Postgres traffic. A CP outage doesn't interrupt connections to provisioned Postgres clusters — running workloads continue unaffected. The CP has a robust DR capability: with disciplined operational practice (regular backups, documented runbooks), a CP can be restored in **under one hour**.
+The CP doesn't sit in the data path of customer Postgres traffic. A CP outage doesn't interrupt connections to provisioned Postgres clusters — running workloads continue unaffected. To recover the CP from its backups, follow the [backup and disaster recovery procedures](../../using_hybrid_manager/hadr/). To set recovery objectives, measure your recovery time in a DR drill.
 
 *Data Plane*
 
-Because the DP carries live Postgres traffic, higher availability targets require active replication across **failure domains** — optimally across regions. Postgres replication across DP locations (where network peering is provisioned) allows the DP to survive a regional failure without any impact to application connectivity.
+Because the DP carries live Postgres traffic, higher availability targets require active replication across **failure domains** — optimally across regions. Postgres replication across DP locations (where network peering is provisioned) means the DP doesn't depend on any single region to keep operating: if a region fails, another location remains available to accept application connections. Existing connections and in-flight transactions can still be interrupted during a regional failure, and the application is responsible for retrying them. How long that interruption lasts depends on your replication configuration, from a failover delay with physical streaming replication to continued availability without a full failover in an active/active configuration such as PGD.
 
 *Availability zones*
 
-Both planes can take full advantage of **availability zones within a location**. Every HM deployment location may contain CP elements, DP elements, or both. Any location can be recovered from disaster using backups. The difference is ceiling: the CP's recovery is a restore operation measured in minutes to an hour, while the DP's Postgres clusters have the architectural capacity to remain continuously available through a disaster by maintaining live replicas in other failure domains.
+Both planes can take full advantage of **availability zones within a location**. Every HM deployment location may contain CP elements, DP elements, or both. Any location can be recovered from disaster using backups. The difference is ceiling: the CP's recovery is a restore operation measured in minutes to an hour, while the DP's Postgres clusters have the architectural capacity to keep a replica serving through a disaster, by maintaining live replicas in other failure domains, rather than needing a restore.
 
 ## Deployment architectures
 
@@ -351,21 +353,21 @@ The available scenarios are:
 
 | Module        | Description                                               | Included capabilities                                                                                  |
 | ------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `core`        | **Required**. The foundational layer for all deployments. | Estate management, Observability, DBaaS provisioning, and system services (Cert-manager, Istio, etc.). |
+| `core`        | **Required**. The foundational layer for all deployments. | Estate management, Observability, and system services (Cert-manager, Istio, etc.). |
 | `migration`   | Enables schema and data migration tools.                  | Migration Portal integration, Data Migration Service (DMS), and other migration services.              |
 | `analytics`   | Large-scale data processing and cataloging.               | Data Catalog.                                                                                          |
 | `ai`          | Tools for building and serving generative AI.             | Sovereign AI, model serving (kserve), Agent Studio, and GenAI builders.                                    |
 | `dbaas`       | Database clusters management.                             | Postgres cluster management, including provisioning, scaling, and updates.                             |
 | `marketplace` | The app marketplace and the apps it deploys.              | kapp-controller and the [OSS Library](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hm_overview/oss_library_apps/) apps, such as Apache Superset, Apache Airflow, Metabase, pgAdmin 4, pgBadger, and HammerDB. |
 
-!!!Note
+!!!warning
 
-From 2026.4.0 onwards, the `dbaas`, database cluster management capabilities are now controlled by a dedicated `dbaas` scenario, separated from the `core` scenario. Existing installations upgrading from 2026.3 *must* explicitly add `dbaas` to their scenarios list to retain Postgrescluster management functionality. 
+From 2026.4.0 onwards, database cluster management capabilities are controlled by a dedicated `dbaas` scenario, separated from the `core` scenario. Existing installations upgrading from 2026.3 *must* explicitly add `dbaas` to their scenarios list to retain Postgres cluster management functionality. In 1.4.2, `upm-api-gucs` and `pg4k-additional-controllers` also moved from `core` to `dbaas`. An installation that lists only `core` loses them when it upgrades to 1.4.2 or later. See [Scenario changes on upgrade](../../using_hybrid_manager/upgrading_hm/#scenario-changes-on-upgrade).
 !!!
 
-!!!Note
+!!!warning
 
-From HM 1.4.2 onwards, the app marketplace capabilities are controlled by a dedicated `marketplace` scenario, separated from the `core` scenario. If your scenarios list includes `ai`, `marketplace` is added for you as a dependency. Otherwise, existing installations upgrading from an earlier release must explicitly add `marketplace` to their scenarios list to retain the app marketplace. Add it once the operator is on 2.1 or later, and before you bump `spec.version` — earlier operator versions don't recognize `marketplace` and reject the change.
+From HM 1.4.2 onwards, the app marketplace capabilities are controlled by a dedicated `marketplace` scenario, separated from the `core` scenario. No other scenario adds `marketplace` for you, so existing installations upgrading from an earlier release must explicitly add `marketplace` to their scenarios list to retain the app marketplace. Add it once the operator is on 2.1 or later, and before you bump `spec.version` — earlier operator versions don't recognize `marketplace` and reject the change.
 
 If you don't add `marketplace` to your scenario list, kapp-controller and any OSS Library apps you deployed are removed as no longer part of your selected scenarios, along with the data those apps hold. For details, see [Scenario changes on upgrade](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/upgrading_hm/#scenario-changes-on-upgrade).
 !!!
@@ -380,14 +382,26 @@ When choosing which scenarios to install, consider the following architectural a
 
 **Default behavior:** If the `scenarios` parameter is omitted, the operator applies a default set, and this value depends on your operator version. Operator 2.1 installs `core`, `dbaas`, `ai`, `analytics`, `migration`, and `marketplace`. Operator 2.2 or later installs only `core`, so the set of scenarios is always an explicit choice. List the scenarios you want explicitly.
 
-**Scenario dependencies:** The `ai` scenario depends on `marketplace`. If you select `ai`, `marketplace` is installed with it, whether or not you list it explicitly.
+**Scenario dependencies:** The `ai` scenario depends only on `core`. It doesn't install `marketplace`, so list `marketplace` explicitly if you use the OSS Library apps.
 
 Decide whether your environment requires a full installation or a targeted subset. 
 
 !!!Important
 
-Currently, modifying installation scenarios after deployment isn't supported. Ensure you install all required capabilities, as you can't add or remove them once HM is deployed.
+Plan your scenarios before you install. Changing the scenarios of a deployed HM installation isn't supported, except for the scenario changes described in the upgrade guides. Leaving a scenario out of `spec.scenarios`, including one that an upgrade tells you to add, removes its components and can remove the data they hold. Before every upgrade, read [Scenario changes on upgrade](../../using_hybrid_manager/upgrading_hm/#scenario-changes-on-upgrade) and the upgrade guide for your target version.
 !!!
+
+### Keeping your scenario selection consistent
+
+The scenarios you choose in this phase must be applied consistently everywhere you stage installation inputs. A mismatch can leave required secrets or images missing, or cause you to stage components you don't use.
+
+| Where                        | What to do                                                                                                                | Reference                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| HybridControlPlane manifest  | List the scenarios in `spec.scenarios`.                                                                                   | [Installing HM](/edb-postgres-ai/current/hybrid-manager/install/install_guide/installing/install_hm/)                                |
+| Installer console            | Select the same scenarios on the **Configure** screen. The console doesn't cross-check them against secrets or images.    | [Install with the installer console](/edb-postgres-ai/current/hybrid-manager/install/install_guide/installing/install_hm_web_installer/) |
+| Component secrets (`edbctl`) | Pass the same scenarios with `--scenario` to `create-install-secrets` and `list-install-secrets`, and always include `core`. | [Create component secrets](/edb-postgres-ai/current/hybrid-manager/install/install_guide/environment_prep/#create-component-secrets) |
+| Preflight validation         | The operator validates only the secrets required by the scenarios in `spec.scenarios`. | [Preflight checks](/edb-postgres-ai/current/hybrid-manager/install/troubleshooting/preflight_checks/#how-scenarios-affect-preflight) |
+| Container images             | In a mirrored or air-gapped registry, sync the images for your HM version before you install. Otherwise, the installation stalls. `edbctl image sync-to-local-registry` copies the images for every scenario. | [Syncing images](/edb-postgres-ai/current/hybrid-manager/install/configuration/sync_images/) |
 
 ## Impact on configuration
 
@@ -428,7 +442,7 @@ spec:
     - ai          # remove if not needed
     - analytics   # remove if not needed
     - dbaas       # remove if not needed
-    - marketplace # remove if not needed; installed with ai as a dependency
+    - marketplace # remove if not needed
   componentsParameters:
     upm-beacon:
       beacon_location_id: <Deployment_Location_Name>

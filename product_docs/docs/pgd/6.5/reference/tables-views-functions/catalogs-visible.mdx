@@ -25,6 +25,18 @@ table internally to monitor per-node, per-table sync progress for
 | node_id       | oid     | ID of the node reporting sync progress                                 |
 | node_lsn      | pg_lsn  | LSN up to which this node has synced the table to the analytics engine |
 
+### `bdr.analytics_table`
+
+A catalog table that tracks, by name, the tables that replicate to analytics for each node group. Renaming one of these tables or its schema isn't supported.
+
+#### `bdr.analytics_table` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| node_group_id | oid | ID of the node group |
+| nspname | name | Name of the schema that contains the table |
+| relname | name | Name of the table |
+
 ### `bdr.camo_decision_journal`
 
 A persistent journal of decisions resolved by a CAMO partner node
@@ -58,11 +70,12 @@ A view used internally on nodes configured as Commit At Most Once (CAMO) partner
 | local_xid      | xid         | Transaction ID on the local node                    |
 | commit_ts      | timestamptz | Commit timestamp of the transaction                 |
 | decision_ts    | timestamptz | Decision time                                       |
+| is_raft | boolean | True when the decision came through Raft (commit scopes with `commit_decision = raft`). False for CAMO-partner and writer-recorded decisions. |
 
 ### `bdr.commit_scopes`
 
 Catalog storing all possible commit scopes that you can use for
-`bdr.commit_scope` to enable Group Commit.
+`bdr.commit_scope` to enable a commit scope.
 
 #### `bdr.commit_scopes`  columns
 
@@ -142,7 +155,7 @@ A persistent storage for the internal Raft-based KV store used by
 | kv_key       | text        | Unique key                                       |
 | kv_val       | json        | Arbitrary value in json format                   |
 | kv_create_ts | timestamptz | Last write timestamp                             |
-| kv_ttl       | int         | Time to live for the value in milliseconds       |
+| kv_ttl       | integer         | Time to live for the value in milliseconds       |
 | kv_expire_ts | timestamptz | Expiration timestamp (`kv_create_ts` + `kv_ttl`) |
 
 ### `bdr.crdt_handlers`
@@ -154,7 +167,7 @@ This table lists merge ("handlers") functions for all CRDT data types.
 | Name          | Type    | Description                       |
 | ------------- | ------- | --------------------------------- |
 | crdt_type_id  | regtype | CRDT data type ID                 |
-| crdt_merge_id | regproc | Merge function for this data type |
+| crdt_merge_proc | text | Merge function for this data type |
 
 ### `bdr.ddl_replication`
 
@@ -168,6 +181,9 @@ This view lists DDL replication configuration as set up by current [DDL filters]
 | set_ddl_tag  | text | Command tags it applies on (regular expression)              |
 | set_ddl_role | text | Roles it applies to (regular expression)                     |
 | set_name     | name | Name of the replication set for which this filter is defined |
+| set_ddl_baserel | text | Reserved for future use, always NULL |
+| set_ddl_query_match | text | Regular expression for matching the query, NULL means match all queries |
+| set_ddl_exclusive | boolean | If true, other matched filters aren't taken into consideration and only the exclusive filter is applied |
 
 ### `bdr.depend`
 
@@ -187,8 +203,11 @@ This table tracks the status of logical replication slots that are being used wi
 | plugin        | name    | Name of the plugin                             |
 | twophase      | boolean | Is the slot used for two-phase commit          |
 | active_node   | oid     | ID of the active node                          |
-| active_pid    | int     | PID of the process currently decoding the slot |
+| active_pid    | integer     | PID of the process currently decoding the slot |
 | prev_node     | oid     | ID of the previous node                        |
+| creator_node | oid | ID of the node that created the slot |
+| creator_consistent_lsn | pg_lsn | Consistent LSN of the slot on the node that created it |
+| failover_safe | boolean | Whether the slot has passed a consistent point since it was created. Until it's true, only `creator_node` can decode the slot. PGD sets it once a logical checkpoint from the creator exists between `creator_consistent_lsn` and the slot's confirmed flush position. It never reverts to false. |
 
 ### `bdr.global_consensus_journal`
 
@@ -274,7 +293,7 @@ Don't modify the contents of this table. It is an important PGD catalog.
 | -------------- | ------- | ---------------------------------------------------------------------------- |
 | ddl_epoch      | int8    | DDL epoch for the lock                                                       |
 | origin_node_id | oid     | OID of the node where the global lock has originated                         |
-| lock_type      | oid     | Type of the lock (DDL or DML)                                                |
+| lock_type      | oid     | Type of the lock, as a code: `1` global DDL, `2` global DML, `3` advisory, `4` leader DML, or `5` leader DDL |
 | nspname        | name    | Schema name for the locked relation                                          |
 | relname        | name    | Relation name for the locked relation                                        |
 | groupid        | oid     | OID of the top level group (for Advisory locks)                              |
@@ -297,11 +316,11 @@ for more information about global locking.
 | ------------------------ | ----------- | ----------------------------------------------------------------- |
 | origin_node_id           | oid         | OID of the node where the global lock has originated              |
 | origin_node_name         | name        | Name of the node where the global lock has originated             |
-| lock_type                | text        | Type of the lock (DDL or DML)                                     |
+| lock_type                | text        | Type of the lock: `GLOBAL_LOCK_DDL`, `GLOBAL_LOCK_DML`, `GLOBAL_LOCK_ADVISORY`, `LEADER_LOCK_DDL`, or `LEADER_LOCK_DML` |
 | relation                 | text        | Locked relation name (for DML locks) or keys (for advisory locks) |
 | pid                      | int4        | PID of the process holding the lock                               |
 | acquire_stage            | text        | Internal state of the lock acquisition process                    |
-| waiters                  | int4        | List of backends waiting for the same global lock                 |
+| waiters                  | integer\[] | List of backends waiting for the same global lock                 |
 | global_lock_request_time | timestamptz | Time this global lock acquire was initiated by origin node        |
 | local_lock_request_time  | timestamptz | Time the local node started trying to acquire the local lock      |
 | last_state_change_time   | timestamptz | Time `acquire_stage` last changed                                 |
@@ -382,16 +401,19 @@ Uses `bdr.run_on_all_nodes` to gather Raft Consensus status from all nodes.
 
 | Name             | Type | Description                    |
 | ---------------- | ---- | ------------------------------ |
+| instance_id | oid | ID of the Raft instance |
 | node_id          | oid  | Internal node ID               |
 | node_name        | name | Name of the node               |
 | node_group_name  | name | Name of the group is part of   |
 | state            | text | Raft worker state on the node  |
+| leader_type | text | Type of the Raft leader ID: `NODE` or `UNSET`. `GROUP` is reserved and never produced in PGD 6 |
 | leader_id        | oid  | Node id of the RAFT_LEADER     |
-| current_term     | int  | Raft election internal ID      |
-| commit_index     | int  | Raft snapshot internal ID      |
-| nodes            | int  | Number of nodes accessible     |
-| voting_nodes     | int  | Number of nodes voting         |
-| protocol_version | int  | Protocol version for this node |
+| leader_name | name | Name of the Raft leader node, if any |
+| current_term     | bigint   | The current Raft term of the node |
+| commit_index     | bigint   | The current Raft commit index of the node |
+| nodes            | integer  | Number of nodes accessible     |
+| voting_nodes     | integer  | Number of nodes voting         |
+| protocol_version | integer  | Protocol version for this node |
 
 ### `bdr.group_replslots_details`
 
@@ -413,7 +435,7 @@ Uses `bdr.run_on_all_nodes` to gather PGD slot information from all nodes.
 | sent_lag_bytes  | int8     | Bytes difference between sent_lsn and current WAL write position                |
 | write_lag_bytes | int8     | Bytes difference between write_lsn and current WAL write position               |
 | flush_lag_bytes | int8     | Bytes difference between flush_lsn and current WAL write position               |
-| replay_lag_byte | int8     | Bytes difference between replay_lsn and current WAL write position              |
+| replay_lag_bytes | int8     | Bytes difference between replay_lsn and current WAL write position              |
 
 ### `bdr.group_subscription_summary`
 
@@ -427,6 +449,7 @@ Uses `bdr.run_on_all_nodes` to gather subscription status from all nodes.
 | target_node_name           | text | Name of the target of the subscription         |
 | last_xact_replay_timestamp | text | Timestamp of the last replayed transaction     |
 | sub_lag_seconds            | text | Lag between now and last_xact_replay_timestamp |
+| subscription_status | text | Status of the subscription |
 
 ### `bdr.group_versions_details`
 
@@ -451,7 +474,7 @@ Tracks leader nodes across subgroups in the cluster. Shows the status of all wri
 | -------------- | ------ | ---------------------------------------------------------- |
 | node_group_id  | oid    | ID of the node group.                                      |
 | leader_node_id | oid    | ID of the leader node.                                     |
-| generation     | int    | Generation of the leader node. Leader_kind sets semantics. |
+| generation     | bigint    | Generation of the leader node. Leader_kind sets semantics. |
 | leader_kind    | "char" | Kind of the leader node.                                   |
 
 Leader_kind values can be:
@@ -482,11 +505,15 @@ This catalog table stores the current state of Raft on the local node.
 
 | Name              | Type | Description                         |
 | ----------------- | ---- | ----------------------------------- |
+| instance_id | oid | ID of the Raft instance |
+| node_type | "char" | Type of the local Raft ID: `N` (node) or `U` (unset). `G` (group) is reserved and never produced in PGD 6 |
 | node_id           | oid  | ID of the node                      |
 | current_term      | int8 | Raft term                           |
 | apply_index       | int8 | Raft apply index                    |
-| voted_for         | oid  | Vote cast by this node in this term |
-| last_known_leader | oid  | node_id of last known Raft leader   |
+| voted_for_type | "char" | Type of the ID of the vote cast by this node in this term: `N` (node) or `U` (unset). `G` (group) is reserved and never produced in PGD 6 |
+| voted_for_id | oid | ID of the vote cast by this node in this term |
+| last_known_leader_type | "char" | Type of the ID of the last known Raft leader: `N` (node) or `U` (unset). `G` (group) is reserved and never produced in PGD 6 |
+| last_known_leader_id | oid | ID of the last known Raft leader |
 
 ### `bdr.local_node`
 
@@ -521,6 +548,27 @@ Information about status of either subscription or table synchronization process
 | sync_remote_relid | oid    | ID of the synchronized table (if any) on the upstream    |
 | sync_end_lsn      | pg_lsn | Position at which the synchronization state last changed |
 
+### `bdr.logical_checkpoints`
+
+Per-node record of a replication-progress watermark. For a watermark message from
+`origin_node` at `origin_lsn`, it stores how far `origin_node` had replayed each peer's
+changes. CDC failover slots use it to decide whether a node can take over decoding a
+slot, and to hold back the group slot. PGD removes rows older than the group slot
+position.
+
+#### `bdr.logical_checkpoints` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| id | name | Key, in the form `<origin_node>-<origin_lsn>` |
+| origin_node | oid | Node that emitted the watermark |
+| origin_lsn | pg_lsn | LSN of the watermark on `origin_node` |
+| local_node | oid | Node storing the row (always the local node) |
+| local_lsn | pg_lsn | Local WAL insert position when the row was recorded |
+| peer_count | integer | Number of peers, which is the length of the `peer_nodes` and `peer_lsns` arrays |
+| peer_nodes | oid\[] | Peer nodes. `peer_nodes[i]` pairs with `peer_lsns[i]` |
+| peer_lsns | pg_lsn\[] | For each peer in `peer_nodes`, the LSN up to which `origin_node` had replayed that peer's changes |
+
 ### `bdr.node`
 
 This table lists all the PGD nodes in the cluster.
@@ -540,7 +588,7 @@ The view [`bdr.node_summary`](#bdrnode_summary) provides a human-readable versio
 | target_state          | oid      | State that the node is trying to reach (during join or promotion)           |
 | seq_id                | int4     | Sequence identifier of the node used for generating unique sequence numbers |
 | dbname                | name     | Database name of the node                                                   |
-| node_dsn              | char     | Connection string for the node                                              |
+| node_dsn              | text     | Connection string for the node                                              |
 | proto_version_ranges  | int\[]   | Supported protocol version ranges by the node                               |
 | generation            | smallint | Counter incremented when a node joins with the same name as a previous node |
 | node_kind             | oid      | ID of the node kind                                                         |
@@ -598,17 +646,40 @@ user-readable details.
 | node_group_default_repset       | oid      | Default replication set for this node group.                                                   |
 | node_group_default_repset_ext   | oid      | Default replication set for this node group.                                                   |
 | node_group_parent_id            | oid      | ID of parent group (0 if this is a root group).                                                |
-| node_group_flags                | int      | Group flags.                                                                                   |
+| node_group_flags                | integer      | Group flags.                                                                                   |
 | node_group_uuid                 | uuid     | The uuid of the group.                                                                         |
 | node_group_apply_delay          | interval | How long a subscriber waits before applying changes from the provider.                         |
 | node_group_check_constraints    | bool     | Whether the apply process checks constraints when applying data.                               |
-| node_group_num_writers          | int      | Number of writers to use for subscriptions backing this node group.                            |
+| node_group_num_writers          | integer      | Number of writers to use for subscriptions backing this node group.                            |
 | node_group_enable_wal_decoder   | bool     | Whether the group has enable_wal_decoder set.                                                  |
-| node_group_streaming_mode       | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default. |
+| node_group_streaming_mode       | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default. NULL if not set. |
 | node_group_default_commit_scope | oid      | ID of the node group's default commit scope.                                                   |
-| node_group_location             | char     | Name of the location associated with the node group.                                           |
-| node_group_enable_routing       | char     | Whether the node group allows routing through Connection Manager.                              |
+| node_group_location             | name     | Name of the location associated with the node group.                                           |
+| node_group_enable_routing       | boolean     | Whether the node group allows routing through Connection Manager.                              |
 | node_group_enable_raft          | bool     | Whether the node group allows Raft Consensus.                                                  |
+| node_group_analytics_storage | text | PGFS path where the analytical data files are stored |
+| node_group_failover_slot_scope | "char" | Scope for logical slot failover support: one of global, subgroup, or local |
+| node_group_analytics_storage_format | "char" | Columnar table format PGAA uses for analytical data, `d` for `delta` and `i` (the default) for `iceberg` |
+| node_group_analytics_catalog | text | Name of the catalog service PGAA uses to manage table metadata |
+| node_group_enable_fast_track_writer | bool | Whether an additional writer processes prepared transactions generated by Quorum Commit |
+
+### `bdr.node_group_config_summary`
+
+A view that shows each node group option with its current and default values, one row per option and node group.
+
+#### `bdr.node_group_config_summary` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| node_group_id | oid | ID of the node group |
+| node_group_name | name | Name of the node group |
+| option_name | text | Name of the node group option |
+| current_value | text | Current value of the node group option |
+| current_value_source | text | Source of the current value of the node group option: `group`, `inherited`, `pg_config`, or `default` |
+| value_can_inherit | boolean | Whether the node group option value can be inherited from the parent group |
+| default_value | text | Default value for the node group option |
+| default_value_source | text | Source of the default value for the node group option: `pg_config` or `constant` |
+| option_type | text | Type of the node group option: `string`, `integer`, `bool`, or `enum` |
 
 ### `bdr.node_group_replication_sets`
 
@@ -642,15 +713,42 @@ A view containing user-readable details about node groups. See also
 | check_constraints       | boolean  | Whether the apply process checks constraints when applying data                |
 | num_writers             | integer  | Number of writers to use for subscriptions backing this node group             |
 | enable_wal_decoder      | boolean  | Whether the group has enable_wal_decoder set                                   |
-| streaming_mode          | text     | Transaction streaming setting: "off", "file", "writer", "auto" or "default"    |
+| streaming_mode          | text     | Transaction streaming setting: "off", "file", "writer", "auto" or "default". NULL if not set. |
 | default_commit_scope    | name     | Name of the node group's default commit scope                                  |
 | location                | name     | Name of the location associated with the node group                            |
 | server_pool_mode        | text     | [Connection pooling](/pgd/current/connection-manager/connection-pooling) mode for this node group: `none`, `session`, or `transaction` |
 | enable_routing          | boolean  | Whether the node group allows routing through connection manager               |
 | enable_raft             | boolean  | Whether the node group allows Raft Consensus                                   |
+| route_writer_election_quorum | boolean | Whether the write leader election waits for answers that include a node holding every transaction acknowledged under a majority Quorum Commit |
+| route_writer_election_timeout | interval | How long the Raft leader waits for candidates' answers before electing a write leader |
 | route_writer_max_lag    | bigint   | Maximum write lag accepted                                                     |
 | route_reader_max_lag    | bigint   | Maximum read lag accepted                                                      |
 | route_writer_wait_flush | boolean  | Switch if we need to wait for the flush                                        |
+| read_write_port | integer | Port Connection Manager listens on for read-write connections |
+| read_only_port | integer | Port Connection Manager listens on for read-only connections |
+| http_port | integer | HTTP port Connection Manager listens on for REST API calls |
+| use_https | boolean | Whether the HTTP listener uses HTTPS |
+| read_write_max_client_connections | integer | Maximum read-write client connections allowed |
+| read_write_max_server_connections | integer | Maximum read-write connections opened to the server |
+| read_only_max_client_connections | integer | Maximum read-only client connections allowed |
+| read_only_max_server_connections | integer | Maximum read-only connections opened to the server |
+| read_write_consensus_timeout | interval | How long to wait on loss of consensus before read-write connections are no longer accepted |
+| read_only_consensus_timeout | interval | How long to wait on loss of consensus before read-only connections are no longer accepted |
+| server_pool_timeout | interval | How long to wait for an available pooled server connection before giving up |
+| server_max_prepared_statements | integer | Maximum number of prepared statements Connection Manager caches on a pooled backend, `200` if not set |
+| server_reset_mode | text | Cleanup Connection Manager applies to a pooled backend connection in `transaction` pool mode: `discard_all` or `fast` |
+| analytics_storage_location | text | PGFS path where the analytical data files are stored |
+| analytics_write_catalog | text | Name of the catalog service PGAA uses to manage table metadata |
+| analytics_storage_format | text | Columnar table format PGAA uses for analytical data: `iceberg` or `delta` |
+| leader_progress_tracking_enable | boolean | Whether write leader progress tracking is enabled |
+| leader_progress_tracking_period | interval | Period for write leader progress tracking |
+| apply_error_policy | text | How replication apply errors are handled for subscriptions in this group: `keep_retrying`, `disable_after_retries`, `record_all_and_disable`, or `record_all_and_skip` |
+| apply_error_max_retries | integer | Number of retries before `apply_error_policy` takes effect, `3` if not set |
+| apply_error_max_skips | integer | Maximum number of transactions the `record_all_and_skip` policy can skip (NULL means unlimited) |
+| apply_error_max_record_size | bigint | Maximum number of bytes of change data recorded per failed transaction |
+| enable_fast_track_writer | boolean | Whether an additional writer processes prepared transactions generated by Quorum Commit |
+| evict_node_lag_bytes | bigint | Maximum replication lag, in bytes, a node can accumulate before `evict_node_action` runs |
+| evict_node_action | text | Action taken when a node exceeds `evict_node_lag_bytes`: `part`, `none`, or `unset` |
 
 ### `bdr.node_local_info`
 
@@ -675,7 +773,6 @@ A catalog view that stores information on the conflict logging configurations.
 
 | Name              | Description                                               |
 | ----------------- | --------------------------------------------------------- |
-| log_name          | Name of the logging configuration                         |
 | log_to_file       | Whether it logs to the server log file                    |
 | log_to_table      | Whether it logs to a table, and which table is the target |
 | log_conflict_type | Which conflict types it logs, if NULL means all           |
@@ -702,8 +799,8 @@ purposes. See also [Monitoring](/pgd/current/lifecycle/monitoring).
 | last_update_node_lsn    | pg_lsn      | LSN on the originating node at the time of the report                                |
 | peer_position           | pg_lsn      | Latest LSN of the node's peer seen by the originating node                           |
 | peer_replay_time        | timestamptz | Latest replay time of peer seen by the reporting node                                |
-| last_update_horizon_xid | oid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
-| last_update_horizon_lsn | pg_lsn      | Internal resolution horizon: same in terms of an LSN of the reporting node           |
+| last_update_node_horizon_xid | xid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
+| last_update_node_horizon_lsn | pg_lsn      | Internal resolution horizon: same in terms of an LSN of the reporting node           |
 
 ### `bdr.node_replication_rates`
 
@@ -787,11 +884,13 @@ for guidance on the use and interpretation of this view's fields.
 | write_lag_size      | text        | Human-readable bytes difference between write_lsn and current WAL write position                                                     |
 | flush_lag_size      | text        | Human-readable bytes difference between flush_lsn and current WAL write position                                                     |
 | replay_lag_size     | text        | Human-readable bytes difference between replay_lsn and current WAL write position                                                    |
+| target_type | text | Role of the target in the topology: `group`, `subscriber`, `leader`, `normal`, `unexpected`, or `invalid` |
 
 !!! Note
 
-    The `replay_lag` is set immediately to zero after reconnect.
-    As a workaround, use `replay_lag_bytes` or `replay_lag_size`.
+    While a peer is reconnecting and replication isn't yet in the `streaming` state, such as during
+    catch-up, `write_lag`, `flush_lag`, and `replay_lag` report an estimate based on the time elapsed
+    since the slot's last confirmed flush. Once the state becomes `streaming`, they report the measured lag.
 
 ### `bdr.node_summary`
 
@@ -919,7 +1018,7 @@ Stores the data pages of replicated large objects. This table is the PGD equival
 | Name     | Type    | Description                                                    |
 | -------- | ------- | -------------------------------------------------------------- |
 | `loid`   | `oid`   | OID of the large object this page belongs to.                  |
-| `pageno` | `int`   | Page number within the large object, starting from 0.         |
+| `pageno` | `integer`   | Page number within the large object, starting from 0.         |
 | `data`   | `bytea` | Data stored in this page. May be zero-length for sparse pages. |
 
 ### `bdr.pgd_largeobject_metadata`
@@ -932,7 +1031,7 @@ Stores ownership and access control information for replicated large objects. Th
 | ---------- | ---------- | ----------------------------------- |
 | `oid`      | `oid`      | OID of the large object.            |
 | `lomowner` | `oid`      | OID of the owner of the large object. |
-| `lomacl`   | `aclitem[]`| Access privileges for the large object. |
+| `lomacl`   | `text`| Access privileges for the large object. |
 
 ### `bdr.queue`
 
@@ -995,6 +1094,9 @@ instead checking the `bdr.ddl_replication` view.
 | set_ddl_name | name | Name of the DDL filter         |
 | set_ddl_tag  | text | Command tag for the DDL filter |
 | set_ddl_role | text | Role executing the DDL         |
+| set_ddl_baserel | text | Reserved for future use, always NULL |
+| set_ddl_query_match | text | Regular expression for matching the query, NULL means match all queries |
+| set_ddl_exclusive | boolean | If true, other matched filters aren't taken into consideration and only the exclusive filter is applied |
 
 ### `bdr.replication_sets`
 
@@ -1013,6 +1115,26 @@ currently used by any node.
 | replicate_truncate | boolean | Indicates if the replication set replicates TRUNCATEs                      |
 | set_autoadd_tables | boolean | Indicates if new tables are automatically added to this replication set    |
 | set_autoadd_seqs   | boolean | Indicates if new sequences are automatically added to this replication set |
+
+### `bdr.replication_status`
+
+A view that shows the replication status of each subscription on the local node, with connection state and uptime. The view includes only origin nodes that are `ACTIVE` and that aren't in a subscriber-only group. When the local node is in the `STANDBY` state, the view shows only the subscription from its source node.
+
+#### `bdr.replication_status` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| node_id | oid | ID of the local node |
+| node_name | name | Name of the local node |
+| origin_node_id | oid | ID of the origin node |
+| origin_node_name | name | Name of the origin node |
+| sub_id | oid | ID of the subscription |
+| sub_name | name | Name of the subscription |
+| connected | boolean | Whether the subscription has an upstream connection |
+| replication_blocked | boolean | Whether replication is blocked, which means the subscription restarted from the same LSN at least once and has committed nothing since the current connection was established |
+| connect_time | timestamp with time zone | Time when the current upstream connection was established, NULL if not connected |
+| disconnect_time | timestamp with time zone | Time when the last upstream connection was dropped, NULL if connected |
+| uptime | interval | How long the current upstream connection has been up, NULL if not connected |
 
 ### `bdr.resolved_transactions`
 
@@ -1067,19 +1189,19 @@ A view over `bdr.resolved_transactions` that adds human-readable subscription an
 
 ### `bdr.schema_changes`
 
-A simple view to show all the changes to schemas win PGD.
+A catalog table that records changes to schema objects on the node. In this release, PGD records only dropped regular or partitioned tables that aren't part of the PGD extension. It doesn't record other object types, or dropped columns.
 
 #### `bdr.schema_changes` columns
 
-| Name                     | Type         | Description               |
-| ------------------------ | ------------ | ------------------------- |
-| schema_changes_ts        | timestampstz | ID of the trigger         |
-| schema_changes_change    | char         | Flag of change type       |
-| schema_changes_classid   | oid          | Class ID                  |
-| schema_changes_objectid  | oid          | Object ID                 |
-| schema_changes_subid     | smallint     | Subscription              |
-| schema_changes_descr     | text         | Object changed            |
-| schema_changes_addrnames | text\[]      | Location of schema change |
+| Name                     | Type         | Description                                                                                       |
+| ------------------------ | ------------ | ------------------------------------------------------------------------------------------------- |
+| schema_changes_ts        | timestamptz  | Time at which PGD recorded the change                                                             |
+| schema_changes_change    | "char"       | Type of change. The only value recorded is `D` (drop)                                             |
+| schema_changes_classid   | oid          | OID of the system catalog that holds the changed object. Always `pg_class`                        |
+| schema_changes_objectid  | oid          | OID of the changed object                                                                         |
+| schema_changes_subid     | smallint     | Sub-object ID. Always 0, because PGD doesn't record dropped columns                               |
+| schema_changes_descr     | text         | Type of the changed object. Always `table`                                                        |
+| schema_changes_addrnames | text\[]      | Name parts that identify the changed object, for example its schema and name                      |
 
 ### `bdr.sequence_alloc`
 
@@ -1094,6 +1216,11 @@ A view to see the allocation details for galloc sequences.
 | seq_allocated_up_to | bigint      |                                                  |
 | seq_nallocs         | bigint      |                                                  |
 | seq_last_alloc      | timestamptz | Last sequence allocated                          |
+| seq_nspname | name | Schema name of the sequence |
+| seq_relname | name | Name of the sequence |
+| seq_typid | oid | OID of the data type of the sequence |
+| seq_incby | bigint | Increment of the sequence |
+| seq_start | bigint | Start value of the sequence |
 
 ### `bdr.sequences`
 
@@ -1120,8 +1247,7 @@ is set correctly when the wait relates to PGD and the following Connection Manag
 | Name                               | Type    | Description                                                                                                      |
 | ---------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
 | connection_manager_client_addr     | inet    | IP address of the client connection                                                                              |
-| connection_manager_client_port     | int     | The source port of client connected to connection manager (if the connection is done through connection manager) |
-| connection_manager_client_hostname | text    | Hostname of the client connection (if the connection is done through connection manager)                         |
+| connection_manager_client_port     | integer     | The source port of client connected to connection manager (if the connection is done through connection manager) |
 | session_read_only                  | boolean | Whether the session is a read-only; connected to read-only port of the connection manager                        |
 
 ### `bdr.stat_commit_scope`
@@ -1172,8 +1298,8 @@ A view contianing statistics for the connection manager on this node.
 | ---------------- | ------ | --------------------------------------- |
 | ntotal_rw_conns  | bigint | Total number of read-write connections  |
 | ntotal_ro_conns  | bigint | Total number of read-only connections   |
-| nactive_rw_conns | int    | Number of active read-write connections |
-| nactive_ro_conns | int    | Number of active read-only connections  |
+| nactive_rw_conns | integer    | Number of active read-write connections |
+| nactive_ro_conns | integer    | Number of active read-only connections  |
 
 ### `bdr.stat_connection_manager_connections`
 
@@ -1183,12 +1309,15 @@ A view containing information about the connections to the connection manager.
 
 | Column                         | Type    | Description                                                                                 |
 | ------------------------------ | ------- | ------------------------------------------------------------------------------------------- |
-| connection_manager_client_addr | text    | IP address of the client connected to the connection manager.                               |
-| connection_manager_client_port | int     | TCP port number that the client is using for communication with the connection manager.     |
-| connection_manager_addr        | text    | IP address of the connection manager node.                                                  |
-| connection_manager_port        | int     | TCP port number that the connection manager is using to communicate with the Postgres node. |
+| connection_manager_client_addr | inet    | IP address of the client connected to the connection manager.                               |
+| connection_manager_client_port | integer     | TCP port number that the client is using for communication with the connection manager.     |
+| connection_manager_addr        | inet    | IP address of the connection manager node.                                                  |
+| connection_manager_port        | integer     | TCP port number that the connection manager is using to communicate with the Postgres node. |
 | session_read_only              | boolean | Whether the session is read-only or not.                                                    |
 | client_uses_tls                | boolean | Whether the client is using TLS to connect to the connection manager node, or not.          |
+| client_fips_mode | boolean | Whether the connection between the client and Connection Manager operates in FIPS mode |
+| server_fips_mode | boolean | Whether the connection to the PGD node operates in FIPS mode, NULL if the session isn't connected to a node |
+| connected_node_name            | name    | Name of the PGD node the session is connected to.                                           |
 
 ### `bdr.stat_connection_manager_node_stats`
 
@@ -1204,8 +1333,8 @@ A view containing information about server connection statistics for the connect
 | route_ro_connections | boolean | Whether read-only connections are routed to this node  |
 | ntotal_rw_conns      | bigint  | Total number of read-write connections                 |
 | ntotal_ro_conns      | bigint  | Total number of read-only connections                  |
-| nactive_rw_conns     | int     | Number of active read-write connections                |
-| nactive_ro_conns     | int     | Number of active read-only connections                 |
+| nactive_rw_conns     | integer     | Number of active read-write connections                |
+| nactive_ro_conns     | integer     | Number of active read-only connections                 |
 
 ### `bdr.stat_connection_manager_hba_file_rules`
 
@@ -1224,7 +1353,7 @@ A view that shows only the only valid and supported rules the connection manager
 | address      | text    | Host name or IP address, or one of all, samehost, or samenet, or null for local connections.                         |
 | netmask      | text    | IP address mask, or null if not applicable.                                                                          |
 | auth_method  | text    | Authentication method.                                                                                               |
-| auth_options | text    | Options specified for authentication method, if any.                                                                 |
+| auth_options | text\[] | Options specified for authentication method, if any.                                                                 |
 
 ### `bdr.stat_raft_followers_state`
 
@@ -1253,7 +1382,7 @@ A view describing the state of the Raft consensus on the local node.
 | Column                    | Type    | Description                                                                                             |
 | ------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
 | group_name                | name    | The group this information is for (each group can have a separate consensus configured)                 |
-| raft_stat                 | text    | State of the local node in the Raft ('LEADER', 'CANDIDATE', 'FOLLOWER', 'STOPPED')                      |
+| raft_state                | text    | State of the local node in the Raft: `RAFT_LEADER`, `RAFT_CANDIDATE`, `RAFT_FOLLOWER`, `RAFT_PRECANDIDATE`, or `RAFT_STOPPED` |
 | leader_id                 | oid     | ID of the Raft leader node, if any                                                                       |
 | leader_name               | name    | Name of the Raft leader, if any                                                                         |
 | voted_for_id              | oid     | ID of the node the local node last voted for as leader                                                  |
@@ -1297,7 +1426,7 @@ A view containing all the necessary info about the replication subscription rece
 | xact_flush_lsn              | pg_lsn                   | Last flushed transaction LSN                                                                                                                                                                                                                                                         |
 | xact_apply_timestamp        | timestamp with time zone | Last applied transaction (commit) timestamp                                                                                                                                                                                                                                          |
 | worker_start                | timestamp with time zone | Time at which the receiver started                                                                                                                                                                                                                                                   |
-| worker_xact_start           | timestamp with time zome | Time at which the receiver started local db transaction (if it is currently processing a local transaction), usually NULL, see `xact_start` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details |
+| worker_xact_start           | timestamp with time zone | Time at which the receiver started local db transaction (if it is currently processing a local transaction), usually NULL, see `xact_start` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details |
 | worker_backend_state_change | timestamp with time zone | Backend state change timestamp, see `state_change` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details                                                                                          |
 | worker_backend_state        | text                     | Current backend state, see `state` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details                                                                                                          |
 | wait_event_type             | text                     | Type of wait event the receiver is currently waiting on (if any), see `wait_event_type` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details                                                     |
@@ -1347,7 +1476,7 @@ Displays statistics for each commit scope. You can reset the statistics using th
 | ncommits | bigint | The total number of successful commits completed during reconciliation for this scope and origin node. |
 | naborts | bigint | The total number of transactions that were aborted during the reconciliation phase. |
 | ntimeouts | bigint | The number of aborts specifically caused by a reconciliation timeout. |
-| total_reconcile_time | bigint | The cumulative time spent in the reconciliation phase (in milliseconds). |
+| total_reconcile_time | double precision | The cumulative time spent in the reconciliation phase (in milliseconds). |
 | stats_reset | timestamptz | The timestamp when the statistics for this view were last reset. |
 
 ### `bdr.stat_relation`
@@ -1396,6 +1525,7 @@ A view of information about the routing candidate nodes on the Raft leader (empt
 | node_route_fence  | boolean                  | The node is fenced (when true it cannot become leader or read-only connection target)                          |
 | node_route_reads  | boolean                  | The node is being considered as a read-only connection target                                                  |
 | node_route_writes | boolean                  | The node is being considered as a write lead candidate.                                                        |
+| node_route_priority | integer                      | Priority of this node compared to others when picking the write lead candidate                               |
 | last_message_time | timestamp with time zone | The time of the last Raft message (any, including requests) seen by this node (used to check liveness of node) |
 
 ### `bdr.stat_routing_state`
@@ -1446,8 +1576,6 @@ You can reset the stored subscription statistics by calling
 | nstream_abort             | bigint                   | Number of streaming transactions aborted                                                                                                                   |
 | nstream_start             | bigint                   | Number of STREAM START messages processed                                                                                                                  |
 | nstream_stop              | bigint                   | Number of STREAM STOP messages processed                                                                                                                   |
-| nstream_commit            | bigint                   | Number of streaming transactions committed                                                                                                                 |
-| nstream_abort             | bigint                   | Number of streaming transactions aborted                                                                                                                   |
 | nstream_prepare           | bigint                   | Number of streaming transactions prepared                                                                                                                  |
 | nstream_insert            | bigint                   | Number of streaming inserts processed                                                                                                                      |
 | nstream_update            | bigint                   | Number of streaming updates processed                                                                                                                      |
@@ -1471,6 +1599,7 @@ You can reset the stored subscription statistics by calling
 | nprovisional_waits        | bigint                   | Number of update/delete operations on same tuples by concurrent apply transactions. These are provisional waits. See [Parallel Apply](../../advanced-functionality/parallelapply) |
 | ntuple_waits              | bigint                   | Number of update/delete operations that waited to be safely applied. See [Parallel Apply](../../advanced-functionality/parallelapply)                                             |
 | ncommit_waits             | bigint                   | Number of fully applied transactions that had to wait before being committed. See [Parallel Apply](../../advanced-functionality/parallelapply)                                    |
+| nconflicts              | bigint                   | Number of conflicts this subscription detected                                                                                                                                      |
 | neager_lock_conflicts     | bigint                   | Number of times a writer had to wait and possibly restart while applying a Quorum Commit transaction because another writer or backend held the lock. A high value relative to `ncommit_prepared` indicates a contentious workload. |
 | neager_conflicts          | bigint                   | Number of eager conflicts encountered, excluding `neager_lock_conflicts`. These are conflicts that cause the writer to abort the transaction and send negative feedback to the origin. |
 | stats_reset               | timestamp with time zone | Time of the last statistics reset (performed by `bdr.reset_subscription_stats()`)                                                                          |
@@ -1544,6 +1673,19 @@ A view containing summary information and statistics for each subscription repli
 | command_progress_phase_tuples_total | real                     | For commands with progress tracking, the number of rows the current phase of the command has to process (if the phase is process rows)                                                                                        |
 | command_progress_tuples_done        | bigint                   | For commands with progress tracking, the number of rows the current phase of the command has already processed (if the phase is process rows)                                                                                 |
 
+### `bdr.state_journal_details`
+
+A backwards compatibility view of the state journal for the CLI. Deprecated, use [`bdr.event_summary`](catalogs-internal#bdrevent_summary) instead.
+
+#### `bdr.state_journal_details` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| node_id | oid | ID of the node |
+| node_name | name | Name of the node |
+| state_name | text | Name of the state |
+| entered_time | timestamp with time zone | Time when the node entered the state |
+
 ### `bdr.subscription`
 
 This catalog table lists all the subscriptions owned by the local PGD
@@ -1564,10 +1706,16 @@ node and their modes.
 | apply_delay       | interval | How much behind should the apply of changes on this subscription be (normally 0) |
 | slot_name         | name     | Slot on upstream used by this subscription                                       |
 | origin_name       | name     | Local origin used by this subscription                                           |
-| num_writers       | int      | Number of writer processes this subscription uses                                |
+| num_writers       | integer      | Number of writer processes this subscription uses                                |
 | streaming_mode    | char     | Streaming configuration for the subscription                                     |
 | replication_sets  | text\[]  | Replication sets replicated by this subscription (NULL = all)                    |
-| forward_origin    | text\[]  | Origins forwarded by this subscription (NULL = all)                              |
+| forward_origins   | text\[]  | Origins forwarded by this subscription (NULL = all)                              |
+| sub_error_current_retries | integer | Number of failed apply attempts counted under the `disable_after_retries` policy. Persisted; reset by [`bdr.alter_subscription_reset_error_counters`](functions#bdralter_subscription_reset_error_counters). |
+| sub_error_total_skips | integer | Number of transactions skipped under the `record_all_and_skip` policy. Once it reaches `apply_error_max_skips`, PGD records the failed transaction and disables the subscription. Persisted; reset by [`bdr.alter_subscription_reset_error_counters`](functions#bdralter_subscription_reset_error_counters). |
+| sub_capture_only_origin | oid | Persisted for restart recovery. Origin of the transaction to capture without applying |
+| sub_capture_only_lsn | pg_lsn | Persisted for restart recovery. LSN of the transaction to capture without applying |
+| sub_capture_only_policy | "char" | Persisted for restart recovery. Error policy that triggered the capture |
+| sub_disable_reason | text | Reason the subscription was disabled, NULL if enabled or disabled by a user |
 
 ### `bdr.subscription_summary`
 
@@ -1581,6 +1729,7 @@ local node has to other nodes.
 | node_group_name            | name        | Name of the PGD group the node is part of                                                |
 | sub_name                   | name        | Name of the subscription                                                                 |
 | origin_name                | name        | Name of the origin node                                                                  |
+| source_name | name | Name of the node the subscription receives changes from |
 | target_name                | name        | Name of the target node (normally local node)                                            |
 | sub_enabled                | bool        | Is the subscription enabled                                                              |
 | sub_slot_name              | name        | Slot name on the origin node used by this subscription                                   |
@@ -1589,15 +1738,17 @@ local node has to other nodes.
 | sub_apply_delay            | interval    | Delay transactions by this much compared to the origin                                   |
 | sub_origin_name            | name        | Replication origin name used by this subscription                                        |
 | bdr_subscription_mode      | char        | Subscription mode                                                                        |
+| subscription_mode | char | Subscription mode, same as `bdr_subscription_mode` |
 | subscription_status        | text        | Status of the subscription worker                                                        |
 | node_group_id              | oid         | OID of the PGD group the node is part of                                                 |
 | sub_id                     | oid         | OID of the subscription                                                                  |
 | origin_id                  | oid         | OID of the origin node                                                                   |
+| source_id | oid | ID of the node the subscription receives changes from |
 | target_id                  | oid         | OID of the target node                                                                   |
 | receive_lsn                | pg_lsn      | Latest LSN of any change or message received (this can go backwards in case of restarts) |
 | receive_commit_lsn         | pg_lsn      | Latest LSN of last COMMIT received (this can go backwards in case of restarts)           |
 | last_xact_replay_lsn       | pg_lsn      | LSN of last transaction replayed on this subscription                                    |
-| last_xact_flush_lsn        | timestamptz | LSN of last transaction replayed on this subscription that's flushed durably to disk     |
+| last_xact_flush_lsn        | pg_lsn      | LSN of last transaction replayed on this subscription that's flushed durably to disk     |
 | last_xact_replay_timestamp | timestamptz | Timestamp of last transaction replayed on this subscription                              |
 
 ### `bdr.subscription_error_status`
@@ -1649,13 +1800,12 @@ only one node and processed on different nodes.
 | Column              | Type   | Description                                                                                                           |
 | ------------------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
 | ap_wq_workid        | bigint | Unique ID of the work item                                                                                            |
-| ap_wq_ruleid        | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                     |
 | ap_wq_relname       | name   | Name of the relation the task belongs to                                                                              |
-| ap_wq_relnamespace  | name   | Name of the tablespace specified in rule for this work item                                                           |
+| ap_wq_relnamespace  | name   | Name of the schema that contains the relation the task belongs to                                                     |
 | ap_wq_partname      | name   | Name of the partition created by the workitem                                                                         |
-| ap_wq_work_category | char   | Work category; can be `c` (create partition), `m` (migrate partition), `d` (drop partition), or `a` (alter partition) |
+| ap_wq_work_category | char   | Work category, `a` for autopartition (the only category) |
 | ap_wq_work_sql      | text   | SQL query for the work item                                                                                           |
-| ap_wq_work_depends  | Oid\[] | OIDs of the nodes on which the work item depends                                                                      |
+| ap_wq_depends_on     | Oid\[] | OIDs of the nodes on which the work item depends                                                                      |
 
 ### `bdr.taskmgr_workitem_status`
 
@@ -1683,13 +1833,12 @@ items, independent of other nodes in the cluster.
 | Column              | Type   | Description                                                                                                      |
 | ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- |
 | ap_wq_workid        | bigint | Unique ID of the work item                                                                                       |
-| ap_wq_ruleid        | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                |
 | ap_wq_relname       | name   | Name of the relation the task belongs to                                                                         |
-| ap_wq_relnamespace  | name   | Name of the tablespace specified in rule for this work item.                                                     |
+| ap_wq_relnamespace  | name   | Name of the schema that contains the relation the task belongs to                                                |
 | ap_wq_partname      | name   | Name of the partition created by the workitem                                                                    |
-| ap_wq_work_category | char   | Category; can be `c` (create partition), `m` (migrate partition), `d` (drop partition), or `a` (alter partition) |
+| ap_wq_work_category | char   | Category, `a` for autopartition (the only category) |
 | ap_wq_work_sql      | text   | SQL query for the work item                                                                                      |
-| ap_wq_work_depends  | Oid\[] | Always NULL                                                                                                      |
+| ap_wq_depends_on     | Oid\[] | Always NULL                                                                                                      |
 
 ### `bdr.taskmgr_local_workitem_status`
 
@@ -1704,6 +1853,36 @@ The status of the work items for locally managed tables.
 | ap_wi_status      | char        | Status; can be `q` (queued), `c` (complete), `f` (failed), or `u` (unknown) |
 | ap_wi_started_at  | timestamptz | Start timestamptz of work item                                              |
 | ap_wi_finished_at | timestamptz | End timestamptz of work item                                                |
+
+### `bdr.taskmgr_work_queue_global_status`
+
+A view of the global task manager work queue with the status of each work item, as returned by [`bdr.taskmgr_work_queue_check_status`](functions-internal#bdrtaskmgr_work_queue_check_status).
+
+#### `bdr.taskmgr_work_queue_global_status` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| workid | bigint | Unique ID of the work item |
+| relname | text | Schema-qualified name of the relation the task belongs to |
+| partition | name | Name of the partition created by the work item |
+| work_category | char | Work category, `a` for autopartition (the only category) |
+| sql | text | SQL query for the work item |
+| status | text | Status of the work item: `failed`, `in-progress`, `finished`, or `unknown` |
+
+### `bdr.taskmgr_work_queue_local_status`
+
+A view of the global task manager work queue with the status of each work item on the local node.
+
+#### `bdr.taskmgr_work_queue_local_status` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| workid | bigint | Unique ID of the work item |
+| relname | text | Schema-qualified name of the relation the task belongs to |
+| partition | name | Name of the partition created by the work item |
+| work_category | char | Work category, `a` for autopartition (the only category) |
+| sql | text | SQL query for the work item |
+| status | "char" | Status of the work item on the local node: `q` (queued), `c` (complete), `f` (failed), or `u` (unknown) |
 
 ### `bdr.trigger`
 
@@ -1728,8 +1907,8 @@ An expanded view of `bdr.trigger` with columns that are easier to read.
 | ------------------ | ------------------ | ---------------------------- |
 | trigger_name       | name               | Name of the trigger          |
 | event_manipulation | text               | Operations                   |
-| trigger_type       | bdr.trigger_type   | Type of trigger              |
-| trigger_table      | bdr.trigger_reloid | Table that calls the trigger |
+| trigger_type       | "char"   | Type of trigger              |
+| trigger_table      | regclass | Table that calls the trigger |
 | trigger_function   | name               | Function used                |
 
 ### `bdr.workers`
@@ -1743,8 +1922,8 @@ into the state of PGD workers.
 
 | Name             | Type | Description                                          |
 | ---------------- | ---- | ---------------------------------------------------- |
-| worker_pid       | int  | Process ID of the worker process                     |
-| worker_role      | int  | Numeric representation of worker role                |
+| worker_pid       | integer  | Process ID of the worker process                     |
+| worker_role      | integer  | Numeric representation of worker role                |
 | worker_role_name | text | Name of the worker role                              |
 | worker_subid     | oid  | Subscription ID if the worker is associated with one |
 
@@ -1757,21 +1936,21 @@ Specific information about PGD writer processes.
 | Name                  | Type                     | Description                                                          |
 | --------------------- | ------------------------ | -------------------------------------------------------------------- |
 | sub_name              | name                     | Name of the subscription                                             |
-| writer_nr             | int                      | Number of changes applied by the writer in the current transaction   |
-| pid                   | int                      | Process ID of the worker process                                     |
-| syncing_rel           | int                      | OID of the relation being synchronized (if any)                      |
-| streaming_allowed     | text                     | Can this writer be target of direct to writer streaming              |
+| writer_nr             | integer                      | Number of changes applied by the writer in the current transaction   |
+| pid                   | integer                      | Process ID of the worker process                                     |
+| syncing_rel           | regclass                      | OID of the relation being synchronized (if any)                      |
+| streaming_allowed     | boolean                  | Can this writer be target of direct to writer streaming              |
 | is_streaming          | bool                     | Is there transaction being streamed to this writer                   |
 | remote_xid            | xid                      | Remote transaction id of the transaction being processed (if any)    |
 | remote_commit_lsn     | pg_lsn                   | LSN of last commit processed                                         |
-| commit_queue_position | int                      | Position in the internal commit queue                                |
+| commit_queue_position | integer                      | Position in the internal commit queue                                |
 | nxacts                | bigint                   | Number of transactions processed by this writer                      |
 | ncommits              | bigint                   | Number of transactions committed by this writer                      |
 | naborts               | bigint                   | Number of transactions aborted by this writer                        |
 | nstream_file          | bigint                   | Number of streamed-to-file transactions processed by this writer     |
 | nstream_writer        | bigint                   | Number of streamed-to-writer transactions processed by this writer   |
 | xact_nchanges         | bigint                   | Number of changes processed by this writer (updated every 1000 rows) |
-| xact_origin_node_id   | oid                      | Node where the transaction originated                                |
+| xact_origin_node_name | name                     | Node where the transaction originated                                |
 | xact_origin_lsn       | pg_lsn                   | LSN of the transaction at the origin                                 |
 | xact_origin_ts        | timestamp with time zone | Commit timestamp of the transaction at the origin                    |
 | xact_apply_source     | text                     | Method used to apply the transaction (`replay`/`file`/`stream`)      |
@@ -1779,6 +1958,19 @@ Specific information about PGD writer processes.
 | xact_apply_progress   | bigint                   | Progress of the transaction so far                                   |
 | remote_change_type    | "char"                   | Type of the last change applied by the writer                        |
 | remote_change_lsn     | pg_lsn                   | LSN of the last change applied by the writer                         |
+
+### `bdr.worker_errors`
+
+A backwards compatibility view of worker errors for the CLI. Deprecated, use [`bdr.event_summary`](catalogs-internal#bdrevent_summary) instead.
+
+#### `bdr.worker_errors` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| source_name | name | Name of the node where the error occurred |
+| worker_role_name | text | Role of the worker that raised the error |
+| error_time | timestamp with time zone | Time when the error occurred |
+| error_message | text | Text of the error message |
 
 ### `bdr.worker_tasks`
 
@@ -1831,3 +2023,25 @@ instance is shown. Join on the current database to filter it.
 | since_prev_exited                 | interval                 | Interval since the previous task exited                 |
 | task_first_registered             | timestamp with time zone | Timestamp when the first registration happened          |
 | since_first_registered            | interval                 | Interval since the first registration                   |
+
+### `bdr.xid_peer_progress`
+
+Tracks how far each node has applied a transaction that added a `NOT VALID` constraint.
+PGD creates `NOT VALID` constraints without a global DML lock, so a later
+`ALTER TABLE … VALIDATE CONSTRAINT` uses this table instead of taking the lock. It
+waits until every peer data node has applied the `ADD CONSTRAINT … NOT VALID`, and
+until the local node has received all the changes that peer made before applying it.
+Each node records its own row when it commits the transaction, and learns the other
+nodes' rows through replication progress messages. PGD deletes the rows once the
+constraint is validated or dropped.
+
+#### `bdr.xid_peer_progress` columns
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| origin_node_id | oid | Node where `ADD CONSTRAINT … NOT VALID` ran |
+| origin_node_topxid | xid | Top-level xid of that transaction on the origin |
+| origin_node_lsn | pg_lsn | Origin WAL position when the DDL ran |
+| peer_node_id | oid | Node this row describes (the origin has a row too) |
+| peer_apply_xid | xid | xid that applied the transaction on `peer_node_id` |
+| peer_apply_lsn | pg_lsn | `peer_node_id`'s WAL position when that transaction committed (approximate). `VALIDATE CONSTRAINT` waits until the local node has replayed that peer's changes up to here |

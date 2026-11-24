@@ -27,7 +27,7 @@ Before starting the multi-DC procedure, ensure you have made yourself familiar w
 
 ### Architecture prerequisites
 
-This multi-DC setup follows a Hub and Spoke model, where a single Primary manages several lean Secondaries.
+This multi-DC setup follows a Hub and Spoke model, where a single Primary manages several Secondaries. We recommend that secondaries run a [reduced set of components](#reduced-set-of-components-spoke-clusters-only).
 
 - Hub cluster: One Kubernetes cluster to host the Primary HM. This cluster serves as the central management plane and UI.
 
@@ -64,7 +64,7 @@ HM uses an object store for backups, artifacts, WAL, and internal bundles.
 
 ### Key requirement
 
-All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the default namespace. Store this secret in the primary and secondary if you are running on two locations. Store this secret in the primary, and secondary locations, if you have three data centers.
+All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the `edb-system` namespace. Store this secret in the primary and all secondary locations.
 
 ## Parameter uniqueness
 
@@ -112,7 +112,7 @@ With operator 2.1 or later, `clusterGroups.primary` and `clusterGroups.secondari
 
 ## Reduced set of components (Spoke clusters only)
 
-The HM consists of a number of different components, some of which are not necessary on the secondary locations. While the full set can be installed successfully on secondary locations, we recommend reducing that list by setting the `scenarios` parameter to `core`, and disabling the HM console (UI). If a secondary location hosts Distributed High Availability (DHA) clusters, add `pgd` to that location's `scenarios` list as well.
+The HM consists of a number of different components, some of which are not necessary on the secondary locations. While the full set can be installed successfully on secondary locations, we recommend reducing that list by setting the `scenarios` parameter to `core` and `dbaas`, and disabling the HM console (UI). Each secondary location needs `dbaas`, which contains the components that manage the Postgres clusters at that location. If a secondary location hosts Distributed High Availability (DHA) clusters, add `pgd` to that location's `scenarios` list as well.
 
 Add the following parameters to your secondary location configuration files:
 
@@ -124,6 +124,7 @@ metadata:
 spec:
   scenarios:
     - core
+    - dbaas
     # - pgd  # add if this location hosts DHA clusters
   disabledComponents:
     - upm-ui
@@ -138,7 +139,7 @@ spec:
 
    - `beacon_location_id`, `internal_backup_folder`, `metrics_storage_prefix`, and `logs_storage_prefix` must be unique per location.
 
-   - `scenarios` has been set to `core` for secondary locations, plus `pgd` for any secondary location that hosts DHA clusters.
+   - `scenarios` has been set to `core` and `dbaas` for secondary locations, plus `pgd` for any secondary location that hosts DHA clusters.
 
    - `disabledComponents` has the `upm-ui` component listed for secondary locations.
 
@@ -153,7 +154,7 @@ Once the installations are complete, verify the Hub and Spoke link.
 1. On the primary, list the managed secondary locations:
 
    ```bash
-   kubectl get location
+   kubectl get location -n edb-system
    ```
 
    Each managed location appears as a row named `managed-<LOCATION_ID>` (for example, `managed-primary` and `managed-secondary`), with the location ID under `LOCATIONID` and a recent `LASTHEARTBEAT`:
@@ -212,7 +213,7 @@ On the primary location, perform the following checks to validate the multi-DC s
 1. Validate that the secondary locations are registered:
 
     ```bash
-    kubectl get location
+    kubectl get location -n edb-system
     ```
 
 1. Validate provisioning to secondary works:
@@ -231,6 +232,8 @@ Fixed in HM 2026.8 and later: monitoring components (Thanos, fluent-bit) now use
 
 ### Manual failover procedure for databases from the primary location to a secondary location
 
+Use this procedure when the primary location is lost or unreachable. For a planned role change between two clusters that can reach each other, see [Switching over to a replica cluster](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/switchover-clusters/).
+
 1. Suspend writes to the primary location (maintenance mode/LB cutover).
 
 1. Promote a replicas in a secondary location to primary (using the HM console or your scripts).
@@ -242,7 +245,7 @@ Fixed in HM 2026.8 and later: monitoring components (Thanos, fluent-bit) now use
 1. When original the primary location returns: re-seed it as a replica of the new primary; optionally plan a later cutback.
 
 !!!note 
-While you promote the Postgres database in the secondary DC, the HM console itself still runs on the primary. If the primary DC (where HM lives) is completely gone, follow the [HM disaster recovery guide](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/) to restore the management console elsewhere.
+While you promote the Postgres database in the secondary DC, the HM console itself still runs on the primary. If the primary DC (where HM lives) is completely gone, follow [Disaster recovery for a multi-DC Hybrid Manager deployment](/edb-postgres-ai/current/hybrid-manager/using_hybrid_manager/hadr/hadr_recovery_multi_dc/) to restore the control plane and reconnect the surviving locations.
 !!!
 
 #### Operator tips
@@ -268,7 +271,7 @@ To upgrade a multi-DC deployment:
 1. After every location is upgraded, verify that all secondaries are still registered and heartbeating to the primary:
 
    ```bash
-   kubectl get location
+   kubectl get location -n edb-system
    ```
 
 ## Troubleshooting
@@ -277,7 +280,7 @@ To upgrade a multi-DC deployment:
     - Re-generate and cross-apply `ClusterFederatedTrustDomain` CRs.
     - Confirm 8444/TCP reachability.
 
-- Problem: **secondary not listed in `kubectl get location`**
+- Problem: **secondary not listed in `kubectl get location -n edb-system`**
     - Recheck Beacon values on both sides; restart Beacon server/agent.
     - Confirm 9445/TCP reachability to primary portal; trust domains correct.
 
@@ -299,7 +302,7 @@ To upgrade a multi-DC deployment:
 
 ## Appendix B — Quick daily checks
 
-- `kubectl get location` on primary shows secondary Ready.
+- `kubectl get location -n edb-system` on primary shows secondary Ready.
 - Thanos/Loki federation healthy (if enabled).
 - Object store writes succeed from both DCs.
 - Replication lag within SLOs.

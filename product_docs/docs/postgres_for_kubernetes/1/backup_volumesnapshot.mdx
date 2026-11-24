@@ -3,9 +3,8 @@ title: 'Appendix A - Backup on volume snapshots'
 originalFilePath: 'src/appendixes/backup_volumesnapshot.md'
 ---
 
-
-
 !!!info Important
+
 Please refer to the official Kubernetes documentation for a list of all
 the supported [Container Storage Interface (CSI) drivers](https://kubernetes-csi.github.io/docs/drivers.html)
 that provide snapshotting capabilities.
@@ -54,6 +53,7 @@ volumes of a given storage class, and managed as `VolumeSnapshot` and
 `VolumeSnapshotContent` resources.
 
 !!!info Important
+
 It is your responsibility to verify with the third party vendor
 that volume snapshots are supported. {{name.ln}} only interacts
 with the Kubernetes API on this matter, and we cannot support issues
@@ -66,6 +66,7 @@ at the storage level for each specific CSI driver.
 Snapshot backups through the `backup.volumeSnapshot` stanza.
 
 !!!info
+
 Please refer to [`VolumeSnapshotConfiguration`](pg4k.v1.md#volumesnapshotconfiguration)
 in the API reference for a full list of options.
 !!!
@@ -105,6 +106,7 @@ As you can see, the `backup` section contains both the `volumeSnapshot` stanza
 `plugins` one (controlling the [WAL archive](wal_archiving.md)).
 
 !!!info
+
 Once you have defined the `plugin`, you can decide to use
 both volume snapshot and plugin backup strategies simultaneously
 to take physical backups.
@@ -115,6 +117,7 @@ The `volumeSnapshot.className` option allows you to reference the default
 defined in your PostgreSQL cluster.
 
 !!!info
+
 In case you are using a different storage class for `PGDATA` and
 WAL files, you can specify a separate `VolumeSnapshotClass` for
 that volume through the `walClassName` option (which defaults to
@@ -127,6 +130,7 @@ a `ScheduledBackup` resource that requests such backups on a periodic basis.
 ## Hot and cold backups
 
 !!!warning
+
 As noted in the [backup document](backup.md), a cold snapshot explicitly
 set to target the primary will result in the primary being fenced for
 the duration of the backup, making the cluster read-only during this
@@ -142,6 +146,7 @@ By default, {{name.ln}} requests an online/hot backup on volume snapshots, using
     terminating the backup procedure
 
 !!!info Important
+
 The default values are suitable for most production environments. Hot
 backups are consistent and can be used to perform snapshot recovery, as we
 ensure WAL retention from the start of the backup through a temporary
@@ -248,6 +253,7 @@ In case a `VolumeSnapshot` is deleted, the `deletionPolicy` specified in the
 -   if set to `Delete`, the `VolumeSnapshotContent` object is removed as well
 
 !!!warning
+
 `VolumeSnapshotContent` objects do not keep all the information regarding the
 backup and the cluster they refer to (like the annotations and labels that
 are contained in the `VolumeSnapshot` object). Although possible, restoring
@@ -265,12 +271,12 @@ for details on this standard behavior.
 
 ## Backup Volume Snapshot Deadlines
 
-{{name.ln}} supports backups using the volume snapshot method. In some
-environments, volume snapshots may encounter temporary issues that can be
-retried.
+{{name.ln}} supports backups using the volume snapshot method. Volume
+snapshot operations may encounter errors, which {{name.ln}} retries for a
+configurable amount of time before giving up.
 
 The `backup.k8s.enterprisedb.io/volumeSnapshotDeadline` annotation defines how long
-{{name.ln}} should continue retrying recoverable errors before marking the
+{{name.ln}} should continue retrying these errors before marking the
 backup as failed.
 
 You can add the `backup.k8s.enterprisedb.io/volumeSnapshotDeadline` annotation to both
@@ -282,22 +288,20 @@ If not specified, the default retry deadline is **10 minutes**.
 
 ### Error Handling
 
-When a retryable error occurs during a volume snapshot operation:
+When an error occurs during a volume snapshot operation:
 
 1.  {{name.ln}} records the time of the first error.
 2.  The system retries the operation every **10 seconds**.
 3.  If the error persists beyond the specified deadline (or the default 10
     minutes), the backup is marked as **failed**.
 
-### Retryable Errors
-
-{{name.ln}} treats the following types of errors as retryable:
-
--   **Server timeout errors** (HTTP 408, 429, 500, 502, 503, 504)
--   **Conflicts** (optimistic locking errors)
--   **Internal errors**
--   **Context deadline exceeded errors**
--   **Timeout errors from the CSI snapshot controller**
+The CSI driver reports snapshot errors as free text, with no reliable way to
+tell a permanent condition (for example, a missing `VolumeSnapshotClass` or
+invalid credentials) from a transient one, and a condition that looks
+permanent can become resolvable at any point, for example if someone creates
+the missing class or fixes the credentials while {{name.ln}} is retrying.
+For this reason, {{name.ln}} retries every volume snapshot error the same
+way, until the deadline is reached.
 
 ### Examples
 
@@ -321,7 +325,7 @@ When you define a `ScheduledBackup` with the annotation, any `Backup` resources
 created from this schedule automatically inherit the specified timeout value.
 
 In the following example, all backups created from the schedule will have a
-30-minute timeout for retrying recoverable snapshot errors.
+30-minute timeout for retrying snapshot errors.
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
@@ -358,8 +362,9 @@ EKS cluster on AWS using the `ebs-sc` storage class and the `csi-aws-vsc`
 volume snapshot class.
 
 !!!info Important
+
 If you are interested in testing the example, please read
-["Volume Snapshots" for the Amazon Elastic Block Store (EBS) CSI driver](https://github.com/kubernetes-sigs/aws-ebs-csi-driver/tree/master/examples/kubernetes/snapshot) 
+["Volume Snapshots" for the Amazon Elastic Block Store (EBS) CSI driver](https://github.com/kubernetes-sigs/aws-ebs-csi-driver/tree/master/examples/kubernetes/snapshot) <!-- wokeignore:rule=master -->
 for detailed instructions on the installation process for the storage class and the snapshot class.
 !!!
 

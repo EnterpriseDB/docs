@@ -3,9 +3,8 @@ title: 'Backup'
 originalFilePath: 'src/backup.md'
 ---
 
-
-
 !!!info
+
 This section covers **physical backups** in PostgreSQL.
 While PostgreSQL also supports logical backups using the `pg_dump` utility,
 these are **not suitable for business continuity** and are **not managed** by
@@ -15,6 +14,7 @@ for guidance.
 !!!
 
 !!!info Important
+
 Starting with version 1.26, native backup and recovery capabilities are
 being **progressively phased out** of the core operator and moved to official
 CNPG-I plugins. This transition aligns with {{name.ln}}' shift towards a
@@ -33,7 +33,9 @@ two main ways:
 -   **Natively**, with support for:
 
     -   [Object storage via Barman Cloud](backup_barmanobjectstore.md)
-        *(although deprecated from 1.26 in favor of the Barman Cloud Plugin)*
+        *(deprecated from 1.26 in favor of the Barman Cloud Plugin; 1.31 is the
+        last minor release with native support, which is removed starting from
+        1.32.0)*
     -   [Kubernetes Volume Snapshots](backup_volumesnapshot.md), if
         supported by the underlying storage class
 
@@ -74,6 +76,7 @@ is fundamental for the following reasons:
     time from the first available base backup in your system
 
 !!!warning
+
 WAL archive alone is useless. Without a physical base backup, you cannot
 restore a PostgreSQL cluster.
 !!!
@@ -92,6 +95,7 @@ out-of-the-box an [RPO](before_you_start.md#postgresql-terminology) ≤ 5 minute
 recovery, even across regions.
 
 !!!info Important
+
 Our recommendation is to always setup the WAL archive in production.
 There are known use cases — normally involving staging and development
 environments — where none of the above benefits are needed and the WAL
@@ -126,10 +130,12 @@ for your disaster recovery plans.
 -   **Object store–based backups**, via the [**Barman Cloud
     Plugin**](https://cloudnative-pg.io/plugin-barman-cloud/) or the
     [**deprecated native integration**](backup_barmanobjectstore.md)
+    (removed starting from 1.32.0)
 -   [**Volume Snapshots**](backup_volumesnapshot.md), using the
     Kubernetes CSI interface and supported storage classes
 
 !!!info Important
+
 CNPG-I is designed to enable third parties to build and integrate their own
 backup plugins. Over time, we expect the ecosystem of supported backup
 solutions to grow.
@@ -206,6 +212,7 @@ strategy in {{name.ln}}. They are defined using the `ScheduledBackup` custom
 resource.
 
 !!!info
+
 For a complete list of configuration options, refer to the
 [`ScheduledBackupSpec`](pg4k.v1.md#scheduledbackupspec)
 in the API reference.
@@ -218,6 +225,7 @@ The `schedule` field defines **when** the backup should occur, using a
 [Go `cron` package specification](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format).
 
 !!!warning
+
 This format differs from the traditional Unix/Linux `crontab`—it includes a
 **seconds** field as the first entry.
 !!!
@@ -251,6 +259,7 @@ of updating an existing one.
 ### Backup Frequency and RTO
 
 !!!tip Hint
+
 The frequency of your backups directly impacts your **Recovery Time Objective**
 ([RTO](before_you_start.md#postgresql-terminology)).
 !!!
@@ -297,6 +306,7 @@ On-demand backups allow you to manually trigger a backup operation at any time
 by creating a `Backup` resource.
 
 !!!info
+
 For a full list of available options, see the
 [`BackupSpec`](pg4k.v1.md#backupspec) in the
 API reference.
@@ -371,6 +381,7 @@ Status:
 * * *
 
 !!!info Important
+
 On-demand backups do **not** include Kubernetes secrets for the PostgreSQL
 superuser or application user. You should ensure these secrets are included in
 your broader Kubernetes cluster backup strategy.
@@ -381,12 +392,23 @@ your broader Kubernetes cluster backup strategy.
 {{name.ln}} currently supports the following backup methods for scheduled
 and on-demand backups:
 
--   `plugin` – Uses a CNPG-I plugin (requires `.spec.pluginConfiguration`)
+-   `plugin` – Uses a CNPG-I plugin (requires `.spec.plugins`)
 -   `volumeSnapshot` – Uses native [Kubernetes volume snapshots](backup_volumesnapshot.md#how-to-configure-volume-snapshot-backups)
 -   `barmanObjectStore` – Uses [Barman Cloud for object storage](backup_barmanobjectstore.md)
     *(deprecated starting with v1.26 in favor of the
     [Barman Cloud Plugin](https://cloudnative-pg.io/plugin-barman-cloud/),
-    but still the default for backward compatibility)*
+    but still the default for backward compatibility; 1.31 is the last minor
+    release with native support, which is removed starting from 1.32.0)*
+
+!!!warning
+
+Native Barman Cloud support, including the `barmanObjectStore` backup
+method and the `.spec.backup.barmanObjectStore` stanza, is removed starting
+from {{name.ln}} 1.32.0. Releases up to and including 1.31, and their
+patch releases, keep native support for as long as they are supported.
+Follow [Migrating from Built-in {{name.ln}} Backup](https://cloudnative-pg.io/plugin-barman-cloud/docs/migration/)
+to move to the Barman Cloud Plugin before upgrading to 1.32 or later.
+!!!
 
 Specify the method using the `.spec.method` field (defaults to
 `barmanObjectStore`).
@@ -418,6 +440,7 @@ cluster. If no replicas are available, the backup will fall back to the
 **primary instance**.
 
 !!!note
+
 The examples in this section are focused on backup target selection and do not
 take the backup method (`spec.method`) into account, as it is not relevant to
 the scope being discussed.
@@ -435,6 +458,7 @@ attempt to:
 This strategy minimizes interference with the primary’s workload.
 
 !!!warning
+
 Although the standby might not always be up to date with the primary,
 in the time continuum from the first available backup to the last
 archived WAL this is normally irrelevant. The base backup indeed
@@ -462,6 +486,7 @@ spec:
 ```
 
 !!!warning
+
 Be cautious when using `primary` as the target for **cold backups using
 volume snapshots**, as this will require shutting down the primary instance
 temporarily—interrupting all write operations. The same caution applies to
@@ -503,6 +528,7 @@ For more details on available retention features, refer to your chosen plugin’
 For example: ["Retention Policies" with Barman Cloud Plugin](https://cloudnative-pg.io/plugin-barman-cloud/docs/retention/).
 
 !!!info Important
+
 Users are encouraged to rely on the retention mechanisms provided by the
 backup plugin they are using. This ensures better flexibility and consistency
 with the backup method in use.

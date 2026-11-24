@@ -1,0 +1,338 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/EnterpriseDB/docs/refs/heads/develop/tools/automation/generators/relgen/relnote-schema.json
+product: EDB Postgres Distributed
+version: 5.10.0
+date: 19 November 2026
+intro: |
+  EDB Postgres Distributed 5.10.0 includes an enhancement and bug fixes focused on improving stability and reliability. For a list of known issues, see [Known issues and limitations](/pgd/5.10/known_issues/).
+components:
+  "BDR": 5.10.0
+  "PGD CLI": 5.10.0
+  "PGD Proxy": 5.10.0
+  "Utilities": 5.10.0
+highlights: |
+  - [Raft PreVote](/pgd/5.10/routing/raft/04_raft_elections_in_depth/#raft-leader-elections-and-prevote): PreVote, introduced in PGD 6, is now backported to PGD 5. A node isolated by an unstable network link no longer forces a Raft leader election when it reconnects, so a healthy leader isn't displaced and clusters recover from network flapping without disruption. No configuration is required. PreVote takes effect once all nodes run PGD 5.10 and applies to the top-level group.
+
+relnotes:
+- relnote: 'Backported Raft [PreVote](/pgd/5.10/routing/raft/04_raft_elections_in_depth/#raft-leader-elections-and-prevote) from PGD 6 to prevent unnecessary Raft leader elections.'
+  component: BDR
+  details: |
+    A node that was isolated by a flapping network link no longer forces a Raft leader election when it reconnects. PreVote needs no configuration and takes effect once all nodes run PGD 5.10. In PGD 5.10.0, it applies only to the Raft instance of the top-level group.
+  jira: BDR-8937
+  addresses: ""
+  type: Enhancement
+  impact: Medium
+- relnote: Fixed a hard hang between a writer and the receiver in CAMO.
+  component: BDR
+  details: |
+    A receiver restart, for example after the origin node was partitioned and then recovered, could hang when the downstream node had CAMO transactions in its commit decisions. The receiver waited on a flush while the writers waited for the full commit decision feedback queues that the receiver never emptied. The deadlock detector didn't detect this hang, and only a server restart resolved it. This issue has been present since 5.9.1.
+  jira: BDR-8942
+  addresses: "65610"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed the receiver skipping cleanup when it exits with a broken upstream connection.
+  component: BDR
+  details: |
+    When a receiver exited gracefully while its upstream connection was already broken, sending standby status or CAMO feedback raised an `ERROR` inside the exit callback. That unwound out of the finish function and skipped writer cleanup, closing the connection, and the remaining exit callbacks. During process exit, these failures are now logged as warnings and the cleanup runs to completion.
+  jira: BDR-8956
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Lag values in `bdr.node_slots` are no longer reset when a peer reconnects.
+  component: BDR
+  details: |
+    During the catch-up phase, the `write_lag`, `flush_lag`, and `replay_lag` fields in `bdr.node_slots` now report the calculated `offline_lag` until the slot goes back to the streaming state and lag can be measured again, instead of being reset to 0.
+  jira: BDR-7634
+  addresses: "57149"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed an assertion failure on subtransaction order in file-streamed transactions.
+  component: BDR
+  details: |
+    The receiver asserted that the subtransactions of a transaction streamed to a file are in XID order. They are added in the order of their first change, which can differ, so the receiver crashed on assert-enabled builds. The receiver no longer checks the XID order and only checks that positions in the changes file increase.
+  jira: BDR-9144
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Prevented DDL from creating galloc sequences with the `CYCLE` option.
+  component: BDR
+  details: |
+    The `CYCLE` option on galloc sequences could cause duplicate `nextval()` values across nodes. PGD now prevents DDL that results in a galloc sequence with the `CYCLE` option, unless it's replicated DDL from another node.
+  jira: BDR-8594
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: PGD CLI now honors `ssl_password_command` from its configuration file.
+  component: PGD CLI
+  details: |
+    The `cluster.ssl.ssl_password_command` setting in `pgd-cli-config.yml` was accepted but ignored, so an obfuscated `sslpassword` failed with "bad decrypt" for users without a libpq deobfuscation preload, such as `root`. The CLI again runs the command with `sslpassword` on standard input and uses its output as the passphrase. Passwords are no longer shown in `--debug` output.
+  jira: BDR-9329
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a misdirected signal from the writer that could restart an instance in a container.
+  component: BDR
+  details: |
+    After a flush, the writer woke the receiver with a `kill()` call whose two arguments were swapped. On a normal host the call failed, since receiver PIDs are larger than the highest signal number, and the receiver waited up to 1 s for the flush confirmation unless something else woke it. In a container or another fresh PID namespace, the call could hit a Postgres process: with a receiver at PID 24, the writer sent signal 24 (`SIGXCPU`) to the checkpointer at PID 10, and the postmaster restarted the instance. The writer now wakes the receiver with the arguments in order, and only after it has confirmed the flush.
+  jira: BDR-7360
+  addresses: "66414"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed the Raft term of exported consensus snapshots.
+  component: BDR
+  details: |
+    `bdr.consensus_snapshot_export()` labeled a snapshot with the node's current Raft term instead of the term of the last entry the snapshot includes. After an election the two differ. Nodes that imported such a snapshot then disagreed with the exporting node about that entry, and when the exporting node was elected leader again, the Raft group committed no entries until the next snapshot sync. Snapshots now carry the term of their last entry.
+  jira: BDR-9020
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed the loss of a committed Raft entry when the first node joins a Raft group.
+  component: BDR
+  details: |
+    A Raft leader treated a node added while it was leader as silent until the node's first response. When the first node to join a Raft group became a voter before the leader's first heartbeat, the leader stepped down without having sent a heartbeat. The joining nodes then elected a leader with an empty log while the old leader held a committed entry, and that entry was truncated. The leader now counts a node it adds as heard from, as it does for the nodes present at its election.
+  jira: BDR-9049
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed `pgd node upgrade` restoring replication origins at the wrong position.
+  component: PGD CLI
+  details: |
+    `pgd node upgrade` restores each replication origin at the highest progress of its writer origins, but its patterns for the writer origins didn't match their names:
+
+    - An origin whose ID contains a hex letter lost its writer origins and was restored behind them.
+    - An origin could take the progress of another origin's writers (origin `0x2` matched the writers of `0x21`). Its subscription then started ahead in the wrong peer's WAL and skipped transactions.
+    - A writer origin without recorded progress was taken as the furthest ahead.
+    - The origins of a database whose name starts with `writer` weren't restored at all.
+
+    The writer origins are now matched by their exact names.
+  jira: BDR-9079
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a corrupted slot name in `bdr.node_local_info` after concurrent joins.
+  component: BDR
+  details: |
+    In the promote step of a node join, PGD kept a pointer to a short-lived copy of the replication slot name, and a later update of `bdr.node_local_info` wrote whatever that memory held by then. After concurrent joins, a row could hold a truncated slot name followed by garbage bytes, and the replication slot checks then failed. PGD now keeps its own copy of the name.
+  jira: BDR-9002
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed switching between `bdr.raft_election_timeout` and `bdr.raft_global_election_timeout`.
+  component: BDR
+  details: |
+    `bdr.raft_election_timeout` is a deprecated alias of `bdr.raft_global_election_timeout`, and only one of the two can be set. Replacing one name by the other in the configuration file failed on every reload until a restart: the postmaster shut down, and in other processes the statement that processed the reload failed. Meanwhile the node ran with the default timeout. With both names in the configuration file, the server didn't start. Now:
+
+    - A conflicting line in the configuration file is logged and skipped, at startup and on reload. On a reload the name already in effect wins; at startup, `bdr.raft_global_election_timeout`.
+    - One reload applies an edit of the file that replaces one name by the other.
+    - `ALTER SYSTEM` still refuses to set the second name. `RESET` the first one and reload before you set it.
+    - Raft applies a new timeout at the next consensus restart, as before.
+  jira: BDR-9072
+  addresses: "66284"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed `pgd group set-option` for the proxy fallback options.
+  component: PGD CLI
+  details: |
+    `pgd group set-option` with `proxy_fallback_node_groups` or `proxy_fallback_node_group_timeout` always failed with "unknown proxy configuration key", because the CLI passed names that `bdr.alter_proxy_option()` doesn't know. The CLI now passes the server's names, `fallback_groups` and `fallback_group_timeout`.
+  jira: BDR-9101
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Connection Manager now says which server closed a connection during the handshake.
+  component: BDR
+  details: |
+    When a Postgres server closed the connection before the startup handshake or the SCRAM exchange had completed, Connection Manager logged `connection failed: ProtocolError("")`. The `WARNING` now names the server address and the handshake phase, and shows the error as text (`protocol error: ...`) rather than in its internal form.
+  jira: BDR-8071
+  addresses: "60716"
+  type: Enhancement
+  impact: Low
+- relnote: Fixed walsender failures during an upgrade from PGD 4.4 with subscriber-only nodes.
+  component: BDR
+  details: |
+    While the extension was being upgraded from 4.4.x, a walsender started for a subscriber-only node's slot looked up `bdr.failover_replication_slots` before the upgrade script had created it, and `START_REPLICATION` failed. PGD now treats the missing catalog as no failover slot.
+  jira: BDR-9015
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed PGD worker processes missing a change to PGD's internal catalogs.
+  component: BDR
+  details: |
+    When a transaction changed PGD's internal catalogs, PGD notified the Connection Manager, router and manager worker processes at commit, before it had published the change to the catalog caches of those workers. A worker that checked its cache in that window kept the old contents. A worker that reads the catalogs once per notification stayed stale until an unrelated catalog change. PGD now publishes the change before it notifies any worker.
+  jira: BDR-9056
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed the PGD CLI's Raft leader lookup when some nodes don't answer.
+  component: PGD CLI
+  details: |
+    The CLI took the Raft leader from the first row of `bdr.group_raft_details`, which is ordered by node name and has an empty row for each node that doesn't answer. When the first nodes by name were unreachable, for example with a whole region down, `pgd groups list --verbose` and the compatibility command `pgd show-groups` showed an empty Raft leader for the top-level group although it had one. The CLI now takes the leader known in the newest Raft term that any node reports.
+  jira: BDR-9071
+  addresses: "66386"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed missing replication slots for witness nodes after concurrent joins.
+  component: BDR
+  details: |
+    Witnesses skipped join serialization, though they need slots in both directions. A witness joining concurrently with other nodes could end up without some slots, breaking later operations such as node parting. Witnesses are now serialized like data nodes.
+  jira: BDR-6628
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a hang when a writer restarts while a global lock is held.
+  component: BDR
+  details: |
+    If a writer or a node restarted after a global lock was acquired (after `ACQUIRE` or `ACQUIRE FINISH`, or after DDL had committed or prepared but before the lock was released), the manager or the writer doing DDL could hang forever. Locks recovered after a restart are now rebuilt without re-acquiring them, writers for the lock's origin are let through, and `FINISH` and `RELEASE` are routed to the same writer.
+  jira: BDR-8700
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed streamed transactions failing to apply with the WAL decoder enabled.
+  component: BDR
+  details: |
+    With the WAL decoder enabled and transaction streaming in use, two problems could break replication of large or catalog-only transactions:
+
+    -   A streamed transaction whose changes were all filtered out, such as an autoanalyze that touches only catalogs, could make the receiving node fail an assertion or crash.
+    -   If a node reconnected while a large transaction was still open, the WAL sender could stop with "encountered incomplete transaction", and the transaction reached the node only after another reconnect.
+  jira: BDR-9490
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed [client certificate checks](/pgd/5.10/connection-manager/authentication/#tls-and-client-certificates) in Connection Manager.
+  component: BDR
+  details: |
+    Connection Manager now checks client certificates the way Postgres does. Before, it accepted a client certificate without checking who issued it. The problem affected only `cert` rules in the Connection Manager HBA configuration, on nodes where the Postgres server uses `trust` authentication for connections from Connection Manager. Other related changes:
+
+    -   Client certificates are checked against `ssl_ca_file`, `ssl_crl_file`, and `ssl_crl_dir`, and the `clientcert` HBA option is applied. Without `ssl_ca_file`, `cert` authentication fails, as in Postgres.
+    -   If a CRL can't be parsed, for example a version 1 CRL, client certificates are refused and a `WARNING` is logged. Other authentication methods keep working.
+    -   The HTTPS status port (`use_https`) no longer asks for a client certificate. If the certificate or key file is missing, it serves plain HTTP and logs a `WARNING`.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Connection Manager now follows the [`ssl` setting](/pgd/5.10/connection-manager/authentication/#tls-and-client-certificates) for client connections.
+  component: BDR
+  details: |
+    Connection Manager now offers TLS to clients only when `ssl` is on, as Postgres does. Before, it offered TLS whenever `ssl_cert_file` and `ssl_key_file` pointed to existing files, whatever `ssl` was set to. With `ssl` on, both files must be set. If clients connect to Connection Manager over TLS, set `ssl = on` before upgrading. The HTTPS status port (`use_https`) isn't affected and keeps using `ssl_cert_file` and `ssl_key_file` whatever `ssl` is set to.
+  jira: BDR-9482
+  addresses: ""
+  type: Change
+  impact: Medium
+- relnote: Removed password hashes and cached credentials from Connection Manager log messages.
+  component: BDR
+  details: |
+    When a connection to Connection Manager matched no HBA rule, the "no matching HBA rule found" error written to the server log included the role's stored password hash. It also included credentials cached from the role's earlier logins, such as the password itself after a login with the cleartext `password` method. The log messages now show only the role name, password type, and role memberships.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Connection Manager uses the libpq defaults for options a node DSN doesn't set.
+  component: BDR
+  details: |
+    Options that a node's DSN doesn't set take the libpq default where one exists and otherwise stay unset. For example, a DSN without `dbname` connects to the `postgres` database, and a DSN without `port` or `sslcert` uses libpq's defaults for them.
+  jira: BDR-9482
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed `update_recently_deleted` conflicts detected as `update_missing`.
+  component: BDR
+  details: |
+    An update to a recently deleted row could be classified as `update_missing`, so the default `insert_or_skip` resolver inserted the deleted row again. The conflict is now detected correctly.
+  jira: BDR-8794
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed `leader_id` being reported as 0 on the Raft leader.
+  component: BDR
+  details: |
+    A node that granted a prevote request cleared its record of the current leader, even though a prevote doesn't change who leads the term. On the sitting leader, the node recorded its own `leader_id` as 0 and kept that value until the next leadership change. As a result, `bdr.get_raft_status()` reported a `leader_id` of 0 on the leader, and the PGD CLI clock-drift check failed. Granting a prevote no longer changes the known leader.
+  jira: BDR-8824
+  addresses: "65124"
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed Raft catalog vacuum running at most once per hour regardless of `bdr.raft_vacuum_interval`.
+  details: |
+    Since PGD 5.9.1, an hourly throttle added to prevent `VACUUM FULL` from causing consensus request timeouts during node group creation made any [`bdr.raft_vacuum_interval`](/pgd/5.10/reference/pgd-settings/#bdrraft_vacuum_interval) shorter than one hour, including the 5-minute default, behave as one hour. `bdr.raft_vacuum_interval` now takes effect as configured. [`bdr.raft_vacuum_full_interval`](/pgd/5.10/reference/pgd-settings/#bdrraft_vacuum_full_interval) must be at least one hour, or `-1` to disable it, and the first `VACUUM FULL` runs no earlier than one hour after the consensus worker starts. `bdr.raft_vacuum_interval` must be less than `bdr.raft_vacuum_full_interval`. Setting a value that breaks these rules fails. If such a value is in the configuration file at server start, PGD logs a warning and uses the default.
+  jira: BDR-8660
+  component: BDR
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed PGD ignoring the `failover` option of logical replication slots on Postgres 17 and later.
+  component: BDR
+  details: |
+    On EDB Postgres Extended and EDB Postgres Advanced Server 17 and later, with `failover_slot_scope` set to `global`, PGD registered every new non-temporary logical replication slot as a failover slot, even if it was created with `failover` set to `false`, the Postgres default. These slots were created on every node, holding back WAL on each one, and creating them required Raft consensus. PGD now honors the `failover` option, as documented: create slots with `failover => true` to make them failover slots. Slots already listed in `bdr.failover_replication_slots` remain failover slots. To make one local, drop it and re-create it without the option.
+  jira: BDR-9488
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a potential crash in the local node lookup.
+  component: BDR
+  details: |
+    An internal lookup of the local node could crash the backend instead of returning cleanly when the database had the BDR extension installed but no local node, for example before [`bdr.create_node()`](/pgd/5.10/reference/nodes-management-interfaces/#bdrcreate_node) or after the node was parted. No known user operation reached this code path. The lookup is now safe for such callers.
+  jira: BDR-8536
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Fixed `bdr.monitor_group_raft()` reporting OK while a node follows a stale Raft leader.
+  component: BDR
+  details: |
+    `bdr.monitor_group_raft()` now checks the leader of every follower node. Before, it checked only every other follower. If a follower with a stale or missing leader was one of the skipped nodes, the function returned OK. It should have returned CRITICAL with "There are node(s) following a leader different than the node set as RAFT_LEADER". The problem affected PGD 5.0.0 and later. Other related changes:
+
+    -   When more voting nodes are unreachable than the group contains, the function now returns CRITICAL with "The BDR group raft does not reach the quorum". Before, it returned OK.
+  jira: BDR-9311
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed high CPU usage by the task manager on idle clusters.
+  component: BDR
+  details: |
+    Fixed an issue where the task manager background worker consumed significant CPU (typically 5–50% of a core) on an otherwise idle cluster that had at least one enabled autopartition rule. The worker failed to back off when no partition work was needed, so it repeatedly re-ran its partition check many times per second. The worker now backs off when no work is queued. The regression was introduced in PGD 5.9.5.
+  jira: [BDR-8213, BDR-9159, BDR-9227, BDR-9331]
+  addresses: 65610, 66822, 67317
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed a memory leak in CAMO transactions.
+  component: BDR
+  details: |
+    Fixed a memory leak where every commit under a CAMO commit scope leaked a small buffer in the backend's top memory context. On long-lived connections, such as pooled connections to the write leader, the leak caused unbounded memory growth and could lead to out-of-memory conditions. The same leak on the commit error path for other commit scopes that use group commit is also fixed.
+  jira: BDR-8887
+  addresses: "65147"
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a memory leak when applying changes to partitioned tables.
+  component: BDR
+  details: |
+    Fixed a memory leak in the native writer when applying changes to partitioned tables. Rows landing on different partitions repeatedly triggered per-relation setup that left memory allocated until the end of the transaction. Large bulk loads into partitioned tables could therefore grow memory without bound and cause out-of-memory failures.
+  jira: BDR-9030
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: A global DML lock on a partitioned table now locks the whole partition hierarchy.
+  component: BDR
+  details: |
+    Previously, the global DML lock taken by DDL such as `ALTER TABLE ... SET NOT NULL` was registered on the partitioned table only. Another node could keep writing directly into a partition while the DDL was in flight, so the replicated DDL could meet rows it didn't expect and break replication. The lock now applies to the partitioned table and all of its partitions, including after a node restart.
+  jira: [BDR-8889, BDR-9447]
+  addresses: ""
+  type: Bug Fix
+  impact: Medium
+- relnote: Fixed conflict detection for EXCLUDE constraints over an index expression.
+  component: BDR
+  details: |
+    Conflicts on an EXCLUDE constraint that indexes an expression, for example a `tstzrange(time_from, time_to)` column, weren't detected. The writer failed with a plain `23P01` error and retried until it exited, no conflict was logged to `bdr.conflict_history`, the configured conflict resolver wasn't used, and replication from that peer was blocked. Conflict detection now supports EXCLUDE constraints over an index expression, and these conflicts are resolved like other EXCLUDE conflicts.
+  jira: BDR-9243
+  addresses: ""
+  type: Bug Fix
+  impact: High
+- relnote: Fixed a hang when a node parts itself while a writer is logging a conflict.
+  component: BDR
+  details: |
+    When a node parted itself, cleanup waited for the receiver and writer processes to exit while still holding a lock on `bdr.event_history`. A writer logging an apply conflict at that moment needed the same lock, so the part could hang and leave replication origins behind. Parting now releases the lock before waiting.
+  jira: BDR-8564
+  addresses: ""
+  type: Bug Fix
+  impact: Low
+- relnote: Updated the FIPS cryptographic module of Connection Manager to AWS-LC FIPS 3.6.0.
+  component: BDR
+  jira: BDR-9305
+  addresses: ""
+  type: Security
+  impact: Medium
