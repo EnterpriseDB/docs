@@ -83,11 +83,11 @@ Use this example to see the message sent when `aidb` blocks an agent's attempt t
   "agent": {"name": "support-assistant", "purpose": "customer_support"},
   "signal": "escalation",
   "active": true,
+  "sentAt": "2026-11-23T09:15:01Z",
   "since": "2026-11-23T09:15:00Z",
   "evidence": "1 role escalation attempt(s) blocked by the engine.",
   "counts": {"allowed": 42, "denied": 3, "escalations": 1},
-  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant",
-  "sentAt": "2026-11-23T09:15:01Z"
+  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant"
 }
 ```
 
@@ -103,20 +103,38 @@ Use this example to see the message sent when a signal clears and Send a recover
   "agent": {"name": "support-assistant"},
   "signal": "recovered",
   "active": false,
+  "sentAt": "2026-11-23T10:15:01Z",
   "since": "2026-11-23T09:15:00Z",
   "evidence": "No longer escalation (was since 09:15 UTC).",
-  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant",
-  "sentAt": "2026-11-23T10:15:01Z"
+  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant"
 }
 ```
 
 ### Example: routing messages from a custom receiver
 
-A custom receiver can open an incident when `signal` is `escalation` and `active` is `true`. Both escalation and repeated denials can be active for the same agent and instance. A recovery names the cleared signal only in the human-readable `evidence` field. Matching on `agent.name` and `instance.id` alone can close the wrong incident.
+Use this example to route messages to an incident system. It opens an incident when an escalation alert arrives, and it adds a note when a recovery arrives:
 
-## Securing webhook delivery
+```python
+def handle(message):
+    key = (message["instance"]["id"], message["agent"]["name"])
 
-Review the protections that apply when the backend sends a notification:
+    if message["signal"] == "test":
+        return  # Ignore test messages.
+
+    if message["signal"] == "escalation" and message["active"]:
+        open_incident(key, summary=message["evidence"])
+
+    elif message["signal"] == "recovered":
+        # A recovery names the cleared signal only in the human-readable
+        # evidence field, so don't close the incident automatically.
+        add_note(key, message["evidence"])
+```
+
+Both escalation and repeated denials can be active for the same agent and instance. A recovery names the cleared signal only in the human-readable `evidence` field. Closing an incident on `agent.name` and `instance.id` alone can close the wrong incident.
+
+## Understanding webhook security
+
+Understand how the backend protects your webhook URL and the data it sends:
 
 - The backend encrypts the webhook URL and doesn't return it to the browser. The dashboard shows only its host name.
 - The backend sends the request with the same egress rules as instance connections, controlled by `bff.blockPrivateEgress`. See [Securing your deployment](./administration#securing-your-deployment).
