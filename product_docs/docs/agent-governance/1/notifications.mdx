@@ -53,19 +53,21 @@ Switching a signal off closes it silently, without a recovery message. The backe
 
 ## Reading the message format
 
-Read the JSON body of the `POST` to process a message in your own receiver. The `text` field carries a one-line summary in Slack markdown, which Slack renders directly. The remaining fields carry the same information for other receivers:
+Slack displays the `text` field of the JSON `POST`. A custom receiver can use the following fields to process the event:
 
-| Field      | Meaning                                                             |
-|------------|---------------------------------------------------------------------|
-| `event`    | Always `denial_pattern.changed`.                                    |
-| `instance` | `id` and `name` of the instance.                                    |
-| `agent`    | `name` and declared `purpose`.                                      |
-| `signal`   | `escalation`, `repeated`, `recovered`, or `test`.                   |
-| `active`   | `true` when the signal appeared, `false` when it cleared.           |
-| `since`    | When the signal was first seen, in [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339) format.                 |
-| `evidence` | One sentence with the counts behind the signal.                     |
-| `counts`   | `allowed`, `denied`, and `escalations` in the window.               |
-| `url`      | A link to the agent on the Agents page, built from `publicBaseURL`. |
+| Field | Meaning |
+|-------|---------|
+| `text` | Slack-formatted message with the signal and instance name. Agent notifications include a second line with the agent name and evidence. A dashboard link appears on its own line when available. |
+| `event` | Always `denial_pattern.changed`, including for test messages. |
+| `instance` | `id` and `name` of the instance. |
+| `agent` | Agent `name`. An active alert also includes `purpose` when available. For a test, `name` is an empty string. |
+| `signal` | `escalation`, `repeated`, `recovered`, or `test`. |
+| `active` | `true` for an active alert and `false` for a recovery or test. |
+| `sentAt` | Time the backend sent the message, in UTC ([RFC 3339](https://www.rfc-editor.org/rfc/rfc3339)). |
+| `since` | Time the backend first detected the signal, in the same format. Recovery messages retain that time. Test messages omit this field. |
+| `evidence` | Human-readable detail about the alert, the signal that cleared, or the test. |
+| `counts` | Active alerts include `allowed`, `denied`, and `escalations` for the evaluation window. Recovery and test messages omit this field. |
+| `url` | Included when `publicBaseURL` is configured. Opens the instance activity view, filtered to the agent for alerts and recoveries. |
 
 The message includes no SQL text and no database object names.
 
@@ -75,16 +77,17 @@ Use this example to see the message sent when `aidb` blocks an agent's attempt t
 
 ```json
 {
-  "text": ":rotating_light: *support-assistant* attempted a privilege escalation on *Production aidb*. aidb blocked it.",
+  "text": ":red_circle: Role escalation blocked · Production aidb\n*support-assistant*: 1 role escalation attempt(s) blocked by the engine.\n<https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant|Open in Governance Dashboard>",
   "event": "denial_pattern.changed",
-  "instance": { "id": "3f2c1a9e", "name": "Production aidb" },
-  "agent": { "name": "support-assistant", "purpose": "customer_support" },
+  "instance": {"id": "3f2c1a9e", "name": "Production aidb"},
+  "agent": {"name": "support-assistant", "purpose": "customer_support"},
   "signal": "escalation",
   "active": true,
   "since": "2026-11-23T09:15:00Z",
-  "evidence": "1 attempt to switch role was blocked in the last hour.",
-  "counts": { "allowed": 42, "denied": 3, "escalations": 1 },
-  "url": "https://governance.example.com/agents?agent=support-assistant"
+  "evidence": "1 role escalation attempt(s) blocked by the engine.",
+  "counts": {"allowed": 42, "denied": 3, "escalations": 1},
+  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant",
+  "sentAt": "2026-11-23T09:15:01Z"
 }
 ```
 
@@ -94,22 +97,22 @@ Use this example to see the message sent when a signal clears and Send a recover
 
 ```json
 {
-  "text": ":white_check_mark: *support-assistant* on *Production aidb* is no longer being repeatedly denied.",
+  "text": ":large_green_circle: Recovered · Production aidb\n*support-assistant*: No longer escalation (was since 09:15 UTC).\n<https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant|Open in Governance Dashboard>",
   "event": "denial_pattern.changed",
-  "instance": { "id": "3f2c1a9e", "name": "Production aidb" },
-  "agent": { "name": "support-assistant", "purpose": "customer_support" },
+  "instance": {"id": "3f2c1a9e", "name": "Production aidb"},
+  "agent": {"name": "support-assistant"},
   "signal": "recovered",
   "active": false,
   "since": "2026-11-23T09:15:00Z",
-  "evidence": "2 of 40 governed actions were denied in the last hour.",
-  "counts": { "allowed": 38, "denied": 2, "escalations": 0 },
-  "url": "https://governance.example.com/agents?agent=support-assistant"
+  "evidence": "No longer escalation (was since 09:15 UTC).",
+  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant",
+  "sentAt": "2026-11-23T10:15:01Z"
 }
 ```
 
 ### Example: routing messages from a custom receiver
 
-Read the structured fields instead of `text` if your receiver isn't Slack. For example, open an incident when `signal` is `escalation` and `active` is `true`. Close it when a `recovered` message arrives for the same `agent.name` and `instance.id`.
+A custom receiver can open an incident when `signal` is `escalation` and `active` is `true`. Both escalation and repeated denials can be active for the same agent and instance. A recovery names the cleared signal only in the human-readable `evidence` field. Matching on `agent.name` and `instance.id` alone can close the wrong incident.
 
 ## Securing webhook delivery
 
