@@ -10,32 +10,20 @@ A semantic KB finds tables and columns by their names and comments, but people o
 You write the glossary, or ontology, as one JSON document and import it with `aidb.semantic_kb_import_concepts()`. The semantic KB keeps a copy of the glossary, and `aidb.semantic_kb_search()` uses it as one of its sources, so your search calls don't change.
 
 !!!note
-In AIDB 7.10.0, you build the glossary document yourself in the format that [Writing the glossary document](#writing-the-glossary-document) describes. Alternatively, write a script that converts an export from your data catalog, and then [import the result](#importing-the-glossary). AIDB doesn't provide a converter and doesn't fetch a glossary from a catalog.
+In AIDB 7.10.0, you build the glossary document yourself in the format that [Writing the glossary document](#writing-the-glossary-document) describes. Alternatively, write a script that converts an export from your data catalog, and then [import the result](#importing-a-glossary). AIDB doesn't provide a converter and doesn't fetch a glossary from a catalog.
 !!!
 
 ## Glossary workflow
 
 A glossary goes from a JSON document to search results in four steps:
 
-1. You write the business terms (concepts), the links between them (relations), and the tables and columns that hold their data (bindings) in one JSON document.
+1. You [write](#writing-the-glossary-document) the business terms (concepts), the links between them (relations), and the tables and columns that hold their data (bindings) in one JSON document.
 
-2. You import the document with `aidb.semantic_kb_import_concepts()`, which checks the document, stores it in the semantic KB, and embeds each term with the model of the semantic KB.
+2. You [import](#importing-a-glossary) the document with `aidb.semantic_kb_import_concepts()`, which checks the document, stores it in the semantic KB, and embeds each term with the model of the semantic KB.
 
-3. You search as usual. The concept source compares the query with the terms, follows relations one step, and returns the bound tables and columns.
+3. You [search](#searching-with-the-glossary) as usual with `aidb.semantic_kb_search()`. The concept source compares the query with the terms, follows relations one step, and returns the bound tables and columns.
 
-4. When the glossary changes, you import the whole document again.
-
-## Glossary components
-
-A glossary has three components: concepts, relations, and bindings. The semantic KB stores them in its term store.
-
-- A concept is one business term, such as Quarterly Revenue, with optional synonyms and a definition.
-
-- A relation is a typed link between two concepts, such as Quarterly Revenue being narrower than Revenue. The type of the link tells search whether to follow it from one concept to the other.
-
-- A binding connects a concept to the table or column that holds its data. A binding can name an object that doesn't exist yet. Search uses the binding once the object exists and the semantic KB indexes it.
-
-[Writing the glossary document](#writing-the-glossary-document) describes the fields of each component.
+4. When the glossary changes, you [import the whole document again](#updating-the-glossary).
 
 ## Prerequisites
 
@@ -51,140 +39,9 @@ Confirm the following before you import a glossary. The glossary needs no setup 
 
 - A glossary document in the format that [Writing the glossary document](#writing-the-glossary-document) describes.
 
-## Importing and searching a glossary
-
-Follow this example to import a glossary into a semantic KB over a solar farm, where the schemas `telemetry` and `maintenance` hold the tables `panel_readings`, `inspections`, `cleaning_log`, and `work_orders`. The example creates a semantic KB over the two schemas, searches without the glossary to get a baseline, imports a glossary, and searches again.
-
-The outputs on this page come from a run on AIDB 7.10.0 with PostgreSQL 18 and the `bert` model (all-MiniLM-L6-v2). Ranks and scores change with other data or another model.
-
-### Creating the sample tables
-
-Create a minimal version of the schema. The outputs on this page come from a larger schema, so your ranks differ. The table `maintenance.wash_schedule` doesn't exist yet, because the glossary binds a term to it before a later step creates it.
-
-```sql
-CREATE SCHEMA telemetry;
-CREATE SCHEMA maintenance;
-CREATE TABLE telemetry.panel_readings(panel_id int, read_at timestamptz, kwh numeric, amb numeric);
-CREATE TABLE maintenance.inspections(panel_id int, inspected_at timestamptz, result text);
-CREATE TABLE maintenance.cleaning_log(panel_id int, cleaned_at timestamptz, crew text);
-CREATE TABLE maintenance.work_orders(order_id int, panel_id int, opened_at timestamptz, description text);
-```
-
-### Creating the semantic KB
-
-Create a semantic KB over the two schemas with the `bert` embedding model, or skip this step if you already have a semantic KB.
-
-```sql
-SELECT aidb.create_semantic_kb('ops_kb', 'bert', ARRAY['telemetry', 'maintenance']);
-__OUTPUT__
- create_semantic_kb
---------------------
- ops_kb
-(1 row)
-```
-
-### Searching without the glossary
-
-Search for `dirty panel` to get a baseline. Without the glossary, the column `amb` ranks 36th, far from the top results:
-
-```sql
-SELECT rank, relation_name, column_name, source_type
-  FROM aidb.semantic_kb_search('dirty panel', 'ops_kb', top_k => 50)
- WHERE column_name = 'amb';
-__OUTPUT__
- rank | relation_name  | column_name | source_type
-------+----------------+-------------+-------------
-   36 | panel_readings | amb         | schema
-(1 row)
-```
-
-### Importing the glossary
-
-Import a glossary with four terms, two relations, and five bindings. The predicate `relatedTo` isn't built in, so the document declares it as `associative`. The table `maintenance.wash_schedule` doesn't exist yet, so its binding waits.
-
-```sql
-SELECT * FROM aidb.semantic_kb_import_concepts('{
-  "predicates": [{"iri": "https://open-metadata.org/ontology/relatedTo", "category": "associative"}],
-  "concepts": [
-    {"id": "c-cleaning", "pref_label": "Cleaning Event", "alt_labels": ["panel wash", "wash"],
-     "definition": "A panel wash."},
-    {"id": "c-yield", "pref_label": "Energy Yield", "alt_labels": ["output", "production", "kWh"],
-     "definition": "Energy produced."},
-    {"id": "c-condition", "pref_label": "Panel Condition", "alt_labels": ["panel health"],
-     "definition": "Overall state of a panel."},
-    {"id": "c-soiling", "pref_label": "Soiling", "alt_labels": ["dirty panel", "dust on panel", "panel dirt"],
-     "definition": "Dust and dirt on the panel surface that decrease the output."}
-  ],
-  "relations": [
-    {"subject": "c-cleaning", "predicate": "https://open-metadata.org/ontology/relatedTo", "object": "c-soiling"},
-    {"subject": "c-soiling", "predicate": "skos:broader", "object": "c-condition"}
-  ],
-  "bindings": [
-    {"concept": "c-soiling", "schema": "telemetry", "relation": "panel_readings", "column": "amb"},
-    {"concept": "c-yield", "schema": "telemetry", "relation": "panel_readings", "column": "kwh"},
-    {"concept": "c-condition", "schema": "maintenance", "relation": "inspections"},
-    {"concept": "c-cleaning", "schema": "maintenance", "relation": "cleaning_log"},
-    {"concept": "c-cleaning", "schema": "maintenance", "relation": "wash_schedule"}
-  ]
-}', 'ops_kb');
-__OUTPUT__
- concepts_added | concepts_updated | concepts_unchanged | concepts_deleted | concepts_embedded | relations_written | relations_removed | bindings_written | bindings_removed
-----------------+------------------+--------------------+------------------+-------------------+-------------------+-------------------+------------------+------------------
-              4 |                0 |                  0 |                0 |                 4 |                 2 |                 0 |                5 |                0
-(1 row)
-```
-
-The import added and embedded the four concepts, and wrote the two relations and the five bindings.
-
-!!!warning The import replaces the whole glossary
-Each import gives the whole glossary of the semantic KB. The import marks every concept that the document leaves out as deleted. It also removes every relation and binding that the document doesn't state again. Import only a complete document.
-!!!
-
-The import writes a row only when a value changed, so you can run it again safely. A second run with the same document changes nothing:
-
-```sql
-SELECT * FROM aidb.semantic_kb_import_concepts('<the same document>', 'ops_kb');
-__OUTPUT__
- concepts_added | concepts_updated | concepts_unchanged | concepts_deleted | concepts_embedded | relations_written | relations_removed | bindings_written | bindings_removed
-----------------+------------------+--------------------+------------------+-------------------+-------------------+-------------------+------------------+------------------
-              0 |                0 |                  4 |                0 |                 0 |                 0 |                 0 |                0 |                0
-(1 row)
-```
-
-The import checks the whole document before it writes. If the document has a problem, the import writes nothing. See [Writing the glossary document](#writing-the-glossary-document) for the format, and the [reference](../reference/semantic-knowledge-bases#aidbsemantic_kb_import_concepts) for each output column.
-
-### Searching with the imported glossary
-
-Run the same search as before. `aidb.semantic_kb_search()` has a source named `concept` that's in the default set, so a search with no `sources` argument uses the glossary:
-
-```sql
-SELECT rank, relation_name, column_name, source_type, components->>'provenance' AS via
-  FROM aidb.semantic_kb_search('dirty panel', 'ops_kb', top_k => 5);
-__OUTPUT__
- rank | relation_name  | column_name | source_type |           via
-------+----------------+-------------+-------------+-------------------------
-    1 | cleaning_log   |             | schema      | concept:Cleaning Event
-    2 | inspections    |             | schema      | concept:Panel Condition
-    3 | panel_readings | kwh         | schema      | concept:Energy Yield
-    4 | panel_readings | amb         | concept     | concept:Soiling
-    5 | work_orders    |             | schema      |
-(5 rows)
-```
-
-`amb` moved from rank 36 to rank 4, and no table or comment changed. The key `provenance` in `components` names the term that found the row, as `concept:<pref_label>`.
-
 ## Writing the glossary document
 
-Write your glossary as one JSON document. After you run the example, use this section to write a document for your own data. Then pass the document to `aidb.semantic_kb_import_concepts()`, as in [Importing the glossary](#importing-the-glossary). The document is one JSON object with four optional arrays:
-
-| Array        | Holds                                                   |
-|--------------|---------------------------------------------------------|
-| `concepts`   | The terms.                                              |
-| `relations`  | The links between terms.                                |
-| `bindings`   | The tables and columns that hold the data of each term. |
-| `predicates` | The predicates that aren't built in.                    |
-
-This minimal document has two concepts, one relation, and one binding:
+Write your glossary as one JSON document, and then [import it](#importing-a-glossary). This minimal document has two concepts, one relation, and one binding:
 
 ```json
 {
@@ -201,6 +58,15 @@ This minimal document has two concepts, one relation, and one binding:
   ]
 }
 ```
+
+The document is one JSON object with four optional arrays:
+
+| Array        | Holds                                                   |
+|--------------|---------------------------------------------------------|
+| `concepts`   | The terms.                                              |
+| `relations`  | The links between terms.                                |
+| `bindings`   | The tables and columns that hold the data of each term. |
+| `predicates` | The predicates that aren't built in.                    |
 
 ### Defining concepts
 
@@ -281,9 +147,9 @@ You declare any other predicate in `predicates`. AIDB compares predicates as exa
 | `category` | Yes      | `hierarchical`, `equivalence`, or `associative`.                                                                                                                                                                                    |
 | `inverse`  | No       | The predicate that gives the same link from the other end. A `hierarchical` predicate needs a different predicate as its inverse. An `equivalence` predicate must not have an inverse. With no inverse, the predicate is symmetric. |
 
-### Choosing good terms
+### Choosing searchable terms
 
-Follow these tips when you choose the terms of a glossary:
+Follow these tips so that people can find your terms:
 
 - Start with the terms that people ask about most. A few dozen searched terms help more than a full export of a catalog.
 
@@ -301,7 +167,7 @@ Follow these tips when you choose the terms of a glossary:
 
 ### Meeting the validation rules
 
-Before it writes anything, `aidb.semantic_kb_import_concepts()` checks the document against these rules. If a rule fails, the import writes nothing, and the error lists each problem with the path of its field, up to 50:
+A glossary document must follow these rules:
 
 - The document is the whole glossary of the semantic KB. A relation or a binding can name only a concept in the same document, and not a concept that the document marks as deleted.
 
@@ -316,6 +182,93 @@ Before it writes anything, `aidb.semantic_kb_import_concepts()` checks the docum
 - A predicate that isn't built in must be in `predicates`.
 
 - A binding can't set `origin` to `inferred`. Only the proposal step of the semantic KB writes inferred bindings.
+
+## Importing a glossary
+
+Follow this example to import a glossary into a semantic KB over a solar farm, where the schemas `telemetry` and `maintenance` hold the tables `panel_readings`, `inspections`, `cleaning_log`, and `work_orders`. The example creates a semantic KB over the two schemas and imports a glossary. [Searching with the glossary](#searching-with-the-glossary) then searches it.
+
+The outputs on this page come from a run on AIDB 7.10.0 with PostgreSQL 18 and the `bert` model (all-MiniLM-L6-v2). Ranks and scores change with other data or another model.
+
+### Creating the sample tables
+
+Create a minimal version of the schema. The outputs on this page come from a larger schema, so your ranks differ. The table `maintenance.wash_schedule` doesn't exist yet, because the glossary binds a term to it before a later step creates it.
+
+```sql
+CREATE SCHEMA telemetry;
+CREATE SCHEMA maintenance;
+CREATE TABLE telemetry.panel_readings(panel_id int, read_at timestamptz, kwh numeric, amb numeric);
+CREATE TABLE maintenance.inspections(panel_id int, inspected_at timestamptz, result text);
+CREATE TABLE maintenance.cleaning_log(panel_id int, cleaned_at timestamptz, crew text);
+CREATE TABLE maintenance.work_orders(order_id int, panel_id int, opened_at timestamptz, description text);
+```
+
+### Creating the semantic KB
+
+Create a semantic KB over the two schemas with the `bert` embedding model, or skip this step if you already have a semantic KB.
+
+```sql
+SELECT aidb.create_semantic_kb('ops_kb', 'bert', ARRAY['telemetry', 'maintenance']);
+__OUTPUT__
+ create_semantic_kb
+--------------------
+ ops_kb
+(1 row)
+```
+
+### Running the import
+
+Import a glossary with four terms, two relations, and five bindings. The predicate `relatedTo` isn't built in, so the document declares it as `associative`. The table `maintenance.wash_schedule` doesn't exist yet, so its binding waits.
+
+```sql
+SELECT * FROM aidb.semantic_kb_import_concepts('{
+  "predicates": [{"iri": "https://open-metadata.org/ontology/relatedTo", "category": "associative"}],
+  "concepts": [
+    {"id": "c-cleaning", "pref_label": "Cleaning Event", "alt_labels": ["panel wash", "wash"],
+     "definition": "A panel wash."},
+    {"id": "c-yield", "pref_label": "Energy Yield", "alt_labels": ["output", "production", "kWh"],
+     "definition": "Energy produced."},
+    {"id": "c-condition", "pref_label": "Panel Condition", "alt_labels": ["panel health"],
+     "definition": "Overall state of a panel."},
+    {"id": "c-soiling", "pref_label": "Soiling", "alt_labels": ["dirty panel", "dust on panel", "panel dirt"],
+     "definition": "Dust and dirt on the panel surface that decrease the output."}
+  ],
+  "relations": [
+    {"subject": "c-cleaning", "predicate": "https://open-metadata.org/ontology/relatedTo", "object": "c-soiling"},
+    {"subject": "c-soiling", "predicate": "skos:broader", "object": "c-condition"}
+  ],
+  "bindings": [
+    {"concept": "c-soiling", "schema": "telemetry", "relation": "panel_readings", "column": "amb"},
+    {"concept": "c-yield", "schema": "telemetry", "relation": "panel_readings", "column": "kwh"},
+    {"concept": "c-condition", "schema": "maintenance", "relation": "inspections"},
+    {"concept": "c-cleaning", "schema": "maintenance", "relation": "cleaning_log"},
+    {"concept": "c-cleaning", "schema": "maintenance", "relation": "wash_schedule"}
+  ]
+}', 'ops_kb');
+__OUTPUT__
+ concepts_added | concepts_updated | concepts_unchanged | concepts_deleted | concepts_embedded | relations_written | relations_removed | bindings_written | bindings_removed
+----------------+------------------+--------------------+------------------+-------------------+-------------------+-------------------+------------------+------------------
+              4 |                0 |                  0 |                0 |                 4 |                 2 |                 0 |                5 |                0
+(1 row)
+```
+
+The import added and embedded the four concepts, and wrote the two relations and the five bindings.
+
+!!!warning The import replaces the whole glossary
+Each import gives the whole glossary of the semantic KB. The import marks every concept that the document leaves out as deleted. It also removes every relation and binding that the document doesn't state again. Import only a complete document.
+!!!
+
+The import writes a row only when a value changed, so you can run it again safely. A second run with the same document changes nothing:
+
+```sql
+SELECT * FROM aidb.semantic_kb_import_concepts('<the same document>', 'ops_kb');
+__OUTPUT__
+ concepts_added | concepts_updated | concepts_unchanged | concepts_deleted | concepts_embedded | relations_written | relations_removed | bindings_written | bindings_removed
+----------------+------------------+--------------------+------------------+-------------------+-------------------+-------------------+------------------+------------------
+              0 |                0 |                  4 |                0 |                 0 |                 0 |                 0 |                0 |                0
+(1 row)
+```
+
+The import checks the whole document before it writes. If the document breaks a rule, the import writes nothing, and the error lists each problem with the path of its field, up to 50. See [Writing the glossary document](#writing-the-glossary-document) for the rules, and the [reference](../reference/semantic-knowledge-bases#aidbsemantic_kb_import_concepts) for each output column.
 
 The error names the field and tells you how to fix it:
 
@@ -332,7 +285,40 @@ The error message says `vocabulary document` for what this page calls the glossa
 
 ## Searching with the glossary
 
-Search as usual to use the glossary, because the concept source runs in every search that doesn't narrow `sources`. To use only the glossary, or to combine it with other sources, see the following sections.
+Search as usual to use the glossary, because the concept source runs in every search that doesn't narrow `sources`. To compare results with and without the glossary, to use only the glossary, or to combine it with other sources, see the following sections.
+
+### Comparing results with and without the glossary
+
+Search with and without the glossary to see what the concept source adds. This example searches the glossary that [Importing a glossary](#importing-a-glossary) imported. Search for `dirty panel` with only the schema source to get a baseline. The column `amb` ranks 36th, far from the top results:
+
+```sql
+SELECT rank, relation_name, column_name, source_type
+  FROM aidb.semantic_kb_search('dirty panel', 'ops_kb', sources => '{schema}', top_k => 50)
+ WHERE column_name = 'amb';
+__OUTPUT__
+ rank | relation_name  | column_name | source_type
+------+----------------+-------------+-------------
+   36 | panel_readings | amb         | schema
+(1 row)
+```
+
+Run the same search with the default sources. `aidb.semantic_kb_search()` has a source named `concept` that's in the default set, so a search with no `sources` argument uses the glossary:
+
+```sql
+SELECT rank, relation_name, column_name, source_type, components->>'provenance' AS via
+  FROM aidb.semantic_kb_search('dirty panel', 'ops_kb', top_k => 5);
+__OUTPUT__
+ rank | relation_name  | column_name | source_type |           via
+------+----------------+-------------+-------------+-------------------------
+    1 | cleaning_log   |             | schema      | concept:Cleaning Event
+    2 | inspections    |             | schema      | concept:Panel Condition
+    3 | panel_readings | kwh         | schema      | concept:Energy Yield
+    4 | panel_readings | amb         | concept     | concept:Soiling
+    5 | work_orders    |             | schema      |
+(5 rows)
+```
+
+`amb` moved from rank 36 to rank 4, and no table or comment changed. The key `provenance` in `components` names the term that found the row, as `concept:<pref_label>`.
 
 ### Finding results with the concept source
 
@@ -395,7 +381,7 @@ __OUTPUT__
 
 `status` is the status of the binding. For the other arguments of `aidb.semantic_kb_search()`, see [Searching](searching) and the [reference](../reference/semantic-knowledge-bases#aidbsemantic_kb_search).
 
-## Keeping the glossary current
+## Updating the glossary
 
 When the glossary changes in your catalog, import the whole document again. The import compares the document with the term store and writes only the changes:
 
@@ -485,6 +471,14 @@ The import embeds a concept with the model of the semantic KB, in calls of at mo
 
 If you pass `vector_index` to `aidb.create_semantic_kb()`, the semantic KB also builds a vector index on its concepts. When the index is `ivfflat`, the import rebuilds it after an import that adds more concepts than the term store held, such as the first import. A semantic KB that existed before the upgrade to 7.10.0 gets a term store when you upgrade. If its schema metadata has a vector index, the upgrade builds the same kind of index on the concepts.
 
+## Controlling access
+
+Control who can import a glossary and what search returns from it. Every member of `aidb_users` can import a glossary into every semantic KB. The import calls the model of the semantic KB as you, so you need `USAGE` on the credential of that model. To limit who can import, revoke `EXECUTE` on `aidb.semantic_kb_import_concepts(JSONB, TEXT)` from `aidb_users`, and grant it to the roles that maintain the glossary.
+
+The import writes bindings as `approved`, and search uses them at once. For this reason, the import isn't an agent tool. An agent can search with the glossary, but can't import one.
+
+You need no grant on the term store. Search returns a table or column from the glossary only if you can read it. You need `USAGE` on its schema, and `SELECT` on the table for a table binding or on the column for a column binding. Search checks the current role, so the check also applies to a role that you set with `SET ROLE` and to an agent with its own role.
+
 ## Troubleshooting
 
 Use the following tables to fix missing search results and import errors.
@@ -518,14 +512,6 @@ Use this table to fix the errors that you can get when you import a glossary:
 !!!note
 Run the import in the default `READ COMMITTED` isolation level. In `REPEATABLE READ`, an import can fail with a duplicate-key or serialization error when another session imported into the same semantic KB.
 !!!
-
-## Controlling access
-
-Control who can import a glossary and what search returns from it. Every member of `aidb_users` can import a glossary into every semantic KB. The import calls the model of the semantic KB as you, so you need `USAGE` on the credential of that model. To limit who can import, revoke `EXECUTE` on `aidb.semantic_kb_import_concepts(JSONB, TEXT)` from `aidb_users`, and grant it to the roles that maintain the glossary.
-
-The import writes bindings as `approved`, and search uses them at once. For this reason, the import isn't an agent tool. An agent can search with the glossary, but can't import one.
-
-You need no grant on the term store. Search returns a table or column from the glossary only if you can read it. You need `USAGE` on its schema, and `SELECT` on the table for a table binding or on the column for a column binding. Search checks the current role, so the check also applies to a role that you set with `SET ROLE` and to an agent with its own role.
 
 ## Limitations
 
