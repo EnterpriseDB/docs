@@ -97,7 +97,7 @@ GRANT CREATE ON SCHEMA public TO alice;
 
 When you create the AIDB extension, Postgres also creates a role named `aidb_governance`, separate from `aidb_users`. The role exists to give an auditor or monitoring tool read access to the trace, log, and metric data AIDB records for [observability](../reference/observability), without also granting that auditor or tool the ability to use AIDB's functions.
 
-- Purpose: `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function. It can also read the `id`, `name`, `purpose`, and `created_at` columns of `aidb.agents`, and it's the only role that can create, change, and delete agent purposes. See [Permissions](../agents/creating-agents#permissions).
+- Purpose: `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function. It can also read the `id`, `name`, `purpose`, and `created_at` columns of `aidb.agents` (and, since 7.10.0, the `input_token_budget` and `output_token_budget` columns), and it's the only role that can create, change, and delete agent purposes. See [Permissions](../agents/creating-agents#permissions).
 - Security: By default, `aidb_governance` is the only non-superuser role granted `SELECT` on the `aidb_otel.*` tables. Administrators can grant a separate role read access to selected tables. For EDB Agent Governance, use a [dedicated viewer role](/agent-governance/latest/connecting_aidb/#creating-the-viewer-role) to avoid granting retention cleanup and purpose-management privileges.
 - Separation from aidb_users: `aidb_users` can write into `aidb_otel.*` indirectly (every AIDB function call that's traced ends up in those tables), but has no `SELECT` on the tables themselves. Reading that data requires separate read privileges, through `aidb_governance` membership or explicit grants.
 
@@ -388,12 +388,37 @@ Forwards rows from `aidb_otel.{traces,logs,metrics}` to an external OTLP/HTTP co
 | Parameter                          | Type    | Default | Range      | Description                                                                                                                                       |
 |-------------------------------------|---------|---------|------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `aidb.otel_exporter_enabled`        | boolean | `false` | —          | Enables the exporter worker for a database. `SUSET`.                                                                                                  |
-| `aidb.otel_exporter_endpoint`       | string  | unset   | —          | Base URL of the OTLP/HTTP collector, for example `http://otel-collector:4318`. `/v1/metrics`, `/v1/logs`, or `/v1/traces` is appended per signal. Empty means the worker never starts. Outbound requests go through AIDB's [egress allowlist](#network-egress). `SUSET`.  |
+| `aidb.otel_exporter_endpoint`       | string  | unset   | —          | Base URL of the OTLP/HTTP collector, for example `http://otel-collector:4318`. `/v1/metrics`, `/v1/logs`, or `/v1/traces` is appended per signal. Empty means the worker never starts. Outbound requests go through AIDB's [egress allowlist](#network-egress). Set the authentication headers with [`AIDB_OTEL_EXPORTER_HEADERS`](#exporter-headers). `SUSET`.  |
+| `aidb.otel_exporter_langfuse_endpoint` | string | unset | — | Base URL of a [Langfuse](https://langfuse.com) OTLP/HTTP endpoint, for example `http://langfuse:3000/api/public/otel`. When set, the exporter sends traces there instead of to `aidb.otel_exporter_endpoint`, and logs and metrics, which Langfuse doesn't ingest, keep going to the general endpoint. The exporter worker starts when either endpoint is set. Set the authentication headers with [`AIDB_OTEL_EXPORTER_LANGFUSE_HEADERS`](#exporter-headers). See [Exporting to Langfuse](../reference/observability#exporting-to-langfuse). `SUSET`. |
+| `aidb.otel_langfuse_attributes_enabled` | boolean | `false` | — | Adds the attributes Langfuse reads to agent spans. On automatically while `aidb.otel_exporter_langfuse_endpoint` is set. `SUSET`. |
 | `aidb.otel_exporter_timeout_ms`     | integer | `5000`  | 1–600000   | Per-attempt HTTP timeout. `SUSET`.                                                                                                                     |
 | `aidb.otel_exporter_max_retries`    | integer | `5`     | 1–100      | Maximum export attempts for a row before it's marked permanently failed. `SUSET`.                                                                     |
 | `aidb.otel_exporter_batch_size`     | integer | `100`   | 1–1000000  | Maximum rows read per table per export tick. `SUSET`.                                                                                                 |
 
-All five support a per-database override with `ALTER DATABASE <db> SET`. For `aidb.otel_exporter_enabled`, an override that enables the worker applies within two minutes, and enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. For the other four parameters, a per-database override applies only when the worker next starts. `ALTER SYSTEM` followed by `pg_reload_conf()` reaches a running worker on its next cycle, but not for a parameter that also has an `ALTER DATABASE` override for that database. See [Default footprint](default-footprint#workers-enabled-by-settings).
+All of the exporter settings support a per-database override with `ALTER DATABASE <db> SET`. For `aidb.otel_exporter_enabled`, an override that enables the worker applies within two minutes, and enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. For the other parameters, a per-database override applies only when the worker next starts. `ALTER SYSTEM` followed by `pg_reload_conf()` reaches a running worker on its next cycle, but not for a parameter that also has an `ALTER DATABASE` override for that database. See [Default footprint](default-footprint#workers-enabled-by-settings).
+
+#### Exporter headers
+
+Set the exporter's authentication headers in environment variables of the Postgres server process, not in settings. Members of `pg_read_all_settings` can read a setting, and any role can read one set with `ALTER DATABASE ... SET`. Collectors and services such as Langfuse usually need authentication headers.
+
+| Environment variable                    | Applies to                                                                                                                                  |
+|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `AIDB_OTEL_EXPORTER_HEADERS`            | Every request to `aidb.otel_exporter_endpoint`.                                                                                             |
+| `AIDB_OTEL_EXPORTER_LANGFUSE_HEADERS`   | Every request to `aidb.otel_exporter_langfuse_endpoint`.                                                                                    |
+
+Each variable holds comma-separated `Name=value` pairs, the same shape as `OTEL_EXPORTER_OTLP_HEADERS`:
+
+```sh
+AIDB_OTEL_EXPORTER_HEADERS="Authorization=Bearer <token>"
+AIDB_OTEL_EXPORTER_LANGFUSE_HEADERS="Authorization=Basic <base64 of public_key:secret_key>,x-langfuse-ingestion-version=4"
+```
+
+- AIDB uses values as written, without percent-decoding, so write a space as a space, not as `%20`.
+- Don't set `Content-Type`. The exporter chooses the type for each payload (`application/json` or `application/x-protobuf`), and AIDB rejects a list with a `Content-Type` entry.
+- Postgres reads the environment at startup, so restart the server after you change a variable.
+- AIDB validates a variable only while the matching endpoint is in use. If an entry is invalid, the exporter holds back the signals for the affected destination and leaves their rows `pending`. An entry is invalid when the entry isn't `Name=value`, has an invalid header name, or has a value with a control character. The other destination keeps delivering. Each pass logs a warning with the variable name and the entry number, never the value.
+
+To learn how Langfuse uses the settings, see [Exporting to Langfuse](../reference/observability#exporting-to-langfuse).
 
 #### Cleaner background worker
 
@@ -402,7 +427,7 @@ Deletes rows older than a retention window from `aidb_otel.{traces,logs,metrics}
 | Parameter                          | Type    | Default | Range    | Description                                                                                                     |
 |-------------------------------------|---------|---------|----------|-----------------------------------------------------------------------------------------------------------------|
 | `aidb.otel_cleaner_enabled`         | boolean | `false` | —        | Enables the cleaner worker for a database. `SUSET`.                                                              |
-| `aidb.otel_cleaner_retention_days`  | integer | `365`   | 0–3650   | Rows older than this are deleted. `0` disables cleanup entirely. `SUSET`.                                        |
+| `aidb.otel_cleaner_retention_days`  | integer | `365`   | 0–3650   | Rows older than this are deleted. `0` disables cleanup entirely. A cleanup ignores any value set in a session with `SET`. `SUSET`. |
 | `aidb.otel_cleaner_batch_size`      | integer | `5000`  | 1–1000000| Maximum rows deleted per table in a single `DELETE`. `SUSET`.                                                    |
 
 All three support the same per-database `ALTER DATABASE <db> SET` override as the exporter parameters above. For `aidb.otel_cleaner_enabled`, an override that enables the worker applies within two minutes, and enabling it instance-wide with `ALTER SYSTEM` or in `postgresql.conf` needs a Postgres restart. For the other two parameters, a per-database override applies only when the worker next starts. `ALTER SYSTEM` followed by `pg_reload_conf()` reaches a running worker on its next cycle, but not for a parameter that also has an `ALTER DATABASE` override for that database. See [Default footprint](default-footprint#workers-enabled-by-settings). You can also trigger a cleanup pass immediately, regardless of `aidb.otel_cleaner_enabled`, with `aidb.run_otel_retention_cleanup()` — see [Observability](../reference/observability#triggering-retention-cleanup).
