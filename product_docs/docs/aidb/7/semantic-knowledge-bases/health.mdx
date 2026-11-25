@@ -110,6 +110,26 @@ __OUTPUT__
 
 Each row groups events for one schema, relation, or column. `pending_events` counts the queued events and `event_types` lists their types. `oldest_event_at` shows when the first event was queued. The function also returns `oldest_embedded_at`, the oldest matching metadata embedding time, if one exists. A schema rename names no relation, so its `oldest_embedded_at` is always `NULL`. The background worker processes the queued events, so a short queue needs no action. Once the worker drains the queue, the function returns no rows.
 
+If events stay queued, find out why the worker isn't processing them:
+
+1. Confirm that `auto_processing` is `Background` in the [health report](#running-the-health-report).
+
+2. Check that the AIDB workers are running:
+
+   ```sql
+   SELECT pid, backend_type, state
+   FROM pg_stat_activity
+   WHERE backend_type LIKE 'aidb%';
+   ```
+
+   Look for the AIDB root worker, the database dispatcher, and a pipeline worker whose name includes `_semantic_kb_analytics_kb`, where `analytics_kb` is the name of your semantic KB.
+
+3. If the queue remains, check the PostgreSQL logs for worker startup or processing errors.
+
+4. Verify that `aidb` is in `shared_preload_libraries`, that worker capacity is available, and that the pipeline owner role still exists.
+
+If processing failed, `aidb.refresh_semantic_kb()` reconciles the semantic KB's metadata with the current catalog. It doesn't drain the queue of pending events.
+
 !!!note
 `semantic_kb_stale_objects` and the report's queue counts describe `Background` processing. A `Live` semantic KB processes DDL in a trigger, and a `Disabled` or trigger-bypassed one doesn't queue DDL events. For `Live`, `Disabled`, and trigger-bypassed semantic KBs, zero queued events doesn't prove that embeddings are current. Check `auto_processing` in the report before you interpret an empty result.
 !!!
@@ -132,7 +152,7 @@ __OUTPUT__
 (5 rows)
 ```
 
-Each `missing` entry names an endpoint that no longer exists. Read it together with the row's `left_object`, `right_object`, and `junction_object`. An entry that ends in `_relation`, such as `left_relation`, `right_relation`, or `junction_relation`, means the table or view in that object is missing, or isn't a valid relation endpoint. An entry with a colon, such as `left_column:cust_ref`, means the object exists but the column `cust_ref` listed for it doesn't. Columns of a junction object appear as `junction_left_column` and `junction_right_column`. In the example, the `sales.audits` row is missing the column `cust_ref` on its left side. Tables, views, partitioned tables, materialized views, and foreign tables are valid relation endpoints. `semantic_kb_orphan_relationships` is read-only and doesn't change a relationship's status. To detect and mark relationships that have drifted from the schema, see [Keeping relationships current](relationships#keeping-relationships-current).
+Each `missing` entry names an endpoint that no longer exists. Read it together with the row's `left_object`, `right_object`, and `junction_object`. An entry that ends in `_relation`, such as `left_relation`, `right_relation`, or `junction_relation`, means the table or view in that object is missing, or isn't a valid relation endpoint. An entry with a colon names a missing column, and its label says which endpoint the column belongs to: `left_column`, `right_column`, `junction_left_column`, or `junction_right_column`. For example, `left_column:cust_ref` means the left object exists but the column `cust_ref` listed for it doesn't. In the example, the `sales.audits` row is missing the column `cust_ref` on its left side. Tables, views, partitioned tables, materialized views, and foreign tables are valid relation endpoints. `semantic_kb_orphan_relationships` is read-only and doesn't change a relationship's status. To detect and mark relationships that have drifted from the schema, see [Keeping relationships current](relationships#keeping-relationships-current).
 
 The health report excludes `retired` relationships from `total_relationships` and `orphan_relationships`, but this function lists them and marks them in `status`. In the example above, four rows aren't retired, so the report shows `total_relationships = 4` and `orphan_relationships = 4`. The fifth row, `sales.tickets`, is retired, so the report doesn't count it. If the report shows `orphan_relationships = 0` and this function still returns rows, every orphan is retired.
 
@@ -211,6 +231,8 @@ The usage counts are lower bounds, so `lower_bound` is always `true`. AIDB doesn
 - Manually [pruned records](auditing#retention-and-pruning) are no longer counted.
 
 Usage is grouped by the displayed object reference and source type. Distinct quoted SQL names that display identically can share a row and have their counts combined.
+
+The counts are informational. Use them to prioritize descriptions and to see which search results or aliases were used recently. AIDB applies no threshold or automatic action to them. A count of zero doesn't show that an object is unused, because the audit data is incomplete by design and can be pruned.
 
 ## Settings that affect the results
 
