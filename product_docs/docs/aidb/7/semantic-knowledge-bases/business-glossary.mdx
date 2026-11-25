@@ -5,44 +5,100 @@ description: Import a business glossary or ontology into a semantic KB with aidb
 deepToC: true
 ---
 
-A semantic KB knows the names and comments of your tables and columns. A business glossary adds the words that your users use for that data. For example, the column `telemetry.panel_readings.amb` holds the soiling index of a solar panel, but its name and comment don't say `dirty` or `panel`. With a glossary that binds the term Soiling, also called `dirty panel`, to that column, a search for `dirty panel` finds `amb`.
+A semantic KB knows the names and comments of your tables and columns, but people often search for data with business words that don't appear in those names. A business glossary adds those words by linking business terms to the tables and columns that hold their data, so a search for a term finds the right objects. For a detailed example, see the [End-to-end example](#end-to-end-example).
 
 You write the glossary as one JSON document and import it with `aidb.semantic_kb_import_concepts()`. The glossary can be a business glossary or an ontology that you keep in a data catalog. The import keeps a copy of the glossary in the semantic KB, so search doesn't need the catalog that the glossary came from. `aidb.semantic_kb_search()` then uses the glossary as one of its sources, with no change to your search calls.
 
 !!!note
-In AIDB 7.10.0, you build the glossary document yourself, or with a script that converts it from your data catalog. AIDB doesn't fetch a glossary from a catalog.
+In AIDB 7.10.0, you build the glossary document yourself, in the format that [The glossary document](#the-glossary-document) describes, or with a script that you write to convert an export from your data catalog and then [import it](#import-the-glossary). AIDB doesn't provide a converter and doesn't fetch a glossary from a catalog.
 !!!
 
 ## Why use a glossary
 
-- Your users can find data with the words they use, so a search for `dirty panel` finds columns whose names and comments don't contain those words.
+Use a glossary when people search with words that your table and column names and comments don't contain. A glossary gives you these benefits:
+
+- People can find data with the words they use, so a search for a business term finds columns whose names and comments don't contain those words.
+
 - You keep your schema as it is, because the glossary needs no change to table names, column names, or comments.
+
 - Search works without a connection to the catalog, because the semantic KB stores its own copy of the glossary.
+
 - Each binding is explicit, and search returns only the tables and columns that the caller can read.
+
 - The glossary is one more source of `aidb.semantic_kb_search()` and is in the default set, so your search calls stay the same.
+
+## Modeling business terms
+
+Describe your business terms with the three parts of a glossary: concepts, relations, and bindings.
+
+### Concept
+
+A concept is one business term, with an ID, a preferred label (`pref_label`), and optional synonyms (`alt_labels`) and a definition. The ID is the ID that your catalog gives the term. AIDB keeps it as text and doesn't change it.
+
+Search compares the query with a text that the import makes from the label, the synonyms, the definition, and the labels of the broader terms. The import embeds this text with the model of the semantic KB.
+
+### Relation
+
+A relation is a typed link from one concept to another, for example Quarterly Revenue `skos:broader` Revenue. The predicate of the relation has a category, and the category tells search whether to follow the relation.
+
+| Category       | Meaning                              | Search follows it |
+|----------------|--------------------------------------|-------------------|
+| `hierarchical` | One term is broader than the other.  | Yes               |
+| `equivalence`  | The two terms have the same meaning. | Yes               |
+| `associative`  | The two terms are related.           | No                |
+
+Search follows every `hierarchical` and `equivalence` relation, including the predicates that you declare. The text that the import embeds uses only `skos:broader` and `skos:narrower`, because the document doesn't say which end of another `hierarchical` predicate is the broader term, and [Predicates](#predicates) lists the built-in predicates.
+
+### Binding
+
+A binding connects a concept to the table, or to the column, that holds its data. A binding has a status:
+
+| Status     | Meaning                                                                |
+|------------|------------------------------------------------------------------------|
+| `approved` | Search uses the binding. An import writes every binding as `approved`. |
+| `proposed` | Search uses the binding only when you set `include_proposed => true`.  |
+| `rejected` | Search never uses the binding.                                         |
+
+In AIDB 7.10.0, an import is the only way to write a binding, so every binding is `approved`.
+
+A binding names its table and column. It doesn't need the table or column to exist. A binding to an object that doesn't exist yet waits, and search uses it when the object exists and the semantic KB has indexed it, without another import.
+
+### Deleted concept
+
+A concept that was in the last import, but isn't in this one, is marked as deleted, and search skips it until a later import includes the concept again.
 
 ## How it works
 
 The glossary lives in the term store, the part of a semantic KB that holds its glossary. `aidb.create_semantic_kb()` creates the term store empty, and `aidb.delete_semantic_kb()` deletes it.
 
+Follow these steps to put a glossary to work:
+
 1. You describe your business terms (concepts), the links between them (relations), and the tables and columns that hold their data (bindings) in one JSON document.
-2. You import the document with `aidb.semantic_kb_import_concepts()`, which checks the document, stores it in the term store, and embeds each term with the model of the semantic KB.
+
+2. You import the document with `aidb.semantic_kb_import_concepts()`, which checks the document, stores it in the term store, and embeds each term with the model of the 
+semantic KB.
+
 3. You search as usual, and the concept source compares the query with the terms, follows relations one step, and returns the tables and columns that the terms are bound to.
+
 4. When the glossary changes, you import the whole document again.
 
 ## Prerequisites
 
-The glossary needs no setup of its own. `aidb.create_semantic_kb()` creates the term store, and `aidb.semantic_kb_search()` uses the glossary by default. Before you import a glossary, you need:
+Confirm the following before you import a glossary. The glossary needs no setup of its own, because `aidb.create_semantic_kb()` creates the term store and `aidb.semantic_kb_search()` uses the glossary by default. You need:
 
 - AIDB 7.10.0 or later, where a semantic KB that existed before the upgrade gets its term store when you upgrade.
+
 - A semantic KB, which you create as described in [Getting started](./#getting-started).
+
 - An embedding model that you registered (see [Integrating models](../integrating-models)), and `USAGE` on the credential of that model. The import embeds the terms with the model of the semantic KB.
+
 - Membership in the `aidb_users` role.
+
 - A glossary document in the format that [The glossary document](#the-glossary-document) describes.
 
 ## End-to-end example
 
-This example uses a solar farm, where the schemas `telemetry` and `maintenance` hold the tables `panel_readings`, `inspections`, `cleaning_log`, and `work_orders`. The example creates a semantic KB over the two schemas, searches before the import, imports a glossary, and searches again.
+Follow this example to see a glossary at work on a solar farm, where the schemas `telemetry` and `maintenance` hold the tables `panel_readings`, `inspections`, `cleaning_log`, and `work_orders`. The example creates a semantic KB over the two schemas, searches before the import, imports a glossary, and searches again.
 
 The outputs on this page come from a run on AIDB 7.10.0 with PostgreSQL 18 and the `bert` model (all-MiniLM-L6-v2). Ranks and scores change with other data or another model.
 
@@ -62,7 +118,7 @@ CREATE TABLE maintenance.work_orders(order_id int, panel_id int, opened_at times
 
 ### Create the semantic KB
 
-Skip this step if you already have a semantic KB. `bert` is the name of an embedding model that you registered before (see [Integrating models](../integrating-models)).
+Create a semantic KB over the two schemas, or skip this step if you already have one. `bert` is the name of an embedding model that you registered before (see [Integrating models](../integrating-models)).
 
 ```sql
 SELECT aidb.create_semantic_kb('ops_kb', 'bert', ARRAY['telemetry', 'maintenance']);
@@ -77,7 +133,7 @@ SELECT aidb.create_semantic_kb('ops_kb', 'bert', ARRAY['telemetry', 'maintenance
 
 ### Search before the import
 
-A search for `dirty panel` puts the column `amb` at rank 36:
+Search for `dirty panel` to see where the column `amb` ranks before the import. It's at rank 36:
 
 ```sql
 SELECT rank, relation_name, column_name, source_type
@@ -149,7 +205,7 @@ The import checks the whole document before it writes. If the document has a pro
 
 ### Search after the import
 
-`aidb.semantic_kb_search()` has a source named `concept` that's in the default set, so a search with no `sources` argument uses the glossary. Run the same search as before:
+Run the same search as before. `aidb.semantic_kb_search()` has a source named `concept` that's in the default set, so a search with no `sources` argument uses the glossary:
 
 ```sql
 SELECT rank, relation_name, column_name, source_type, components->>'provenance' AS via
@@ -169,49 +225,9 @@ SELECT rank, relation_name, column_name, source_type, components->>'provenance' 
 
 `amb` moved from rank 36 to rank 4, and no table or comment changed. The key `provenance` in `components` names the term that found the row, as `concept:<pref_label>`.
 
-## Concepts
-
-A glossary has three parts: concepts, relations, and bindings.
-
-### Concept
-
-A concept is one business term, with an ID, a preferred label (`pref_label`), and optional synonyms (`alt_labels`) and a definition. The ID is the ID that your catalog gives the term. AIDB keeps it as text and doesn't change it.
-
-Search compares the query with a text that the import makes from the label, the synonyms, the definition, and the labels of the broader terms. The import embeds this text with the model of the semantic KB.
-
-### Relation
-
-A relation is a typed link from one concept to another, for example Soiling `skos:broader` Panel Condition. The predicate of the relation has a category, and the category tells search whether to follow the relation.
-
-| Category       | Meaning                              | Search follows it |
-|----------------|--------------------------------------|-------------------|
-| `hierarchical` | One term is broader than the other.  | Yes               |
-| `equivalence`  | The two terms have the same meaning. | Yes               |
-| `associative`  | The two terms are related.           | No                |
-
-Search follows every `hierarchical` and `equivalence` relation, including the predicates that you declare. The text that the import embeds uses only `skos:broader` and `skos:narrower`, because the document doesn't say which end of another `hierarchical` predicate is the broader term, and [Predicates](#predicates) lists the built-in predicates.
-
-### Binding
-
-A binding connects a concept to the table, or to the column, that holds its data. A binding has a status:
-
-| Status     | Meaning                                                                |
-|------------|------------------------------------------------------------------------|
-| `approved` | Search uses the binding. An import writes every binding as `approved`. |
-| `proposed` | Search uses the binding only when you set `include_proposed => true`.  |
-| `rejected` | Search never uses the binding.                                         |
-
-In AIDB 7.10.0, an import is the only way to write a binding, so every binding is `approved`.
-
-A binding names its table and column. It doesn't need the table or column to exist. A binding to an object that doesn't exist yet waits, and search uses it when the object exists and the semantic KB has indexed it, without another import.
-
-### Deleted concept
-
-A concept that was in the last import, but isn't in this one, is marked as deleted, and search skips it until a later import includes the concept again.
-
 ## The glossary document
 
-The document is one JSON object with four optional arrays.
+Write the glossary as one JSON object with four optional arrays:
 
 | Array        | Holds                                                   |
 |--------------|---------------------------------------------------------|
@@ -222,6 +238,8 @@ The document is one JSON object with four optional arrays.
 
 ### Concepts
 
+Describe each term with these fields:
+
 | Field                                       | Required | Description                                                                     |
 |---------------------------------------------|----------|---------------------------------------------------------------------------------|
 | `id`                                        | Yes      | The ID of the term in your catalog, for example a UUID.                         |
@@ -231,9 +249,11 @@ The document is one JSON object with four optional arrays.
 | `deleted`                                   | No       | `true` marks the term as deleted. The default is `false`.                       |
 | `fqn`, `iri`, `status`, `owners`, `version` | No       | Information from your catalog. The import stores it, and search doesn't use it. |
 
-Search uses `pref_label`, `alt_labels`, `definition`, and the broader terms. Put the words that your users search for in `alt_labels`.
+Search uses `pref_label`, `alt_labels`, `definition`, and the broader terms. Put the words that people search for in `alt_labels`.
 
 ### Relations
+
+Link two concepts with these fields:
 
 | Field       | Required | Description                                              |
 |-------------|----------|----------------------------------------------------------|
@@ -245,6 +265,8 @@ You can give a link from both ends, for example `A skos:broader B` and `B skos:n
 
 ### Bindings
 
+Bind a concept to a table or column with these fields:
+
 | Field      | Required | Description                                               |
 |------------|----------|-----------------------------------------------------------|
 | `concept`  | Yes      | The ID of a concept.                                      |
@@ -255,7 +277,7 @@ You can give a link from both ends, for example `A skos:broader B` and `B skos:n
 
 ### Predicates
 
-Five SKOS predicates are built in:
+Use one of the five built-in SKOS predicates in your relations:
 
 | Predicate         | Category       | Inverse          |
 |-------------------|----------------|------------------|
@@ -275,7 +297,7 @@ You declare any other predicate in `predicates`. AIDB compares predicates as exa
 
 ### Rules
 
-The import checks the whole document before it writes. One problem stops the import, and nothing is written. The error lists each problem with the path of its field, up to 50.
+Follow these rules, because the import checks the whole document before it writes, and one problem stops the import with nothing written. The error lists each problem with the path of its field, up to 50.
 
 - The document is the whole glossary of the semantic KB. A relation or a binding can name only a concept in the same document, and not a concept that the document marks as deleted.
 - Concept IDs are unique, and IDs and labels aren't blank.
@@ -302,9 +324,11 @@ The error message says `vocabulary document` for what this page calls the glossa
 
 ## Searching with the glossary
 
-The concept source runs in every search that doesn't narrow `sources`. To use only the glossary, or to combine it with other sources, see the following sections.
+Search as usual to use the glossary, because the concept source runs in every search that doesn't narrow `sources`. To use only the glossary, or to combine it with other sources, see the following sections.
 
 ### How the concept source finds results
+
+The concept source takes these steps for each search:
 
 1. It finds the concepts nearest to the query. It skips deleted concepts, and concepts that were embedded with another model than the model of the semantic KB.
 2. From each of these concepts, it follows `hierarchical` and `equivalence` relations one step, in both directions. A concept found this way gets 0.9 times the score of the concept it came from, and it doesn't follow `associative` relations.
@@ -378,7 +402,7 @@ A binding names its table and column. If you rename a table or a column, search 
 
 ### A binding to a table that doesn't exist yet
 
-The glossary binds Cleaning Event to `maintenance.wash_schedule`, which doesn't exist. Search doesn't return it:
+Check a waiting binding before and after you create its table. The glossary binds Cleaning Event to `maintenance.wash_schedule`, which doesn't exist, so search doesn't return it:
 
 ```sql
 SELECT count(*)
@@ -427,7 +451,7 @@ The mode doesn't change what happens after a rename. In every mode, search stops
 
 ### Auditing imports
 
-Each import writes one row to the audit log of the semantic KB, with `op` `write` and the counts in `detail`. To see the last import:
+Read the audit log of the semantic KB to see what an import did, because each import writes one row with `op` `write` and the counts in `detail`. To see the last import:
 
 ```sql
 SELECT op, func, detail
@@ -444,8 +468,10 @@ For more about the audit log, see [Auditing](auditing).
 
 ## Writing a good glossary
 
-- Start with the terms that your users ask about, because a few dozen terms that people search for help more than a full export of a catalog.
-- Put the words that your users type in `alt_labels`, such as synonyms, abbreviations, and jargon, because search matches the query with these words.
+Follow these tips when you write a glossary:
+
+- Start with the terms that people ask about most, because a few dozen terms that they search for help more than a full export of a catalog.
+- Put the words that people type in `alt_labels`, such as synonyms, abbreviations, and jargon, because search matches the query with these words.
 - Write a plain definition, because the definition is part of the text that the import embeds.
 - Bind a term to the column that holds its data where you can, and to a table when no single column does.
 - Group terms with `skos:broader`, because the text of a term includes the labels of its broader terms, so a search for the broader term also finds the narrower one.
@@ -475,7 +501,7 @@ If you pass `vector_index` to `aidb.create_semantic_kb()`, the semantic KB also 
 
 ## Permissions
 
-Every member of `aidb_users` can import a glossary into every semantic KB. The import calls the model of the semantic KB as you, so you need `USAGE` on the credential of that model. To limit who can import, revoke `EXECUTE` on `aidb.semantic_kb_import_concepts(JSONB, TEXT)` from `aidb_users`, and grant it to the roles that maintain the glossary.
+Control who can import a glossary and what search returns from it. Every member of `aidb_users` can import a glossary into every semantic KB. The import calls the model of the semantic KB as you, so you need `USAGE` on the credential of that model. To limit who can import, revoke `EXECUTE` on `aidb.semantic_kb_import_concepts(JSONB, TEXT)` from `aidb_users`, and grant it to the roles that maintain the glossary.
 
 The import writes bindings as `approved`, and search uses them at once. For this reason, the import isn't an agent tool. An agent can search with the glossary, but can't import one.
 
@@ -483,12 +509,16 @@ You need no grant on the term store. Search returns a table or column from the g
 
 ## Limitations
 
+Be aware of these limitations in AIDB 7.10.0:
+
 - A model that you replace under the same name isn't detected. The import embeds concepts again only when the name of the model changes.
 - There's no access check for each semantic KB. Every member of `aidb_users` can import into every semantic KB.
 - A table or column that only the concept source returned doesn't update `last_referenced` in `aidb.semantic_kb_orphan_relationships`.
 - On WarehousePG, the tables of the term store are replicated, and the database doesn't enforce the foreign keys between them.
 
 ## Common errors
+
+Use this table to fix the errors that you can get when you import a glossary:
 
 | Error (start of the message)                                          | Cause                                                                                                                  | Fix                                                                                        |
 |-----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
