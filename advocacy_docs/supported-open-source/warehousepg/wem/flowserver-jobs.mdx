@@ -1,0 +1,128 @@
+---
+title: Running FlowServer jobs
+navTitle: Running FlowServer jobs
+description: Create, start, stop, and remove FlowServer jobs, and review their progress and activity, from WarehousePG Enterprise Manager.
+deepToC: true
+---
+
+Use the **FlowServer** panel to run [FlowServer](../flowserver/) jobs from the WEM console. FlowServer is a streaming ingest engine that continuously loads data from Kafka or RabbitMQ into WarehousePG (WHPG) tables. In WEM, you can check a job before you submit it, start it from the offset you choose, follow its status and activity, and stop or remove it. Access follows WEM's [role-based permissions](system-access/management#defining-role-based-access-control), so you decide who can change jobs and who can only view them.
+
+See [Loading data with FlowServer](../flowserver/loading/) for how FlowServer works, how to build a job configuration file, and how to use `flowcli` instead.
+
+!!! Note
+    FlowServer 1.1.x keeps jobs in memory only, so a job disappears if FlowServer stops or restarts, and you have to create it again.
+
+    If you create a Kafka job again for the same topic and table, the default offset option continues from where the previous job stopped, because the load position is kept in the target database.
+
+    FlowServer doesn't start again after a host reboot, so start it yourself. If you promote the standby coordinator, start FlowServer on the new coordinator. After a failover to the DR cluster, see [Restoring and promoting the DR cluster](protecting-data/safeguard#restoring-and-promoting-the-dr-cluster).
+
+## Prerequisites
+
+- A [supported FlowServer version](overview/supported_platforms#flowserver) is installed on every host and running on the coordinator only, not on the standby or a dedicated host. See [Installing FlowServer](../flowserver/installing).
+- Your WEM role has permission to manage FlowServer jobs. Viewers can see jobs and their activity, but can't create, start, stop, or remove them. An action you don't have permission for is disabled. See [Defining role-based access control](system-access/management#defining-role-based-access-control).
+- Your Kafka or RabbitMQ source and the target database already exist. WEM doesn't create them.
+- The target table exists, and the role the job uses has the privileges it needs. WEM doesn't create the table. See [Creating the target table and configuring role privileges](../flowserver/loading/target_table).
+
+!!! Note
+    WEM manages jobs through FlowServer's own interface and shows what FlowServer reports. It doesn't replace the FlowServer configuration file, which you still write yourself.
+
+    The host agent talks to FlowServer over plain-text gRPC, because FlowServer 1.1.x has no TLS or authentication. Keep the FlowServer port reachable only from the coordinator host.
+
+## Configuring the FlowServer connection
+
+Set the FlowServer connection in **Management** > **Settings**, in the **FlowServer** group of the runtime settings. Changes apply when you save them, with no WEM restart.
+
+- **FlowServer Address:** The `host:port` where FlowServer listens on the coordinator. The default is `localhost:6060`, so change it only if FlowServer uses another port. The host must be `localhost`, `127.0.0.1`, or `[::1]`.
+- **Activity Retention:** How long WEM keeps finished actions in the **Activities** tab. The default is 168 hours.
+
+## Creating a job
+
+Create a job from a FlowServer configuration file. WEM validates the file and checks the target table before it submits anything. See [Constructing the configuration file](../flowserver/loading/config_file) for how to write one.
+
+1. In the left sidebar, select **FlowServer**. On the **Jobs** tab, select **Create Job**.
+1. In **Job YAML**, paste the FlowServer job configuration, or select **Load File** to load a `.yaml` or `.yml` file. The configuration can't be empty or larger than 256 KB.
+1. In **Job Name**, enter a name. When you load a file, the name defaults to the file name without its extension. A name can have up to 63 letters, digits, underscores, periods, or hyphens, and must start with a letter or digit.
+1. Select **Validate**. WEM checks the configuration and, for a job that loads into the cluster it monitors, that the target database and table exist and that the mapped columns exist. **Create** stays unavailable until validation passes. If you change the YAML afterwards, validate it again.
+
+    - If validation fails, WEM lists the problems under **Fix these problems before creating the job**, with line numbers where it can. Correct the YAML and validate again.
+    - If the job file points to a different server than the cluster WEM monitors, WEM can't check that server's catalog, so it shows target problems as notes and doesn't block the job.
+    - If a job with the same source, database host and port, and first target table already exists, creating the job replaces it. WEM warns you, or reports an error if the existing job is running.
+    - If validation passes, WEM shows **The job configuration is valid** with the job's source and target.
+
+1. Select **Create**. The job appears in the jobs table with the status **Submitted**. Creating a job doesn't start it. Start it from the **Actions** menu.
+
+## Starting a job
+
+Start a submitted job to begin loading data from its Kafka topic or RabbitMQ queue into the target table. For a Kafka job, you also choose where the job starts reading.
+
+1. In the **Actions** menu for the job, select **Start**.
+1. For a Kafka job, choose where the job starts reading under **Offset**:
+
+    - **Continue from where this topic and table left off** (default): Reads every message still in the topic on the first start, and continues from where the job stopped on later starts.
+    - **Earliest offset in the topic:** Reads every message still in the topic again, so rows that were already loaded are inserted again. Empty the table first, or use merge mode, to avoid duplicates.
+    - **Latest offset (new messages only):** Skips the messages already waiting in the topic.
+    - **From a point in time:** Reads the messages produced at or after a time you choose, in the server's time zone. Choose a time in the past. Messages after that time that were already loaded are loaded again.
+
+    A RabbitMQ job reads the next messages in its queue, so these options are disabled for it.
+1. Optionally, select either of these options:
+
+    - **Stop at End of Data:** Stops the job when no new messages arrive for about 3 seconds (`eof.after.idle` in the job file). Use it to load a fixed set of messages and finish. If you leave it off, the job keeps running and loads new messages as they arrive.
+    - **Skip Explain:** Skips the SQL check at start so the job starts faster. Configuration errors, such as a missing table or column, show only after the job starts.
+
+1. Select **Start Job**.
+
+WEM shows the job as **Preparing** while FlowServer validates it, then **Running**. If the start fails, WEM shows a notification with the reason and, where it recognizes the error, a hint.
+
+## Reviewing jobs
+
+The **Jobs** tab lists every job FlowServer knows about and refreshes automatically. After you start a job, it refreshes more often for a short time, so a job that fails right after it starts shows its status quickly.
+
+- Filter the list with the search box, or with the **All Sources**, **All Statuses**, and **All Target Tables** dropdowns.
+- Review each job's **Job Name**, **Source** (the Kafka topic or RabbitMQ queue), **Status**, **Target** table, and **Status Changed** time. A job that writes to several tables shows the first one and the rest in a tooltip. Use the column selector to show or hide columns.
+- The **Status** column shows the status FlowServer reports: **Submitted**, **Running**, **Stopped**, **Error**, **Done**, or **Unknown**. A job that is starting shows **Preparing** while FlowServer checks its configuration and the target table.
+- Open the **Actions** menu for a job to **Start**, **View Details**, **Stop**, or **Remove Job**. Menu items that don't apply to the job's current state are disabled, and a tooltip explains why.
+
+If WEM can't reach FlowServer, a warning appears above the jobs table and **Create Job** is disabled. Check that FlowServer is running on the coordinator, that the [FlowServer address](#configuring-the-flowserver-connection) is correct, and that the host agent on the coordinator is [approved and running](system-access/management#managing-host-agent-registrations).
+
+## Monitoring a job
+
+To check on a job, select **View Details** in its **Actions** menu to open **Job Details**:
+
+- Check whether the job is loading data. The status and **Progress** show the messages in the last batch, the rows loaded since the job was submitted, and the rows rejected since the last start.
+- Confirm the Kafka topic or RabbitMQ queue the job reads from, and the target table it writes to.
+- Review or copy the job file by expanding **Configuration**. WEM masks credentials such as `password` values, `sasl.jaas.config` passwords, and credentials in RabbitMQ server URLs, and hides the whole configuration if it can't verify that they're masked.
+
+!!! Note
+    FlowServer reports progress only at the moment a batch finishes and keeps no history. WEM shows the batches that finish while it's watching, so a job you haven't watched shows **No progress yet** until its next batch.
+
+When a job fails, **Job Details** shows **The job failed**, or **The last start failed** if the start was rejected, with FlowServer's error message. Where WEM recognizes the cause, it adds a hint:
+
+| Error | What to do |
+|-------|------------|
+| Segment reject limit reached | The `error_limit` applies to each segment. WarehousePG aborted the load, so no rows from the batch were loaded, and the invalid messages are still in the queue or topic. Raise `error_limit` or remove the invalid messages. For Kafka, starting from the latest offset skips the invalid messages, but also the valid messages that follow. |
+| `gpfdist` connection refused | Segments couldn't reach the FlowServer `gpfdist` port. Check the `gpfdist` host in the FlowServer configuration. |
+| RabbitMQ channel or connection isn't open | Check the RabbitMQ user, password, and vhost. |
+| The FlowServer address must be on the coordinator itself | The **FlowServer Address** setting points to another host. See [Configuring the FlowServer connection](#configuring-the-flowserver-connection). |
+| Host not found or connection refused | Check the broker address in the job file, and that the coordinator can reach it. |
+| Unknown topic or partition | The topic doesn't exist. Create it in Kafka, and then start the job again. |
+| No queue | The RabbitMQ queue doesn't exist. Create it in RabbitMQ, and then start the job again. |
+| Unknown member ID | The Kafka broker restarted recently. Wait about a minute, then start the job again. |
+| Failed to parse offset reset timestamp | Use a timestamp with milliseconds, such as `2026-10-19T07:30:00.000Z`. |
+| Relation or column doesn't exist | Check that the target table and the mapped columns exist. |
+
+After you fix the cause, start the job again.
+
+## Stopping and removing a job
+
+Stop a running job to pause loading data. Select **Stop** in its **Actions** menu and confirm with **Stop Job**. FlowServer stops reading from the source, and you can start the job again later. You can't stop a job while it's preparing.
+
+To remove a job, stop it if it's running, then select **Remove Job** in its **Actions** menu and confirm. Removing a job can't be undone. For a Kafka job, FlowServer also removes its consumer group, but the load position stays in the target database, so a new job for the same topic and table continues from where this one stopped. Removing a Kafka job leaves its history table (`whpgfs_hs_*`) in the target database. If `Gpfdist.ReuseTables` is set in the FlowServer configuration, removing a job also leaves its external tables (`whpgfs_ext_*`). Drop these tables yourself if you don't need them.
+
+## Reviewing job activity
+
+Use the **Activities** tab to trace every create, start, stop, and remove action requested through WEM.
+
+- Review each action's **Action**, **Status**, **Job**, **Description**, **Requested** time, **Requested By** user, and **Duration**. Use the column selector to show or hide columns.
+- Expand a row to see when the action completed, the start options you chose, FlowServer's message, and the error if the action failed.
+
+WEM keeps finished actions for 168 hours (one week) by default. See the [FlowServer settings](#configuring-the-flowserver-connection).

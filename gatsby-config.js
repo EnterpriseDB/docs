@@ -38,6 +38,24 @@ const ANSI_STOP = "\x1b[0m";
 const isBuild = process.env.NODE_ENV === "production";
 const isProduction = process.env.APP_ENV === "production";
 const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
+const algoliaAppId = process.env.ALGOLIA_APP_ID || "HXNAF5X3I8";
+// The search key published in pages is a *secured* key derived at build time
+// from ALGOLIA_SEARCH_ONLY_KEY and restricted to this build's index; the
+// parent key itself never leaves the build environment.
+const algoliaSearchKey = (() => {
+  const parentKey = process.env.ALGOLIA_SEARCH_ONLY_KEY;
+  if (!parentKey) {
+    console.warn(
+      "ALGOLIA_SEARCH_ONLY_KEY is not set; search will be disabled in this build.",
+    );
+    return "";
+  }
+  const algoliasearch = require("algoliasearch");
+  return algoliasearch(algoliaAppId, parentKey).generateSecuredApiKey(
+    parentKey,
+    { restrictIndices: algoliaIndex },
+  );
+})();
 
 /******** Sourcing *********/
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
@@ -237,6 +255,8 @@ module.exports = {
     imageUrl: "https://www.enterprisedb.com/docs/images/social.jpg",
     siteUrl: "https://www.enterprisedb.com/docs",
     algoliaIndex: algoliaIndex,
+    algoliaAppId: algoliaAppId,
+    algoliaSearchKey: algoliaSearchKey,
     isDevelopment: !isBuild,
     cacheBuster: 2, // for busting gh actions cache if needed
   },

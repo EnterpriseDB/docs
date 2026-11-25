@@ -94,10 +94,30 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=16384"
           GATSBY_CPU_COUNT: 6
           FATHOM_SITE_ID: ${{ vars.FATHOM_SITE_ID }}
-          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
+          # write key: only provided when indexing (matches INDEX_ON_BUILD)
+          ALGOLIA_API_KEY: ${{ (inputs.ref == 'refs/heads/develop' || inputs.ref == 'refs/heads/main') && secrets.ALGOLIA_API_KEY || '' }}
+          # parent key for the index-restricted secured key generated in gatsby-config.js
           ALGOLIA_SEARCH_ONLY_KEY: ${{ vars.ALGOLIA_SEARCH_ONLY_KEY }}
           ALGOLIA_APP_ID: ${{ vars.ALGOLIA_APP_ID }}
           ALGOLIA_INDEX_NAME: ${{ inputs.ref == 'refs/heads/main' && 'edb-docs' || 'edb-docs-staging' }}
-          INDEX_ON_BUILD: ${{ inputs.ref == 'refs/heads/develop' || inputs.ref == 'refs/heads/main' }}
+          # completely disable indexing for now, until we get a write key with sufficient permissions
+          INDEX_ON_BUILD: false
           GTM_ID: ${{ inputs.gtm-id }}
+
+      - name: Check built pages for leaked Algolia keys
+        env:
+          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
+          ALGOLIA_SEARCH_ONLY_KEY: ${{ vars.ALGOLIA_SEARCH_ONLY_KEY }}
+          ALGOLIA_OLD_SEARCH_KEY: fb05499144f0399f5985485b624a0290
+        run: |
+          leaked=0
+          for name in ALGOLIA_API_KEY ALGOLIA_SEARCH_ONLY_KEY ALGOLIA_OLD_SEARCH_KEY; do
+            value="${!name}"
+            [ -z "$value" ] && continue
+            if grep -rqF -- "$value" public/; then
+              echo "::error::$name found in built pages"
+              leaked=1
+            fi
+          done
+          exit $leaked
 

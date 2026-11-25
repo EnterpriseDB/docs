@@ -10,6 +10,8 @@ const useSiteMetadata = () => {
           imageUrl
           siteUrl
           algoliaIndex
+          algoliaAppId
+          algoliaSearchKey
         }
       }
     }
