@@ -20,7 +20,7 @@ Connect your applications to the cluster through [Connection Manager](/pgd/curre
 
 ## Connecting to the cluster
 
-Connect your clients and applications to the cluster through Connection Manager, which is built into every data node. Connection Manager directs read-write connections to the write leader and read-only connections to the other nodes, so your client only needs to use the Connection Manager port. The default Connection Manager port depends on your Postgres distribution. See the [port table](prerequisites#ensuring-network-connectivity).
+Connect your clients and applications to the cluster through Connection Manager, which is built into every data node. Connection Manager listens on two ports. Connections to the read-write port go to the write leader, and connections to the read-only port go to the other nodes. Your client picks the mode by choosing the port. The default ports depend on your Postgres distribution. See the [port table](prerequisites#ensuring-network-connectivity).
 
 For example, to connect with `psql` through the Connection Manager port of any node:
 
@@ -28,7 +28,7 @@ For example, to connect with `psql` through the Connection Manager port of any n
 psql "host=host-1 user=postgres port=6432 dbname=pgddb"
 ```
 
-Connection Manager then directs the connection to the write leader node in the cluster.
+Connection Manager then directs the connection to the write leader node in the cluster. To connect in read-only mode instead, use the read-only port (`6433` in this example).
 
 Connect directly to a data node only to maintain that node's database instance, because direct connections bypass the routing that Connection Manager provides. To connect directly, use the Postgres port:
 
@@ -66,16 +66,20 @@ Confirm that every node receives the data written to any other node by creating 
     INSERT INTO quicktest (value) SELECT random()*10000 FROM generate_series(1,10000);
     ```
 
-1. On `node-1`, check how quickly the data replicated to the other two nodes, and get the row count and the sum of the `value` column to compare later:
+1. On `node-1`, check how quickly the data replicated to the other two nodes, and get the row count and the sum of the `value` column to compare later.
 
     ```sql
     SELECT * FROM bdr.node_replication_rates;
     SELECT COUNT(*), SUM(value) FROM quicktest;
     ```
 
+    !!! Note
+    The `bdr.node_replication_rates` view is available only on EDB Postgres Extended Server and EDB Postgres Advanced Server. On community Postgres, the first query fails with `ERROR: lag tracking is not supported with this variant of Postgres`. Run only the second query.
+    !!!
+
     The first query shows how quickly `node-1` replicated the data to the other two nodes:
 
-    ```console
+    ```sql
     pgddb=# SELECT * FROM bdr.node_replication_rates;
     __OUTPUT__
      peer_node_id | target_name | sent_lsn  | replay_lsn |   replay_lag    | replay_lag_bytes | replay_lag_size | apply_rate | catchup_interval
@@ -87,7 +91,7 @@ Confirm that every node receives the data written to any other node by creating 
 
     The second query returns the row count and the sum to compare:
 
-    ```console
+    ```sql
     pgddb=# SELECT COUNT(*), SUM(value) FROM quicktest;
     __OUTPUT__
      count |   sum
@@ -108,7 +112,7 @@ Confirm that every node receives the data written to any other node by creating 
 
     The query returns the same values on each node:
 
-    ```console
+    ```sql
     pgddb=# SELECT COUNT(*), SUM(value) FROM quicktest;
     __OUTPUT__
      count |   sum
