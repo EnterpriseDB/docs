@@ -12,7 +12,7 @@ For concepts (creating a KB, resolving to a single KB, and auto-processing) see 
 
 ### `aidb.create_semantic_kb`
 
-Creates a semantic KB over one or more schemas, embeds the schema metadata with the given model, and crawls the schemas immediately.
+Creates a semantic KB over one or more schemas, embeds the schema metadata with the given model, and crawls the schemas immediately. It also creates an empty term store for the [business glossary](../semantic-knowledge-bases/business-glossary).
 
 #### Parameters
 
@@ -24,7 +24,7 @@ Creates a semantic KB over one or more schemas, embeds the schema metadata with 
 | `auto_processing` | TEXT    | `Disabled`       | How the KB reacts to schema changes: `Disabled`, `Live`, or `Background`. See [Auto-processing modes](#auto-processing-modes).                        |
 | `bypass_triggers` | BOOLEAN | `false`          | Skips the DDL event triggers for this KB. Schema changes are only picked up on `refresh_semantic_kb()`.                                               |
 | `curation`        | BOOLEAN | `false`          | Turns on the comment review queue. See [Descriptions and curation](../semantic-knowledge-bases/curation).                                             |
-| `vector_index`    | JSONB   | `NULL`           | Vector index configuration, built with a [vector index config helper](../data-pipelines/reference#vector-index-config-helpers).                      |
+| `vector_index`    | JSONB   | `NULL`           | Vector index configuration, built with a [vector index config helper](../data-pipelines/reference#vector-index-config-helpers). The KB builds the same kind of index on its glossary concepts.                      |
 | `user_defined_context` | TEXT | `NULL`       | Your description of the KB, such as business terms or how its tables relate. It can contain up to 4,000 characters. AIDB includes it in the KB's managed [agent plugin](../agents/plugins#managing-a-semantic-kb-plugin). Change it later with [`aidb.update_semantic_kb_context`](#aidbupdate_semantic_kb_context). |
 
 #### Returns
@@ -157,7 +157,7 @@ FROM aidb.semantic_kb_stats('bank_kb');
 
 ### `aidb.delete_semantic_kb`
 
-Deletes a KB and its indexed metadata. It also removes the KB's managed [agent plugin](../agents/plugins#managing-a-semantic-kb-plugin) and its tools, and detaches the plugin from every agent that uses it.
+Deletes a KB, its indexed metadata, and its business glossary. It also removes the KB's managed [agent plugin](../agents/plugins#managing-a-semantic-kb-plugin) and its tools, and detaches the plugin from every agent that uses it.
 
 #### Parameters
 
@@ -190,7 +190,7 @@ For concepts (searching everything at once, tuning results, finding the joins ar
 
 ### `aidb.semantic_kb_search`
 
-The composite entry point: runs the per-source ranked searches (schema metadata, relationships, curated semantic aliases, and query history) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF).
+The composite entry point: runs the per-source ranked searches (schema metadata, relationships, curated semantic aliases, query history, and business glossary concepts) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF).
 
 #### Parameters
 
@@ -199,17 +199,17 @@ The composite entry point: runs the per-source ranked searches (schema metadata,
 | `query_text`        | TEXT               | —       | The natural-language query.                                                                            |
 | `kb_name`           | TEXT               | `NULL`  | The KB to search. Omit to target the single KB when only one exists.                                    |
 | `top_k`             | INT                | `10`    | Number of ranked rows to return.                                                                        |
-| `sources`           | TEXT[]             | `NULL`  | Sources to search: `schema`, `alias`, `relationship`, `history`. Omit for all.                          |
+| `sources`           | TEXT[]             | `NULL`  | Sources to search: `schema`, `alias`, `relationship`, `history`, `concept`. Omit for all.                          |
 | `entity_types`      | TEXT[]             | `NULL`  | Entity types to include: `Table`, `View`, `Column`, `Alias`, `Relationship`, `Query`. Omit for all.      |
 | `rrf_k`             | INT                | `60`    | Rank-fusion damping constant.                                                                            |
-| `min_similarity`    | DOUBLE PRECISION   | `NULL`  | Optional similarity floor. Rows scoring below it are dropped. Omit for no floor.                         |
-| `include_proposed`  | BOOLEAN            | `false` | Also return relationships with status `proposed`, not just `approved` ones. |
+| `min_similarity`    | DOUBLE PRECISION   | `NULL`  | Optional similarity floor. Rows scoring below it are dropped. It also applies to glossary concepts, including the ones that search reaches through a relation. Omit for no floor.                         |
+| `include_proposed`  | BOOLEAN            | `false` | Also return relationships and glossary bindings with status `proposed`, not just `approved` ones. |
 
 #### Returns
 
 | Column          | Description                                                |
 | --------------- | ---------------------------------------------------------- |
-| `source_type`   | Which source produced the row: `schema`, `alias`, `relationship`, or `history`. |
+| `source_type`   | Which source produced the row: `schema`, `alias`, `relationship`, `history`, or `concept`. A table or column that both the schema source and the concept source found is one row with `schema`. See [Searching with the glossary](../semantic-knowledge-bases/business-glossary#searching-with-the-glossary). |
 | `entity_type`   | `Table`, `View`, `Column`, `Alias`, `Relationship`, or `Query`.                     |
 | `schema_name`   | The schema the entity belongs to.                          |
 | `relation_name` | The table or view name.                                    |
@@ -395,6 +395,58 @@ FROM aidb.semantic_kb_subgraph(
     top_k      => 3,
     max_hops   => 1
 );
+```
+
+---
+
+## Business glossary
+
+For concepts (the glossary document, relations, bindings, and how search uses them) see [Business glossary](../semantic-knowledge-bases/business-glossary).
+
+### `aidb.semantic_kb_import_concepts`
+
+Writes a business glossary document into the term store of a KB and embeds its new and changed concepts. The document is the whole glossary of the KB: the import marks every concept that the document leaves out as deleted, and it removes every relation and binding that the document doesn't state again. It writes a row only when a value changed, so a second run with the same document changes nothing.
+
+The import checks the whole document before it writes. If the document has a problem, the import raises an error that names each field at fault, and it writes nothing.
+
+Every member of `aidb_users` can run it. You need `USAGE` on the credential of the KB's model. It isn't a [native tool](../tools/native-tools), because it writes bindings as `approved`.
+
+#### Parameters
+
+| Parameter    | Type  | Default  | Description                                                                                                                                  |
+| ------------ | ----- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vocabulary` | JSONB | Required | The glossary document, with the optional arrays `predicates`, `concepts`, `relations`, and `bindings`. See [The glossary document](../semantic-knowledge-bases/business-glossary#the-glossary-document). |
+| `kb_name`    | TEXT  | `NULL`   | The KB to import into. Omit to target the single KB when only one exists.                                                                     |
+
+#### Returns
+
+One row with these counts:
+
+| Column               | Description                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `concepts_added`     | Concepts that the KB didn't store before.                                            |
+| `concepts_updated`   | Stored concepts whose values changed.                                                |
+| `concepts_unchanged` | Stored concepts that the document states with the same values.                       |
+| `concepts_deleted`   | Concepts that the import marked as deleted.                                          |
+| `concepts_embedded`  | Concepts that the import embedded with the model of the KB.                          |
+| `relations_written`  | Relations that the import added or changed.                                          |
+| `relations_removed`  | Stored relations that the document doesn't state.                                    |
+| `bindings_written`   | Bindings that the import added or changed.                                           |
+| `bindings_removed`   | Stored `catalog_tag` bindings that the document doesn't state.                       |
+
+Each import also writes one row to the [audit log](../semantic-knowledge-bases/auditing), with `op` `write`, `func` `semantic_kb_import_concepts`, and these counts in `detail`.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.semantic_kb_import_concepts('{
+  "concepts": [
+    {"id": "c-soiling", "pref_label": "Soiling", "alt_labels": ["dirty panel"]}
+  ],
+  "bindings": [
+    {"concept": "c-soiling", "schema": "telemetry", "relation": "panel_readings", "column": "amb"}
+  ]
+}', 'ops_kb');
 ```
 
 ---
