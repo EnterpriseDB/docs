@@ -144,6 +144,31 @@ __OUTPUT__
 ERROR:  purpose 'sales_support' already exists
 ```
 
+## Viewing a purpose's change history
+
+Starting in AIDB 7.10.0, AIDB keeps every version of every purpose. A change to `role`, `description`, or retirement state adds a version. A change that sets the values a purpose already has adds none.
+
+To list the versions of one purpose, query `aidb.purpose_history`:
+
+```sql
+SELECT version, role, description, deleted_at, valid_from, valid_to, changed_by, session_user_name
+FROM aidb.purpose_history
+WHERE name = 'sales_support'
+ORDER BY version;
+```
+
+`valid_to` is `NULL` on the current version. Retiring a purpose and reviving it each appear as their own rows.
+
+`changed_by` is the database role the change ran as. `session_user_name` is the role the session logged in as. They differ when the person who made the change ran `SET ROLE` first.
+
+Purposes that existed before the 7.10.0 upgrade have a single version 1 row with both columns `NULL`.
+
+To find which version a particular agent decision ran under, see [Finding the role a purpose had at decision time](./decision-records#finding-the-role-a-purpose-had-at-decision-time).
+
+AIDB keeps old versions until the extension owner removes them with `aidb.prune_purpose_history`. See [`aidb.prune_purpose_history`](../reference/purposes#aidbprune_purpose_history).
+
+The history records which role a purpose resolved to, not the privileges that role held at the time. A later `GRANT` or `REVOKE` on the role isn't recorded, so the history alone can't show what a past decision was allowed to access. See [Understanding what the history records](../reference/purposes#understanding-what-the-history-records).
+
 ## A purpose pointing at a role that doesn't exist
 
 Neither `create_purpose` nor `update_purpose` checks that the role exists. A purpose can be registered against a role you haven't created yet, or one that's later dropped. Invoking an agent under that purpose then fails at invocation, not at registration:

@@ -83,6 +83,50 @@ SELECT aidb.create_model(
 
 To test a registered model later, call [`aidb.validate_model()`](../reference/models#aidbvalidate_model).
 
+### Retries and rate limits
+
+AIDB retries a remote model request after HTTP `429`, HTTP `503`, or a failed connection, and waits longer before each retry. The `aidb.model_*` settings set the defaults for every model. See [Remote model requests](../install/configure#remote-model-requests).
+
+To override them for one model, add these keys to `config`:
+
+| Key                   | Type    | Range                 | Description                                                                                         |
+|-----------------------|---------|-----------------------|-----------------------------------------------------------------------------------------------------|
+| `max_retries`         | integer | 0–20                  | Maximum number of retries for one request. `0` turns off retries.                                   |
+| `initial_backoff_ms`  | integer | 1–600000              | Wait before the first retry, in milliseconds. The wait doubles on each retry.                       |
+| `max_backoff_ms`      | integer | 1–3600000             | Longest wait between two retries, in milliseconds.                                                  |
+| `max_elapsed_ms`      | integer | 0–3600000             | Total time, in milliseconds, after which AIDB starts no further retry. `0` means no limit.          |
+| `requests_per_second` | float   | 0, or 0.001–100000    | Maximum requests per second to the model's host, in each Postgres process. `0` means no limit.      |
+| `burst`               | integer | 1 or more             | Number of requests that can be sent at once before the rate limit applies. Defaults to `requests_per_second`, rounded up. |
+| `retry_timeouts`      | boolean | —                     | Also retries a request that timed out. Off by default, because the provider might already have run the request. |
+
+All remote providers in the table above accept these keys. Local providers don't. `aidb.create_model()` rejects a value outside its range.
+
+```sql
+SELECT aidb.create_model(
+    name       => 'my_openai_embedder',
+    provider   => 'openai_embeddings',
+    config     => aidb.embeddings_config(model => 'text-embedding-3-small')
+                  || '{"max_retries": 5, "requests_per_second": 20}'::JSONB,
+    credential => 'openai_prod'
+);
+```
+
+### Context window
+
+For a model that an agent uses, set `context_window` in `config` to the model's context window, in tokens. The agent then compacts its conversation history based on that size. Without it, compaction starts once the prompt passes 16,000 characters. See [Context length](../agents/conversing-with-agents#context-length).
+
+`context_window` must be a whole number from 1 to 4294967295. The `completions`, `openai_completions`, `nim_completions`, `openrouter_chat`, `openai_responses`, `openai_responses_azure`, `anthropic_messages`, `anthropic_messages_azure`, `anthropic_messages_bedrock`, and `gemini` providers accept it.
+
+```sql
+SELECT aidb.create_model(
+    name       => 'my_agent_model',
+    provider   => 'openai_responses',
+    config     => aidb.openai_responses_config(model => 'gpt-5')
+                  || '{"context_window": 400000}'::JSONB,
+    credential => 'openai_prod'
+);
+```
+
 ## OpenAI-compatible endpoints
 
 These two providers work with OpenAI and with any server that implements the same API, for example [Ollama](https://ollama.com) or vLLM. The `url` parameter selects the server. Omit it for OpenAI.
@@ -247,7 +291,7 @@ See [`aidb.anthropic_messages_config`](../reference/models#aidbanthropic_message
 The same API body and config helper as `anthropic_messages`, for Claude models hosted on Azure AI Foundry or AWS Bedrock. `url` is required for both.
 
 - `anthropic_messages_azure`: set `url` to your resource's Messages endpoint.
-- `anthropic_messages_bedrock`: set `url` to the regional `bedrock-runtime` base endpoint. AIDB appends the model ID to the path. Authentication uses a Bedrock API key as a bearer token, not AWS SigV4.
+- `anthropic_messages_bedrock`: set `url` to the regional `bedrock-runtime` base endpoint. AIDB appends the model ID to the path. Authentication uses a Bedrock API key as a bearer token by default. To sign requests with AWS IAM credentials instead, see [AWS IAM authentication](#aws-iam-authentication).
 
 Models: the Claude models your Azure resource or Bedrock region has enabled. On Bedrock, use Bedrock's model IDs, for example, `anthropic.claude-opus-4-6-v1:0`. Availability on Azure and Bedrock can lag behind Anthropic's own API for new models.
 
@@ -274,6 +318,40 @@ SELECT aidb.create_model(
     credentials => '{"api_key": "..."}'::JSONB
 );
 ```
+
+### AWS IAM authentication
+
+A model can sign its requests with the PostgreSQL server's own AWS credentials (AWS Signature Version 4) instead of an API key. AIDB reads the credentials from the AWS environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`), then from ECS or EKS container credentials, then from the EC2 instance profile.
+
+1.  A member of `aidb_admins` creates a credential for the AWS host with [`aidb.create_aws_credential()`](../reference/models#aidbcreate_aws_credential). The credential holds no secret, and its endpoint must be a host under `amazonaws.com` or `amazonaws.com.cn`.
+
+    ```sql
+    SELECT aidb.create_aws_credential(
+        name     => 'bedrock_iam',
+        endpoint => 'bedrock-runtime.us-east-1.amazonaws.com',
+        share    => true
+    );
+    ```
+
+2.  Create the model with that credential and add [`aidb.aws_default_credentials()`](../reference/models#aidbaws_default_credentials) to `config`:
+
+    ```sql
+    SELECT aidb.create_model(
+        name       => 'my_claude_bedrock_iam',
+        provider   => 'anthropic_messages_bedrock',
+        config     => aidb.anthropic_messages_config(
+                          model => 'anthropic.claude-opus-4-6-v1:0',
+                          url   => 'https://bedrock-runtime.us-east-1.amazonaws.com'
+                      ) || aidb.aws_default_credentials(),
+        credential => 'bedrock_iam'
+    );
+    ```
+
+AIDB takes the AWS region from the URL host. If the host doesn't contain the region, pass it: `aidb.aws_default_credentials(aws_region => 'us-east-1')`.
+
+The credential must stay owned by a member of `aidb_admins` and limited to AWS hosts. AIDB checks this on every call. A model that signs with AWS credentials can't also use an API key, can't skip TLS certificate checks, and isn't supported in FIPS builds.
+
+Any remote provider can use AWS IAM authentication, except `nim_clip`, `nim_paddle_ocr`, `nim_reranking`, and `hf_tei_reranking`.
 
 ## NVIDIA NIM
 

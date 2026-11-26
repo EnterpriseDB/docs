@@ -277,6 +277,16 @@ __OUTPUT__
 
 ---
 
+## Pipeline ownership
+
+Each pipeline has an owner role. The pipeline's worker runs as that role. Only a role that can `SET ROLE` to the owner role can run, update, or delete the pipeline, or change its steps, knowledge base attachment, and runtime state. This includes members of a group role that owns the pipeline. On PostgreSQL 16 and later, a member granted the role `WITH SET FALSE` can't manage its pipelines. Superusers can manage every pipeline. Every member of `aidb_users` can read every pipeline's configuration.
+
+A direct `UPDATE` or `DELETE` on the pipeline tables by a role that isn't allowed to change a row affects 0 rows.
+
+To switch a pipeline out of `Live` or `Background` mode, or to delete it, the owner needs only the `TRIGGER` privilege on the source table. Ownership of the source table isn't required.
+
+If the owner role is renamed or dropped, the pipeline stops processing. See [Recovering a pipeline with a renamed or dropped owner role](troubleshooting#recovering-a-pipeline-with-a-renamed-or-dropped-owner-role).
+
 ## Functions
 
 ### `aidb.create_pipeline`
@@ -296,7 +306,7 @@ Creates a new pipeline with a source, up to 10 sequential processing steps, and 
 | `auto_processing`          | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | NULL       | Auto-processing mode.                                                             |
 | `batch_size`               | INT                                                                | NULL       | Number of records to process per batch.                                           |
 | `background_sync_interval` | INTERVAL                                                           | NULL       | Interval between background executions. Must be between 1 second and 2 days.     |
-| `owner_role`               | TEXT                                                               | NULL       | Role to own and execute this pipeline.                                            |
+| `owner_role`               | TEXT                                                               | NULL       | Role to own and execute this pipeline. The calling role must be able to `SET ROLE` to it. Defaults to the calling role. See [Pipeline ownership](#pipeline-ownership). |
 | `step_1_options`           | JSONB                                                              | NULL       | Configuration for step 1 (use the appropriate [step config helper](#pipeline-step-config-helpers)). Any step can also set `intermediate_destination` here to persist its output — see [Intermediate storage](./pipeline-steps#intermediate-storage). |
 | `step_2` … `step_10`       | [aidb.PipelineStepOperation](#aidbpipelinestepoperation)           | NULL       | Operation for steps 2–10.                                                         |
 | `step_2_options` … `step_10_options` | JSONB                                                    | NULL       | Configuration for steps 2–10.                                                     |
@@ -343,7 +353,9 @@ SELECT aidb.create_pipeline(
 
 ### `aidb.update_pipeline`
 
-Updates the auto-processing settings for an existing pipeline.
+Updates the auto-processing settings for an existing pipeline. Only a role that can `SET ROLE` to the pipeline's owner role can call it. See [Pipeline ownership](#pipeline-ownership).
+
+If you rename or drop the pipeline's owner role, setting `auto_processing` to `Live` or `Background` fails. To restart, disable, or delete the pipeline, see [Recovering a pipeline with a renamed or dropped owner role](troubleshooting#recovering-a-pipeline-with-a-renamed-or-dropped-owner-role).
 
 #### Parameters
 
@@ -362,23 +374,25 @@ SELECT aidb.update_pipeline('my_chunker', auto_processing => 'Background', backg
 
 ### `aidb.delete_pipeline`
 
-Deletes a pipeline and its configuration. Doesn't delete the source or destination tables.
+Deletes a pipeline and its configuration. Doesn't delete the source or destination tables. Only a role that can `SET ROLE` to the pipeline's owner role can call it. See [Pipeline ownership](#pipeline-ownership).
 
 #### Parameters
 
-| Parameter | Type | Default  | Description                    |
-| --------- | ---- | -------- | ------------------------------ |
-| `name`    | TEXT | Required | Name of the pipeline to delete.|
+| Parameter   | Type    | Default  | Description                                                                                         |
+| ----------- | ------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `name`      | TEXT    | Required | Name of the pipeline to delete.                                                                     |
+| `if_exists` | BOOLEAN | `false`  | If `true` and the pipeline doesn't exist, raises a notice instead of an error and returns.           |
 
 #### Example
 
 ```sql
 SELECT aidb.delete_pipeline('my_chunker');
+SELECT aidb.delete_pipeline('old_pipeline', if_exists => true);
 ```
 
 ### `aidb.run_pipeline`
 
-Manually triggers a pipeline to execute immediately, regardless of its `auto_processing` mode.
+Manually triggers a pipeline to execute immediately, regardless of its `auto_processing` mode. Only a role that can `SET ROLE` to the pipeline's owner role can call it. See [Pipeline ownership](#pipeline-ownership).
 
 #### Parameters
 

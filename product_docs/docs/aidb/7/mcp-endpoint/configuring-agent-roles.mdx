@@ -33,9 +33,31 @@ Configure a Postgres role to authenticate agents with the MCP server and to defi
    GRANT SELECT ON <schema>.<table> TO <agent_role>;
    ```
 
+   A tool that runs `INSERT`, `UPDATE`, or `DELETE` with a `RETURNING` clause also needs `SELECT` on the table.
+
 Keep the agent role itself free of direct privileges and grant it profile roles instead. Revoking a profile role from an agent takes effect on the agent's next call, since every call opens a fresh connection.
 
 See [Provisioning example](provisioning-example) for a worked example that creates an agent role and profile roles together.
+
+## Which agents a role sees
+
+The endpoint lists AIDB agents as tools through `aidb.get_mcp_agents()`, which reads `aidb.agents` as the role. Membership in `aidb_users` grants `EXECUTE` on that function and `SELECT` on `aidb.agents`, so a member sees every agent. A role without that access gets no agents, and its catalog tools still list and run. The same holds when the installed extension predates `aidb.get_mcp_agents()`.
+
+The endpoint lists an agent only when its name matches `[A-Za-z_][A-Za-z0-9_-]*`, so an agent named `Sales Bot` isn't exposed. A catalog tool or `execute_sql` with the same name as an agent hides the agent in both `tools/list` and `tools/call`, and the endpoint logs a warning.
+
+A role with `default_transaction_read_only` set to `on` runs agents in [read-only mode](../agents/conversing-with-agents#read-only-mode), so its agent calls return `"conversation_id": null`.
+
+See [Calling agents as tools](connecting-a-client#calling-agents-as-tools) for the arguments, the result, and the timeout.
+
+## Limiting concurrent AIDB agent calls
+
+The endpoint doesn't cap how many AIDB agent calls run at once. Each call holds one Postgres connection for its whole run, up to 920 seconds, so `max_connections` and per-role connection limits are the only bound. Set a `CONNECTION LIMIT` on the roles your MCP clients use:
+
+```sql
+ALTER ROLE <agent_role> CONNECTION LIMIT 5;
+```
+
+The limit counts every connection the role opens, including `tools/list` and other tool calls.
 
 ## Passwords are always checked
 
@@ -63,3 +85,79 @@ DROP ROLE <agent_role>;                    -- after reassigning or dropping anyt
 ```
 
 See [Provisioning example](provisioning-example#revoking-an-agent) for this applied to a specific agent.
+
+## Granting access to AIDB agents
+
+To let a role list and call agents, grant it membership in `aidb_users`. The endpoint lists AIDB agents as tools through `aidb.get_mcp_agents()`, which reads `aidb.agents` as the role. The membership grants `EXECUTE` on that function and `SELECT` on `aidb.agents`, so a member can list every agent. A role without that access gets no agents, and its catalog tools still list and run. The same holds when the installed extension predates `aidb.get_mcp_agents()`.
+
+The endpoint lists an agent only when its name matches `[A-Za-z_][A-Za-z0-9_-]*`, so an agent named `Sales Bot` isn't exposed. A catalog tool or `execute_sql` with the same name as an agent hides the agent in both `tools/list` and `tools/call`, and the endpoint logs a warning.
+
+A role with `default_transaction_read_only` set to `on` runs agents in [read-only mode](../agents/conversing-with-agents#read-only-mode), so its agent calls return `"conversation_id": null`.
+
+To call an agent, see [Calling agents as tools](connecting-a-client#calling-agents-as-tools) for the arguments, result, and timeout.
+
+## Limiting concurrent AIDB agent calls
+
+The endpoint doesn't cap how many AIDB agent calls run at once. Each call holds one Postgres connection for its whole run, up to 920 seconds, so `max_connections` and per-role connection limits are the only bound. Set a `CONNECTION LIMIT` on the roles your MCP clients use:
+
+```sql
+ALTER ROLE <agent_role> CONNECTION LIMIT 5;
+```
+
+The limit counts every connection the role opens, including `tools/list` and other tool calls.
+
+## Configuring read-only roles
+
+To guard an agent role against accidental writes through `execute_sql`, turn on `default_transaction_read_only` for the role, in every database or in one:
+
+```sql
+ALTER ROLE <agent_role> SET default_transaction_read_only = on;
+ALTER ROLE <agent_role> IN DATABASE <database> SET default_transaction_read_only = on;
+```
+
+Set it on the agent role itself, because a setting on a profile role doesn't reach its members. The endpoint reads the setting each time it opens a connection, so a change applies from the role's next call.
+
+### Preventing writes with the read-only block
+
+When the setting resolves to `on`, whether it comes from the role, `ALTER DATABASE`, or the server configuration, the endpoint runs each `execute_sql` statement inside a `BEGIN READ ONLY` block and never commits it.
+
+Without the block, a top-level `DO` or `CALL` can commit the read-only transaction and write in the next one. Inside the block, these all fail and write nothing:
+
+- A `COMMIT` or `ROLLBACK` inside `DO` or `CALL`, which returns `invalid transaction termination`.
+- `SET transaction_read_only = off` inside a `DO` block.
+- `ALTER ROLE` to clear the role's own setting.
+- `PREPARE TRANSACTION`, however it's spelled. The block exports a snapshot when it opens, and Postgres refuses to prepare a transaction that has exported one.
+
+A bare `COMMIT` ends the block without an error and writes nothing. The next call opens a new connection, so it's read-only again.
+
+The endpoint doesn't run catalog tools, AIDB agent calls, or `tools/list` inside the block. Each runs only `SELECT` statements, which the role's read-only default already covers.
+
+### Handling commands that need a read-write role
+
+Read-only roles can't use commands that refuse to run inside a transaction block:
+
+- `VACUUM`
+- `CREATE INDEX CONCURRENTLY`
+- `REINDEX CONCURRENTLY`
+- Procedures that commit
+
+Use a read-write role for these commands. The endpoint doesn't use the block for read-write roles, so the commands still work for them. A server-wide or `ALTER DATABASE` setting of `default_transaction_read_only = on` makes every role read-only, so no role can use them through `execute_sql`.
+
+The block discards any `NOTIFY` that a read-only role sends.
+
+### Reading read-only role errors
+
+Every `execute_sql` error for a read-only role carries a `read-only role` context that names the `BEGIN READ ONLY` block. Errors that the block itself causes also tell you to run the command as a read-write role. Those are SQLSTATE `2D000`, from a `COMMIT` or `ROLLBACK` inside the block, and `25001`, from a command that can't run inside a transaction block.
+
+### Granting access to `pg_export_snapshot()`
+
+Make sure the role has `EXECUTE` on `pg_catalog.pg_export_snapshot()`, because the block calls it. `PUBLIC` holds that grant by default. If you revoked it, `execute_sql` refuses every read-only role, and the error names the grant to restore. Grant it back to `PUBLIC`, or to the agent role alone:
+
+```sql
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO PUBLIC;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO <agent_role>;
+```
+
+### Understanding the security limits
+
+The read-only setting guards against accidental writes, but the role can clear its own setting from any read-write session outside the endpoint, so the setting isn't a security boundary. Where `dblink` is installed and the role can run `dblink_exec`, the role can open that session from inside `execute_sql`. A member of `pg_write_server_files` can still write a server file with `COPY TO`, since that writes no table. Treat the setting as a guard against accidental writes, and control what the role can change with grants. Grant a read-only role only read privileges, through a profile role as in [Granting the role what it needs](#granting-the-role-what-it-needs).

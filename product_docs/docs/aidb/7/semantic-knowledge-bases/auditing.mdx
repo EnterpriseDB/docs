@@ -47,6 +47,7 @@ AIDB records the operations in the following table. The `op` and `func` columns 
 | `aidb.add_relationship()`                                                 | `write`               | `add_relationship`                    |
 | `aidb.delete_relationship()`                                              | `write`               | `delete_relationship`                 |
 | `aidb.import_query_history()`                                             | `write`               | `import_query_history`                |
+| `aidb.semantic_kb_import_concepts()`                                      | `write`               | `semantic_kb_import_concepts`         |
 | `aidb.accept_relationship_candidates()`                                   | `approve`             | `accept_relationship_candidate`       |
 | `aidb.update_semantic_kb_history_filter()`                                | `admin`               | `update_history_filter`               |
 | `aidb.create_semantic_kb()`, including any context you set                | `admin`               | `create_semantic_kb`                  |
@@ -75,7 +76,11 @@ AIDB writes each audit record in the same transaction as the operation it descri
 
 ## Reading the audit log
 
-Use `aidb.semantic_kb_audit()` to read audit records. You can call it as a superuser, as the extension owner, or as a role that has been granted `EXECUTE` on the function. `aidb_users` members can't call it unless they have that grant.
+Use `aidb.semantic_kb_audit()` to read audit records. AIDB grants the function to `aidb_users`, but your login must also belong to the semantic KB's owner role. A superuser also passes. An explicit `EXECUTE` grant or a direct table grant doesn't replace that membership. A login that fails the check gets an error with SQLSTATE `42501`.
+
+The check uses your authenticated login (`session_user`), so `SET ROLE` alone doesn't grant access. For the full rules, including what happens when the owner role is dropped, renamed, or recreated, see [Permissions for the health functions](health#permissions-for-the-health-functions).
+
+When the database has one semantic KB, an authorized owner can omit `kb_name`. When it has several, specify the semantic KB you own. Superusers and members of the extension owner's role can omit `kb_name` to read records from all semantic KBs.
 
 The following example returns recent description changes for `analytics_kb`:
 
@@ -107,7 +112,7 @@ The `detail` column holds JSON that's specific to each operation. AIDB doesn't s
 
 All filters are optional:
 
-- `kb_name` limits results to one semantic KB. When it's `NULL`, the function returns records from all semantic KBs.
+- `kb_name` limits results to one semantic KB. When it's `NULL`, superusers and members of the extension owner's role can read records from all semantic KBs. If exactly one semantic KB exists, a login authorized for it can also omit `kb_name` and read its records. Other callers must specify a semantic KB they're authorized to read.
 - `op` limits results to one operation category.
 - `func` limits results to the exact value recorded in the `func` column.
 - `since` returns records from the specified time onward.
@@ -140,6 +145,8 @@ A semantic alias that no semantic KB owns doesn't create an audit record when it
 
 AIDB doesn't delete audit records automatically, so prune them routinely, either manually or from a scheduler such as `pg_cron`. Records also remain after you delete the semantic KB they describe, so you can still prune them by using the deleted KB's name.
 
+If you use `pg_cron` and `pg_hba.conf` requires a password for local connections, set `cron.use_background_workers = on` and restart Postgres. Otherwise, every job fails with a connection error, because `pg_cron` connects without a password. Each running job uses one background worker, so raise `max_worker_processes` if needed.
+
 To prune the audit log:
 
 1. Optional. Set the default age that `aidb.semkb_audit_prune()` uses when you don't specify one. The default is `30 days`. Only a superuser can change it. Set it at the database level:
@@ -160,4 +167,4 @@ A zero interval in `aidb.semkb_audit_retention` makes the function delete nothin
 
 The function works on one semantic KB at a time. It returns the number of deleted records, not counting the record it writes about itself. It deletes records in batches of 5,000 rows, and it writes one `admin` audit record with the retention interval, the number of deleted records, and the number of batches. It writes that record even when it deletes nothing.
 
-The caller must be a member of the semantic KB's owner role. `aidb.create_semantic_kb()` sets that role to the extension owner, so in practice only the extension owner, members of the extension owner's role, and superusers can prune. To prune the records of a semantic KB that no longer exists, you must be the extension owner or a superuser. A caller who isn't authorized gets an error with SQLSTATE `42501`.
+The caller's authenticated login (`session_user`) must be a member of the semantic KB's owner role, the same check that [`aidb.semantic_kb_audit()` uses](#reading-the-audit-log). `aidb.create_semantic_kb()` sets that role to the extension owner, so in practice only the extension owner, members of the extension owner's role, and superusers can prune. To prune the records of a semantic KB that no longer exists, you must be the extension owner or a superuser. A caller who isn't authorized gets an error with SQLSTATE `42501`.

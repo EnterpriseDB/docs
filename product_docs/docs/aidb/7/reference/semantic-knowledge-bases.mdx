@@ -1,7 +1,7 @@
 ---
 title: Semantic knowledge bases reference
 navTitle: Semantic knowledge bases
-description: API reference for AIDB semantic knowledge base functions — creating and managing a KB, relationships, comment curation, and search.
+description: API reference for AIDB semantic knowledge base functions — creating and managing a KB, relationships, comment curation, search, and health checks.
 ---
 
 Reference for semantic knowledge base (semantic KB) functions. For guide-style documentation, see [Semantic knowledge bases](../semantic-knowledge-bases).
@@ -12,7 +12,7 @@ For concepts (creating a KB, resolving to a single KB, and auto-processing) see 
 
 ### `aidb.create_semantic_kb`
 
-Creates a semantic KB over one or more schemas, embeds the schema metadata with the given model, and crawls the schemas immediately.
+Creates a semantic KB over one or more schemas, embeds the schema metadata with the given model, and crawls the schemas immediately. It also creates an empty term store for the [business glossary](../semantic-knowledge-bases/business-glossary).
 
 #### Parameters
 
@@ -24,7 +24,7 @@ Creates a semantic KB over one or more schemas, embeds the schema metadata with 
 | `auto_processing` | TEXT    | `Disabled`       | How the KB reacts to schema changes: `Disabled`, `Live`, or `Background`. See [Auto-processing modes](#auto-processing-modes).                        |
 | `bypass_triggers` | BOOLEAN | `false`          | Skips the DDL event triggers for this KB. Schema changes are only picked up on `refresh_semantic_kb()`.                                               |
 | `curation`        | BOOLEAN | `false`          | Turns on the comment review queue. See [Descriptions and curation](../semantic-knowledge-bases/curation).                                             |
-| `vector_index`    | JSONB   | `NULL`           | Vector index configuration, built with a [vector index config helper](../data-pipelines/reference#vector-index-config-helpers).                      |
+| `vector_index`    | JSONB   | `NULL`           | Vector index configuration, built with a [vector index config helper](../data-pipelines/reference#vector-index-config-helpers). The KB builds the same kind of index on its glossary concepts.                      |
 | `user_defined_context` | TEXT | `NULL`       | Your description of the KB, such as business terms or how its tables relate. It can contain up to 4,000 characters. AIDB includes it in the KB's managed [agent plugin](../agents/plugins#managing-a-semantic-kb-plugin). Change it later with [`aidb.update_semantic_kb_context`](#aidbupdate_semantic_kb_context). |
 
 #### Returns
@@ -124,6 +124,10 @@ SELECT aidb.update_semantic_kb_context(NULL, 'analytics_kb');
 
 Returns entity counts and pending-change status for a KB.
 
+!!!note
+This function is deprecated. It remains callable in SQL, but it's no longer an agent tool, and a later release will remove it. Use [`aidb.semantic_kb_health_report`](#aidbsemantic_kb_health_report) instead. The report doesn't return the `tables`, `views`, `columns`, `drifted`, or `queries` counts, and its relationship total excludes retired relationships, which `relationships` here counts.
+!!!
+
 #### Parameters
 
 | Parameter | Type | Default | Description                                       |
@@ -153,13 +157,14 @@ FROM aidb.semantic_kb_stats('bank_kb');
 
 ### `aidb.delete_semantic_kb`
 
-Deletes a KB and its indexed metadata. It also removes the KB's managed [agent plugin](../agents/plugins#managing-a-semantic-kb-plugin) and its tools, and detaches the plugin from every agent that uses it.
+Deletes a KB, its indexed metadata, and its business glossary. It also removes the KB's managed [agent plugin](../agents/plugins#managing-a-semantic-kb-plugin) and its tools, and detaches the plugin from every agent that uses it.
 
 #### Parameters
 
 | Parameter | Type | Default  | Description         |
 | --------- | ---- | -------- | -------------------- |
 | `name`    | TEXT | Required | The KB to delete.     |
+| `if_exists` | BOOLEAN | `false` | If `true` and the KB doesn't exist, raises a notice instead of an error. |
 
 #### Example
 
@@ -185,7 +190,7 @@ For concepts (searching everything at once, tuning results, finding the joins ar
 
 ### `aidb.semantic_kb_search`
 
-The composite entry point: runs the per-source ranked searches (schema metadata, relationships, curated semantic aliases, and query history) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF).
+The composite entry point: runs the per-source ranked searches (schema metadata, relationships, curated semantic aliases, query history, and business glossary concepts) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF).
 
 #### Parameters
 
@@ -194,17 +199,17 @@ The composite entry point: runs the per-source ranked searches (schema metadata,
 | `query_text`        | TEXT               | —       | The natural-language query.                                                                            |
 | `kb_name`           | TEXT               | `NULL`  | The KB to search. Omit to target the single KB when only one exists.                                    |
 | `top_k`             | INT                | `10`    | Number of ranked rows to return.                                                                        |
-| `sources`           | TEXT[]             | `NULL`  | Sources to search: `schema`, `alias`, `relationship`, `history`. Omit for all.                          |
+| `sources`           | TEXT[]             | `NULL`  | Sources to search: `schema`, `alias`, `relationship`, `history`, `concept`. Omit for all.                          |
 | `entity_types`      | TEXT[]             | `NULL`  | Entity types to include: `Table`, `View`, `Column`, `Alias`, `Relationship`, `Query`. Omit for all.      |
 | `rrf_k`             | INT                | `60`    | Rank-fusion damping constant.                                                                            |
-| `min_similarity`    | DOUBLE PRECISION   | `NULL`  | Optional similarity floor. Rows scoring below it are dropped. Omit for no floor.                         |
-| `include_proposed`  | BOOLEAN            | `false` | Also return relationships with status `proposed`, not just `approved` ones. |
+| `min_similarity`    | DOUBLE PRECISION   | `NULL`  | Optional similarity floor. Rows scoring below it are dropped. It also applies to glossary concepts, including the ones that search reaches through a relation. Omit for no floor.                         |
+| `include_proposed`  | BOOLEAN            | `false` | Also return relationships and glossary bindings with status `proposed`, not just `approved` ones. |
 
 #### Returns
 
 | Column          | Description                                                |
 | --------------- | ---------------------------------------------------------- |
-| `source_type`   | Which source produced the row: `schema`, `alias`, `relationship`, or `history`. |
+| `source_type`   | Which source produced the row: `schema`, `alias`, `relationship`, `history`, or `concept`. A table or column that both the schema source and the concept source found is one row with `schema`. See [Searching with the glossary](../semantic-knowledge-bases/business-glossary#searching-with-the-glossary). |
 | `entity_type`   | `Table`, `View`, `Column`, `Alias`, `Relationship`, or `Query`.                     |
 | `schema_name`   | The schema the entity belongs to.                          |
 | `relation_name` | The table or view name.                                    |
@@ -390,6 +395,58 @@ FROM aidb.semantic_kb_subgraph(
     top_k      => 3,
     max_hops   => 1
 );
+```
+
+---
+
+## Managing a business glossary
+
+For concepts (the glossary document, relations, bindings, and how search uses them) see [Business glossary](../semantic-knowledge-bases/business-glossary).
+
+### `aidb.semantic_kb_import_concepts`
+
+Writes a business glossary document into the term store of a KB and embeds its new and changed concepts. The document is the whole glossary of the KB. The import marks every concept that the document leaves out as deleted. It also removes every relation and binding that the document doesn't state again. It writes a row only when a value changed, so a second run with the same document changes nothing.
+
+The import checks the whole document before it writes. If the document has a problem, the import raises an error that names each field at fault, and it writes nothing.
+
+Every member of `aidb_users` can run it. You need `USAGE` on the credential of the KB's model. It isn't a [native tool](../tools/native-tools), because it writes bindings as `approved`.
+
+#### Parameters
+
+| Parameter    | Type  | Default  | Description                                                                                                                                  |
+| ------------ | ----- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vocabulary` | JSONB | Required | The glossary document, with the optional arrays `predicates`, `concepts`, `relations`, and `bindings`. See [Writing the glossary document](../semantic-knowledge-bases/business-glossary#writing-the-glossary-document). |
+| `kb_name`    | TEXT  | `NULL`   | The KB to import into. Omit to target the single KB when only one exists.                                                                     |
+
+#### Returns
+
+One row with these counts:
+
+| Column               | Description                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `concepts_added`     | Concepts that the KB didn't store before.                                            |
+| `concepts_updated`   | Stored concepts whose values changed.                                                |
+| `concepts_unchanged` | Stored concepts that the document states with the same values.                       |
+| `concepts_deleted`   | Concepts that the import marked as deleted.                                          |
+| `concepts_embedded`  | Concepts that the import embedded with the model of the KB.                          |
+| `relations_written`  | Relations that the import added or changed.                                          |
+| `relations_removed`  | Stored relations that the document doesn't state.                                    |
+| `bindings_written`   | Bindings that the import added or changed.                                           |
+| `bindings_removed`   | Stored `catalog_tag` bindings that the document doesn't state.                       |
+
+Each import also writes one row to the [audit log](../semantic-knowledge-bases/auditing), with `op` `write`, `func` `semantic_kb_import_concepts`, and these counts in `detail`.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.semantic_kb_import_concepts('{
+  "concepts": [
+    {"id": "c-soiling", "pref_label": "Soiling", "alt_labels": ["dirty panel"]}
+  ],
+  "bindings": [
+    {"concept": "c-soiling", "schema": "telemetry", "relation": "panel_readings", "column": "amb"}
+  ]
+}', 'ops_kb');
 ```
 
 ---
@@ -1069,13 +1126,13 @@ SELECT aidb.update_semantic_kb_curation('bank_kb', true);
 
 ### `aidb.semantic_kb_audit`
 
-Lists recorded semantic KB operations. A superuser, the extension owner, or a role that has been granted `EXECUTE` on the function can call it. For concepts, see [Auditing semantic KB operations](../semantic-knowledge-bases/auditing).
+Lists recorded semantic KB operations. AIDB grants the function to `aidb_users`, but the caller's authenticated login (`session_user`) must also belong to the semantic KB's owner role, or be a superuser. An explicit `EXECUTE` grant doesn't replace that membership. A call without `kb_name` returns records from all semantic KBs for superusers and members of the extension owner's role. If exactly one semantic KB exists, a login authorized for it can also omit `kb_name`. A login that fails the check gets SQLSTATE `42501`. For concepts, see [Auditing semantic KB operations](../semantic-knowledge-bases/auditing).
 
 #### Parameters
 
 | Parameter    | Type        | Default | Description                                                                                                                   |
 | ------------ | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. `NULL` returns records for all knowledge bases.                                  |
+| `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. When `NULL`, superusers and members of the extension owner's role can read records from all knowledge bases. If exactly one semantic KB exists, a login authorized for it can also omit `kb_name` and read its records. Other callers must name a semantic KB they're authorized to read.                                  |
 | `op`         | TEXT        | `NULL`  | Only return this operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`. |
 | `func`       | TEXT        | `NULL`  | Only return records with this exact `func` value. It isn't always the name of the SQL function you called. See [What's recorded](../semantic-knowledge-bases/auditing#whats-recorded).                                                                                |
 | `since`      | TIMESTAMPTZ | `NULL`  | Only return records from this time on.                                                                                        |
@@ -1146,7 +1203,7 @@ ORDER BY ts DESC LIMIT 3;
 
 ### `aidb.semkb_audit_prune`
 
-Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller must be a member of the knowledge base's owner role, which `aidb.create_semantic_kb()` sets to the extension owner. To prune the records of a deleted knowledge base, you must be the extension owner or a superuser. A caller who isn't authorized gets SQLSTATE `42501`. The function deletes records in batches and writes one `admin` audit record that contains the retention interval, the number of deleted records, and the number of batches, even when it deletes nothing. A negative or invalid interval raises an error before any records are deleted. See [Retention and pruning](../semantic-knowledge-bases/auditing#retention-and-pruning).
+Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller's authenticated login (`session_user`) must be a member of the knowledge base's owner role, which `aidb.create_semantic_kb()` sets to the extension owner. To prune the records of a deleted knowledge base, you must be the extension owner or a superuser. A caller who isn't authorized gets SQLSTATE `42501`. The function deletes records in batches and writes one `admin` audit record that contains the retention interval, the number of deleted records, and the number of batches, even when it deletes nothing. A negative or invalid interval raises an error before any records are deleted. See [Retention and pruning](../semantic-knowledge-bases/auditing#retention-and-pruning).
 
 #### Parameters
 
@@ -1163,6 +1220,219 @@ Deletes the audit records of one knowledge base that are older than a given age.
 
 ```sql
 SELECT aidb.semkb_audit_prune('bank_kb', '90 days');
+```
+
+---
+
+## Inspecting KB health
+
+For concepts, including when to use each function, see [Inspecting semantic KB health](../semantic-knowledge-bases/health). All of these functions are read-only and granted to `aidb_users`. Every function takes `kb_name`, which you can omit when the database has exactly one semantic KB. An unknown name raises an error.
+
+Except for `aidb.semantic_kb_health_report`, each function also requires the caller's authenticated login (`session_user`) to belong to the semantic KB's owner role. A login that fails the check gets SQLSTATE `42501`. See [Permissions for the health functions](../semantic-knowledge-bases/health#permissions-for-the-health-functions).
+
+### `aidb.semantic_kb_health_report`
+
+Returns one row that summarizes the health of a semantic KB. The function never raises an access error: for a login that fails the owner-role check, `audit_window_start`, `retrieve_ops`, and `execute_ops` are `NULL` and `audit_metrics_available` is `false`.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to report on. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column                      | Description                                                                                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kb_name`                   | The semantic KB name.                                                                                                                                                                                  |
+| `auto_processing`           | The [auto-processing mode](#auto-processing-modes): `Disabled`, `Live`, or `Background`.                                                                                                               |
+| `total_objects`             | Live tables, views, and columns. Semantic aliases are excluded.                                                                                                                                        |
+| `commented_objects`         | Objects with a description embedding.                                                                                                                                                                  |
+| `comment_coverage`          | `commented_objects` divided by `total_objects`, rounded to three decimal places. `NULL` when there are no live objects.                                                                                |
+| `coverage_gaps`             | Objects without a description embedding. Equals the number of rows `semantic_kb_coverage_gaps` returns.                                                                                                |
+| `pending_events`            | Queued DDL events. Meaningful for `Background` processing only.                                                                                                                                        |
+| `stale_objects`             | Distinct objects named by the queued events. Meaningful for `Background` processing only.                                                                                                              |
+| `total_relationships`       | Relationships that aren't `retired`.                                                                                                                                                                   |
+| `orphan_relationships`      | Relationships that aren't `retired` and have a missing relation or column endpoint.                                                                                                                    |
+| `total_aliases`             | Semantic aliases that have an embedding row for this semantic KB.                                                                                                                                      |
+| `orphan_aliases`            | Aliases that name a missing schema, relation, or column.                                                                                                                                               |
+| `unverified_aliases`        | Aliases that couldn't be checked.                                                                                                                                                                      |
+| `partially_checked_aliases` | Aliases whose tables were checked but not every column.                                                                                                                                                |
+| `oldest_embedded_at`        | The earliest time an eligible object's vector was computed.                                                                                                                                            |
+| `newest_embedded_at`        | The latest time an eligible object's vector was computed.                                                                                                                                              |
+| `audit_window_start`        | The earliest retained audit record for the semantic KB. `NULL` when `audit_metrics_available` is `false`.                                                                                              |
+| `retrieve_ops`              | Recorded search operations, including a search that returned no objects. `NULL` when `audit_metrics_available` is `false`.                                                                             |
+| `execute_ops`               | Recorded alias executions. `NULL` when `audit_metrics_available` is `false`.                                                                                                                          |
+| `audit_metrics_available`   | Whether the caller passes the owner-role check, so the three audit-derived columns are populated.                                                                                                      |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.semantic_kb_health_report('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_coverage_gaps`
+
+Lists live tables, views, and columns that have no description embedding, ordered by entity type and then by name. It's also a read-only agent tool.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column                 | Description                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `object_ref`           | The object's display name, such as `sales.orders` or `sales.orders.customer_id`.                             |
+| `entity_type`          | `Table`, `View`, or `Column`.                                                                                |
+| `schema_name`          | The object's schema.                                                                                         |
+| `relation_name`        | The object's table or view.                                                                                  |
+| `column_name`          | The column name, or `NULL` for a table or view.                                                              |
+| `has_pending_proposal` | Whether a description is awaiting review. A proposal remains a gap until it's approved.                      |
+| `embedded_at`          | When the metadata row was embedded. It doesn't mean a description is present.                                |
+
+#### Example
+
+```sql
+SELECT object_ref, entity_type, has_pending_proposal
+FROM aidb.semantic_kb_coverage_gaps('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_stale_objects`
+
+Lists objects that have DDL events queued but not yet re-embedded, with the longest-waiting first. The result describes `Background` processing only. For a `Live`, `Disabled`, or trigger-bypassed semantic KB, an empty result doesn't mean the embeddings are current.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column               | Description                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `object_ref`         | The affected schema, relation, or column.                                                                                 |
+| `schema_name`        | The schema.                                                                                                               |
+| `relation_name`      | The relation, or `NULL` for a schema-level event.                                                                         |
+| `column_name`        | The column, or `NULL` for a table-level or schema-level event.                                                            |
+| `pending_events`     | The number of queued events for the object.                                                                               |
+| `event_types`        | The types of the queued events.                                                                                           |
+| `oldest_event_at`    | When the first event was queued.                                                                                          |
+| `oldest_embedded_at` | The oldest matching metadata embedding time. `NULL` when nothing matches, which is always the case for a schema rename.   |
+
+#### Example
+
+```sql
+SELECT object_ref, pending_events, oldest_event_at
+FROM aidb.semantic_kb_stale_objects('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_orphan_relationships`
+
+Lists relationships whose relation endpoint, junction endpoint, or a listed column no longer exists in the live catalog, including `retired` relationships. The function is read-only and never changes a relationship's status.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column            | Description                                                                                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `relationship_id` | The relationship's ID.                                                                                                                                                                                       |
+| `left_object`     | The left endpoint, as `schema.relation`.                                                                                                                                                                     |
+| `right_object`    | The right endpoint, as `schema.relation`.                                                                                                                                                                    |
+| `junction_object` | The junction relation for a junction relationship, or `NULL`.                                                                                                                                                |
+| `kind`            | The relationship kind.                                                                                                                                                                                       |
+| `source`          | The relationship source.                                                                                                                                                                                     |
+| `status`          | `proposed`, `approved`, `stale`, or `retired`.                                                                                                                                                               |
+| `missing`         | The endpoints that no longer exist, such as `right_relation` or `left_column:customer_id`.                                                                                                                   |
+| `last_referenced` | The latest recorded schema-source, relation-level search hit on either endpoint. `NULL` when there's no such hit or an endpoint name contains a dot. It's a limited usage signal, not proof of disuse.         |
+
+#### Example
+
+```sql
+SELECT relationship_id, left_object, right_object, status, missing
+FROM aidb.semantic_kb_orphan_relationships('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_alias_diagnostics`
+
+Lists the semantic aliases of a semantic KB that aren't verified against the live catalog, ordered by alias name. The function parses each alias's stored SQL but never plans or runs it, and never returns it.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                         |
+| --------- | ---- | ------- | ------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column       | Description                                                                                                                                                                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alias_name` | The semantic alias name.                                                                                                                                                                                                                                                     |
+| `status`     | `orphan`, `unverified`, or `partial`. `orphan` takes precedence over `unverified`, which takes precedence over `partial`.                                                                                                                                                    |
+| `missing`    | Missing objects, as `schema:<name>`, `relation:<name>`, or `column:<relation>.<column>`.                                                                                                                                                                                     |
+| `reason`     | Why the alias couldn't be verified: `unparseable`, `invalid_alias_sql`, `unsupported_syntax`, or `outside_kb_schemas`. `NULL` otherwise.                                                                                                                                     |
+| `detail`     | The parser or validator message behind `reason`. `NULL` unless the login can itself read the alias store (`USAGE` on `aidb_internal` and `SELECT` on `aidb_internal.semantic_aliases`).                                                                                       |
+| `unchecked`  | The column references that weren't checked, each with the reason. `NULL` unless the login can itself read the alias store.                                                                                                                                                    |
+
+The report's `orphan_aliases`, `unverified_aliases`, and `partially_checked_aliases` counts each equal the number of rows here with that status.
+
+For what each status means and how to repair an alias, see [Detecting orphaned aliases](../semantic-knowledge-bases/semantic-aliases#detecting-orphaned-aliases).
+
+#### Example
+
+```sql
+SELECT alias_name, status, missing, reason
+FROM aidb.semantic_kb_alias_diagnostics('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_object_usage`
+
+Reports how often each object appeared in recorded search results and alias executions, and when it last did. The counts are lower bounds, so `lower_bound` is always `true`.
+
+#### Parameters
+
+| Parameter | Type        | Default | Description                                                                    |
+| --------- | ----------- | ------- | ------------------------------------------------------------------------------ |
+| `kb_name` | TEXT        | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists.             |
+| `since`   | TIMESTAMPTZ | `NULL`  | Only count records from this time on. `NULL` counts every retained record.     |
+
+#### Returns
+
+| Column           | Description                                                                                                                                                           |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `object_ref`     | The object's display name. Objects whose display names are identical share one row, and their counts are combined.                                                    |
+| `source_type`    | The source of the hit, such as `schema`, `alias`, `relationship`, `history`, or `concept`. A result found through both schema and concept sources is a `schema` hit. |
+| `retrieve_count` | How many recorded searches returned the object. One search can increase the count of several objects.                                                                 |
+| `execute_count`  | How many recorded executions of the alias.                                                                                                                            |
+| `last_retrieved` | When a search last returned the object.                                                                                                                               |
+| `last_executed`  | When the alias last ran.                                                                                                                                              |
+| `window_start`   | The earliest retained audit record in the selected window, including operations other than search or execution.                                                       |
+| `lower_bound`    | Always `true`. See [Reviewing recorded object usage](../semantic-knowledge-bases/health#reviewing-recorded-object-usage).                                             |
+
+#### Example
+
+```sql
+SELECT object_ref, source_type, retrieve_count, execute_count
+FROM aidb.semantic_kb_object_usage(
+    'analytics_kb', since => now() - interval '30 days');
 ```
 
 ---
@@ -1320,11 +1590,17 @@ SELECT * FROM aidb.get_semantic_alias('monthly_revenue');
 
 ### `aidb.update_semantic_alias`
 
-Updates an alias. Changing `query_text` or `kb_name` re-infers its owning KB(s) and reconciles embeddings, adding KBs it newly belongs to and dropping ones it no longer does. Changing `description` re-embeds it in every KB it's already in.
+Updates an alias. Changing `query_text` or `kb_name` re-infers its owning KB(s) and reconciles embeddings, adding KBs it newly belongs to and dropping ones it no longer does. If the revised query still belongs to the same KB, AIDB updates the alias's embedding and the alias stays in that KB's `total_aliases`. If AIDB can't infer the owning KBs, it keeps the existing embeddings. Changing `description` re-embeds it in every KB it's already in.
 
 #### Parameters
 
-Same fields as [`aidb.create_semantic_alias()`](#aidbcreate_semantic_alias) (`name` identifies the alias to update). Which fields are required versus optional on update isn't stated in the guide — confirm before publishing.
+| Parameter     | Type  | Default  | Description                                                                                                                                                                                                                              |
+| ------------- | ----- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | TEXT  | Required | The alias to update.                                                                                                                                                                                                                     |
+| `description` | TEXT  | `NULL`   | Optional. If omitted, the existing description is kept.                                                                                                                                                                                  |
+| `query_text`  | TEXT  | `NULL`   | Optional. The revised single read-only `SELECT`, with `${name}` placeholders for parameters.                                                                                                                                             |
+| `params`      | JSONB | `NULL`   | Optional. If omitted, the existing parameter definitions are kept. Pass a new array if the definitions change. You don't need to resend it when the revised query keeps the same `${name}` placeholders and definitions.                  |
+| `kb_name`     | TEXT  | `NULL`   | Optional.                                                                                                                                                                                                                                |
 
 #### Example
 
@@ -1346,6 +1622,7 @@ Deletes an alias by name.
 | Parameter | Type | Default  | Description          |
 | --------- | ---- | -------- | ----------------------- |
 | `name`    | TEXT | Required | The alias to delete.    |
+| `if_exists` | BOOLEAN | `false` | If `true` and the alias doesn't exist, raises a notice instead of an error. |
 
 #### Example
 

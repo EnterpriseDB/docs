@@ -1,11 +1,11 @@
 ---
 title: Purposes reference
 navTitle: Purposes
-description: API reference for the purpose registry and the governance-related configuration parameters.
+description: API reference for the purpose registry, the purpose change history, and the governance-related configuration parameters.
 deepToC: true
 ---
 
-Reference for the purpose registry view and management functions. For step-by-step guides, see [Governance](/aidb/current/governance/).
+Reference for the purpose registry view, the purpose history view, and the management functions. For step-by-step guides, see [Governance](/aidb/current/governance/).
 
 ## Catalog view
 
@@ -21,6 +21,7 @@ Lists every purpose, including retired ones.
 | `created_at`  | timestamptz | When the purpose was first created.                                      |
 | `updated_at`  | timestamptz | When the purpose was last created, updated, deleted, or revived.         |
 | `deleted_at`  | timestamptz | When the purpose was retired. `NULL` if the purpose is still in service. |
+| `version`     | integer     | Current version of the purpose. Starts at 1 and increases by 1 each time `role`, `description`, or `deleted_at` changes. Added in AIDB 7.10.0. |
 
 Retired purposes (`deleted_at IS NOT NULL`) remain visible in this view rather than disappearing, so an existing reference to the purpose stays resolvable for inspection even though the purpose itself can no longer be assigned to a new agent or updated.
 
@@ -32,6 +33,69 @@ INSERT INTO aidb.purpose_registry (name, role) VALUES ('x', 'y');
 __OUTPUT__
 ERROR:  permission denied for view purpose_registry
 ```
+
+### `aidb.purpose_history`
+
+Lists every version of every purpose. Added in AIDB 7.10.0. The view doesn't guarantee a row order, so add `ORDER BY name, version` when you need each purpose's versions oldest first.
+
+Each row is a full snapshot of the purpose as it stood after one change, not a diff. The current version of each purpose is also in the view, with `valid_to` set to `NULL`.
+
+| Column              | Type        | Description                                                                                                 |
+|---------------------|-------------|-------------------------------------------------------------------------------------------------------------|
+| `name`              | text        | Name of the purpose.                                                                                        |
+| `version`           | integer     | Version number. Together with `name`, identifies one row.                                                   |
+| `role`              | text        | Postgres role the purpose resolved to in this version.                                                      |
+| `description`       | text        | Description in this version.                                                                                |
+| `deleted_at`        | timestamptz | Set if this version retired the purpose. `NULL` if the purpose was in service.                              |
+| `valid_from`        | timestamptz | When this version was written.                                                                              |
+| `valid_to`          | timestamptz | When the next version was written. `NULL` for the current version.                                          |
+| `changed_by`        | text        | `current_user` of the session that made the change.                                                         |
+| `session_user_name` | text        | `session_user` of the session that made the change. Differs from `changed_by` when the writer ran `SET ROLE` first. |
+
+`aidb_users` and `aidb_governance` have `SELECT` on this view. No role has `INSERT`, `UPDATE`, or `DELETE` on it. Triggers on the purpose registry write the rows.
+
+AIDB records a change made with `create_purpose`, `update_purpose`, or `delete_purpose`, and a direct write to the registry table by a permitted role. History is append-only: AIDB never updates a row after writing it and removes rows only through `aidb.prune_purpose_history`. See [`aidb.prune_purpose_history`](#aidbprune_purpose_history).
+
+Retiring a purpose and reviving it each add a row. A retirement row has `deleted_at` set. A revival through `create_purpose` adds a later row with `deleted_at` set to `NULL`.
+
+To keep the history complete, AIDB refuses a `DELETE` or `TRUNCATE` on the purpose registry, and an `UPDATE` that renames a purpose. The error names the operation and points to `aidb.delete_purpose`. Retire a purpose instead of deleting it.
+
+These guards stop the table owner or a superuser from making such a change by mistake. They aren't a security boundary, because the table owner or a superuser can disable the triggers that enforce them. Other roles, including aidb_governance, have no direct privileges on the registry table and can change purposes only through aidb.create_purpose, aidb.update_purpose, and aidb.delete_purpose.
+
+A change that leaves `role`, `description`, and `deleted_at` as they were, including a call to `update_purpose` with nothing to change, writes no row and doesn't change `version`.
+
+Rows written by the AIDB 7.10.0 upgrade for purposes that already existed have `version = 1`, `valid_from` set to the purpose's `updated_at`, and `NULL` in `changed_by` and `session_user_name`. History before the upgrade isn't reconstructed.
+
+To query the history, see [Viewing a purpose's change history](../governance/purposes#viewing-a-purposes-change-history).
+
+#### Understanding what the history records
+
+`aidb.purpose_history` records changes to the purpose registry: which role a purpose resolved to, its description, and whether it was retired. It doesn't record what that role was allowed to do. The privileges in effect for a decision are those the role held at that moment, and the history doesn't track them.
+
+If someone ran `GRANT` or `REVOKE` on a purpose's role (or on a role it inherits from, or on the objects it reads) after a decision, the history still shows the same role and version for that decision. It can't say what the role could access when the decision ran. A complete record of that needs a log of `GRANT` and `REVOKE` statements over time, which requires an audit extension such as pgAudit or EDB Audit. AIDB doesn't integrate with either, so the history doesn't replace one.
+
+The history also doesn't cover changes made outside AIDB's own triggers, such as `ALTER ROLE` or membership changes. It records the identity of the writer from `current_user` and `session_user`, which a superuser can set.
+
+#### Retaining history
+
+AIDB keeps every version indefinitely. The OTel cleaner and `aidb.run_otel_retention_cleanup()` don't remove purpose history, whatever the value of `aidb.otel_cleaner_retention_days`.
+
+To release old versions, run [`aidb.prune_purpose_history`](#aidbprune_purpose_history) as the extension owner.
+
+#### Backing up and restoring history
+
+`pg_dump` includes `aidb.purpose_history` along with the purpose registry. Restoring a dump taken on AIDB 7.10.0 or later brings back each purpose at the version it had, with its full history. The restore doesn't renumber versions or write new history rows.
+
+A dump taken before AIDB 7.10.0 has no purpose history. After restoring one into an AIDB 7.10.0 or later installation, run [`aidb.backfill_purpose_history`](#aidbbackfill_purpose_history) as the extension owner before changing any purpose. If you change a purpose first, AIDB records the new version but not the one it replaced, and that earlier version can't be recovered.
+
+#### Using purpose history on WarehousePG
+
+WarehousePG records purpose history and versions the same way PostgreSQL does, with these differences:
+
+- `valid_from` is the registry row's `updated_at`, which the coordinator supplies, because clocks differ between segments. A version change raises `updated_at` to at least one microsecond after the previous version's, so a change can't be backdated.
+- `aidb_governance` can write `updated_at` directly, so it can date a change in the future. The earlier version then stays valid until that time. On PostgreSQL, `valid_from` is read from the server clock and can't be set.
+- Each segment holds its own copy of the history rows.
+- An `INSERT` into `aidb_internal.purpose_registry` by the table owner counts as a restore, so it writes no history row. `aidb.create_purpose()` writes the history row itself, so purposes it creates are recorded as on PostgreSQL.
 
 ---
 
@@ -67,6 +131,10 @@ SELECT aidb.create_purpose('sales_support', 'sales_tickets_ro');
 __OUTPUT__
 ERROR:  purpose 'sales_support' already exists
 ```
+
+#### Versioning
+
+Creating a new purpose writes version 1. Reviving a retired purpose writes a new version, whether or not `role` and `description` differ from before the retirement.
 
 #### Example
 
@@ -120,6 +188,10 @@ ERROR:  purpose 'a_name_that_was_never_created' not found
 
 Updating a retired purpose also fails with the same "not found" error — retired purposes can only be brought back with `aidb.create_purpose`, not updated in place.
 
+#### Versioning
+
+A change to `role` or `description` writes a new version. A call that sets the values the purpose already has writes none, as does a call with nothing to change.
+
 #### Example
 
 ```sql
@@ -137,10 +209,15 @@ Retires a purpose. This is a soft delete: the row isn't removed, `deleted_at` is
 | Parameter | Type | Default  | Description                    |
 |-----------|------|----------|--------------------------------|
 | `name`    | TEXT | Required | Name of the purpose to retire. |
+| `if_exists` | BOOLEAN | `false` | If `true` and the purpose doesn't exist or is already retired, raises a notice instead of an error. |
 
 #### Returns
 
 `VOID`
+
+#### Versioning
+
+Retiring a purpose writes a new version with `deleted_at` set.
 
 #### Example
 
@@ -162,6 +239,81 @@ SELECT aidb.delete_purpose('never_created');
 
 __OUTPUT__
 ERROR:  purpose 'never_created' not found
+```
+
+---
+
+## Purpose history maintenance functions
+
+Only the extension owner or a superuser can call these functions. `aidb_users` and `aidb_governance` can't, and `PUBLIC` has no `EXECUTE` privilege on either function.
+
+### `aidb.prune_purpose_history`
+
+Deletes the history rows of superseded purpose versions that ended before a cutoff. Added in AIDB 7.10.0.
+
+#### Parameters
+
+| Parameter | Type        | Default  | Description                                                                                                                                 |
+|-----------|-------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `before`  | TIMESTAMPTZ | Required | Cutoff. The function deletes a version when its successor started before this time. A `NULL` cutoff deletes nothing.                         |
+| `force`   | BOOLEAN     | `false`  | Set to `true` to skip the retention check. Only an explicit `true` skips it; `false` and `NULL` don't.                                       |
+
+#### Returns
+
+`BIGINT` — the number of rows deleted. The function returns `0` when it deletes nothing. The current version of every purpose, including a retired one, is never deleted.
+
+#### Checking the retention period
+
+The function doesn't check whether decision records still refer to the versions it deletes. A decision record whose version was pruned no longer joins to `aidb.purpose_history`, so choose a cutoff older than the oldest decision record you keep.
+
+To protect the records AIDB itself keeps, the function compares the cutoff with `aidb.otel_cleaner_retention_days`. It uses the configured value of the setting, not a value set for the current session:
+
+| Condition | Result |
+| --- | --- |
+| The cutoff is older than the retention period | Prunes. |
+| The cutoff is within the retention period | Raises a warning and deletes nothing, unless `force` is `true`. |
+| `aidb.otel_cleaner_retention_days` is `0` (the cleaner never deletes spans) | Raises a warning and deletes nothing, unless `force` is `true`. |
+
+The check doesn't account for decision records you keep longer than the retention period, or for whether the cleaner is enabled. A purpose change that stays in an open transaction isn't visible to the function, so commit changes promptly.
+
+#### Example
+
+Prune versions that ended more than two years ago:
+
+```sql
+SELECT aidb.prune_purpose_history(now() - interval '2 years');
+```
+
+To prune anyway when the cutoff is within the retention period, pass `force => true`:
+
+```sql
+SELECT aidb.prune_purpose_history(now() - interval '90 days', force => true);
+```
+
+### `aidb.backfill_purpose_history`
+
+Adds the missing current-version history row for each purpose restored from a dump taken before AIDB 7.10.0. Added in AIDB 7.10.0.
+
+#### Parameters
+
+None.
+
+#### Returns
+
+`BIGINT` — the number of rows added. Running the function again adds none.
+
+#### Behavior
+
+Run the function once, as the extension owner, after you restore such a dump and before you change any purpose.
+
+The function adds one row, at the purpose's current version, for each purpose that has no history row at that version. It sets `valid_from` to the purpose's `updated_at` and leaves `changed_by` and `session_user_name` as `NULL`.
+
+If a purpose is changed before the function runs, AIDB records the new version but not the one it replaced, and that earlier version can't be recovered.
+
+#### Example
+
+```sql
+SELECT aidb.backfill_purpose_history();
 ```
 
 ---

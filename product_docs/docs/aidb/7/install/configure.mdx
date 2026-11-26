@@ -1,6 +1,7 @@
 ---
 title: Configuring AIDB
 navTitle: Configuring
+description: Preload the AIDB library, create the extensions, manage user access, set proxy options, and tune the AIDB configuration parameters.
 ---
 
 To use AIDB, add it to `shared_preload_libraries`, create the extensions in the database, and manage user access. Then verify the installation. This page also covers proxy settings and the AIDB configuration parameters (GUCs) you can tune afterward.
@@ -97,8 +98,10 @@ GRANT CREATE ON SCHEMA public TO alice;
 
 When you create the AIDB extension, Postgres also creates a role named `aidb_governance`, separate from `aidb_users`. The role exists to give an auditor or monitoring tool read access to the trace, log, and metric data AIDB records for [observability](../reference/observability), without also granting that auditor or tool the ability to use AIDB's functions.
 
-- Purpose: `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, and run the manual retention cleanup function. It can also read the `id`, `name`, `purpose`, and `created_at` columns of `aidb.agents` (and, since 7.10.0, the `input_token_budget` and `output_token_budget` columns), and it's the only role that can create, change, and delete agent purposes. See [Permissions](../agents/creating-agents#permissions).
+- Purpose: `aidb_governance` can read the `aidb_otel.metrics`, `aidb_otel.logs`, and `aidb_otel.traces` tables, run the manual retention cleanup function, and, starting in AIDB 7.10.0, read the [purpose change history](../reference/purposes#aidbpurpose_history). It can also read the `id`, `name`, `purpose`, and `created_at` columns of `aidb.agents` (and, since 7.10.0, the `input_token_budget` and `output_token_budget` columns), and it's the only role that can create, change, and delete agent purposes. See [Permissions](../agents/creating-agents#permissions).
+
 - Security: By default, `aidb_governance` is the only non-superuser role granted `SELECT` on the `aidb_otel.*` tables. Administrators can grant a separate role read access to selected tables. For EDB Agent Governance, use a [dedicated viewer role](/agent-governance/latest/connecting_aidb/#creating-the-viewer-role) to avoid granting retention cleanup and purpose-management privileges.
+
 - Separation from aidb_users: `aidb_users` can write into `aidb_otel.*` indirectly (every AIDB function call that's traced ends up in those tables), but has no `SELECT` on the tables themselves. Reading that data requires separate read privileges, through `aidb_governance` membership or explicit grants.
 
 To let a user or service account read AIDB's observability data, grant it the `aidb_governance` role:
@@ -141,6 +144,8 @@ GRANT aidb_admins TO <your_admin_role>;
 
 A role that doesn't inherit privileges from `aidb_admins`, because it's `NOINHERIT` or was granted the role `WITH INHERIT FALSE`, isn't treated as an admin.
 
+Members of `aidb_admins` can also disable or delete a pipeline whose owner role no longer exists. For the steps and the privileges you need, see [Recovering a pipeline with a renamed or dropped owner role](../data-pipelines/troubleshooting#recovering-a-pipeline-with-a-renamed-or-dropped-owner-role).
+
 For more information about credentials, see [Model credentials](../integrating-models/credentials).
 
 ## Configuring proxy settings
@@ -166,7 +171,7 @@ AIDB has limited air-gapped support. The built-in CPU model runtimes (Candle and
 
 ## Configuring AIDB parameters (GUCs)
 
-AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Parameters that enable background workers are an exception. See [Workers enabled by settings](default-footprint#workers-enabled-by-settings). Only `aidb.download_log_level` and `aidb.download_max_attempts` are `USERSET`, so any role can change them for its own session. All other parameters are `SUSET`, so only superusers, or roles granted `SET` on the parameter, can change them. The sections below cover threading limits, the model cache, model downloads, llama.cpp native logs, network egress, credential environment variables, and OpenTelemetry tracing.
+AIDB exposes a set of Postgres configuration parameters, known as GUCs (Grand Unified Configuration, Postgres's term for its runtime settings), in the `aidb.*` namespace. Set them in `postgresql.conf`, per-session with `SET`, or per-connection with `-c`. Parameters that enable background workers are an exception. See [Workers enabled by settings](default-footprint#workers-enabled-by-settings). Only `aidb.encode_memo`, `aidb.download_log_level`, and `aidb.download_max_attempts` are `USERSET`, so any role can change them for its own session. All other parameters are `SUSET`, so only superusers, or roles granted `SET` on the parameter, can change them. The sections below cover threading limits, the model cache, the encode memo, model downloads, llama.cpp native logs, remote model requests, network egress, credential environment variables, and OpenTelemetry tracing.
 
 ### Threading limits
 
@@ -208,6 +213,44 @@ SET aidb.max_model_cache_size = '2GB';
 ```
 
 If the limit is too small, AIDB reloads models on every call, which is slow. If it's too large, the host can run out of memory.
+
+### Encode memo
+
+The following parameter controls whether AIDB reuses the result of an encode function call within a statement.
+
+| Parameter          | Type    | Default | Description                                                                                                                                       |
+|--------------------|---------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.encode_memo` | boolean | `on`    | Reuses the last result of `aidb.encode_text()`, `aidb.encode_text_query()`, or `aidb.encode_image()` at each place the call appears in a query. `USERSET`. |
+
+#### `aidb.encode_memo`
+
+With `aidb.encode_memo` on, the default, each call site of `aidb.encode_text()`, `aidb.encode_text_query()`, or `aidb.encode_image()` keeps its last result for the rest of the statement. A call site is each place the call appears in a query. A query such as `ORDER BY embedding <=> aidb.encode_text_query('my_model', 'my query')` over a sequential scan, or a distance filter in `WHERE`, then calls the model once instead of once per row. The next statement calls the model again.
+
+The memo keys each result by function, model, input, and effective user, so a `SET ROLE` or `SECURITY DEFINER` boundary doesn't reuse another role's result.
+
+The memo is needed because the encode functions are `STABLE`. Postgres evaluates a `STABLE` call with constant arguments once only when the call is an index scan key, and doesn't cache the result otherwise. Without the memo, a sequential scan calls the model for every row.
+
+A call inside a SQL function that Postgres doesn't inline, such as a `SECURITY DEFINER` function, still calls the model for every row. The batch functions `aidb.encode_text_batch()` and `aidb.encode_text_query_batch()` don't use the memo.
+
+In PL/pgSQL, a call site keeps its last result until the transaction ends, across statements and loop iterations. The call site doesn't see a model or credential change made later in the transaction or committed by another session in the meantime. To call the model on every evaluation, turn the memo off:
+
+```sql
+SET aidb.encode_memo = off;
+```
+
+To compute the query embedding once per execution with nothing reusing it, for example to bound model load or to avoid a stale vector after a model change, use a CTE:
+
+```sql
+WITH q AS (SELECT aidb.encode_text_query('my_model', 'my query') AS v)
+SELECT id FROM my_docs ORDER BY embedding <=> (SELECT v FROM q) LIMIT 10;
+__OUTPUT__
+ id
+----
+ 42
+ 17
+ ...
+(10 rows)
+```
 
 ### Model download
 
@@ -268,6 +311,29 @@ sudo systemctl restart postgresql@16-main
 
 Applies only to `llamacpp_generate` and `llamacpp_embeddings` models — it has no effect on Candle-based models (`bert_local`, `clip_local`, `t5_local`, `llama_instruct_local`). See [Local models — Troubleshooting](../integrating-models/integrated-models#troubleshooting) for when to use this.
 
+### Remote model requests
+
+The following parameters control how AIDB retries and rate-limits requests to remote model providers. They apply to every model that doesn't set its own value. To set a value for one model, see [Retries and rate limits](../integrating-models/remote-models#retries-and-rate-limits).
+
+| Parameter                             | Type    | Default | Range       | Description                                                                                                                                 |
+|---------------------------------------|---------|---------|-------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `aidb.model_max_retries`              | integer | `3`     | 0–20        | Maximum number of retries for one request. `0` turns off retries. `SUSET`.                                                                   |
+| `aidb.model_retry_initial_backoff_ms` | integer | `500`   | 1–600000    | Wait before the first retry, in milliseconds. The wait doubles on each retry, up to `aidb.model_retry_max_backoff_ms`. `SUSET`.             |
+| `aidb.model_retry_max_backoff_ms`     | integer | `30000` | 1–3600000   | Longest wait between two retries, in milliseconds. A longer `Retry-After` from the server still applies. `SUSET`.                          |
+| `aidb.model_max_retry_elapsed_ms`     | integer | `60000` | 0–3600000   | Total time, in milliseconds, after which AIDB starts no further retry. `0` means no limit. `SUSET`.                                         |
+| `aidb.model_requests_per_second`      | float   | `0`     | 0–100000    | Maximum requests per second to each model host, in each Postgres process. `0` means no limit. `SUSET`.                                       |
+
+AIDB retries a request after HTTP `429`, HTTP `503`, or a failed connection. It doesn't retry HTTP `502`, HTTP `504`, or a timeout, because the provider might already have run the request. When the server sends a `Retry-After` header, AIDB waits at least that long, up to one hour. When the retries run out, AIDB returns the last response or error.
+
+The rate limit applies to each host and port separately. Models that call the same host share one limit. Each backend and background worker has its own limit, so the total rate across the server can be higher than the value you set.
+
+A session-level `SET` applies to that backend only. To apply a change to all sessions and workers, use `ALTER SYSTEM` and then run `SELECT pg_reload_conf()`.
+
+```sql
+ALTER SYSTEM SET aidb.model_requests_per_second = 10;
+SELECT pg_reload_conf();
+```
+
 ### Network egress
 
 The following parameter restricts outbound HTTP traffic from AIDB — both calls to model provider APIs and model file downloads from HuggingFace. When unset, no restriction is applied and AIDB can reach any host.
@@ -276,6 +342,8 @@ The following parameter restricts outbound HTTP traffic from AIDB — both calls
 |------------------------|--------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `aidb.egress_allowlist`| string | unset   | Comma-separated list of hosts and/or CIDR ranges that AIDB is allowed to reach. When set, any outbound request to a destination not on the list is rejected before the connection is made. `SUSET`. |
 | `edb.egress_allowlist` | string | unset   | Shared fallback allowlist used by all EDB extensions when the per-extension `aidb.egress_allowlist` is not set. Useful when AIDB and other EDB extensions (such as PGFS) share the same network policy. `SUSET`. |
+| `aidb.allow_insecure_egress` | boolean | `off` | Allows plaintext `http://` requests to any host. The egress allowlist still applies. AIDB logs a warning for each plaintext request. Don't turn this on in production. `SUSET`. |
+| `aidb.allow_insecure_tls` | boolean | `off` | Skips TLS certificate checks on every outbound HTTPS connection, including requests that carry model credentials or MCP headers. It doesn't allow plaintext `http://`. Don't turn this on in production. `SUSET`. |
 
 #### Entry format
 
@@ -312,6 +380,12 @@ PGFS implements the same allowlist mechanism under `pgfs.egress_allowlist`, appl
 
 If your AIDB pipelines read from external storage, both allowlists are relevant: AIDB's controls model-provider and HuggingFace traffic, and PGFS's controls the connection to your object store. See [External storage](../external-data-sources) for how AIDB and PGFS work together.
 !!!
+
+#### Certificates and connection errors
+
+AIDB trusts the certificate authorities installed on the server's operating system, along with its built-in root certificates. To reach an endpoint that uses a private certificate authority, install that authority's certificate on the server. If AIDB can't load the system certificates, it uses only the built-in roots.
+
+When a request fails, the error shows a short reason, such as `HTTP request failed: DNS lookup failed`, `connection failed`, `request timed out`, or `certificate not trusted`. The server log has the full details.
 
 ### Credential environment variables
 

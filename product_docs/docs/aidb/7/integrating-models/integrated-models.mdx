@@ -1,33 +1,34 @@
 ---
 title: Local models
 navTitle: Local models
-description: The model providers AIDB offers for models that run on the Postgres host (Candle and llama.cpp), the default models registered at install, and per provider the tested models, registration example, and parameters.
+description: The model providers AIDB offers for models that run on the Postgres host (Candle, llama.cpp, and ONNX Runtime), the default models registered at install, and per provider the tested models, registration example, and parameters.
 deepToC: true
 redirects:
   - /aidb/7/integrating-models/support-matrix
 ---
 
-Local models run on your Postgres host. No external API is involved. AIDB registers a set of default models at install time, and you can register more with `aidb.create_model()`. A local model is used by name in any AIDB SQL function or pipeline step, the same way as a [remote model](remote-models).
+Local models run on your Postgres host. Local models call no external API. AIDB registers a set of default models at install time, and you can register more with `aidb.create_model()`. You use a local model by name in any AIDB SQL function or pipeline step, the same way as a [remote model](remote-models).
 
-Local models run on one of two inference runtimes, Candle or llama.cpp. Both run on the CPU. Usage is identical for both; the provider decides which runtime loads the model.
+Local models run on one of three inference runtimes: Candle, llama.cpp, or ONNX Runtime. All three run on the CPU. Usage is identical for all of them. The provider decides which runtime loads the model.
 
 ## Model providers
 
 A provider tells `aidb.create_model()` which runtime to use and which configuration to expect. Pick the row that matches your model's file format and the task you need:
 
-| Provider               | Runtime   | Model files                  | Task                                   | Config                        | Details                                            |
-|------------------------|-----------|------------------------------|----------------------------------------|-------------------------------|----------------------------------------------------|
-| `bert_local`           | Candle    | Hugging Face safetensors     | Text embeddings                        | `aidb.bert_config()`          | [`bert_local`](#bert_local)                        |
-| `clip_local`           | Candle    | Hugging Face safetensors     | Text and image embeddings              | `aidb.clip_config()`          | [`clip_local`](#clip_local)                        |
-| `t5_local`             | Candle    | Hugging Face safetensors     | Text generation and text embeddings    | `aidb.t5_config()`            | [`t5_local`](#t5_local)                            |
-| `llama_instruct_local` | Candle    | Hugging Face safetensors     | Text generation                        | `aidb.llama_config()`         | [`llama_instruct_local`](#llama_instruct_local)    |
-| `llamacpp_generate`    | llama.cpp | GGUF                         | Text generation                        | `jsonb_build_object()`        | [`llamacpp_generate`](#llamacpp_generate)          |
-| `llamacpp_embeddings`  | llama.cpp | GGUF                         | Text embeddings                        | `jsonb_build_object()`        | [`llamacpp_embeddings`](#llamacpp_embeddings)      |
-| `llamacpp_reranking`   | llama.cpp | GGUF                         | Reranking                              | `jsonb_build_object()`        | [`llamacpp_reranking`](#llamacpp_reranking)        |
-| `llamacpp_ocr`         | llama.cpp | GGUF                         | OCR (text extraction from images)      | `jsonb_build_object()`        | [`llamacpp_ocr`](#llamacpp_ocr)                    |
-| `dummy`                | none      | none                         | Testing: returns fake data             | none                          | [Default models](#default-models)                  |
+| Provider                | Runtime      | Model files              | Task                                                              | Config                 | Details                                           |
+|-------------------------|--------------|--------------------------|-------------------------------------------------------------------|------------------------|---------------------------------------------------|
+| `bert_local`            | Candle       | Hugging Face safetensors | Text embeddings                                                   | `aidb.bert_config()`   | [`bert_local`](#bert_local)                       |
+| `clip_local`            | Candle       | Hugging Face safetensors | Text and image embeddings                                         | `aidb.clip_config()`   | [`clip_local`](#clip_local)                       |
+| `t5_local`              | Candle       | Hugging Face safetensors | Text generation and text embeddings                               | `aidb.t5_config()`     | [`t5_local`](#t5_local)                           |
+| `llama_instruct_local`  | Candle       | Hugging Face safetensors | Text generation                                                   | `aidb.llama_config()`  | [`llama_instruct_local`](#llama_instruct_local)   |
+| `llamacpp_generate`     | llama.cpp    | GGUF                     | Text generation                                                   | `jsonb_build_object()` | [`llamacpp_generate`](#llamacpp_generate)         |
+| `llamacpp_embeddings`   | llama.cpp    | GGUF                     | Text embeddings                                                   | `jsonb_build_object()` | [`llamacpp_embeddings`](#llamacpp_embeddings)     |
+| `llamacpp_reranking`    | llama.cpp    | GGUF                     | Reranking                                                         | `jsonb_build_object()` | [`llamacpp_reranking`](#llamacpp_reranking)       |
+| `llamacpp_ocr`          | llama.cpp    | GGUF                     | OCR (text extraction from images)                                 | `jsonb_build_object()` | [`llamacpp_ocr`](#llamacpp_ocr)                   |
+| `onnx_token_classifier` | ONNX Runtime | ONNX                     | Personally identifiable information (PII) detection and redaction | `jsonb_build_object()` | [`onnx_token_classifier`](#onnx_token_classifier) |
+| `dummy`                 | none         | none                     | Testing: returns fake data                                        | none                   | [Default models](#default-models)                 |
 
-For every local provider, the config key that names the Hugging Face repository is `hf_model`. The old key `model` still works but logs a deprecation warning. The Candle config helpers write the key as `model`; to avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead.
+For every local provider, the config key that names the Hugging Face repository is `hf_model`. The old key `model` still works but logs a deprecation warning. The exception is `onnx_token_classifier`, which accepts only `hf_model`. The Candle config helpers write the key as `model`. To avoid the warning, build the config with `jsonb_build_object('hf_model', ...)` instead.
 
 To list the providers registered in your database:
 
@@ -425,6 +426,72 @@ Config keys:
 | `prompt`            | TEXT             | Built-in transcription instruction         | OCR instruction sent with each image. How much it influences the output depends on the model.                   |
 | `temperature`       | DOUBLE PRECISION | 0.0                                        | Sampling temperature.                                                                                           |
 
+## ONNX Runtime provider
+
+The ONNX Runtime provider loads models exported to the ONNX format. Like the llama.cpp providers, it has no config helper. Build `config` with `jsonb_build_object()`.
+
+### `onnx_token_classifier`
+
+Use `onnx_token_classifier` to find PII in text and redact it. The model labels each piece of text it recognizes as PII, such as a name, email address, or account number. AIDB returns these labeled pieces, called spans, or replaces them with placeholders. To call the model, see [PII detection and redaction](../sql-functions/pii-detection).
+
+#### Prerequisites
+
+The AIDB packages install the ONNX Runtime library next to `aidb.so`, and AIDB loads it the first time a session uses an ONNX model. AIDB looks for the library next to `aidb.so` first, then in `/usr/lib/onnxruntime`, then on the system library path. It needs ONNX Runtime 1.27 or later. If the loaded version isn't one EDB has validated (1.27, 1.29, and 1.30), AIDB logs a warning once per session, because a different version may return slightly different results.
+
+#### Registering the model
+
+Tested models, all of them OpenAI's PII detection model, `openai/privacy-filter`:
+
+| `hf_model`              | `onnx_file`                 | Description                               |
+|-------------------------|-----------------------------|-------------------------------------------|
+| `openai/privacy-filter` | `onnx/model_quantized.onnx` | 8-bit weights, fp32 compute. Recommended. |
+| `openai/privacy-filter` | `onnx/model.onnx`           | Full-precision (fp32) weights.            |
+| `openai/privacy-filter` | `onnx/model_q4.onnx`        | 4-bit weights, fp32 compute.              |
+| `openai/privacy-filter` | `onnx/model_q4f16.onnx`     | 4-bit weights, fp16 compute.              |
+
+Quantized weights (8-bit and 4-bit) use less memory than full-precision weights. fp32 and fp16 are the 32-bit and 16-bit floating-point precision used for computation.
+
+All of these variants label `account_number`, `private_address`, `private_date`, `private_email`, `private_person`, `private_phone`, `private_url`, and `secret`.
+
+```sql
+SELECT aidb.create_model(
+    name     => 'pii',
+    provider => 'onnx_token_classifier',
+    config   => jsonb_build_object(
+        'hf_model', 'openai/privacy-filter',
+        'onnx_file', 'onnx/model_quantized.onnx'
+    )
+);
+```
+
+By default (`validate => true`), `aidb.create_model()` downloads the model files and runs a test before it registers the model. `aidb.validate_model('pii')` returns `token classification`.
+
+Config keys:
+
+| Key                | Type    | Default                                                           | Description                                                                                                                                                                   |
+|--------------------|---------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `hf_model`         | TEXT    | Required unless `local_dir` is set                                | Hugging Face repo id, for example, `openai/privacy-filter`. Set either `hf_model` or `local_dir`, not both.                                                                   |
+| `local_dir`        | TEXT    | Required unless `hf_model` is set                                 | Absolute path to a directory with the same files as the Hugging Face repo. Must be a plain copy of the files, not a symlinked Hugging Face cache.                             |
+| `onnx_file`        | TEXT    | Required                                                          | Path of the ONNX graph inside the repo or directory, for example, `onnx/model_quantized.onnx`. Required, because a repo can ship variants with very different resource costs. |
+| `revision`         | TEXT    | `main`                                                            | Hugging Face revision. Ignored with `local_dir`.                                                                                                                              |
+| `cache_dir`        | TEXT    | AIDB's model cache                                                | Local directory for caching downloaded model files. Ignored with `local_dir`.                                                                                                 |
+| `intra_op_threads` | INTEGER | [`aidb.max_threads`](../install/configure#aidbmax_threads)        | Threads ONNX Runtime uses for one inference. Must be greater than 0.                                                                                                          |
+| `window_tokens`    | INTEGER | 1024                                                              | Tokens classified per window. Longer texts are split into windows. Must be greater than 0.                                                                                    |
+| `context_tokens`   | INTEGER | 128                                                               | Extra tokens the model reads on each side of a window, so that PII crossing a window boundary is still found. Can be 0.                                                       |
+| `max_batch_tokens` | INTEGER | One full window                                                   | Cap on the tokens in one inference run, padding included. At least one full window: `window_tokens` + 2 × `context_tokens`, plus the tokenizer's special tokens.              |
+| `viterbi_biases`   | JSONB   | The repo's `viterbi_calibration.json` if present, otherwise all 0 | Decoder settings that trade precision against recall. See `viterbi_biases` in [Setting per-call options](../sql-functions/pii-detection#setting-per-call-options).                                                          |
+
+Make sure your `local_dir` or Hugging Face repo contains:
+
+-   `config.json`, whose `id2label` lists the model's labels in the BIOES scheme: `O`, plus `B-`, `I-`, `E-`, and `S-` labels for each category.
+-   `tokenizer.json`.
+-   The ONNX graph named by `onnx_file`, and the external weight files next to it.
+-   Optionally, `viterbi_calibration.json`, the decoder settings recommended for the model.
+
+Use an ONNX graph that runs on the CPU.
+
+To extract or redact PII with the registered model, see [PII detection and redaction](../sql-functions/pii-detection).
+
 ## Local model downloads
 
 When a local model is used for the first time, or its cached files are missing or corrupt, AIDB downloads the model files from Hugging Face into the configured `cache_dir`.
@@ -487,3 +554,11 @@ aidb.enable_llamacpp_logs = true
 ```
 
 The parameter is read once when the extension initializes, so restart Postgres after changing it. The output is verbose, hundreds of lines per model load, so turn it on only while investigating and off again afterwards. It applies only to llama.cpp models. See [`aidb.enable_llamacpp_logs`](../install/configure#aidbenable_llamacpp_logs).
+
+### ONNX Runtime can't be loaded
+
+If no usable ONNX Runtime library is found, the first call that uses an ONNX model fails with an error that lists each location AIDB tried and why each one failed, for example `not found` or a version older than 1.27. AIDB packages install the library next to `aidb.so`, so this usually means that the package install is incomplete or that the library was removed. If you installed ONNX Runtime yourself, put `libonnxruntime.so` on the system library path. A library installed while Postgres is running is picked up by new sessions.
+
+### `local_dir` looks like a symlinked Hugging Face cache
+
+ONNX Runtime refuses weight files that resolve outside the model's directory, which is how a Hugging Face cache stores them. Copy the files into a plain directory and point `local_dir` at it, or use `hf_model` and let AIDB download the files.
