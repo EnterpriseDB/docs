@@ -1,0 +1,4647 @@
+---
+title: Postgres extensions available by deployment
+product: Postgres extensions available by deployment
+url: https://www.enterprisedb.com/docs/pg_extensions/
+lastModified: 2026-09-30T22:23:49+05:30
+---
+
+# Postgres extensions available by deployment
+
+EDB offers a wide range of Postgres extensions across our various distributions and deployment platforms. Support at EDB means that a support ticket can be filed for any issue encountered while using a listed extension.
+
+The tables on this page outline which extensions are supported for specific Postgres distributions and on which platforms.
+
+Categories of extensions:
+
+- [Open source extensions](#open-source-extensions): Community-maintained extensions that EDB supports for diagnosis and workarounds.
+- [EDB extensions](#edb-extensions): Proprietary extensions developed, documented, and exclusively shipped by EDB to provide advanced enterprise functionality.
+- [EDB supported open-source extensions](#edb-supported-open-source-extensions): Popular open-source projects that EDB packages and ships. EDB often adds custom fixes or features to these versions to ensure enterprise-grade stability and support.
+
+<style>
+{`
+.ext-table {
+  border-collapse: collapse;
+}
+.ext-table thead tr {
+  border: solid 1px;
+}
+.ext-table th,
+.ext-table td {
+  padding: 2px 3px;
+  border: none;
+}
+.ext-table th {
+  font-weight: bold;
+  text-align: center;
+  vertical-align: bottom;
+}
+.ext-table td {
+  font-weight: bold;
+  text-align: center;
+}
+.ext-table td.et-unbold {
+  font-weight: normal;
+}
+.ext-table td.et-indent {
+  padding-left: 1em;
+}
+.ext-table td.et-align-left {
+  text-align: left;
+}
+.ext-table .et-bt {
+  border-top: solid 1px;
+}
+.ext-table .et-bb {
+  border-bottom: solid 1px;
+}
+.ext-table col.et-col-start {
+  border-left: solid 1px;
+}
+.ext-table col.et-col-end {
+  border-right: solid 1px;
+}
+.ext-table .et-subtitle {
+  border: 1px solid;
+  text-align: left;
+}
+.ext-table .et-notes {
+  font-style: italic;
+  font-weight: normal;
+  text-align: left;
+  padding-left: 2em;
+}
+.ext-table .et-yes,
+.ext-table .et-no {
+  margin: 0;
+  font-size: 0;
+}
+.ext-table .et-yes::before {
+  content: "✓";
+  font-size: 1rem;
+  color: green;
+}
+.ext-table .et-no::before {
+  content: "–";
+  font-size: 1rem;
+}
+`}
+</style>
+
+## Open source extensions
+
+<table class="ext-table" data-source="This table was generated automatically. Do not edit it directly without first removing this attribute!" data-section="Open source extensions">
+  <colgroup>
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col class="et-col-end" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">Extension name</th>
+      <th rowspan="2">Requires<br />superuser<br />access</th>
+      <th colspan="4">Virtual Machines/Physical Servers</th>
+      <th colspan="3">Kubernetes</th>
+      <th colspan="3">EDB Postgres® AI Hybrid Manager</th>
+    </tr>
+    <tr>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>WarehousePG</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="et-subtitle" colspan="12">PostgreSQL Contrib Extensions/Modules</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/16/adminpack.html">adminpack</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-notes" colspan="12">adminpack is supported through Postgres 16, but removed in versions 17+</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/amcheck.html">amcheck</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/auth-delay.html">auth_delay</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/auto-explain.html">auto_explain</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/bloom.html">bloom</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/btree-gin.html">btree_gin</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/btree-gist.html">btree_gist</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/citext.html">citext</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/cube.html">cube</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/dblink.html">dblink</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/dict-int.html">dict_int</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/dict-xsyn.html">dict_xsyn</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/earthdistance.html">earthdistance</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/file-fdw.html">file_fdw</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/fuzzystrmatch.html">fuzzystrmatch</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/hstore.html">hstore</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/hstore.html#id-1.11.7.27.11">hstore_plperl</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/hstore.html#id-1.11.7.27.11">hstore_plperlu</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/intagg.html">intagg</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/intarray.html">intarray</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/isn.html">isn</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/datatype-json.html#id-1.5.7.22.20">jsonb_plperl</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/datatype-json.html#id-1.5.7.22.20">jsonb_plperlu</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/lo.html">lo</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/ltree.html">ltree</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/oldsnapshot.html">old_snapshot</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pageinspect.html">pageinspect</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/passwordcheck.html">passwordcheck</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/plpgsql.html">plpgsql</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgbuffercache.html">pg_buffercache</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgfreespacemap.html">pg_freespacemap</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pglogicalinspect.html">pg_logicalinspect</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgprewarm.html">pg_prewarm</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgstatstatements.html">pg_stat_statements</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgsurgery.html">pg_surgery</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgtrgm.html">pg_trgm</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgvisibility.html">pg_visibility</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgwalinspect.html">pg_walinspect</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgcrypto.html">pgcrypto</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgrowlocks.html">pgrowlocks</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pgstattuple.html">pgstattuple</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/postgres-fdw.html">postgres_fdw</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/seg.html">seg</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/sepgsql.html">sepgsql</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/contrib-spi.html">spi</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/contrib-spi.html#id-1.11.7.50.6">autoinc</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/contrib-spi.html#id-1.11.7.50.7">insert_username</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/contrib-spi.html#id-1.11.7.50.8">moddatetime</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/contrib-spi.html#id-1.11.7.50.5">refint</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/sslinfo.html">sslinfo</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/tablefunc.html">tablefunc</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/tcn.html">tcn</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/test-decoding.html">test_decoding</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/tsm-system-rows.html">tsm_system_rows</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/tsm-system-time.html">tsm_system_time</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/unaccent.html">unaccent</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/uuid-ossp.html">uuid-ossp</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/xml2.html">xml2</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">PostgreSQL Non-Contrib Extensions/Modules</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/apache_age/">age</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-notes" colspan="12">Apache AGE</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/RhodiumToad/ip4r">ip4r</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/orafce/orafce">orafce</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pg_anonymizer/">pg_anonymizer</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/citusdata/pg_cron">pg_cron</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pg_failover_slots/">pg_failover_slots</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pg_ivm/">pg_ivm</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/cybertec-postgresql/pg_permissions">pg_permissions</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pg_squeeze/">pg_squeeze</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://ossc-db.github.io/pg_store_plans/">pg_store_plans</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.pgaudit.org/">pgaudit</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/pglogical2/">pglogical 2.x</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pgvector/">pgvector</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/plperl.html">plperl</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/plperl-trusted.html">plperlu</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/plperl-funcs.html">bool_plperl</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/plperl-funcs.html">bool_plperlu</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/plpython.html">plpythonu</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-notes" colspan="12">default is 2u for 11-14 and 3u for 15</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent">hstore_plpythonu</td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent">jsonb_plpythonu</td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent">ltree_plpythonu</td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/11/plpython-python23.html">plpython2u</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-notes" colspan="12">11-14</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/11/hstore.html#id-1.11.7.25.10">hstore_plpython2u</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/11/datatype-json.html#id-1.5.7.22.18">jsonb_plpython2u</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/11/ltree.html#id-1.11.7.30.8">ltree_plpython2u</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/plpython.html">plpython3u</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-notes" colspan="12">11-15</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/hstore.html#id-1.11.7.27.11">hstore_plpython3u</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/datatype-json.html#id-1.5.7.22.20">jsonb_plpython3u</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/ltree.html#id-1.11.7.32.9">ltree_plpython3u</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.postgresql.org/docs/current/pltcl.html">pltcl</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left et-indent"><a href="https://www.postgresql.org/docs/current/pltcl-overview.html">pltclu</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/plv8/plv8">plv8</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pgtt/">pg global temporary tables</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-notes" colspan="12">pgtt</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/pgaudit/set_user">set_user</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/EnterpriseDB/sslutils">sslutils</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/system_stats/">system_stats</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://docs.tigerdata.com/about/latest/timescaledb-editions/#timescaledb-apache-2-edition">timescaledb</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-notes" colspan="12">Apache 2 Edition</td>
+    </tr>
+    <tr>
+      <td class="et-bb et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/wal2json/">wal2json</a></td>
+      <td class="et-bb et-unbold"></td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+## EDB extensions
+
+<table class="ext-table" data-source="This table was generated automatically. Do not edit it directly without first removing this attribute!" data-section="EDB extensions">
+  <colgroup>
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col class="et-col-end" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">Extension name</th>
+      <th rowspan="2">Requires<br />superuser<br />access</th>
+      <th colspan="4">Virtual Machines/Physical Servers</th>
+      <th colspan="3">Kubernetes</th>
+      <th colspan="3">EDB Postgres® AI Hybrid Manager</th>
+    </tr>
+    <tr>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>WarehousePG</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/otel/">edb_otel</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/">edb_pg_tuner</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/query_advisor/">edb_query_advisor</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/edb_stat_monitor/">edb_stat_monitor</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/wait_states/">edb_wait_states</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/sqlprofiler/">sql_profiler</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">EDB Storage Pack</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/">autocluster</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/">bluefin</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/">refdata</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">EDB Postgres Advanced Server extensions</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/05_dbms_job/">dbms_job</a></td>
+      <td class="et-unbold"></td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/15_dbms_scheduler/">dbms_scheduler</a></td>
+      <td class="et-unbold"></td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/edb_job_scheduler/">edb_job_scheduler</a></td>
+      <td class="et-unbold"></td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/epas/latest/database_administration/14_edb_clone_schema/">edb_cloneschema</a></td>
+      <td class="et-unbold"></td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">edb_dblink_libpq</td>
+      <td class="et-unbold"></td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">edb_dblink_oci</td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">edb_dbo</td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/epas/latest/application_programming/epas_compat_spl/02_spl_programs/">edbspl</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/spl_check/">spl_check</a></td>
+      <td class="et-unbold"></td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">parallel_clone</td>
+      <td class="et-unbold"></td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">EDB Postgres Distributed extensions</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pgd/5.9/">bdr 5.x</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pgd/latest/">bdr 6.x</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">AI and Analytics Extensions</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/">aidb</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/">pgfs</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-bb et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pgaa/latest/">pgaa</a></td>
+      <td class="et-bb et-unbold">Yes</td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+## EDB supported open source extensions
+
+<table class="ext-table" data-source="This table was generated automatically. Do not edit it directly without first removing this attribute!" data-section="EDB supported open source extensions">
+  <colgroup>
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col class="et-col-end" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">Extension name</th>
+      <th rowspan="2">Requires<br />superuser<br />access</th>
+      <th colspan="4">Virtual Machines/Physical Servers</th>
+      <th colspan="3">Kubernetes</th>
+      <th colspan="3">EDB Postgres® AI Hybrid Manager</th>
+    </tr>
+    <tr>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>WarehousePG</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="et-subtitle" colspan="12">Postgres Geospatial</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/pg_extensions/pgrouting/">pgrouting</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/postgis/latest/">postgis</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">postgis_raster</td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">postgis_sfcgal</td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">postgis_tiger_geocoder</td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left">postgis_topology</td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://postgis.net/docs/manual-2.5/Address_Standardizer.html">address_standardizer</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://postgis.net/docs/manual-2.5/Address_Standardizer.html">address_standardizer_data_us</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">Pgpool</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.pgpool.net/docs/latest/en/html/pgpool-adm.html">pgpool_adm</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.pgpool.net/docs/42/en/html/install-pgpool-recovery.html">pgpool_recovery</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">PLdebugger</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/EnterpriseDB/pldebugger">pldbgapi</a></td>
+      <td class="et-unbold"></td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-subtitle" colspan="12">Foreign Data Wrappers</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/EnterpriseDB/hdfs_fdw">hdfs_fdw</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://github.com/Percona-Lab/mongodb_fdw">mongo_fdw</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-no">no</p>
+      </td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="et-bb et-unbold et-align-left"><a href="https://github.com/EnterpriseDB/mysql_fdw">mysql_fdw</a></td>
+      <td class="et-bb et-unbold">Yes</td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-no">no</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+## WarehousePG Contrib Extensions
+
+<table class="ext-table" data-source="This table was generated automatically. Do not edit it directly without first removing this attribute!" data-section="WarehousePG Contrib Extensions">
+  <colgroup>
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col />
+    <col class="et-col-start" />
+    <col />
+    <col class="et-col-end" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2">Extension name</th>
+      <th rowspan="2">Requires<br />superuser<br />access</th>
+      <th colspan="4">Virtual Machines/Physical Servers</th>
+      <th colspan="3">Kubernetes</th>
+      <th colspan="3">EDB Postgres® AI Hybrid Manager</th>
+    </tr>
+    <tr>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>WarehousePG</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+      <th>PostgreSQL</th>
+      <th>EDB<br />Postgres<br />Extended<br />Server</th>
+      <th>EDB<br />Postgres<br />Advanced<br />Server</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/">gp_debug_numsegments</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/system_catalogs/system_catalogs_definitions/gp_distribution_policy/">gp_distribution_policy</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/gp_exttable_fdw/">gp_exttable_fdw</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/">gp_inject_fault</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/">gp_internal_tools</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/gp_legacy_string_agg/">gp_legacy_string_agg</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/">gp_replica_check</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/gp_sparse_vector/">gp_sparse_vector</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/gp_toolkit/">gp_toolkit</a></td>
+      <td class="et-unbold">Yes</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>
+        <p class="et-yes">yes</p>
+      </td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+      <td>n/a</td>
+    </tr>
+    <tr>
+      <td class="et-bb et-unbold et-align-left"><a href="https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/bundled/pg_hint_plan/">pg_hint_plan</a></td>
+      <td class="et-bb et-unbold">Yes</td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">
+        <p class="et-yes">yes</p>
+      </td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">n/a</td>
+      <td class="et-bb">n/a</td>
+    </tr>
+  </tbody>
+</table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

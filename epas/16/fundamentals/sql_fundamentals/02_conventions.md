@@ -1,0 +1,26 @@
+---
+title: Conventions used
+description: Provides information about the conventions used in the documentation
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/fundamentals/sql_fundamentals/02_conventions/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# Conventions used
+
+<div id="conventions" class="registered_link"></div>
+
+The conventions used in the documentation described here apply to both Linux and Windows systems.
+
+Directory paths are presented in the Linux format with forward slashes. When working on Windows systems, start the directory path with the drive letter followed by a colon, and substitute back slashes for forward slashes.
+
+Some of this information might apply interchangeably to the PostgreSQL and EDB Postgres Advanced Server database systems. The term _EDB Postgres Advanced Server_ is used to refer to EDB Postgres Advanced Server. The term _Postgres_ is used to generically refer to both PostgreSQL and EDB Postgres Advanced Server. When a distinction must be made between these two database systems, the specific names—PostgreSQL or EDB Postgres Advanced Server—are used.
+
+The installation directory path of the PostgreSQL or EDB Postgres Advanced Server products is referred to as _POSTGRES\_INSTALL\_HOME_.
+
+- For EDB Postgres Advanced Server Linux installations performed using the interactive installer for version 10 and earlier, the default is `/opt/edb/asx.x`.
+- For EDB Postgres Advanced Server Linux installations performed using an RPM package, the default is `/usr/edb/as<xx>` where `<xx>` is the EDB Postgres Advanced Server version number.
+- For EDB Postgres Advanced Server Windows installations, the default is `C:\Program Files\edb\as<xx>`. The product version number is represented by `x.x` or by `xx` for version 10 and later.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

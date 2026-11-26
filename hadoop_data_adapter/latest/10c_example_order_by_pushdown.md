@@ -1,0 +1,101 @@
+---
+title: "Example: ORDER BY pushdown "
+product: Hadoop Data Adapter
+version: "2"
+url: https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/10c_example_order_by_pushdown/
+lastModified: 2025-05-27T22:04:19Z
+---
+
+# Example: ORDER BY pushdown&#x20;
+
+This example shows ORDER BY pushdown between the foreign tables of the same remote HIVE/SPARK server as the remote HIVE/SPARK server.
+
+Tables on HIVE/SPARK server:
+
+```sql
+0: jdbc:hive2://localhost:10000> describe emp;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| empno     | int        | NULL     |
+| ename     | string     | NULL     |
+| job       | string     | NULL     |
+| mgr       | int        | NULL     |
+| hiredate  | date       | NULL     |
+| sal       | int        | NULL     |
+| comm      | int        | NULL     |
+| deptno    | int        | NULL     |
++-----------+------------+----------+--+
+8 rows selected (0.747 seconds)
+0: jdbc:hive2://localhost:10000> describe dept;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| deptno    | int        | NULL     |
+| dname     | string     | NULL     |
+| loc       | string     | NULL     |
++-----------+------------+----------+--+
+3 rows selected (0.067 seconds)
+```
+
+Tables on Postgres server:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION hdfs_fdw;
+
+-- create server object
+CREATE SERVER hdfs_server FOREIGN DATA WRAPPER hdfs_fdw OPTIONS(host 'localhost', port '10000', client_type 'spark', auth_type 'LDAP');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER hdfs_server OPTIONS (username 'user1', password 'pwd123');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (
+    empno           INTEGER,
+    ename           VARCHAR(10),
+    job             VARCHAR(9),
+    mgr             INTEGER,
+    hiredate        DATE,
+    sal             INTEGER,
+    comm            INTEGER,
+    deptno          INTEGER
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'emp');
+```
+
+Enable/disable GUC for ORDER BY pushdown queries at the session level:
+
+```sql
+edb=# SET hdfs_fdw.enable_order_by_pushdown TO ON;
+SET
+edb=# EXPLAIN (COSTS OFF) SELECT * FROM emp order by deptno;
+```
+
+```output title="Output"
+     QUERY PLAN      
+---------------------
+ Foreign Scan on emp
+(1 row)
+```
+
+```sql
+edb=# SET hdfs_fdw.enable_order_by_pushdown TO OFF;
+SET
+edb=# EXPLAIN (COSTS OFF) SELECT * FROM emp order by deptno;
+```
+
+```output title="Output"
+        QUERY PLAN         
+---------------------------
+ Sort
+   Sort Key: deptno
+   ->  Foreign Scan on emp
+(3 rows)
+```
+
+> **Note**
+>
+> You can also enable/disable ORDER BY pushdown at the server/table level using a GUC. For more information, see [create server](https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/configuring/#create-server) and [create foreign table](https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/configuring/#create-foreign-table).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

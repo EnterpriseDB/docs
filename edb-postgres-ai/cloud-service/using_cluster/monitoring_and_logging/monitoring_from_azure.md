@@ -1,0 +1,131 @@
+---
+title: Viewing metrics and logs from Azure
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/monitoring_and_logging/monitoring_from_azure/
+lastModified: 2025-04-24T09:25:05+05:30
+---
+
+# Viewing metrics and logs from Azure
+
+Cloud Service sends all metrics and logs from Postgres clusters to Azure. You can view metrics and logs directly from Azure.
+
+## Azure log analytics
+
+When Cloud Service deploys workloads on Azure, the logs from the Postgres clusters are forwarded to the Azure Log Workspace. To query Cloud Service logs, you must use [Azure log analytics](https://docs.microsoft.com/en-us/azure/azure-monitor/logs/log-analytics-overview) and [Kusto query language](https://azure-training.com/azure-data-science/the-kusto-query-language/).
+
+### Query Postgres cluster logs
+
+All logs from your Postgres clusters are stored in the Customer Log Analytics workspace. To find your Customer Log Analytics workspace:
+
+1. Sign in to the [Azure portal](https://portal.azure.com).
+
+2. Select **Resource Groups**.
+
+3. Select the resource group corresponding to the region where you choose to deploy your Cloud Service cluster. You see resources included in that resource group.
+
+4. Select the resource of type **Log Analytics workspace** with the prefix `log-workspace-`.
+
+5. Select the logs in the menu on the left in the **General** section.
+
+6. Close the dashboard with prebuilt queries, which brings you to the KQL editor.
+
+The following tables containing Cloud Service logs are available in the Customer Log Analytic workspace.
+
+| Table name            | Description                                                         | Logger                          |
+| --------------------- | ------------------------------------------------------------------- | ------------------------------- |
+| PostgresLogs\_CL      | Logs of the customer clusters databases (all Postgres-related logs) | `logger = postgres`             |
+| PostgresAuditLogs\_CL | Audit logs of the customer clusters databases                       | `logger = pgaudit or edb_audit` |
+
+Logs are split into structured fields matching those of the Postgres
+[csvlog format](https://www.postgresql.org/docs/current/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-CSVLOG)
+with a `record_` prefix and a type suffix. For example, the `application_name`
+is in the `record_application_name_s` log field. The `pg_cluster_id_s` field identifies the specific Postgres cluster that originated the log message.
+
+You can use the KQL Query editor to compose your queries over these tables. For example:
+
+```
+PostgresLogs_CL
+| project record_log_time_s, record_error_severity_s, record_detail_s
+| sort by record_log_time_s desc
+
+PostgresAuditLogs_CL
+| where logger_s == "pgaudit"
+| project record_log_time_s, record_error_severity_s, record_audit_statement_s
+| sort by record_log_time_s desc
+
+PostgresAuditLogs_CL
+| where logger_s == "edb_audit"
+| project record_log_time_s, record_error_severity_s, record_message_s
+| sort by record_log_time_s desc
+```
+
+## Metrics
+
+Cloud Service collects a wide set of metrics about Postgres instances into the `DpMetrics_CL` log analytics table. Most of these metrics are acquired directly from Postgres system tables, views, and functions. The Postgres documentation serves as the main reference for these metrics.
+
+### Available metrics
+
+The following tables in the Customer Log Analytic workspace contain metrics
+specific to Cloud Service.
+
+| Table name    | Description                                   |
+| ------------- | --------------------------------------------- |
+| DpMetrics\_CL | Metrics streams from Cloud Service Prometheus |
+
+You can use the KQL Query editor in the Log Workspace view to compose queries
+over these tables.
+
+The forwarded Prometheus metrics use structured JSON fields, particularly the `Message` and `Message.labels` fields. To query these fields, you need to use the KQL function
+[`todynamic()`](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/parsejsonfunction)
+in your queries.
+
+Currently, all metrics forwarded from Prometheus are in the `DpMetrics_CL` table. This might change in a future release.
+
+The available set of metrics is subject to change. Metrics might be added, removed or renamed. Where feasible, we will change the metric name when the meaning or type of an existing metric changes.
+
+### Metrics labels
+
+All Postgres metrics share a common labeling scheme. Entries generally have at least the following labels.
+
+| Name               | Description                                                       |
+| ------------------ | ----------------------------------------------------------------- |
+| instance           | IP address of the host the metric originated from                 |
+| postgresql         | Cloud Service postgres cluster identifier, e.g., `p-abcdef012345` |
+| role               | Postgres instance role: primary or standby replica                |
+| datname            | Postgres database name (where applicable)                         |
+| pod                | k8s pod name                                                      |
+| aks\_cluster\_name | AKS cluster name                                                  |
+
+When querying for labels, for best performance, apply filters that don't require inspecting labels (for example, filters by metric name) before label-based filters.
+
+The `labels` field of a metrics entry is a nested field under the JSON-typed `Message` field. To query the field for individual values, you JSON parse the `Message` field and dot reference (`m.labels`) the labels property. Some uses of values might require explicit casts to another type, for example, `tostring(...)`.
+
+Example usage:
+
+```
+DpMetrics_CL
+| where Message has "cnp_"
+| extend m = todynamic(Message)
+| where m.labels.role == "primary"
+| project postgres_cluster_id = tostring(m.labels.postgresql), metric_name = m.name, metric_value = m.value
+```
+
+For a detailed list of available metrics, see [metrics](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/monitoring_and_logging/metrics/).
+
+## Workbooks
+
+You can view logs from your Postgres clusters using Azure Workbooks. See [Azure Monitor Workbooks](https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview).
+
+To access Azure Workbooks:
+
+1. Sign in to the [Azure portal](https://portal.azure.com).
+
+2. Search for `workbooks`.
+
+3. Filter the search results as needed. For example, you might need to filter by subscription if your account has more than one and the location that corresponds with the region where you deployed your cluster. You can either use the filter controls or search to narrow the search results.
+
+4. Select the workbook link in the **Name** column to open the workbook details. Names have the format `${GUID} (xxx-rg-${region}-management-xxx-customer)`, for example, `62b6d449-e0e5-480a-9809-cae2ff6510e9 (123-rg-australiaeast-management-abcd-customer)`.
+
+5. Select **Open Workbook** in the workbook details to launch an interactive workbook with various metrics for your deployed clusters.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

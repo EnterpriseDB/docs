@@ -1,0 +1,54 @@
+---
+title: Delegation
+description: Let one AIDB agent hand off part of a request to another named agent.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/agents/delegation/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Delegation
+
+An agent can hand off part of a request to another agent instead of (or alongside) calling tools directly. List the other agent's name in `delegates` when you [create or update](https://www.enterprisedb.com/docs/aidb/latest/agents/creating-agents/) it:
+
+```sql
+SELECT aidb.create_agent(
+    name         => 'sql_specialist',
+    instructions => 'You answer questions about the orders and customers tables precisely.',
+    model        => 'my_gpt',
+    tools        => ARRAY['run_sql_query']
+);
+
+SELECT aidb.create_agent(
+    name         => 'help_desk',
+    instructions => 'You help users with general questions, delegating data questions to the SQL specialist.',
+    model        => 'my_gpt',
+    delegates    => ARRAY['sql_specialist']
+);
+
+SELECT * FROM aidb.agent_converse('help_desk', 'How many orders came in last week?');
+```
+
+## Presenting delegates to the model
+
+Each configured delegate becomes an ordinary function-call tool, named after the delegate agent, with two arguments: `prompt` (required — the request to hand off) and `conversation_id` (optional — see [continuing a delegate conversation](#continuing-a-delegate-conversation) below). The delegate's own `instructions` become that tool's description, so the delegating model sees them as "what this delegate is for" — write an agent's instructions with that dual purpose in mind if you expect it to be delegated to.
+
+A delegate name must not collide with one of the agent's own `tools`, and it's validated to be a currently-registered agent at `create_agent`/`update_agent` time, the same as `tools` is.
+
+## Continuing a delegate conversation
+
+Calling a delegate returns an object with `answer` and `conversation_id`. The model can pass that `conversation_id` back on a later delegate call in the same or a future `agent_converse` run to continue that specific delegate conversation — with its own prior history — instead of starting fresh each time. Omitting it (the common case) starts a new conversation with the delegate on every call.
+
+## Propagating behavior across a handoff
+
+- **Read-only mode propagates.** If the delegating run is [read-only](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#read-only-mode), the delegate's own sub-call is forced read-only too — a read-only agent can't use delegation to reach a write through another agent. A read-only delegate call always returns `conversation_id: null` and can't be continued.
+- **Debug mode propagates.** If the top-level call passed `debug => true`, the delegate's own actions are emitted as `NOTICE` messages too.
+- **The delegating agent's resolved role always propagates.** A delegate runs under whatever role the delegating agent resolved to (its own [purpose](https://www.enterprisedb.com/docs/aidb/latest/governance/purposes/), or the calling user if it has none) — never its own configured purpose. See [Delegation](https://www.enterprisedb.com/docs/aidb/latest/governance/enforcement/#delegation) for why: a restricted agent can't use delegation to reach a role less restrictive than its own.
+- **Token and iteration budgets don't propagate.** Each delegate call gets its own token and iteration budgets, from its own configuration.
+- **The timeout propagates.** A delegate stops at its own timeout or at the parent's deadline, whichever comes first. For example, a delegate configured for 60 seconds gets at most 10 seconds if the parent has 10 seconds left.
+
+## Delegation depth
+
+Delegation chains are capped at 10 levels deep (a chain of agents, each delegating to the next). This exists mainly to fail fast on a cycle — one agent delegating back to itself, or two agents delegating back and forth — rather than recursing until Postgres's stack depth check aborts the backend. Hitting the limit stops the task immediately with an error; it isn't retried the way an ordinary tool failure might be.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

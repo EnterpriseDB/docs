@@ -1,0 +1,84 @@
+---
+title: Supported database types
+description: Overview of the different database types supported by Hybrid Manager, including their key characteristics and use cases.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/database_types/
+lastModified: 2026-10-21T00:19:17Z
+---
+
+# Supported database types
+
+Selecting the right cluster topology when creating new Postgres clusters in Hybrid Manager (HM) is crucial for optimizing your database environment. EDB offers a wide range of solutions, each tailored for different needs, from basic single-node deployments to highly resilient distributed solutions.
+
+## Cluster topology feature comparison
+
+| Feature               | Single node    | High availability            | Distributed high availability (DHA) |
+| --------------------- | -------------- | ---------------------------- | ----------------------------------- |
+| Data nodes            | 1              | 2-3                          | 3-6+ (multi-region)                 |
+| Replication           | No             | Physical streaming           | Logical (PGD)                       |
+| Automatic failover    | No             | Yes                          | Yes                                 |
+| Read replicas         | No             | Yes                          | Yes (shadow nodes)                  |
+| Multi-region          | No             | No                           | Yes                                 |
+| Active-active writes  | No             | No                           | Yes                                 |
+| PGD required          | No             | No                           | Yes                                 |
+| RPO                   | Last backup    | Near-zero (sync replication) | Zero (sync) to seconds (async)      |
+| RTO                   | Manual restore | Seconds (auto-failover)      | Seconds (within region)             |
+| Operator              | CNP            | CNP                          | PGD (PG4K-PGD)                      |
+| Default backup method | Barman         | Volume snapshot              | Barman (scheduled)                  |
+| Use case              | Dev/test       | Production HA                | Mission-critical multi-region       |
+
+## Single node
+
+A single-node deployment consists of a single Postgres database instance running without any standby or replica servers. This is the simplest configuration and is suitable for non-critical workloads or development environments.
+
+Select this option for:
+
+- Development and testing environments where high availability isn't a concern.
+- Proof-of-concept deployments.
+- Non-critical applications that can tolerate downtime for maintenance or upgrading, or in case of failure.
+- Use cases that prioritize simplicity and minimal infrastructure cost above all else.
+- Small-scale applications with low traffic and data volume.
+
+## High availability
+
+High-availability (HA) primary/standby configurations typically involve a primary database server and one or more standby (replica) servers. The standby servers continuously receive data changes from the primary, ready to take over if the primary fails. This setup uses physical streaming replication.
+
+Select this option if your:
+
+- Applications require data durability and continuous service with minimal downtime, and strict active-active multi-master isn't a requirement.
+- Use cases have read-heavy workloads that can benefit from offloading queries to hot standby replicas via a dedicated [read-only connection endpoint](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/cluster-settings/#connections-read-only).
+
+## Distributed high availability
+
+Distributed high-availability (DHA) clusters are powered by EDB Postgres Distributed (PGD) and leverage multi-master logical replication. This architecture enables true active-active solutions across multiple regions, providing the highest levels of availability and resilience.
+
+Select this option if your:
+
+- Organization requires ultra-high availability and near-zero downtime.
+- Applications demand distributed deployments with low latency access for users.
+- Business has mission-critical applications where continuous operation and data consistency across multiple active nodes are paramount.
+- Scenarios require uninterrupted online database maintenance and in-place major version upgrades without impacting availability.
+
+## Choosing the right topology
+
+Use this decision flow to select your cluster type:
+
+1. **Determine availability requirements** — If downtime is acceptable, such as for development and testing, choose single node. If you need automatic failover, proceed to the next step.
+2. **Determine location requirements** — If all data must stay in one region, choose high availability. If you need multi-region or active-active writes, choose distributed high availability.
+3. **Determine operational requirements** — Compare the operational needs of each option:
+
+   - **HA** — Applications requiring data durability and continuous availability, read-heavy workloads that benefit from hot standby replicas, and standard production deployments where active-active isn't required.
+   - **DHA** — Mission-critical applications requiring ultra-high availability and near-zero downtime, low-latency access across geographic regions, active-active write requirements across locations, and online maintenance and in-place major version upgrades without downtime.
+
+## Cluster type architectures
+
+- [Single node](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/database_types/single_node/)
+- [High availability](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/database_types/primary_standby_highavailability/)
+- [Distributed high availability](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/database_types/distributed_highavailability/)
+
+* [Single node](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/database_types/single_node/): Single-node clusters are designed for nonproduction use cases where high availability isn't a primary concern.
+* [High availability](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/database_types/primary_standby_highavailability/): Primary/standby high-availability clusters are designed to minimize downtime in cases of failures.
+* [Distributed high availability](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/database_types/distributed_highavailability/): Distributed high-availability clusters are powered by EDB Postgres Distributed and are designed to provide high availability across multiple data groups.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

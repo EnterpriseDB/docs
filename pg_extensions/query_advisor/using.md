@@ -1,0 +1,160 @@
+---
+title: Using EDB Query Advisor
+product: EDB Query Advisor
+url: https://www.enterprisedb.com/docs/pg_extensions/query_advisor/using/
+lastModified: 2025-03-19T13:36:24-04:00
+---
+
+# Using EDB Query Advisor
+
+EDB Query Advisor defines functions and views.
+
+## Functions
+
+### query\_advisor\_index\_recommendations(min\_filter, min\_selectivity)
+
+Performs a global index suggestion.
+
+By default, only predicates filtering at least 1000 rows and 30% of the rows in average are considered. You can use the `min_filter` and `min_selectivity` parameters to override the default.
+
+The function generates the one- and two-column index candidates based on the predicates it collects. It replans all related workload queries in the presence of the hypothetical index with respect to each candidate. It recommends the list of indexes that bring the most value to the workload. It also shows the estimated index size, estimated percentage cost reduction, total cost, absolute benefit, and query IDs of the benefited queries in the workload. Based on the size and benefit ratio, you can determine the indexes that are the most useful for you.
+
+For example:
+
+```sql
+# running as postgres user
+select * from query_advisor_index_recommendations();
+```
+
+```output title="Output"
+                     index                     | estimated_size_in_bytes | estimated_pct_cost_reduction | total_cost | abs_benefit |   benefited_queryids   
+-----------------------------------------------+-------------------------+------------------------------+------------+-------------+------------------------
+ CREATE INDEX ON public.test USING btree (a);  |                 2605056 |                     49.87271 |       3386 |     1688.69 | {-4599253246525795071}
+ CREATE INDEX ON public.test1 USING btree (a); |                 2605056 |                     49.87271 |       3386 |     1688.69 | {28196068180564065}
+(3 rows)
+```
+
+### query\_advisor\_statistics\_recommendations(min\_err\_estimate\_num, min\_err\_estimate\_ratio)
+
+Recommends potentially useful extended statistics by analyzing the statistics collected from the quals of user queries.
+
+By default, `min_err_estimate_num` and `min_err_estimate_ratio` are set to `0`. You can use the `min_err_estimate_num` and `min_err_estimate_ratio` parameters to override the default.
+
+The function generates potential candidates from the multi-column filters of your queries. Then, these candidates are processed by exploring different possible combinations. Currently the focus is on statistics for two columns at a time.
+
+It also shows the weights to each candidate. Weights are based on how many queries would benefit from those extended statistics and what the execution cost of the queries would be. It shows query IDs of the benefited queries for which the recommendations are beneficial.
+
+For example:
+
+```sql
+# running as postgres user
+select * from query_advisor_statistics_recommendations();
+```
+
+```output title="Output"
+                       statistics                       |  weight  |                       benefited_queryids                       
+--------------------------------------------------------+----------+----------------------------------------------------------------
+ CREATE STATISTICS test1_a_b ON a, b FROM public.test1; |  7506.09 | {238391330592834993}
+ CREATE STATISTICS test_a_b ON a, b FROM public.test;   | 15012.09 | {6121296315499460229,-4518452432473118207,238391330592834993}
+ CREATE STATISTICS test_a_c ON a, c FROM public.test;   | 15012.09 | {-3664340941915161122,-4518452432473118207,238391330592834993}
+ CREATE STATISTICS test_b_c ON b, c FROM public.test;   | 11384.09 | {-4518452432473118207,238391330592834993}
+(3 rows)
+```
+
+### query\_advisor\_qualstat
+
+Returns the counts for every qualifier identified by the expression hash. This hash identifies each expression.
+
+| Qualifier        | Description                                                                                                                                                                                  |   |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | - |
+| userid           | ID of the user who executed the query.                                                                                                                                                       |   |
+| dbid             | ID of the database in which the query was executed.                                                                                                                                          |   |
+| lrelid, lattnum  | ID of the relation and attribute number of the VAR on the left side, if any.                                                                                                                 |   |
+| opno             | ID of the operator used in the expression.                                                                                                                                                   |   |
+| rrelid, rattnum  | ID of the relation and attribute number of the VAR on the right side, if any.                                                                                                                |   |
+| qualid           | Normalized identifier of the parent AND expression, if any. This identifier is computed excluding the constants. This qualifier is useful for identifying predicates that are used together. |   |
+| uniquequalid     | Unique identifier of the parent AND expression, if any. This identifier is computed including the constants.                                                                                 |   |
+| qualnodeid       | Normalized identifier of this simple predicate. This identifier is computed excluding the constants.                                                                                         |   |
+| uniquequalnodeid | Unique identifier of this simple predicate. This identifier is computed including the constants.                                                                                             |   |
+| occurrences      | Number of times this predicate was invoked, that is, number of related query execution.                                                                                                      |   |
+| execution\_count | Number of times this predicate was executed, that is, the number of rows it processed.                                                                                                       |   |
+| nbfiltered       | Number of tuples this predicate discarded.                                                                                                                                                   |   |
+| queryid          | Query identifier.                                                                                                                                                                            |   |
+| eval\_typ        | The evaluation type: `f` for a predicate evaluated after a scan or `i` for an index predicate.                                                                                               |   |
+
+For example:
+
+```
+# running as postgres user
+select * from query_advisor_qualstats();
+```
+
+```output title="Output"
+| userid | dbid | lrelid | lattnum | opno | rrelid | rattnum | qualid | uniquequalid | qualnodeid | uniquequalnodeid | occurrence | execution_count | nbfiltered | min_err_estimate_ratio | max_err_estimate_ratio | mean_err_estimate_ratio | stddev_err_estimate_ratio | min_err_estimate_num | max_err_estimate_num | mean_err_estimate_num | stddev_err_estimate_num |       queryid        | eval_type |
++--------+------+--------+---------+------+--------+---------+--------+--------------+------------+------------------+------------+-----------------+------------+------------------------+------------------------+-------------------------+---------------------------+----------------------+----------------------+-----------------------+-------------------------+----------------------+-----------+
+| 10     | 5    | 16501  | 1       | 96   |        |         |        |              | 262905824  | 262905824        | 1          | 3000000         | 2999997    | 3                      | 3                      | 3                       | 0                         | 2                    | 2                    | 2                     | 0                       | -3469822585968758916 | f         |
+
+```
+
+### query\_advisor\_workload\_queries
+
+Returns all the stored query texts.
+
+### query\_advisor\_qualstats\_memory\_usage
+
+Returns the percentage usage of the workload and qualifier hash table.
+
+### query\_advisor\_qualstats\_reset
+
+Resets the internal counters and forgets about every encountered qualifier and workload entry.
+
+## Views
+
+The extension defines the following views on top of the `pg_qualstats` function.
+
+### query\_advisor\_qualstats
+
+Filters calls to `query_advisor_qualstats()` by the current database.
+
+### query\_advisor\_qualstats\_pretty
+
+Performs the appropriate joins to display a readable, aggregated form for every attribute from the query\_advisor\_qualstats view.
+
+For example:
+
+```
+# running as ro user
+
+select * from query_advisor_qualstats_pretty;
+```
+
+```output title="Output"
+ left_schema |    left_table    | left_column |   operator   | right_schema | right_table | right_column | occurrences | execution_count | nbfiltered
+------------+------------------+-------------+--------------+--------------+-------------+--------------+------------+-----------------+------------
+ public     | pgbench_accounts | aid         | pg_catalog.= |              |             |              |          5 |         5000000 |    4999995
+ public     | pgbench_tellers  | tid         | pg_catalog.= |              |             |              |         10 |        10000000 |    9999990
+ public     | pgbench_branches | bid         | pg_catalog.= |              |             |              |         10 |         2000000 |    1999990
+ public     | t1               | id          | pg_catalog.= | public       | t2          | id_t1        |          1 |           10000 |       9999
+```
+
+### query\_advisor\_statistics\_recommendations
+
+Skips the weight column from `query_advisor_statistics_recommendations`.
+
+For example:
+
+```sql
+# running as postgres user
+select * from query_advisor_statistics_recommendations;
+```
+
+```output title="Output"
+|                             statistics                                                 |
++----------------------------------------------------------------------------------------+
+| CREATE STATISTICS part_p_brand_p_container ON p_brand, p_container FROM public.part;          |
+| CREATE STATISTICS part_p_brand_p_type ON p_brand, p_type FROM public.part;                    |
+| CREATE STATISTICS part_p_brand_p_size ON p_brand, p_size FROM public.part;                    |
+(3 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,35 @@
+---
+title: Performing a minor version update of an RPM installation
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/upgrading/05_performing_a_minor_version_update_of_an_rpm_installation/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# Performing a minor version update of an RPM installation
+
+If you used an RPM package to install EDB Postgres Advanced Server or its supporting components, you can use `yum` to perform a minor version upgrade to a more recent version. To review a list of the package updates that are available for your system, open a command line, assume root privileges, and enter the command:
+
+```text
+yum check-update <package_name>
+```
+
+Where `package_name` is the search term for which you want to search for updates. You can include wildcard values in the search term. To use `yum update` to install an updated package, use the command:
+
+```text
+yum update <package_name>
+```
+
+Where `package_name` is the name of the package you wish to update. Include wild-card values in the update command to update multiple related packages with a single command. For example, use the following command to update all packages whose names include the expression `edb`:
+
+```text
+yum update edb*
+```
+
+> **Note**
+>
+> The `yum update` command performs an update only between minor releases; to update between major releases, you must use `pg_upgrade`.
+
+For more information about using yum commands and options, enter `yum --help` on your command line.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

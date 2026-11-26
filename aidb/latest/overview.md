@@ -1,0 +1,54 @@
+---
+title: AIDB overview
+description: Core concepts for AIDB — pipelines, knowledge bases, agents, tools, model integration, and how the pieces fit together.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/overview/
+lastModified: 2026-10-14T12:38:17+05:30
+---
+
+# AIDB overview
+
+AIDB is an EDB-maintained Postgres extension that brings AI data workflows directly into your Postgres database. It provides a declarative, SQL-native way to build pipelines that prepare, embed, and index data for AI applications — including retrieval-augmented generation (RAG), semantic search, and large language model (LLM) integrations.
+
+Because AIDB runs inside Postgres, your data never needs to leave the database. You define your AI workflows in SQL, and AIDB handles the complexity of embedding generation, vector indexing, model integration, and real-time synchronization.
+
+## What AIDB does
+
+AIDB has five primary building blocks: pipelines, knowledge bases, agents, tools, and agent memory.
+
+[Pipelines](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/) define multi-step workflows that transform raw data into AI-ready vectors. Each step in a pipeline handles one transformation — parsing a PDF, chunking text, running OCR, summarizing content, or producing vector embeddings. Pipelines can run on demand, in batch, or automatically whenever source data changes.
+
+[Knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/) are the output of an embedding pipeline step. They store vector embeddings in a pgvector-indexed table and expose semantic search through the `aidb.retrieve_key()` and `aidb.retrieve_text()` functions. Multiple pipelines can feed into the same knowledge base, and a single knowledge base can serve multiple retrieval queries.
+
+[Agents](https://www.enterprisedb.com/docs/aidb/latest/agents/) let a model reason over multiple steps instead of answering in one shot: an agent calls tools, observes their results, and repeats until it has an answer. Agents can also delegate part of a request to another agent.
+
+[Tools](https://www.enterprisedb.com/docs/aidb/latest/tools/) are what an agent calls to take action — AIDB's own built-in operations (querying a pipeline's status, searching a knowledge base, running a SQL query), your own custom SQL queries, or operations imported from an external MCP server.
+
+[Agent memory](https://www.enterprisedb.com/docs/aidb/latest/agent-memory/) gives agents a durable memory of past conversations. Your application or agent adds conversation turns, AIDB distills them into memories in the background, and the agent searches them later by meaning. Memories are stored in Postgres and managed with `aidb_memory` SQL functions or the native memory tools. Agent memory is a preview capability.
+
+All pipeline operations are also available as standalone SQL functions — `aidb.chunk_text()`, `aidb.parse_pdf()`, `aidb.perform_ocr()`, `aidb.summarize_text()`, and others — so you can call them directly in queries without defining a full pipeline.
+
+## AIDB as a standalone extension
+
+AIDB is a Postgres extension — it lives entirely inside your database and has no runtime dependency on Agent Factory or Hybrid Manager (HM). You install it like any other Postgres extension, configure it via `postgresql.conf`, and interact with it through SQL.
+
+> **Note**
+>
+> If you're using Agent Factory, AIDB is already included as part of that platform, but Agent Factory isn't required to use AIDB. This documentation covers standalone AIDB.
+
+## Key capabilities
+
+Model flexibility — AIDB connects to locally running models (such as BERT and T5) as well as external models via the OpenAI-compatible API. Supported providers include NVIDIA NIM, Google Gemini, and any OpenAI-compatible endpoint. Model credentials are managed securely through the standard Postgres user mapping feature — or, to avoid storing a secret in the database at all, name an environment variable to read it from instead. See [Credentials from environment variables](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#credentials-from-environment-variables).
+
+Data source support — Pipelines can read from standard Postgres tables or from [external storage](https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/) via the [Postgres File System (PGFS)](https://www.enterprisedb.com/docs/pg_extensions/pgfs/) extension, which supports object store and local file systems. Pipeline output can be written to Postgres tables or back to a volume using PGFS.
+
+Auto-processing — Pipelines can be configured to run automatically using Postgres trigger-based live mode or background worker-based scheduling. This keeps knowledge bases up to date as source data changes without manual intervention.
+
+Schema flexibility — All AIDB objects (pipelines, knowledge bases, volumes) can be created in arbitrary Postgres schemas, making it straightforward to organize AI workloads alongside existing database structures.
+
+Vector index control — Knowledge bases support configurable vector indexes, including HNSW and IVFFlat, via pgvector.
+
+- [Known issues](https://www.enterprisedb.com/docs/aidb/latest/overview/known-issues/): Known limitations in the current release of AIDB.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

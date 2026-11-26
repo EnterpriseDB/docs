@@ -1,0 +1,44 @@
+---
+title: Non-superuser support with pgBackRest
+description: How to configure a non-superuser as the pgBackRest user
+product: pgBackRest
+url: https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/10-non-superuser/
+lastModified: 2025-07-18T13:21:32+02:00
+---
+
+# Non-superuser support with pgBackRest
+
+pgBackRest supports non-superuser backups and restores. This feature is useful when you want to delegate backup and restore tasks to non-superusers. To configure non-superuser support, you need to grant the necessary permissions to the non-superuser.
+
+For example, to allow the `pgbackrest` user to perform backups and restores, you can grant the following permissions:
+
+```sql
+grant pg_read_all_settings to pgbackrest ;
+```
+
+For EDB Postgres Advanced Server and PostgreSQL 14 and earlier:
+
+```sql
+GRANT EXECUTE on FUNCTION pg_switch_wal to pgbackrest;
+GRANT EXECUTE ON FUNCTION pg_start_backup(text, boolean, boolean) to pgbackrest;
+GRANT EXECUTE ON FUNCTION pg_stop_backup(boolean, boolean) TO pgbackrest;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_create_restore_point(text) TO pgbackrest;
+```
+
+For Postgres Advanced Server and PostgreSQL 15 and later:
+
+In Postgres 15 and later versions, `pg_start_backup` and `pg_stop_backup` functions are changed to `pg_backup_start` and `pg_backup_stop`. Aditionally, the `pg_checkpoint` role becomes available.
+
+```sql
+GRANT EXECUTE on FUNCTION pg_switch_wal to pgbackrest ;
+GRANT EXECUTE ON FUNCTION pg_backup_start(label text, fast boolean) TO pgbackrest;
+GRANT EXECUTE ON FUNCTION pg_backup_stop(wait_for_archive boolean) TO pgbackrest;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_create_restore_point(text) TO pgbackrest;
+GRANT pg_checkpoint TO pgbackrest;
+```
+
+> **Note**
+>
+> For versions 15 and later, EDB recommends adding the `pg_checkpoint` role to the non-superuser as well. This allows them to utilize the [`start-fast=y`](https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/04-recommended_settings/#backup-fast-start) setting in pgBackRest, which triggers an immediate checkpoint at the start of the backup for quicker execution. Earlier versions don't include the `pg_checkpoint` role.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,87 @@
+---
+title: Declaring block relationships
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/application_programming/epas_compat_spl/02_spl_programs/07_subprograms_subprocedures_and_subfunctions/03_block_relationships/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# Declaring block relationships
+
+<div id="block_relationships" class="registered_link"></div>
+
+You can declare the relationship between blocks in an SPL program. The ability to invoke subprograms and access identifiers declared in a block depends on this relationship.
+
+## About block relationships
+
+The following are the basic terms:
+
+- A _block_ is the basic SPL structure consisting of an optional declaration section, a mandatory executable section, and an optional exception section. Blocks implement standalone procedure and function programs, anonymous blocks, triggers, packages, and subprocedures and subfunctions.
+- An identifier (variable, cursor, type, or subprogram) _local to a block_ means that it's declared in the declaration section of the given block. You can access such local identifiers from the executable section and optional exception section of the block.
+- The _parent block_ contains the declaration of another block, that is, the _child block_.
+- _Descendent blocks_ are the set of blocks forming the child relationship starting from a given parent block.
+- _Ancestor blocks_ are the set of blocks forming the parental relationship starting from a given child block.
+- The set of descendent (ancestor) blocks form a _hierarchy_.
+- The _level_ is an ordinal number of a given block from the highest ancestor block. For example, given a standalone procedure, the subprograms declared in the declaration section of this procedure are all at the same level, such as level 1. Additional subprograms in the declaration section of the subprograms declared in the standalone procedure are at the next level, that is, level 2.
+- The _sibling blocks_ are the set of blocks that have the same parent block, that is, they are all locally declared in the same block. Sibling blocks are at the same level relative to each other.
+
+## Example
+
+The following schematic of a set of procedure declaration sections provides an example of a set of blocks and their relationships to their surrounding blocks.
+
+The two vertical lines on the left-hand side of the blocks indicate there are two pairs of sibling blocks. `block_1a` and `block_1b` is one pair, and `block_2a` and `block_2b` is the second pair.
+
+The relationship of each block with its ancestors is shown on the right-hand side of the blocks. Three hierarchical paths are formed when progressing up the hierarchy from the lowest-level child blocks. The first consists of `block_0`, `block_1a`, `block_2a`, and `block_3`. The second is `block_0`, `block_1a`, and `block_2b`. The third is `block_0`, `block_1b`, and `block_2b`.
+
+```sql
+CREATE PROCEDURE block_0
+IS
+        .
+    +---- PROCEDURE block_1a    ------- Local to block_0
+    |     IS
+    |         .                          |
+    |         .                          |
+    |         .                          |
+    |     +-- PROCEDURE block_2a   ---- Local to block_1a and descendant
+    |     |   IS                          of block_0
+    |     |       .                      |
+    |     |       .                      |
+    |     |       .                      |
+    |     |      PROCEDURE block_3   -- Local to block_2a and descendant
+    |     |      IS                       of block_1a, and block_0
+    | Siblings        .                  |
+    |     |           .                  |
+    |     |           .                  |
+    |     |       END block_3;           |
+    |     |   END block_2a;              |
+    |     +-- PROCEDURE block_2b   ---- Local to block_1a and descendant
+    |     |   IS                          of block_0
+ Siblings |       ,                      |
+    |     |       .                      |
+    |     |       .                      |
+    |     +-- END block_2b;              |
+    |                                    |
+    |      END block_1a;        ---------+
+    +----  PROCEDURE block_1b;   ------- Local to block_0
+    |      IS
+    |          .                         |
+    |          .                         |
+    |          .                         |
+    |          PROCEDURE block_2b   ---- Local to block_1b and descendant
+    |          IS                          of block_0
+    |              .                     |
+    |              .                     |
+    |              .                     |
+    |          END block_2b;             |
+    |                                    |
+    +----  END block_1b;        ---------+
+BEGIN
+      .
+      .
+      .
+END block_0;
+```
+
+The rules for invoking subprograms based on block location are described starting with [Invoking subprograms](https://www.enterprisedb.com/docs/epas/latest/application_programming/epas_compat_spl/02_spl_programs/07_subprograms_subprocedures_and_subfunctions/04_invoking_subprograms/#invoking_subprograms). The rules for accessing variables based on block location are described in [Accessing subprogram variables](https://www.enterprisedb.com/docs/epas/latest/application_programming/epas_compat_spl/02_spl_programs/07_subprograms_subprocedures_and_subfunctions/07_accessing_subprogram_variables/#accessing_subprogram_variables).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

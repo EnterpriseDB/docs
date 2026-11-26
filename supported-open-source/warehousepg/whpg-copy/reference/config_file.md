@@ -1,0 +1,345 @@
+---
+title: WarehousePG Copy configuration file
+description: The complete reference to the WarehousePG Copy configuration file.
+product: WarehousePG Copy
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/reference/config_file/
+lastModified: 2026-09-29T16:04:16+01:00
+---
+
+# WarehousePG Copy configuration file
+
+This is the TOML-based configuration file reference for WarehousePG Copy.
+
+> **Note**
+>
+> Command-line arguments take precedence over settings defined in a TOML file.
+
+You can generate a sample configuration file using the [whpg-copy config-example](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/reference/whpg-copy-utility/#config-example) command.
+
+```yaml
+# ==============================================================================
+# whpg-copy Configuration Example
+# ==============================================================================
+
+# Source database connection URL.
+# Supports standard PostgreSQL connection strings.
+src_url = "postgres://gpadmin:@10.0.0.1:5432/source_db"
+
+# Destination database connection URL.
+dst_url = "postgres://gpadmin:@10.0.0.2:5432/target_db"
+
+# Tables to include in the copy operation. To have uppercase letters or other
+# special characters in schema or table names, follow PostgreSQL's qualified
+# identifier rules to quote them.
+# Default: None
+include_table = [
+    "public.users",
+    "\"Inventory\".\"StockItems\""
+]
+
+# Tables to exclude.
+# Default: None
+exclude_table = [
+    "public.temp_cache",
+    "sales.test_data"
+]
+
+# Enable compression during data transfer to reduce network bandwidth usage.
+# Recommended for transfers over WAN or slow networks.
+# Default: true
+compression = true
+
+# Copy partitioned tables through their leaf partitions in parallel.
+# Disable this to enforce data goes through the root partition table or
+# intermediate partition table.
+# Default: true
+through_partition_leaves = true
+
+# How to handle existing tables on the destination:
+# "append"        : Insert data into existing tables.
+# "truncate"      : Clear the destination table before copying.
+# "skip"          : Do not copy if the table already exists.
+# "drop"          : Drop the existing destination table, recreate its DDL from
+#                   the source, then copy the data (DROP TABLE ... CASCADE).
+# Default: append
+target_mode = "append"
+
+# Rebuild secondary indexes around the bulk load instead of leaving them in
+# place for every row insert. Index metadata is collected once for the
+# relations being copied, droppable indexes are dropped after any truncate
+# and recreated after validation inside the same destination transaction, so
+# a failed copy leaves the existing indexes untouched. Primary key, unique,
+# constraint-backed, invalid, clustered, commented, and statistics-target
+# indexes are never dropped.
+# Default: false
+rebuild_indexes = false
+
+# Validation method to perform after copying data:
+# "none"     : No validation.
+# "count"    : Compare row counts between source and destination.
+# "checksum" : Calculate and compare data hashes.
+# Default: none
+validate_method = "count"
+
+# Number of parallel workers to run.
+# Default: 4
+workers = 4
+
+# Listening port range on the destination for data transferring. Those
+# ports need to be enabled to be accessed from the source segments.
+# whpg-copy will try to start listening on the port one by one from
+# the range. At least one port is required in the range.
+port_range = "60000-60001"
+
+# Total time, in seconds, a single transfer may spend getting ready to move
+# bytes: connecting to the destination daemon and waiting for the destination's
+# receiver to appear. A transfer that can never complete fails with an error
+# instead of hanging.
+#
+# Set to 0 to wait forever. One exception: the preflight check below is always
+# capped at 30 seconds, because a reachability probe that waits forever would
+# stall the copy before it starts.
+# Default: 120
+timeout = 120
+
+# Restrict the destination addresses to one network, in CIDR notation.
+#
+# whpg-copy finds the destination addresses by resolving the destination
+# cluster's host names. In a cluster with more than one network interface, a
+# host name usually resolves to several addresses - typically one on the private
+# interconnect network and one reachable from outside - and only some of them
+# can be reached from the source hosts. Set this to the network the source hosts
+# can reach. Without it, the lowest address is used.
+#
+# Accepts an IPv4 or an IPv6 CIDR. The family also acts as a family selector on
+# a dual-stack host: an IPv6 CIDR discards the IPv4 addresses and vice versa.
+# With no CIDR set, IPv4 is preferred, and IPv6 is used only when the host
+# resolves to no IPv4 address at all.
+# Default: none (accept any address, preferring IPv4)
+# dst_address_cidr = "10.0.0.0/8"
+
+# Check that every destination host is reachable before copying anything.
+# Probes once per source host per destination host, transferring no data, and
+# turns an unreachable destination into an immediate, specific error instead of
+# a timeout on the first table.
+# Default: true
+preflight = true
+
+# Interval, in seconds, between polls of the live transfer statistics shown
+# in the TUI (terminal user interface) and included in the success report.
+# Set to 0 to disable progress polling entirely.
+# Default: 5
+progress_poll_interval = 5
+
+# Define rules to rename schemas or tables during the copy process.
+# Each rule requires at least a source pattern.
+#
+# public.sales -> new_schema.sales
+[[mapping_rules]]
+src_table= "sales"
+dst_schema = "new_schema"
+# old_schema.raw_logs -> new_schema.processed_logs
+[[mapping_rules]]
+src_schema = "old_schema"
+src_table = "raw_logs"
+dst_schema = "new_schema"
+dst_table = "processed_logs"
+[[mapping_rules]]
+src_schema = "old_schema(\\d+)"
+dst_schema = "new_schema${1}"
+src_table = "old_table(\\d+)"
+dst_table = "new_table${1}"
+
+# Run the operation without actually changing any data on the destination.
+dry_run = false
+
+# Copy only the schema (DDL) without transferring data.
+# When enabled, schemas and tables are created on the destination but no data is copied.
+# Default: false
+metadata_only = false
+
+# Encrypt data transfer between source and destination using TLS.
+# tls_mode selects the protection level:
+#   "disabled"    : plaintext (default)
+#   "server-auth" : one-way TLS; senders verify the daemon's certificate
+#                   against the CA but do not present a client certificate
+#   "mutual"      : mutual TLS; the daemon also requires each sender to present
+#                   a CA-signed client certificate
+# When not "disabled", tls_dir must point to a directory that exists at the SAME
+# path on every source and destination host and contains the certificates
+# produced by `whpg-copy gen-certs`:
+#   server.crt, server.key, ca.crt  (on destination hosts)
+#   client.crt, client.key, ca.crt  (on source hosts)
+# tls_mode = "mutual"
+# tls_dir = "/etc/whpg-copy"
+
+# Verbosity of the log file written by this process and the daemon it starts.
+# Does not affect what's printed to the console, which is controlled by RUST_LOG.
+# "info"  : log info-level events and above, omitting debug/trace.
+# "debug" : log debug-level events and above.
+# Default: debug
+log_level = "info"
+```
+
+## Keywords and values
+
+**src\_url**
+
+Connection string for the source database. Supports standard PostgreSQL connection strings. It follows the format `postgres://[user@]host[:port][/dbname]`. Required unless you provide `--src-url` on the command line.
+
+**dst\_url**
+
+Connection string for the destination database. It follows the format `postgres://[user@]host[:port][/dbname]`. Required unless you provide `--dst-url` on the command line.
+
+**include\_table**
+
+Specifies tables to include. Use the format `schema.table` to specify the relations. If you are using special characters, follow PostgreSQL's qualified identifier rules to quote them.
+
+**exclude\_table**
+
+Specifies tables to exclude. Uses the same format as `include_table`.
+
+**compression**
+
+Enables or disables ZSTD compression during data transfer. Recommended for transfers over WAN or slow networks. Default is `true`.
+
+**through\_partition\_leaves**
+
+If `true` (default), copies data directly between leaf partitions in parallel. If `false`, data goes through the specified root/intermediate partition table.
+
+**target\_mode**
+
+Determines how to handle existing tables on the destination. The supported options are:
+
+- **append**: (Default) Inserts data into existing tables.
+- **truncate**: Truncates the destination table before copying.
+- **skip**: Skips the copy operation if the table already exists.
+- **drop**: Drops the existing destination table with `DROP TABLE ... CASCADE`, recreates it from the source DDL, then copies the data. The cascade also drops objects that depend on the table, such as views or foreign keys from other tables, and anything not included in the same copy isn't recreated. Requires the destination table to share the source's schema and name, so it can't be combined with a mapping rule that renames the table.
+
+**rebuild\_indexes**
+
+Rebuilds secondary indexes around the bulk load instead of leaving them in place for every row insert. Droppable indexes are dropped after any truncate and recreated inside the same destination transaction once the load validates, so a failed copy leaves existing indexes untouched. Primary key, unique, constraint-backed, invalid, clustered, commented, and statistics-target indexes are never dropped. Default is `false`. See [Known limitations](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/overview/known_issues/) for partition-table and multi-source-table exceptions.
+
+**validate\_method**
+
+Validation to perform after copying. The supported options are:
+
+- **none**: (Default) No validation.
+- **count**: Compares row counts.
+- **checksum**: Calculates and compares data hashes.
+
+**workers**
+
+Specifies the number of concurrent worker tasks. Default is 4.
+
+**port\_range**
+
+Defines the ports on the destination cluster used to receive data from the source segments. `whpg-copy` scans this range sequentially and binds to the first available port it finds. You must specify at least one port and ensure the entire range is accessible from the source segment hosts.
+
+**timeout**
+
+Total time, in seconds, a single data transfer can spend getting ready to move bytes, covering both connecting to the destination daemon and waiting for the destination's receiver to appear. Default is `120`. Set to `0` to wait forever, except during the preflight check, which is always capped at 30 seconds.
+
+**dst\_address\_cidr**
+
+Restricts the destination addresses `whpg-copy` connects to, in CIDR notation (for example, `10.0.0.0/8` or an IPv6 range). Use this setting when the destination hosts resolve to multiple addresses and you need to pin the network the source hosts can reach. Without it, the lowest resolved address is used, with IPv4 preferred over IPv6 unless the host resolves to no IPv4 address at all. Default is none, meaning `whpg-copy` accepts any resolved address.
+
+**preflight**
+
+Checks that every destination host is reachable before copying anything. Default is `true`.
+
+**progress\_poll\_interval**
+
+Interval, in seconds, between polls of the live transfer statistics shown in the TUI (terminal user interface) and included in the success report. Set to `0` to disable progress polling entirely. Default is `5`.
+
+**metadata\_only**
+
+Copies only the schema (DDL) to the destination and skips the data transfer. Default is `false`.
+
+**with\_owner**
+
+Includes object ownership information in the DDL. By default, `whpg-copy` omits ownership, equivalent to running `pg_dump` with `--no-owner`.
+
+**with\_privilege**
+
+Includes privilege (`GRANT`) information in the DDL. By default, `whpg-copy` omits privileges, equivalent to running `pg_dump` with `--no-privileges`.
+
+**tls\_mode**
+
+Protects the data-transfer connection with TLS. The supported options are:
+
+- **disabled**: (Default) Plaintext transfer.
+- **server-auth**: One-way TLS. Senders verify the daemon's certificate against the CA but don't present a client certificate.
+- **mutual**: Mutual TLS. The daemon also requires each sender to present a CA-signed client certificate.
+
+Requires `tls_dir` when not `disabled`. Use [whpg-copy gen-certs](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-copy/reference/whpg-copy-utility/#gen-certs) to generate the required certificates.
+
+**tls\_dir**
+
+Directory containing the TLS certificates used to encrypt data transfer. Required when `tls_mode` isn't `disabled`. The directory must exist at the same path on every host, but its contents differ by role: destination hosts need `server.crt`, `server.key`, and `ca.crt`, and source hosts need `client.crt`, `client.key`, and `ca.crt`. Keep `ca.key` offline and don't deploy it to any host.
+
+**log\_level**
+
+Verbosity of the log file written by `whpg-copy` and the copy daemon it starts on the destination cluster. This setting doesn't affect what's printed to the console, which defaults to `warning` and is controlled by the `RUST_LOG` environment variable. The supported options are `info` and `debug` (default).
+
+**mapping\_rules**
+
+Mapping rules allow for powerful renaming and selection logic using regular expressions (Regex). You can define multiple `[[mapping_rules]]` blocks in your configuration file. The supported options are:
+
+- **src\_schema**, **src\_table**: Define the source objects. These fields use standard Rust regular expression patterns to match your source objects. Patterns are automatically anchored (wrapped in `^` and `$`). For example, `src_table = "users"` matches only the table `"users"`, not `"super_users"`. To match multiple tables, use the `.*` wildcard. If you omit `src_schema`, `whpg-copy` matches against the `public` schema.
+- **dst\_schema**, **dst\_table**: Define the destination objects. These fields support Regex's Capture Groups. If your source pattern contains groups in parentheses `()`, you can reference them in the destination using `${1}`, `${2}`, etcetera.
+- **sql**: Custom SQL query to use for extracting data from the source table. Instead of copying the entire table, `whpg-copy` will execute this SQL and copy its result. Supports placeholders: `${src_schema}` and `${src_table}`, the utility will automatically replace them with the escaped source objects. This is ideal for joining tables, masking sensitive data, or changing data types on the fly.
+
+> **Note**
+>
+> If your mapping rule involves a rename (the destination schema or table name is different from the source), `whpg-copy` cannot automatically create the table on the destination cluster. You must ensure the destination table exists with the correct schema before initiating the copy.
+
+**dry\_run**
+
+Run the operation without changing any data on the destination (default is `false`).
+
+## Examples
+
+- Copy the table `public.users` to a table named `public.customers`:
+
+  ```
+  [[mapping_rules]]
+  src_schema = "public"
+  src_table = "users"
+  dst_table = "customers"
+  ```
+
+- Copy all tables in schema `legacy` to the schema `archived`:
+
+  ```
+  [[mapping_rules]]
+  src_schema = "legacy"
+  src_table = ".*"        # Match all tables in 'legacy' schema
+  dst_schema = "archived"
+  ```
+
+- Copy using Capture Groups to dynamically rename tables during the copy operation.
+
+  By using parentheses `()` in your `src_table` pattern, you can "save" parts of the table name and "paste" them into the new name.
+
+  ```
+  [[mapping_rules]]
+  src_table = "data_(\\d+)_(\\d+)"
+  dst_table = "record_${1}_v${2}"
+  ```
+
+  The `src_table` pattern looks for tables starting with `data_`, followed by two groups of digits.
+
+  The `dst_table` template defines how the new table should be named using the saved groups.
+
+  As a result, a table named `data_2023_01` will be copied as `record_2023_v01`.
+
+- Use a custom SQL only to copy orders from 2024 onwards:
+
+  ```
+  [[mapping_rules]]
+  src_table = "orders"
+  sql = "SELECT * FROM ${src_schema}.${src_table} WHERE order_date >= '2024-01-01'"
+  ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

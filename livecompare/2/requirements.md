@@ -1,0 +1,86 @@
+---
+title: Requirements
+product: LiveCompare
+version: "2"
+url: https://www.enterprisedb.com/docs/livecompare/2/requirements/
+lastModified: 2023-06-07T19:15:03+01:00
+---
+
+# Requirements
+
+LiveCompare requires:
+
+- Python 3.6 or 3.7
+- PostgreSQL / EDB Postgres Extended 9.5+ / EDB Postgres Advanced Server 11+ (on the output connection)
+- PostgreSQL / EDB Postgres Extended 9.4+ / EDB Postgres Advanced Server 11+ or Oracle 11g+ (on the data connections being compared)
+
+LiveCompare requires Debian 10+, Ubuntu 16.04+, SLES 12 SP5 and 15 SP3, or CentOS/RHEL/RockyLinux/AlmaLinux 7+.
+
+You can install LiveCompare from the EnterpriseDB `products/livecompare` repository. For details, see the [EDB customer portal](https://techsupport.enterprisedb.com/customer_portal/sw/livecompare/).
+
+LiveCompare installs on top of either:
+
+- The latest Python version for Ubuntu, Debian, and CentOS/RHEL 8, as provided by the `python3` packages
+- Python 3.6 for CentOS/RHEL 7, as provided by the `python-36` packages
+
+On CentOS/RHEL distributions, LiveCompare also requires the EPEL repository. For details, see the [EPEL webpage](https://fedoraproject.org/wiki/EPEL).
+
+Specifically on CentOS/RHEL version 7, the Python component `tqdm` is too old (< 4.16.0). You can install the latest `tqdm` using `pip` or `pip3` for the user that is running LiveCompare:
+
+```
+pip install --user tqdm --upgrade
+```
+
+If running LiveCompare against an Oracle database, Oracle Instant Client must be installed. See [Oracle support requirements](https://www.enterprisedb.com/docs/livecompare/2/oracle_support/#requirements) for more information.
+
+## LiveCompare with TPAexec
+
+You can use the following sample config for `TPAexec` to build a server with `LiveCompare` and `PostgreSQL 11`:
+
+```yaml
+---
+architecture: M1
+cluster_name: livecompare_m1
+cluster_tags: {}
+
+cluster_vars:
+  postgres_coredump_filter: '0xff'
+  postgres_version: '13'
+  postgresql_flavour: postgresql
+  repmgr_failover: manual
+  tpa_2q_repositories:
+  - products/livecompare/release
+  packages:
+    common:
+    - edb-livecompare
+  use_volatile_subscriptions: true
+
+locations:
+- Name: main
+
+instance_defaults:
+  image: tpa/rocky
+  platform: docker
+  vars:
+    ansible_user: root
+
+instances:
+- Name: livem1node1
+  location: main
+  node: 1
+  role: primary
+  published_ports:
+    - 5401:5432
+- Name: livem1node2
+  location: main
+  node: 2
+  role: replica
+  upstream: livem1node1
+  published_ports:
+    - 5402:5432
+
+```
+
+For details about TPAexec, see the [EDB customer portal](https://techsupport.enterprisedb.com/customer_portal/sw/tpa/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

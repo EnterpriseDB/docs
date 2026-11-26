@@ -1,0 +1,338 @@
+---
+title: Using nested tables
+product: .NET Connector
+version: 10.0.1.1
+url: https://www.enterprisedb.com/docs/net_connector/latest/using_nested_table_types/
+lastModified: 2026-02-16T12:16:04+01:00
+---
+
+# Using nested tables
+
+EDB Postgres Advanced Server supports nested table collection types created with `CREATE TYPE ... AS TABLE OF` statements. The EDB .NET Connector supports output parameters declared as nested tables out of the box, whether free-standing types or declared inside packages.
+
+## Nested table types mapping
+
+Nested table types are mapped to `List<object>`s in C#, as it is preferred over `ArrayList`. These lists contain as many elements as the nested table type's rows. The nested table items are translated to be compatible with the C# application using the following rules:
+
+- The connector resolves all nested table rows into a `List<object>` in C# while maintaining and converting each column's underlying type. For example, a `[text1, text2, num1]` row will be resolved as a `[string, string, decimal]` item in the list.
+
+- If the nested type `IS TABLE OF` a domain type (int, varchar, decimal, etc.), all the rows will be their C# counterpart according to the [Supported Types and their Mappings](https://www.npgsql.org/doc/types/basic.html#read-mappings).
+
+- If the nested type `IS TABLE OF` a record or composite type **not mapped** to a C# class, all rows become a nested List containing as many elements as the record or composite fields, with proper type translation.
+
+- If the nested type `IS TABLE OF` a record or composite type **mapped** to a C# class (for example, `MyComposite`), all rows will be `MyComposite` instances.
+
+## Example: Retrieving nested table output parameter
+
+This program:
+
+- Creates a package with a nested `emp_tbl_typ` table type of `emp_rec_typ`. This package has a stored procedure that fills the nested table output parameter.
+
+- Maps the nested table type to a C# class via `MapComposite<>`.
+
+- Executes and displays the results.
+
+- Cleans up the database by dropping the package (and implicitly the nested table type)
+
+> **Note**
+>
+> Always provide type names in lowercase.
+
+### Program example
+
+Create an empty console program and paste the following code.
+
+#### .NET
+
+```csharp
+using System.Data;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingNestedTableTypes
+{
+    internal static class Program
+    {
+        // Composite type, will be mapped to the nested table type
+        // This will work if field types are convertible from database types
+        public class Employee
+        {
+            [PgName("empno")]
+            public decimal Number;
+            [PgName("ename")]
+            public string Name;
+        }
+
+        public static async Task Main(string[] args)
+        {
+            // not for production, move connection string to app settings
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+            dataSourceBuilder.MapComposite<Employee>("pkgextendtest.emp_rec_typ");
+
+            await using var dataSource = dataSourceBuilder.Build();
+            await using var connection = await dataSource.OpenConnectionAsync();
+            try
+            {
+                await CreatePackageAsync(connection);
+                Console.WriteLine("Package created");
+
+                await using var cstmt = new EDBCommand("pkgExtendTest.nestedTableExtendTest", connection);
+                cstmt.CommandType = CommandType.StoredProcedure;
+                var tableOfParam = cstmt.Parameters.Add(new EDBParameter()
+                {
+                    Direction = ParameterDirection.Output,
+                    DataTypeName = "pkgextendtest.emp_tbl_typ" // nested table is always lowercase
+                });
+
+                await cstmt.PrepareAsync();
+                await cstmt.ExecuteNonQueryAsync();
+
+                if (tableOfParam.Value is not List<object> employees)
+                {
+                    Console.WriteLine($"No employee found");
+                    return;
+                }
+
+                foreach (var employeeRecord in employees)
+                {
+                    if (employeeRecord is Employee employee)
+                    {
+                        Console.WriteLine($"Employee {employee.Number}: {employee.Name}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+            finally
+            {
+                await CleanupAsync(connection);
+                Console.WriteLine("Package successfully deleted");
+            }
+        }
+
+        // helper methods to create package and cleaning up  
+        static async Task CreatePackageAsync(EDBConnection connection)
+        {
+
+            var createPackage = """
+                                CREATE OR REPLACE PACKAGE pkgExtendTest IS
+                                    TYPE emp_rec_typ IS RECORD (
+                                        empno  NUMBER(4),
+                                        ename  VARCHAR2(10)
+                                    );
+                                    TYPE emp_tbl_typ IS TABLE OF emp_rec_typ;                                
+                                    PROCEDURE nestedTableExtendTest(emp_tbl OUT emp_tbl_typ);
+                                END pkgExtendTest;
+                                """;
+            using (var com = new EDBCommand(createPackage, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+
+            var createPackageBody = """
+                                CREATE OR REPLACE PACKAGE BODY pkgExtendTest IS 
+                                    PROCEDURE nestedTableExtendTest(emp_tbl OUT emp_tbl_typ) IS 
+                                      DECLARE  
+                                      CURSOR emp_cur IS SELECT empno, ename FROM emp WHERE ROWNUM <= 10 order by empno;  
+                                      i  INTEGER := 0;  
+                                    BEGIN 
+                                       emp_tbl := emp_tbl_typ();  
+                                       FOR r_emp IN emp_cur LOOP  
+                                          i := i + 1;  
+                                          emp_tbl.EXTEND;  
+                                          emp_tbl(i) := r_emp;  
+                                       END LOOP;  
+                                    END nestedTableExtendTest; 
+                                END pkgExtendTest; 
+                                """;
+            using (var com = new EDBCommand(createPackageBody, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+
+            await connection.ReloadTypesAsync();
+        }
+
+        static async Task CleanupAsync(EDBConnection connection)
+        {
+            var dropPackageBody = "DROP PACKAGE BODY pkgExtendTest";
+            var dropPackage = "DROP PACKAGE pkgExtendTest";
+
+            using (var com = new EDBCommand(dropPackageBody, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+            using (var com = new EDBCommand(dropPackage, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+        }
+    }
+}
+```
+
+#### .NET Framework
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading.Tasks;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingNestedTableTypes
+{
+    internal static class Program
+    {
+        // Composite type, will be mapped to the nested table type
+        // This will work if field types are convertible from database types
+        public class Employee
+        {
+            [PgName("empno")]
+            public decimal Number;
+            [PgName("ename")]
+            public string Name;
+        }
+
+        public static async Task Main(string[] args)
+        {
+            // not for production, move connection string to app settings
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+            dataSourceBuilder.MapComposite<Employee>("pkgextendtest.emp_rec_typ");
+
+            using (var dataSource = dataSourceBuilder.Build())
+            using (var connection = await dataSource.OpenConnectionAsync())
+            {
+
+                try
+                {
+                    await CreatePackageAsync(connection);
+                    Console.WriteLine("Package created");
+
+                    using (var cstmt = new EDBCommand("pkgExtendTest.nestedTableExtendTest", connection))
+                    {
+                        cstmt.CommandType = CommandType.StoredProcedure;
+
+                        var tableOfParam = cstmt.Parameters.Add(new EDBParameter()
+                        {
+                            Direction = ParameterDirection.Output,
+                            DataTypeName = "pkgextendtest.emp_tbl_typ" // nested table is always lowercase
+                        });
+
+                        await cstmt.PrepareAsync();
+                        await cstmt.ExecuteNonQueryAsync();
+
+
+                        List<object> employees = tableOfParam.Value as List<object>;
+                        if (employees == null)
+                        {
+                            Console.WriteLine($"No employee found");
+                            return;
+                        }
+
+                        foreach (var employeeRecord in employees)
+                        {
+                            if (employeeRecord is Employee employee)
+                            {
+                                Console.WriteLine($"Employee {employee.Number}: {employee.Name}");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error: {ex.Message}");
+                }
+                finally
+                {
+                    await CleanupAsync(connection);
+                    Console.WriteLine("Package successfully deleted");
+                }
+            }
+
+        }
+
+        // helper methods to create package and cleaning up  
+        static async Task CreatePackageAsync(EDBConnection connection)
+        {
+
+            var createPackage =
+    "                CREATE OR REPLACE PACKAGE pkgExtendTest IS  \n" +
+    "                   TYPE emp_rec_typ IS RECORD (  \n" +
+    "                      empno  NUMBER(4),  \n" +
+    "                      ename       VARCHAR2(10)  \n" +
+    "                     ); \n" +
+    "                   TYPE emp_tbl_typ IS TABLE OF emp_rec_typ;  \n" +
+    "                   PROCEDURE nestedTableExtendTest(emp_tbl OUT emp_tbl_typ); \n" +
+    "                END pkgExtendTest; \n";
+            using (var com = new EDBCommand(createPackage, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+
+            var createPackageBody =
+    "                    CREATE OR REPLACE PACKAGE BODY pkgExtendTest IS \n" +
+    "                    PROCEDURE nestedTableExtendTest(emp_tbl OUT emp_tbl_typ) IS \n" +
+    "                      DECLARE  \n" +
+    "                      CURSOR emp_cur IS SELECT empno, ename FROM emp WHERE ROWNUM <= 10 order by empno;  \n" +
+    "                      i  INTEGER := 0;  \n" +
+    "                    BEGIN \n" +
+    "                       emp_tbl := emp_tbl_typ();  \n" +
+    "                       FOR r_emp IN emp_cur LOOP  \n" +
+    "                          i := i + 1;  \n" +
+    "                          emp_tbl.EXTEND;  \n" +
+    "                          emp_tbl(i) := r_emp;  \n" +
+    "                       END LOOP;  \n" +
+    "                    END nestedTableExtendTest; \n" +
+    "                    END pkgExtendTest; \n";
+            using (var com = new EDBCommand(createPackageBody, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+
+            await connection.ReloadTypesAsync();
+        }
+
+        static async Task CleanupAsync(EDBConnection connection)
+        {
+            var dropPackageBody = "DROP PACKAGE BODY pkgExtendTest";
+            var dropPackage = "DROP PACKAGE pkgExtendTest";
+
+            using (var com = new EDBCommand(dropPackageBody, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+            using (var com = new EDBCommand(dropPackage, connection) { CommandType = CommandType.Text })
+            {
+                await com.ExecuteNonQueryAsync();
+            }
+        }
+    }
+}
+```
+
+The output should look like this:
+
+```text
+Package created
+Employee 7499: ALLEN
+Employee 7521: WARD
+Employee 7566: JONES
+Employee 7654: MARTIN
+Employee 7698: BLAKE
+Employee 7782: CLARK
+Employee 7839: KING
+Employee 7844: TURNER
+Employee 7876: ADAMS
+Employee 7900: JAMES
+Package successfully deleted
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

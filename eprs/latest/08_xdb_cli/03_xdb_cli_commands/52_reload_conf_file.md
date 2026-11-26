@@ -1,0 +1,114 @@
+---
+title: Reloading the publication or subscription server configuration file (reloadconf)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/52_reload_conf_file/
+lastModified: 2026-11-17T15:53:46+01:00
+---
+
+# Reloading the publication or subscription server configuration file (reloadconf)
+
+<div id="reload_conf_file" class="registered_link"></div>
+
+The `reloadconf` command applies any changes in the publication or subscription server configuration file (`XDB_HOME/etc/xdb_pubserver.conf` or `XDB_HOME/etc/xdb_subserver.conf`) without restarting the server.
+
+## Synopsis
+
+```shell
+ -reloadconf 
+  -repsvrfile svrfile
+```
+
+## Parameters
+
+`svrfile`
+
+The file containing the publication or subscription server login information.
+
+The table shows whether a configuration property can be reloaded.
+
+| Property name                                                       | Property can be reloaded |
+| ------------------------------------------------------------------- | ------------------------ |
+| **Properties shared by publication server and subscription server** |                          |
+| `java.rmi.server.hostname`                                          | No                       |
+| `logging.level`                                                     | Yes                      |
+| `logging.file.size`                                                 | No                       |
+| `logging.file.count`                                                | No                       |
+| `importPartitionAsTable`                                            | Yes                      |
+| `skipCheckConst`                                                    | Yes                      |
+| `snapshotParallelLoadCount`                                         | Yes                      |
+| `snapshotParallelLoadRowLimit`                                      | Yes                      |
+| `importPartitionAsTable`                                            | Yes                      |
+| `sslTrustStore`                                                     | Yes                      |
+| `sslTrustStorePassword`                                             | Yes                      |
+| `sslTrustStoreType`                                                 | Yes                      |
+| `sslKeyStore`                                                       | Yes                      |
+| `sslKeyStoreType`                                                   | Yes                      |
+| `sslKeyStorePassword`                                               | Yes                      |
+| **Properties used by subscription server**                          |                          |
+| `skipTablePrivileges`                                               | Yes                      |
+| **Properties used by publication server**                           |                          |
+| `skipTablePrivileges`                                               | Yes                      |
+| `replaceNullChar`                                                   | Yes                      |
+| `nullReplacementChar`                                               | Yes                      |
+| `escapeTabDelimiter`                                                | Yes                      |
+| `mtkCopyDelimiter`                                                  | Yes                      |
+| `enableConstBeforeDataLoad`                                         | Yes                      |
+| `cpBatchSize`                                                       | Yes                      |
+| `batchSize`                                                         | Yes                      |
+| `copyViaDBLinkOra`                                                  | Yes                      |
+| `skipAnalyze`                                                       | Yes                      |
+| `pgdbschedule`                                                      | Yes                      |
+| `defaultBatchUpdateMode`                                            | No                       |
+| `switchBatchUpdateMode`                                             | No                       |
+| `syncBatchSize`                                                     | Yes                      |
+| `busBatchThresholdCount`                                            | Yes                      |
+| `bupBatchThresholdCount`                                            | Yes                      |
+| `bupBatchThresholdRepeatLimit`                                      | Yes                      |
+| `offlineSnapshot`                                                   | Yes                      |
+| `uniquenessConflictDetection`                                       | Yes                      |
+| `txSetMaxSize`                                                      | Yes                      |
+| `upsertMode`                                                        | Yes                      |
+| `skipConflictDetection`                                             | Yes                      |
+| `enablePerformanceStats`                                            | Yes                      |
+| `syncLoadThreadLimit`                                               | Yes                      |
+| `targetDBQueryTimeout`                                              | Yes                      |
+| `ddlChangeTableLock`                                                | Yes                      |
+| `lobBatchSize`                                                      | Yes                      |
+| `batchInitialSync`                                                  | Yes                      |
+| `deadlockRetryCount`                                                | Yes                      |
+| `deadlockWaitTime`                                                  | Yes                      |
+| `mtk.logging.file.size`                                             | Yes                      |
+| `mtk.logging.file.count`                                            | Yes                      |
+| `persistZeroTxRepEvent`                                             | Yes                      |
+| `oraJDBCCustomURL`                                                  | Yes                      |
+| `walStreamQueueLimit`                                               | Yes                      |
+| `walTxSetCreationInterval`                                          | Yes                      |
+| `dataSyncThreadCount`                                               | Yes                      |
+| `jdbc.pool.validationQueryTimeout`                                  | Yes                      |
+| `historyCleanupDaysThreshold`                                       | Yes                      |
+| `pubDBTableLockTimeout`                                             | Yes                      |
+
+## Example
+
+This example reloads the configuration file.
+
+> **Note**
+>
+> When you execute the `reloadconf` command, if any configuration options were changed from their default values, the output includes the configuration option and its new value.
+>
+> ```shell
+> java -jar edb-repcli.jar -reloadconf -repsvrfile subsvr.prop
+> ```
+>
+> ```output title="Output"
+> Reloading Subscription Server configuration file...
+> Reloaded configuration options from ../etc/xdb_subserver.conf...
+> The conf option 'snapshotParallelTableLoaderLimit' set to '1'
+> The conf option 'skipCheckConst' set to 'false'
+> The conf option 'snapshotParallelLoadCount' set to '1'
+>
+> Configuration was reloaded successfully.
+> ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

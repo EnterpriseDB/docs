@@ -1,0 +1,394 @@
+---
+title: Pipelines knowledge bases reference
+description: Reference documentation for EDB Postgres AI - AI Accelerator Pipelines knowledge bases.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/reference/knowledge_bases/
+lastModified: 2026-03-17T02:16:04Z
+---
+
+# Pipelines knowledge bases reference
+
+This reference documentation for Pipelines knowledge bases includes information on the functions and views available in the aidb extension related to [knowledge bases](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/knowledge_base/).
+
+## Views
+
+### `aidb.knowledge_bases`
+
+Also referenceable as `aidb.kbs`, the `aidb.knowledge_bases` view provides a list of all knowledge bases in the database. It includes information about the knowledge base name, the model used, and the source data type.
+
+| Column                     | Type                                                               | Description                                                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                         | integer                                                            |                                                                                                                                                                     |
+| name                       | text                                                               | Name of the knowledge base.                                                                                                                                         |
+| vector\_schema             | text                                                               | Schema for vector\_table.                                                                                                                                           |
+| vector\_table              | text                                                               | Name of the table where the embeddings are stored. Gets newly created if it doesn’t exist. Managed by aidb.                                                         |
+| vector\_key\_column        | text                                                               | Column to use to store the key that references the key in source data when computing embeddings. We recommend using the default and letting aidb manage this table. |
+| vector\_data\_column       | text                                                               | Column to store embeddings in. We recommend using the default and letting aidb manage this table.                                                                   |
+| model\_name                | text                                                               | Name of the  model to use for embedding computation and retrievals.                                                                                                 |
+| topk                       | integer                                                            | Default number of results to return during a retrieve. Similar to LIMIT in SQL.                                                                                     |
+| distance\_operator         | [aidb.DistanceOperator](#aidbdistanceoperator)                     | During retrieval, the vector operation to use to compare the vectors.                                                                                               |
+| options                    | jsonb                                                              | Unused.                                                                                                                                                             |
+| auto\_processing           | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | Auto-processing mode.                                                                                                                                               |
+| owner\_role                | text                                                               | The Postgres role who created this pipeline. Background auto-processing will run the pipeline as this role.                                                         |
+| batch\_size                | integer                                                            | How many records to process concurrently when running this pipeline.                                                                                                |
+| background\_sync\_interval | interval                                                           | Used for background auto-processing. This is the interval between pipeline executions.                                                                              |
+| source\_type               | text                                                               | Indicates whether this pipeline uses a table or volume as data source.                                                                                              |
+| source\_schema             | text                                                               | Schema for source\_table.                                                                                                                                           |
+| source\_table              | text                                                               | Name of the table used as input for the pipeline. Unused if the knowledge base uses a volume as source.                                                             |
+| source\_data\_column       | text                                                               | Column name in the source table that Pipelines computes embeddings for. This is also the column that's returned in retrieve operations.                             |
+| source\_data\_format       | [aidb.PipelineDataFormat](#aidbpipelinedataformat)                 | Format of the data the knowledge base is working with. Uses type [`aidb.PipelineDataFormat`](#aidbpipelinedataformat).                                              |
+| source\_key\_column        | text                                                               | Column to use as key for storing the embedding in the vector table. This provides a reference from the embedding to the source data.                                |
+| source\_volume\_name       | text                                                               | Name of the volume to use as a data source. Only applicable to knowledge bases configured with aidb.create\_volume\_knowledge\_base().                              |
+
+### `aidb.knowledge_base_stats`
+
+Also referenceable as `aidb.kbstat`, the `aidb.knowledge_base_stats` view provides current statistics about auto processing for knowledge base pipelines.
+
+| Column                  | Type                                                               | Description                                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| knowledge base          | text                                                               | Name of the knowledge base.                                                                                                                      |
+| auto processing         | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | Auto-processing mode.                                                                                                                            |
+| table: unprocessed rows | bigint                                                             | For table knowledge bases: The number of unprocessed rows that are new or might have changed since the last execution.                           |
+| volume: scans completed | bigint                                                             | For volume knowledge bases: The number of full listings of the source volume that were performed so far.                                         |
+| count(source records)   | bigint                                                             | The number of records in the source of the knowledge base. For volume knowledge bases, this is number of records seen during the last full scan. |
+| count(embeddings)       | bigint                                                             | The number of embeddings stored in the destination table.                                                                                        |
+
+## Types
+
+### `aidb.DistanceOperator`
+
+The `aidb.DistanceOperator` type is an enum that represents the distance operators that can be used during retrieval.
+
+| Value   | Description        |
+| ------- | ------------------ |
+| L2      | Euclidean distance |
+| Inner   | Inner product      |
+| Cosine  | Cosine similarity  |
+| L1      | L1 distance        |
+| Hamming | Hamming distance   |
+| Jaccard | Jaccard distance   |
+
+SQL definition:
+
+```sql
+CREATE TYPE DistanceOperator AS ENUM (
+  'L2',
+  'InnerProduct',
+  'Cosine',
+  'L1',
+  'Hamming',
+  'Jaccard'
+);
+```
+
+### `aidb.PipelineDataFormat`
+
+The `aidb.PipelineDataFormat` type is an enum that represents the data formats that can be used as source data.
+
+| Value | Description |
+| ----- | ----------- |
+| Text  | Text data   |
+| Image | Image data  |
+| Pdf   | PDF data    |
+
+SQL definition:
+
+```sql
+CREATE TYPE PipelineDataFormat AS ENUM (
+  'Text',
+  'Image',
+  'Pdf'
+);
+```
+
+### `aidb.PipelineAutoProcessingMode`
+
+The `aidb.PipelineAutoProcessingMode` type is an enum used to define how auto processing for a Pipeline shoud behave (e.g. a knowledge base or a Preparer).
+
+| Value      | Description                                                                   |
+| ---------- | ----------------------------------------------------------------------------- |
+| Live       | New data is processed immediately while being added (using Postgres Triggers) |
+| Background | Continuous processing in the background (using Postgres background workers)   |
+| Disabled   | No automated processing                                                       |
+
+```sql
+CREATE TYPE PipelineAutoProcessingMode AS ENUM (
+	'Live',
+	'Background',
+	'Disabled'
+);
+```
+
+## Functions
+
+### `aidb.create_table_knowledge_base`
+
+Creates a knowledge base for a given table.
+
+#### Parameters
+
+| Parameter                  | Type                                                               | Default      | Description                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                       | TEXT                                                               | Required     | Name of the knowledge base.                                                                                                                               |
+| model\_name                | TEXT                                                               | Required     | Name of the model to use.                                                                                                                                 |
+| source\_table              | regclass                                                           | Required     | Name of the table to use as source.                                                                                                                       |
+| source\_data\_column       | TEXT                                                               | Required     | Column name in source table to use.                                                                                                                       |
+| source\_data\_format       | [aidb.PipelineDataFormat](#aidbpipelinedataformat)                 | Required     | Format of data in that column ("Text", "Image", "PDF").                                                                                                   |
+| source\_key\_column        | TEXT                                                               | 'id'         | Unique column in the source table to use as key to reference the rows.                                                                                    |
+| vector\_table              | TEXT                                                               | NULL         |                                                                                                                                                           |
+| vector\_data\_column       | TEXT                                                               | 'embeddings' |                                                                                                                                                           |
+| vector\_key\_column        | TEXT                                                               | 'id'         |                                                                                                                                                           |
+| topk                       | INTEGER                                                            | 1            |                                                                                                                                                           |
+| distance\_operator         | [aidb.distanceoperator](#aidbdistanceoperator)                     | 'L2'         |                                                                                                                                                           |
+| options                    | JSONB                                                              | '{}'::JSONB  | Unused                                                                                                                                                    |
+| auto\_processing           | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | 'Disabled'   | Configure auto-processing for this pipeline.                                                                                                              |
+| index\_type                | TEXT                                                               | 'vector'     | Vector index selection. See [Vector indexing](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/knowledge_base/vector_indexing/). |
+| batch\_size                | int                                                                | 100          | How many records to process concurrently.                                                                                                                 |
+| background\_sync\_interval | interval                                                           | '30 seconds' | Interval between pipeline executions if background auto-processing is configured.                                                                         |
+| invoker\_role              | TEXT                                                               | NULL         | Role owning the tables, pipelines, and background job execution.                                                                                          |
+
+> For details on index types, operator classes, and tuning, see [Vector indexing](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/knowledge_base/vector_indexing/).
+
+#### Example
+
+```sql
+SELECT aidb.create_table_knowledge_base(
+               name => 'test_knowledge_base',
+               model_name => 'bert',
+               source_table => 'test_source_table',
+               source_data_column => 'content',
+               source_key_column => 'doc_id',
+               source_data_format => 'Text'
+       );
+```
+
+### `aidb.create_volume_knowledge_base`
+
+Creates a knowledge base for a given PGFS volume.
+
+#### Parameters
+
+| Parameter                  | Type                                                               | Default      | Description                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                       | TEXT                                                               | Required     | Name of the knowledge base                                                                                                                                |
+| model\_name                | TEXT                                                               | Required     | Name of the model                                                                                                                                         |
+| source\_volume\_name       | TEXT                                                               | Required     | Name of the volume                                                                                                                                        |
+| vector\_table              | TEXT                                                               | NULL         | Name of the vector table                                                                                                                                  |
+| vector\_data\_column       | TEXT                                                               | 'embeddings' | Name of the vector column                                                                                                                                 |
+| vector\_key\_column        | TEXT                                                               | 'id'         | Name of the key column                                                                                                                                    |
+| topk                       | INTEGER                                                            | 1            | Number of results to return                                                                                                                               |
+| distance\_operator         | aidb.distanceoperator                                              | 'L2'         | Distance operator                                                                                                                                         |
+| options                    | JSONB                                                              | '{}'::JSONB  | Options                                                                                                                                                   |
+| auto\_processing           | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) | 'Disabled'   | Configure auto-processing for this pipeline.                                                                                                              |
+| index\_type                | TEXT                                                               | 'vector'     | Vector index selection. See [Vector indexing](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/knowledge_base/vector_indexing/). |
+| batch\_size                | int                                                                | 100          | How many records to process concurrently.                                                                                                                 |
+| background\_sync\_interval | interval                                                           | '30 seconds' | Interval between pipeline executions if background auto-processing is configured.                                                                         |
+| invoker\_role              | TEXT                                                               | NULL         | Role owning the tables, pipelines, and background job execution.                                                                                          |
+
+> For details on index types, operator classes, and tuning, see [Vector indexing](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/knowledge_base/vector_indexing/).
+
+#### Example
+
+```sql
+SELECT aidb.create_volume_knowledge_base(
+               name => 'demo_vol_knowledge_base',
+               model_name => 'simple_model',
+               source_volume_name => 'demo_bucket_vol'
+       );
+```
+
+### `aidb.set_auto_knowledge_base`
+
+Sets the auto-processing mode for this knowledge base.
+
+#### Parameters
+
+| Parameter                  | Type                                                               | Default | Description                                                                                 |
+| -------------------------- | ------------------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------- |
+| knowledge\_base\_name      | TEXT                                                               |         | Name of knowledge base for which to enable auto-processing                                  |
+| mode                       | [aidb.PipelineAutoProcessingMode](#aidbpipelineautoprocessingmode) |         | Desired auto-processing mode                                                                |
+| batch\_size                | INTEGER DEFAULT NULL                                               |         | How many records to process in one batch in Disabled (aka. Manual) or Background processing |
+| background\_sync\_interval | INTERVAL DEFAULT NULL                                              |         | Desired sync interval for background processing                                             |
+
+#### Example
+
+```sql
+SELECT aidb.set_auto_knowledge_base('test_knowledge_base', 'Live');
+SELECT aidb.set_auto_knowledge_base('test_knowledge_base', 'Disabled', batch_size => 100);
+SELECT aidb.set_auto_knowledge_base('test_knowledge_base', 'Background');
+SELECT aidb.set_auto_knowledge_base('test_knowledge_base', 'Background', batch_size => 100, background_sync_interval => '10 seconds');
+```
+
+### `aidb.bulk_embedding`
+
+Compute the embeddings for the source records in this pipeline and store them in vector destination.
+
+The behavior of this function depends on the configured auto\_processing mode:
+
+- **Live and Disabled auto-processing:** Directly process all source records.
+- **Background auto-processing:** Mark all source records for processing but don't perform the operation. The background worker will perform it.
+
+#### Parameters
+
+| Parameter             | Type | Default | Description                                              |
+| --------------------- | ---- | ------- | -------------------------------------------------------- |
+| knowledge\_base\_name | TEXT |         | Name of knowledge base for which to generate embeddings. |
+| silent                | BOOL | false   | Disable printing status and progress logs.               |
+
+#### Example
+
+```
+aidb=# SELECT aidb.bulk_embedding('kb_volume_image_manual');
+```
+
+```output title="Output"
+INFO:  kb_volume_image_manual: (re)setting state table to process all data...
+INFO:  kb_volume_image_manual: Starting... Batch size 10, count(known source records): 0, scans completed: 0, count(embeddings): 0
+INFO:  kb_volume_image_manual: Batch iteration finished, count(known source records): 10, scans completed: 0, count(embeddings): 10
+[...]
+INFO:  kb_volume_image_manual: Batch iteration finished, count(known source records): 177, scans completed: 0, count(embeddings): 177
+INFO:  kb_volume_image_manual: finished, count(known source records): 177, scans completed: 1, count(embeddings): 177
+```
+
+### `aidb.retrieve_key`
+
+Retrieves a key from matching embeddings without looking up the source data.
+
+#### Parameters
+
+| Parameter             | Type    | Default | Description                                 |
+| --------------------- | ------- | ------- | ------------------------------------------- |
+| knowledge\_base\_name | TEXT    |         | Name of knowledge base to use for retrieval |
+| query\_string         | TEXT    |         | Query string to use for retrieval           |
+| number\_of\_results   | INTEGER | 0       | Number of results to return                 |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retrieve_key('test_knowledge_base', 'shoes', 2);
+```
+
+```output title="Output"
+  key  |      distance
+-------+--------------------
+ 43941 | 0.2938963414490189
+ 19337 | 0.3023805122617119
+(2 rows)
+```
+
+### `aidb.retrieve_text`
+
+Retrieves the source text data from matching embeddings by joining the embeddings with the source table.
+
+#### Parameters
+
+| Parameter             | Type    | Default | Description                                 |
+| --------------------- | ------- | ------- | ------------------------------------------- |
+| knowledge\_base\_name | TEXT    |         | Name of knowledge base to use for retrieval |
+| query\_string         | TEXT    |         | Query string to use for retrieval           |
+| number\_of\_results   | INTEGER | 0       | Number of results to return                 |
+
+#### Returns
+
+| Column     | Type             | Description                                   |
+| ---------- | ---------------- | --------------------------------------------- |
+| `key`      | text             | Key of the retrieved data                     |
+| `value`    | text             | Value of the retrieved data                   |
+| `distance` | double precision | Distance of the retrieved data from the query |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retrieve_text('test_knowledge_base', 'jacket', 2);
+```
+
+```output title="Output"
+  key  |                       value                        |      distance
+-------+----------------------------------------------------+--------------------
+ 19337 | United Colors of Benetton Men Stripes Black Jacket | 0.2994317672742334
+ 55018 | Lakme 3 in 1 Orchid  Aqua Shine Lip Color          | 0.3804609668507203
+(2 rows)
+```
+
+### `aidb.delete_knowledge_base`
+
+Deletes only the knowledge base's configuration from the database.
+
+#### Parameters
+
+| Parameter             | Type | Default | Description                      |
+| --------------------- | ---- | ------- | -------------------------------- |
+| knowledge\_base\_name | TEXT |         | Name of knowledge base to delete |
+
+#### Example
+
+```sql
+select aidb.delete_knowledge_base('test_knowledge_base');
+```
+
+```output title="Output"
+ delete_knowledge_base
+------------------
+
+(1 row)
+```
+
+### `aidb.create_volume`
+
+Creates a volume from a PGFS storage location for use as a data source in knowledge bases.
+
+#### Parameters
+
+| Parameter    | Type | Default | Description                                        |
+| ------------ | ---- | ------- | -------------------------------------------------- |
+| name         | TEXT |         | Name of the volume to create                       |
+| server\_name | TEXT |         | Name of the storage location to use for the volume |
+| path         | TEXT |         | Path to the volume in the storage location         |
+| mime\_type   | TEXT |         | Type of data in the volume (Text or Image)         |
+
+#### Example
+
+```sql
+select aidb.create_volume('demo_bucket_vol', 'demo_bucket', 'demo_bucket/demo_folder', 'Text');
+```
+
+```output title="Output"
+ create_volume
+---------------
+(1 row)
+```
+
+### `aidb.list_volumes`
+
+Lists all the volumes that were created in the database.
+
+#### Example
+
+```sql
+select * from aidb.list_volumes();
+```
+
+### `aidb.delete_volume`
+
+Deletes a volume from the database.
+
+#### Parameters
+
+| Parameter    | Type | Default | Description                  |
+| ------------ | ---- | ------- | ---------------------------- |
+| volume\_name | TEXT |         | Name of the volume to delete |
+
+#### Example
+
+```sql
+select aidb.delete_volume('demo_bucket_vol');
+```
+
+```output title="Output"
+ delete_volume
+-------------
+(1 row)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

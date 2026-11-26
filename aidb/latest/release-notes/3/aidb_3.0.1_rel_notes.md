@@ -1,0 +1,23 @@
+---
+title: AIDB 3.0.1 release notes
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/release-notes/3/aidb_3.0.1_rel_notes/
+lastModified: 2026-08-26T21:11:52+05:30
+---
+
+# AIDB 3.0.1 release notes
+
+Released: 03 Apr 2025
+
+AIDB 3.0.1 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enhancement | **Live auto processing for the preparer pipeline:** The preparer pipeline now supports live auto processing for data sources that are Postgres tables. When enabled, AIDB creates triggers on the source table to automatically run the preparer task.                                                                                                                                                                       |
+| Enhancement | **Model encode/decode batch functions now return rows:** The functions `aidb.decode_text_batch()` and `aidb.encode_text_batch()` now return a set of rows instead of a single row containing an array. This change was made based on customer feedback. Batch functions now return one row per input value.                                                                                                                  |
+| Enhancement | **Auto-processing now configured via new functions:** The functions `aidb.enable_auto_embedding_for_table()` and `aidb.disable_auto_embedding_for_table()` are deprecated. The new function `aidb.set_retriever_auto_processing()` accepts a processing mode argument: `Live` and `Disabled` modes turn auto-embedding on and off. For the preparer pipeline, `aidb.set_preparer_auto_processing()` serves the same purpose. |
+| Enhancement | **Added support for `pgfs.allowed_local_paths` GUC:** A new GUC `pgfs.allowed_local_paths` controls local file access in PGFS. By default, local file access is now restricted to `/tmp/pgfs`. This GUC can be used to allow access to other directories.                                                                                                                                                                    |
+| Enhancement | **Retriever pipeline now automatically creates vector indexes:** Vector indexes are now automatically created when creating retrievers. The `aidb.create_retriever_for_table()` and `aidb.create_retriever_for_volume()` functions now accept an optional `index_type` argument to specify the index type. The default value is `vector`.                                                                                    |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

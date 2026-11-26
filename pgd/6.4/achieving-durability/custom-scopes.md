@@ -1,0 +1,214 @@
+---
+title: Fine-tuning with custom scopes
+description: How to use custom commit scopes to achieve full granularity over commit behavior across node groups in complex environments.
+product: EDB Postgres Distributed (PGD)
+version: 6.4.0
+url: https://www.enterprisedb.com/docs/pgd/6.4/achieving-durability/custom-scopes/
+lastModified: 2026-10-27T13:40:59+01:00
+---
+
+# Fine-tuning with custom scopes
+
+Use custom scopes to give your applications precise durability and consistency guarantees across complex, multi-group environments. Each clause defines its own confirmation requirements independently, covering which nodes must respond, how many, and what kind of confirmation applies. Combining clauses lets you enforce different durability requirements across different node groups within a single commit.
+
+## Constructing a custom scope
+
+Every custom scope definition answers three questions, plus an optional fourth:
+
+<div style="margin-bottom: 1rem;"><img src="https://raw.githubusercontent.com/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/pgd/6.4/images/commit-scope-building-blocks.svg" style="width: 520px; height: auto;" alt="Formula showing commit scope equals which group plus who confirms plus an optional how far, which is the confirmation level, plus how, which is the commit kind." /></div>
+
+Each clause combines "which group(s)?", "who confirms?", and "how?", and can add a "how far?" before the "how?". Combine as many clauses as you need using `AND` to enforce different durability requirements across node groups in the same commit. PGD evaluates each clause independently, and all must be satisfied before the commit returns.
+
+<div style="margin-bottom: 1rem;"><img src="https://raw.githubusercontent.com/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/pgd/6.4/images/commit-scope-combining-clauses.svg" style="width: 540px; height: auto;" alt="Diagram showing two clauses joined by AND, each made of which group or groups, who confirms, and how." /></div>
+
+When you create a custom commit scope, you define:
+
+- A unique name via `commit_scope_name`, used to reference and assign the scope to a node group or individual transaction
+- Which group the scope applies to, via `origin_node_group`. Transactions originating from nodes in this group or any of its subgroups use the scope
+- A `rule` string specifying who confirms and how:
+  - The confirming nodes are expressed as a [commit scope group specifier](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/origin_groups/), which defines how many must confirm and which group they come from.
+  - Optionally, how far each node processes the transaction before it confirms, as a [confirmation level](#choosing-a-confirmation-level). If you leave it out, the level is `visible`.
+  - The [commit kind](#choosing-a-commit-kind), whether that means durability, quorum agreement, bounded lag, or single-commit enforcement.
+  - Optionally, `DEGRADE ON` sets a timeout after which the clause falls back to asynchronous if the required nodes don't respond in time.
+
+Optionally, specify `wait_for_ready` to block the call until the scope is active across all nodes before returning.
+
+For example, define a scope that requires a majority of local nodes to confirm synchronously, after they flush the changes to disk, before the commit returns.
+
+<div style="margin-bottom: 1rem;"><img src="https://raw.githubusercontent.com/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/pgd/6.4/images/commit-scope-anatomy.svg" style="width: 580px; height: auto;" alt="Anatomy of a commit scope, showing commit_scope_name, origin_node_group, confirming nodes, the optional confirmation level, and the commit kind color-coded in the function call." /></div>
+
+In this example, the rule requires a majority of nodes in the group `my_group` to confirm (`MAJORITY ORIGIN GROUP`). Each node confirms once it flushes the changes to disk (`ON durable`), using synchronous commit as the commit kind (`SYNCHRONOUS COMMIT`).
+
+## Choosing a commit kind
+
+Pick a commit kind to define what confirmation means for your workload. The right choice depends on how much latency you can tolerate, whether conflicts need to be prevented at commit time, and how your application handles retries:
+
+- **[Synchronous Commit](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/synchronous_commit/)** requires acknowledgment from the designated peers before the commit returns. Pair with `DEGRADE ON` to fall back to asynchronous after a timeout if the required peers don't respond.
+- **[Quorum Commit](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/quorum-commit/)** requires all participating nodes to agree on the transaction outcome before any node commits, preventing conflicting changes from being committed independently across nodes.
+- **[CAMO](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/camo/)** (Commit At Most Once) enforces single-commit semantics across nodes, preventing a transaction from being applied more than once when a client retries after a connection failure. You must implement a [verification step](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/camo/) in your application to check transaction status before retrying.
+- **[Lag Control](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/lag-control/)** provides async semantics gated by a maximum lag threshold. As the cluster approaches the threshold, PGD throttles application traffic to prevent runaway lag. The commit returns after local durability, but writes slow down before the threshold is breached.
+
+| Commit kind        | Best for                                                                                                                                                                             | Key trade-off                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| Synchronous Commit | Geo-distributed workloads requiring confirmation that data is persisted on remote nodes before the commit returns, with optional graceful degradation when peers are slow to respond | Higher commit latency than async                                |
+| Quorum Commit      | High-value workloads in payments, banking, or telecom where conflicting commits can't be untangled after the fact                                                                    | Higher per-transaction latency, and a majority must participate |
+| CAMO               | Workloads where processing a transaction twice causes real harm, such as payments or inventory updates, and where your application can implement a status check before retrying      | Application must implement a verification step before retrying  |
+| Lag Control        | High-throughput ingest pipelines that need async performance but can't tolerate unbounded replication lag                                                                            | Commits throttle or block when lag threshold is reached         |
+
+> **Note**
+>
+> Commit kinds guarantee durability, not conflict prevention. Two nodes can still independently commit conflicting changes, which surface after the fact and are resolved using timestamps or other post-commit strategies. See [Conflict management](https://www.enterprisedb.com/docs/pgd/6.4/conflict-management/). Unlike the other commit kinds, Quorum Commit prevents conflicts at commit time rather than resolving them afterward.
+
+## Choosing a confirmation level
+
+Add a confirmation level to a clause with `ON`, between the commit scope group and the commit kind. For example, `ALL ORIGIN GROUP ON durable SYNCHRONOUS COMMIT`. The level sets how far each confirming node has processed the transaction before it confirms, and the commit kind sets how nodes coordinate the transaction. Each clause combines both.
+
+Pick the level that matches how much data loss and stale reading your workload can tolerate:
+
+- **`received`** confirms as soon as a peer receives the transaction. However, data can be lost if the peer crashes.
+- **`replicated`** confirms after a peer applies the transaction but before it flushes the changes to disk. Data survives a Postgres crash but not an operating system crash. Synchronous Commit and CAMO handle `replicated` the same way as `received`.
+- **`durable`** confirms after a peer flushes the changes to disk. Data survives a crash and recovery of the peer, but with some commit kinds, such as Quorum Commit, the changes aren't visible yet.
+- **`visible`** is the default. It confirms after a peer applies the transaction and makes it visible to other transactions. Synchronous Commit and CAMO handle `visible` the same way as `durable`. With Quorum Commit, peers confirm without waiting for a flush.
+
+Not every commit kind supports every level. Quorum Commit supports only `durable` and `visible`. Lag Control doesn't use confirmation levels. For what each level does with each commit kind, see [Confirmation levels](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/comparing/). For where the level fits in a rule, see the [commit scope syntax](https://www.enterprisedb.com/docs/pgd/6.4/reference/tables-views-functions/commit-scopes/#commit-scope-syntax).
+
+## Applying a commit scope
+
+You can apply a scope at three levels of granularity. A transaction-level setting overrides a session-level one, which in turn overrides the group default.
+
+- **Per group:** Set a default scope on the node group when you want a consistent default for all writes originating from that group without changing application code:
+
+  ```sql
+  SELECT bdr.alter_node_group_option(
+      node_group_name := 'my_group',
+      config_key := 'default_commit_scope',
+      config_value := 'my_scope'
+  );
+  ```
+
+- **Per session:** Set the scope as a configuration parameter when running a batch of operations that all need the same scope, or when testing a scope before committing to a group-level default. The scope applies to all transactions in the session until changed or the session ends:
+
+  ```sql
+  SET bdr.commit_scope = 'my_scope';
+  ```
+
+- **Per transaction:** Set the scope inside the transaction block when you need a different durability guarantee for a specific high-value operation without affecting everything else. You must set the scope before issuing any writes:
+
+  ```sql
+  BEGIN;
+  SET LOCAL bdr.commit_scope = 'my_scope';
+  -- application writes
+  COMMIT;
+  ```
+
+## Example: Combining local majority with cross-region confirmation
+
+When a geo-distributed workload needs strong local durability and cross-region confirmation, but can't afford to block if the remote region is unavailable, pair a local majority clause with a cross-region clause and a degrade timeout. The example uses the [two data groups, active-active](https://www.enterprisedb.com/docs/pgd/6.4/planning/deployment-patterns/two-data-groups/) topology, with two active data groups (Region A and Region B, each with three data nodes) and a single witness node in Region C.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'regional_ha',
+    origin_node_group := 'region_a',
+    rule := 'MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT
+             AND ANY 1 NOT ORIGIN GROUP ON durable SYNCHRONOUS COMMIT
+                 DEGRADE ON (timeout = 10s, require_write_lead = true) TO ASYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+The scope uses two clauses joined by `AND`. The red box shows the local clause, where A2 (write leader) and A3 satisfy `MAJORITY ORIGIN GROUP`. The orange box shows the cross-region clause, where A2 as the origin node participates in both and B2 in Region B satisfies `ANY 1 NOT ORIGIN GROUP`, confirming once it flushes the changes to disk (`ON durable`). Each clause is evaluated independently and both must be satisfied before the commit returns. `DEGRADE ON` applies only to the cross-region clause. If B2 can't confirm within 10 seconds, the cross-region clause falls back to async while the local majority requirement stays enforced.
+
+<div style="text-align: center; margin-bottom: 1rem;"><img src="https://raw.githubusercontent.com/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/pgd/6.4/images/commit-scope-example1.svg" style="max-width: 100%; height: auto;" alt="Topology diagram showing two selection boxes. The red box covers A2 and A3 in Region A as the local majority. The orange box spans A2 and B2 across regions as the cross-region confirmation clause." /></div>
+
+Depending on your workload, you can also apply this scope at the session or transaction level, for example to enforce stricter durability only for specific high-value writes rather than all traffic from the group.
+
+## Example: Requiring all local nodes and two cross-region nodes
+
+When partial confirmation isn't acceptable, for example in regulated industries or financial systems requiring complete consensus, require every local node and two remote nodes to confirm with no fallback. Built on the same [two data groups, active-active](https://www.enterprisedb.com/docs/pgd/6.4/planning/deployment-patterns/two-data-groups/) topology, `ALL ORIGIN GROUP` requires every node in Region A to confirm rather than a majority, and `ANY 2 NOT ORIGIN GROUP` requires two Region B nodes to confirm rather than one.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'strict_ha',
+    origin_node_group := 'region_a',
+    rule := 'ALL ORIGIN GROUP SYNCHRONOUS COMMIT
+             AND ANY 2 NOT ORIGIN GROUP SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+The red box covers A1, A2, and A3 because `ALL ORIGIN GROUP` selects every node in the origin group, including A1, which plays no role in the previous example. The orange selection covers A2, B2, and B3, and the two arrows show that both B nodes must confirm. There's no `DEGRADE ON` clause, so if any of the required nodes can't confirm, the transaction waits.
+
+<div style="text-align: center; margin-bottom: 1rem;"><img src="https://raw.githubusercontent.com/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/pgd/6.4/images/commit-scope-example2.svg" style="max-width: 100%; height: auto;" alt="Topology diagram showing two selection boxes. The red box covers all three Region A nodes as the local ALL clause. The orange selection spans A2, B2, and B3, with two solid arrows showing the two required cross-region confirmations." /></div>
+
+## Example: Combining Synchronous Commit with Lag Control
+
+To protect the local group synchronously and keep a remote group from falling behind without waiting on it, join a Synchronous Commit clause with a Lag Control clause. Lag Control throttles transactions when the remote lag exceeds the configured limits.
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'local_sync_remote_lag',
+    origin_node_group := 'top_group',
+    rule := 'MAJORITY ORIGIN GROUP SYNCHRONOUS COMMIT DEGRADE ON (timeout = 10s) TO ASYNC
+             AND ANY 1 NOT ORIGIN GROUP LAG CONTROL (max_commit_delay = 0.250ms, max_lag_size = 100MB)',
+    wait_for_ready := true
+);
+```
+
+The first clause requires a majority of the origin group to confirm and degrades to async after 10 seconds. The second clause applies Lag Control to one node outside the origin group. Because `ORIGIN GROUP` resolves to the group of the node that originates the transaction, one rule on the top group covers every subgroup.
+
+## Example: Handling multiple durability requirements in a payments workload
+
+Consider a payments application that processes wire transfers, point-of-sale transactions, and batch settlement jobs in the same cluster. Different transaction types carry different risks, and applying the same commit kind to all of them either over-protects low-criticality paths or under-protects high-value ones.
+
+In this scenario, the application faces two distinct durability problems:
+
+- **Conflicting commits:** two nodes can each approve a wire transfer against the same account without knowing about the other, resulting in an overdraft.
+- **Duplicate commits:** when a client loses its connection during a commit, it can't tell whether the transaction succeeded, so retrying risks processing the payment twice.
+
+To address these two problems, use different commit scope kinds:
+
+- Use [CAMO](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/camo/) for payment gateway transactions, as the default. It lets the application query a partner node for the definitive outcome before deciding whether to retry. CAMO supports only two data nodes, so the CAMO pair sits in its own group.
+- Use [Quorum Commit](https://www.enterprisedb.com/docs/pgd/6.4/commit-scopes/quorum-commit/) for wire transfers, for those transactions only. It requires a majority of nodes to agree before any node finalizes the transaction. If they can't agree, the transaction rolls back everywhere. In a cluster with two data nodes and a witness, the cluster stops accepting Quorum Commit writes when one data node is down, so Quorum Commit isn't suitable as the default.
+
+To apply both in the same cluster, define a scope for each commit kind, set CAMO as the default for the CAMO group, and override to Quorum Commit per transaction for wire transfers:
+
+1. Define the two scopes:
+
+   ```sql
+   -- Quorum Commit scope for wire transfers
+   SELECT bdr.create_commit_scope(
+       commit_scope_name := 'quorum_commit',
+       origin_node_group := 'payments_group',
+       rule := 'MAJORITY ORIGIN GROUP QUORUM COMMIT',
+       wait_for_ready := true
+   );
+
+   -- CAMO scope for the payment gateway
+   SELECT bdr.create_commit_scope(
+       commit_scope_name := 'payment_gateway_camo_scope',
+       origin_node_group := 'payment_gateway_camo',
+       rule := 'ALL (payment_gateway_camo) CAMO DEGRADE ON (timeout=500ms) TO ASYNC',
+       wait_for_ready := true
+   );
+   ```
+
+2. Set CAMO as the default for the CAMO group:
+
+   ```sql
+   SELECT bdr.alter_node_group_option(
+       node_group_name := 'payment_gateway_camo',
+       config_key := 'default_commit_scope',
+       config_value := 'payment_gateway_camo_scope'
+   );
+   ```
+
+3. Apply Quorum Commit per transaction for wire transfers that need conflict prevention:
+
+   ```sql
+   BEGIN;
+   SET LOCAL bdr.commit_scope = 'quorum_commit';
+   -- wire transfer writes
+   COMMIT;
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

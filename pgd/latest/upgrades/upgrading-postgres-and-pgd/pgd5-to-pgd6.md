@@ -1,0 +1,567 @@
+---
+title: Upgrading PGD 5 and Postgres to PGD 6
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-postgres-and-pgd/pgd5-to-pgd6/
+lastModified: 2026-11-24T10:07:19Z
+---
+
+# Upgrading PGD 5 and Postgres to PGD 6
+
+Upgrade a PGD 5 cluster to PGD 6 and Postgres to a new major version at the same time, moving from PGD
+Proxy to Connection Manager, using one of two approaches: [full
+downtime](#upgrading-with-full-downtime) or a [rolling upgrade](#upgrading-with-a-rolling-upgrade), either
+[in place](#upgrading-in-place) or [by replacing nodes](#upgrading-by-replacing-nodes) one at a time. A
+rolling upgrade starts by [moving the cluster to Connection
+Manager](#moving-to-connection-manager-first), while every node is still on PGD 5.9. If you're not also
+upgrading Postgres, see [Upgrading PGD 5 to PGD 6](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-pgd/pgd5-to-pgd6/)
+instead.
+
+> **Note**
+>
+> This procedure assumes PGD Proxy runs on a PGD node. If PGD Proxy runs on a separate server, move it to a
+> PGD node first, since Connection Manager only runs on PGD data nodes.
+
+## Before you begin
+
+Confirm every node is running the supported starting version. See [Supported PGD upgrade paths](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrade_paths/), then check the versions in your cluster:
+
+```shell
+pgd nodes list --versions
+```
+
+> **Note**
+>
+> If your cluster runs a PGD 5 version earlier than 5.9.1, upgrade to 5.9.1 or later first. See [Upgrading PGD clusters manually](https://www.enterprisedb.com/docs/pgd/5.9/upgrades/manual_overview/).
+
+Run `pgd` commands and SQL as the Postgres operating system user, such as `postgres` or `enterprisedb`. Run package and service commands (`dnf`, `apt`, and `systemctl`) as an administrator, with `sudo`.
+
+PGD 6 package names include your Postgres distribution. Replace `<distribution>` in the commands on this page with `pg` for community Postgres, `pgextended` for EDB Postgres Extended, or `epas` for EDB Postgres Advanced Server. For example, the package for EDB Postgres Advanced Server 17 is `edb-pgd6-expanded-epas17`. For details on package naming, see [Installing the database and PGD](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/installing-database-and-pgd/).
+
+## Upgrading with full downtime
+
+Choose this approach when a maintenance window is acceptable and finishing quickly matters more than
+staying online. See [Choosing between a rolling and full-downtime
+upgrade](https://www.enterprisedb.com/docs/pgd/latest/upgrades/planning_upgrade/#choosing-between-a-rolling-and-full-downtime-upgrade) for
+the trade-offs against the two rolling approaches described below.
+
+1. Disconnect applications from the cluster, then stop and disable PGD Proxy on every node running it, so it doesn't start again after a reboot:
+
+   ```shell
+   sudo systemctl disable --now pgd-proxy
+   ```
+
+2. On each node, one at a time or all at once, install the combined PGD 6 and new Postgres major version
+   package:
+
+   ### Debian/Ubuntu
+
+   ```shell
+   sudo apt install -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### CentOS/RHEL
+
+   ```shell
+   sudo dnf install -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### SLES
+
+   ```shell
+   sudo zypper -n install edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   Package managers install each Postgres major version to its own path, so the running node and its
+   current binaries are untouched.
+
+3. Create a fresh, empty data directory for the new Postgres version on each node using its
+   [`initdb`](https://www.postgresql.org/docs/current/app-initdb.html), matching the old cluster's checksum
+   and locale settings. Leave this new cluster shut down:
+
+   ```shell
+   <new_bindir>/initdb -D <new_datadir> --data-checksums
+   ```
+
+   Add `--locale`, `--encoding`, or other `initdb` options as needed to match the old cluster's settings.
+   Use a different `<new_datadir>` path if you don't want to use the default data directory location.
+
+4. Copy each node's old cluster's [`postgresql.conf` and
+   `postgresql.auto.conf`](https://www.postgresql.org/docs/current/config-setting.html),
+   [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html), and `conf.d` directory
+   (if present) into the new data directory, adjusting for any configuration parameters that changed
+   between Postgres major versions. While you're editing it, set the configuration parameter
+   `bdr.enable_builtin_connection_manager` to `true` in the new data directory's configuration, so
+   Connection Manager comes up enabled the first time this data directory starts. Since nothing is serving
+   traffic yet, you don't need the separate restart-then-enable sequence a rolling upgrade uses to move the
+   cluster onto Connection Manager first.
+
+   > **Note**
+   >
+   > Remove or rename parameters that the new major version no longer supports, or the new server won't
+   > start. To find them ahead of time, read the [Postgres release
+   > notes](https://www.postgresql.org/docs/current/release.html) of each major version between your old and
+   > new version. For example, `operator_precedence_warning` was removed in Postgres 14, and
+   > `wal_keep_segments` was removed in Postgres 13 and replaced by `wal_keep_size`.
+   >
+   > If the new server fails to start, for example during `pgd node upgrade --check`, its log reports
+   > `unrecognized configuration parameter` with the name of the parameter. If `log_destination` is set to
+   > `syslog`, the `pg_upgrade` log doesn't show this message, so check the system log instead.
+
+5. Stop Postgres on every node, so systemd doesn't automatically restart it while `pgd node upgrade`
+   manages the process directly:
+
+   ```shell
+   sudo systemctl stop postgres
+   ```
+
+   `pgd node upgrade` doesn't require the old instance to be either running or stopped beforehand, since
+   it stops and starts both the old and new instances itself several times during the run.
+
+6. On each node, run `pgd node upgrade` with the `--check` option first, to perform a dry run that
+   validates the upgrade without making changes:
+
+   ```shell
+   pgd node <node_name> upgrade --check \
+     --old-bindir <old_bindir> \
+     --new-bindir <new_bindir> \
+     --old-datadir <old_datadir> \
+     --new-datadir <new_datadir> \
+     --database <database_name> \
+     --username <install_user>
+   ```
+
+   - `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
+   - `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
+     directory you created earlier.
+   - `--database` is the PGD-enabled database name, and `--username` is the cluster's install user.
+   - `--check` runs the PGD-specific validation and `pg_upgrade --check`, without modifying either
+     cluster. See [Modes of operation](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/#modes-of-operation)
+     for what running with `--check` validates.
+   - If your old cluster doesn't use the defaults, add `--old-port` and `--socketdir`. The defaults are port
+     5432 and the `/var/run/postgresql` socket directory, which doesn't exist on RHEL. EDB Postgres
+     Advanced Server listens on port 5444 by default. For example, on RHEL with EDB Postgres Advanced
+     Server, add `--socketdir /tmp --old-port 5444`. Use the same options when you run the upgrade without
+     `--check`.
+
+7. Run `pgd node upgrade` again without `--check` to migrate the node's data into the new data directory,
+   using the same options:
+
+   ```shell
+   pgd node <node_name> upgrade \
+     --old-bindir <old_bindir> \
+     --new-bindir <new_bindir> \
+     --old-datadir <old_datadir> \
+     --new-datadir <new_datadir> \
+     --database <database_name> \
+     --username <install_user>
+   ```
+
+   Add the `--link` option to use hard links instead of copying files, if the old and new data
+   directories are on the same filesystem. See [`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html)
+   in the PostgreSQL documentation for more information.
+
+8. Point Postgres at the new binaries and data directory on each node. For example, update the
+   `Environment=PGDATA` and `ExecStart` lines in the `postgres.service` file:
+
+   ```
+   Environment=PGDATA=<new_datadir>
+   ExecStart=<new_bindir>/postgres -D ${PGDATA}
+   ```
+
+   Then reload the service definition and start it:
+
+   ```shell
+   sudo systemctl daemon-reload
+   sudo systemctl start postgres
+   ```
+
+   Each node comes up on the new Postgres version and PGD 6, with Connection Manager already enabled.
+
+9. Confirm every node has rejoined the cluster and is healthy:
+
+   ```shell
+   pgd nodes list
+   ```
+
+   Every node should show `ACTIVE` under `Join State` and `Up` under `Node Status`. Then continue to
+   [Moving to Connection Manager](#moving-to-connection-manager) below.
+
+## Upgrading with a rolling upgrade
+
+Upgrade nodes one at a time so applications stay available throughout. Move the whole cluster onto
+Connection Manager first, while every node is still on PGD 5.9 and the old Postgres version, then upgrade
+each node either [in place](#upgrading-in-place) or [by replacing it](#upgrading-by-replacing-nodes).
+
+### Moving to Connection Manager first
+
+PGD 5.9 already includes Connection Manager, disabled by default. Before starting either approach below,
+move the whole cluster from PGD Proxy to Connection Manager, one node at a time, while every node is still
+running PGD 5.9 and the old Postgres version.
+
+1. Run the following query, as a database superuser connected to the PGD-enabled database on one of the
+   nodes, to ensure that [SCRAM](https://www.postgresql.org/docs/current/auth-password.html) hashes of all
+   user passwords are the same across all nodes:
+
+   ```sql
+   DO $$
+   DECLARE
+       rec RECORD;
+       command TEXT;    password TEXT;
+   BEGIN
+       FOR rec IN SELECT rolname,rolpassword FROM pg_authid WHERE rolcanlogin = true AND rolpassword like 'SCRAM-SHA%'
+       LOOP
+           password := rec.rolpassword;
+           command := 'ALTER ROLE ' || quote_ident(rec.rolname) || ' WITH ENCRYPTED PASSWORD ' || quote_literal(password);
+           EXECUTE command;
+       END LOOP;
+   END;
+   $$;
+   SELECT bdr.wait_slot_confirm_lsn(NULL, NULL);
+   ```
+
+   > **Note**
+   >
+   > No new users should be added to 5.9 after executing this query. If they are added, run the query again. The
+   > block above doesn't change the passwords, it just ensures SCRAM hashes are the same across the cluster
+   > on all nodes.
+
+   Connection Manager listens on the Postgres port plus 1000 by default, for example 6444 on EDB Postgres Advanced Server (port 5444) and 6432 on community Postgres (port 5432). Compare these ports with the `listen_port` and `read_listen_port` values PGD Proxy uses. If they differ, applications lose their connection as soon as the last PGD Proxy stops, unless you set the Connection Manager ports to the proxy ports in step 7.
+
+   For each node, one at a time:
+
+2. Fence the node, so it doesn't become the write leader:
+
+   ```shell
+   pgd node <node_name> set-option route_fence true
+   ```
+
+3. Set the configuration parameter `bdr.enable_builtin_connection_manager` to `true`:
+
+   ```sql
+   ALTER SYSTEM SET bdr.enable_builtin_connection_manager = true;
+   ```
+
+4. Restart the server to pick up the configuration change:
+
+   ```shell
+   sudo systemctl restart postgres
+   ```
+
+5. Stop and disable PGD Proxy running on the server, so it doesn't start again after a reboot and take the
+   proxy ports before Postgres starts:
+
+   ```shell
+   sudo systemctl disable --now pgd-proxy
+   ```
+
+6. Restart the server again:
+
+   ```shell
+   sudo systemctl restart postgres
+   ```
+
+   It starts with Connection Manager running on its default ports.
+
+7. If this node was the last one in its group still running PGD Proxy, and the Connection Manager ports
+   differ from the proxy ports, set the Connection Manager ports of that group to the proxy ports.
+   Applications can't connect to the group until you do. Run the following on any node. The change takes
+   effect without a restart:
+
+   ```sql
+   SELECT bdr.alter_node_group_option('<group_name>', 'read_write_port', '<proxy_read_write_port>');
+   SELECT bdr.alter_node_group_option('<group_name>', 'read_only_port', '<proxy_read_only_port>');
+   ```
+
+   For example, set `read_write_port` to `6432` and `read_only_port` to `6433` when applications connect
+   to PGD Proxy on those ports. Alternatively, point applications at the Connection Manager ports of
+   every node before you stop the last PGD Proxy.
+
+8. Unfence the node:
+
+   ```shell
+   pgd node <node_name> set-option route_fence false
+   ```
+
+   It can now accept connections from the user and route to the write leader via Connection Manager.
+
+9. Repeat for each remaining node, one at a time, until every node routes via Connection Manager.
+
+Once every node is on Connection Manager, continue to [Upgrading in place](#upgrading-in-place) or
+[Upgrading by replacing nodes](#upgrading-by-replacing-nodes).
+
+### Upgrading in place
+
+Migrate each node's Postgres and PGD version. PGD Proxy is already stopped everywhere once the cluster is
+on Connection Manager, so you don't need to handle it here. Use the command-line utility [`pgd node
+upgrade`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/) to migrate each node's Postgres version and
+PGD version together. It wraps the standard
+[`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html), adding PGD-specific steps around it
+so replication slots and origins carry over correctly.
+
+1. Move the whole cluster onto Connection Manager first. See [Moving to Connection Manager
+   first](#moving-to-connection-manager-first).
+
+2. Install the combined PGD 6 and new Postgres major version package on every node, instead of a PGD-only
+   package:
+
+   #### Debian/Ubuntu
+
+   ```shell
+   sudo apt install -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   #### CentOS/RHEL
+
+   ```shell
+   sudo dnf install -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   #### SLES
+
+   ```shell
+   sudo zypper -n install edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   Package managers install each Postgres major version to its own path, so the running PGD 5 nodes and
+   their current Postgres binaries stay untouched. You can do this on every node up front, since it
+   doesn't disrupt the running cluster.
+
+   > **Note**
+   >
+   > The PGD 5 CLI can't manage a cluster that contains PGD 6 nodes. It fails with `No query found for version
+   > 60500`. Once the first node runs PGD 6, run every `pgd` command from a node that already runs PGD 6.
+
+   For each node, one at a time:
+
+3. Fence the node, so it doesn't become the write leader:
+
+   ```shell
+   pgd node <node_name> set-option route_fence true
+   ```
+
+   If the node is the write leader, fencing moves write leadership to another node.
+
+   > **Note**
+   >
+   > Don't use `pgd group set-leader` to move leadership during this upgrade. It needs every node on PGD 6
+   > (Raft protocol version 6004 or later), so it fails with `Failed to change leader` while the cluster
+   > still has PGD 5 nodes.
+
+4. Create a fresh, empty data directory for the new Postgres version using its
+   [`initdb`](https://www.postgresql.org/docs/current/app-initdb.html), matching the old cluster's checksum
+   and locale settings. Leave this new cluster shut down:
+
+   ```shell
+   <new_bindir>/initdb -D <new_datadir> --data-checksums
+   ```
+
+   Add `--locale`, `--encoding`, or other `initdb` options as needed to match the old cluster's settings.
+   Use a different `<new_datadir>` path if you don't want to use the default data directory location.
+
+5. Copy the old cluster's [`postgresql.conf` and
+   `postgresql.auto.conf`](https://www.postgresql.org/docs/current/config-setting.html),
+   [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html), and `conf.d` directory
+   (if present) into the new data directory, adjusting for any configuration parameters that changed
+   between Postgres major versions. The `bdr.enable_builtin_connection_manager` setting carries over from
+   the earlier step, so Connection Manager comes up enabled the first time this data directory starts.
+
+   > **Note**
+   >
+   > Remove or rename parameters that the new major version no longer supports, or the new server won't
+   > start. To find them ahead of time, read the [Postgres release
+   > notes](https://www.postgresql.org/docs/current/release.html) of each major version between your old and
+   > new version. For example, `operator_precedence_warning` was removed in Postgres 14, and
+   > `wal_keep_segments` was removed in Postgres 13 and replaced by `wal_keep_size`.
+   >
+   > If the new server fails to start, for example during `pgd node upgrade --check`, its log reports
+   > `unrecognized configuration parameter` with the name of the parameter. If `log_destination` is set to
+   > `syslog`, the `pg_upgrade` log doesn't show this message, so check the system log instead.
+
+6. Stop Postgres on the node, so systemd doesn't automatically restart it while `pgd node upgrade`
+   manages the process directly:
+
+   ```shell
+   sudo systemctl stop postgres
+   ```
+
+   `pgd node upgrade` doesn't require the old instance to be either running or stopped beforehand, since
+   it stops and starts both the old and new instances itself several times during the run.
+
+7. Run `pgd node upgrade` with the `--check` option first, to perform a dry run that validates the
+   upgrade without making changes:
+
+   ```shell
+   pgd node <node_name> upgrade --check \
+     --old-bindir <old_bindir> \
+     --new-bindir <new_bindir> \
+     --old-datadir <old_datadir> \
+     --new-datadir <new_datadir> \
+     --database <database_name> \
+     --username <install_user>
+   ```
+
+   - `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
+   - `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
+     directory you created earlier.
+   - `--database` is the PGD-enabled database name, and `--username` is the cluster's install user.
+   - `--check` runs the PGD-specific validation and `pg_upgrade --check`, without modifying either
+     cluster. See [Modes of operation](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/#modes-of-operation)
+     for what running with `--check` validates.
+   - If your old cluster doesn't use the defaults, add `--old-port` and `--socketdir`. The defaults are port
+     5432 and the `/var/run/postgresql` socket directory, which doesn't exist on RHEL. EDB Postgres
+     Advanced Server listens on port 5444 by default. For example, on RHEL with EDB Postgres Advanced
+     Server, add `--socketdir /tmp --old-port 5444`. Use the same options when you run the upgrade without
+     `--check`.
+
+8. Run `pgd node upgrade` again without `--check` to migrate the node's data into the new data directory,
+   using the same options:
+
+   ```shell
+   pgd node <node_name> upgrade \
+     --old-bindir <old_bindir> \
+     --new-bindir <new_bindir> \
+     --old-datadir <old_datadir> \
+     --new-datadir <new_datadir> \
+     --database <database_name> \
+     --username <install_user>
+   ```
+
+   Add the `--link` option to use hard links instead of copying files, if the old and new data
+   directories are on the same filesystem. See [`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html)
+   in the PostgreSQL documentation for more information.
+
+9. Point Postgres at the new binaries and data directory. For example, update the `Environment=PGDATA` and
+   `ExecStart` lines in the `postgres.service` file:
+
+   ```
+   Environment=PGDATA=<new_datadir>
+   ExecStart=<new_bindir>/postgres -D ${PGDATA}
+   ```
+
+   Then reload the service definition and start it:
+
+   ```shell
+   sudo systemctl daemon-reload
+   sudo systemctl start postgres
+   ```
+
+   The node comes up on the new Postgres version and PGD 6, with Connection Manager already routing for
+   it.
+
+10. Unfence the node:
+
+    ```shell
+    pgd node <node_name> set-option route_fence false
+    ```
+
+11. Confirm the node is healthy and running the new Postgres version:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+12. Repeat for each remaining node, one at a time, until every node is running the new Postgres version.
+    Then continue to [Moving to Connection Manager](#moving-to-connection-manager) below.
+
+For the full set of options and flags, see the [`pgd node
+upgrade`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/) command reference.
+
+### Upgrading by replacing nodes
+
+Instead of upgrading a node in place, join a new node that already has the combined PGD 6 and new Postgres
+major version packages installed, then part and drop one of the existing PGD 5 nodes.
+
+1. Move the existing cluster onto Connection Manager first. See [Moving to Connection Manager
+   first](#moving-to-connection-manager-first). PGD Proxy can't route to a
+   PGD 6 node, so the cluster needs to already be routing through Connection Manager before a PGD 6 node
+   joins.
+
+2. [Provision a new node](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/installing-database-and-pgd/) with the
+   combined PGD 6 and new Postgres major version packages already installed, for example
+   `edb-pgd6-expanded-epas17` for EDB Postgres Advanced Server 17. Connection Manager is enabled on it by default.
+
+3. Join the new node to the cluster using a logical join:
+
+   ```shell
+   pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
+   ```
+
+   Don't use `bdr_init_physical`, it requires the source and joining node to run the same PGD version and
+   the same Postgres major version, so it can't be used across a version change. See the [`pgd node
+   setup`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of
+   options.
+
+4. Wait for the new node to catch up with the cluster before routing traffic to it, then confirm it's
+   healthy and running the new Postgres version:
+
+   ```shell
+   pgd nodes list --versions
+   ```
+
+5. Update your application's connection configuration to include the new node once it's ready to take
+   traffic.
+
+6. Part one of the remaining PGD 5 nodes, then decommission it:
+
+   ```shell
+   pgd node <node_name> part
+   ```
+
+7. Repeat for each remaining PGD 5 node, one at a time, until the whole cluster is on PGD 6 and the new
+   Postgres version. Then continue to [Moving to Connection Manager](#moving-to-connection-manager) below.
+
+While nodes are on mixed Postgres major versions, avoid using any feature or DDL syntax that's only
+available in the newer version, until every node has been replaced.
+
+## Moving to Connection Manager
+
+Once every node is running PGD 6 and the new Postgres version, regardless of which upgrade path you took,
+finish moving the cluster off PGD Proxy and onto Connection Manager.
+
+> **Note**
+>
+> If you used either rolling upgrade approach, PGD Proxy is already stopped and applications already route
+> through Connection Manager from the earlier step. Use the following as a final confirmation.
+
+1. Confirm every node is running the new version:
+
+   ```shell
+   pgd nodes list --versions
+   ```
+
+2. Confirm every node reports the same `protocol_version` in the top-level group of
+   `bdr.group_raft_details`, confirming the whole cluster has moved to the new Raft protocol version, not
+   just that individual nodes report success:
+
+   ```sql
+   SELECT node_group_name, node_name, protocol_version FROM bdr.group_raft_details;
+   ```
+
+   Rows for the top-level group show the same version on every node, such as `6006`. Rows for subgroups
+   show `0`.
+
+3. Confirm routing is enabled for every group that routes, which are the location subgroups with local
+   routing, or the top-level group with global routing:
+
+   ```shell
+   pgd group <group_name> show --options
+   ```
+
+4. Stop and disable any PGD Proxy services still running:
+
+   ```shell
+   sudo systemctl disable --now pgd-proxy
+   ```
+
+5. Confirm the cluster is healthy:
+
+   ```shell
+   pgd cluster show --health
+   ```
+
+6. If you used the full-downtime approach, reconnect your applications to the cluster through Connection
+   Manager. With a rolling upgrade, applications already route through Connection Manager, so no change is
+   needed.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

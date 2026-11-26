@@ -1,0 +1,75 @@
+---
+title: CREATE_PROGRAM
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/15_dbms_scheduler/03_create_program/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# CREATE\_PROGRAM
+
+Use the `CREATE_PROGRAM` procedure to create a `DBMS_SCHEDULER` program. The signature is:
+
+```sql
+CREATE_PROGRAM(
+  <program_name> IN VARCHAR2,
+  <program_type> IN VARCHAR2,
+  <program_action> IN VARCHAR2,
+  <number_of_arguments> IN PLS_INTEGER DEFAULT 0,
+  <enabled> IN BOOLEAN DEFAULT FALSE,
+  <comments> IN VARCHAR2 DEFAULT NULL)
+```
+
+## Parameters
+
+`program_name`
+
+`program_name` specifies the name of the program that's being created.
+
+`program_type`
+
+`program_type` specifies the type of program. The current implementation of `CREATE_PROGRAM` supports a `program_type` of `PLSQL_BLOCK` or `PROCEDURE`.
+
+`program_action`
+
+- If `program_type` is `PLSQL_BLOCK, program_action` contains the PL/SQL block that executes when the program is invoked. The PL/SQL block must be terminated with a semi-colon (;).
+
+- If `program_type` is `PROCEDURE`, `program_action` contains the name of the stored procedure.
+
+`number_of_arguments`
+
+- If `program_type` is `PLSQL_BLOCK`, this argument is ignored.
+
+- If `program_type` is `PROCEDURE`, `number_of_arguments` specifies the number of arguments required by the procedure. The default value is `0`.
+
+`enabled`
+
+`enabled` specifies if the program is created enabled or disabled:
+
+- If `enabled` is `TRUE`, the program is created enabled.
+- If `enabled` is `FALSE`, the program is created disabled. Use the `DBMS_SCHEDULER.ENABLE` program to enable a disabled program.
+
+  The default value is `FALSE`.
+
+`comments`
+
+Use the `comments` parameter to specify a comment about the program. By default, this parameter is `NULL`.
+
+## Example
+
+The following call to the `CREATE_PROGRAM` procedure creates a program named `update_log`:
+
+```sql
+EXEC
+  DBMS_SCHEDULER.CREATE_PROGRAM (
+    program_name     => 'update_log',
+    program_type     => 'PLSQL_BLOCK',
+    program_action   => 'BEGIN INSERT INTO my_log VALUES(current_timestamp);
+                         END;',
+    enabled          => TRUE,
+    comments         => 'This program adds a row to the my_log table.');
+```
+
+`update_log` is a PL/SQL block that adds a row containing the current date and time to the `my_log` table. The program is enabled when the `CREATE_PROGRAM` procedure executes.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,150 @@
+---
+title: Understanding Preflight checks
+description: Understand how the operator validates secret requirements during installation and how to troubleshoot failures.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/troubleshooting/preflight_checks/
+lastModified: 2026-11-20T19:53:06+05:30
+---
+
+# Understanding Preflight checks
+
+Check the results of the `Preflight` check to ensure all installation-related secrets are valid.
+
+> **Role focus:** Site reliability engineer (SRE) / Infrastructure Engineer
+
+## Prerequisites
+
+- [Phase 5: Installing Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/#install-hybrid-manager) — You have run the installation command and the process seems stuck.
+
+## Outcomes
+
+- _Ability to diagnose and resolve secret-related blockers during Hybrid Manager (HM) installation._
+
+When you start the HM installation, the operator automatically creates a `Preflight` custom resource. This resource validates that all required Kubernetes secrets exist and are correctly structured **before** the operator proceeds to deploy the platform services.
+
+> **Note**
+>
+> You do not create the Preflight resource yourself. The operator creates it automatically after the `HybridControlPlane` resource is created.
+
+## How preflight checks work
+
+After you apply your `HybridControlPlane` manifest, the operator:
+
+1. Reconciles the `HybridControlPlane` resource.
+2. Creates a `Preflight` resource with the secret requirements for the deployment.
+3. Validates each secret requirement: verifies the secret exists, then evaluates validation rules against the secret content.
+4. Reports the result in the preflight resource status.
+
+If all requirements pass, the operator proceeds with deploying the platform services. If any requirement fails, **deployment is blocked** and the operator retries every 30 seconds until the issues are resolved.
+
+## Checking the preflight status
+
+If the installation appears stuck after running the [installation Helm command](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/#install-hybrid-manager), inspect the preflight status:
+
+```bash
+kubectl get preflight -o yaml
+```
+
+The `status.secretRequirementsStatus` section shows the result for each checked secret:
+
+```yaml
+status:
+  observedGeneration: 1
+  secretRequirementsStatus:
+    - secret:
+        name: hm-portal-bootstrap
+        namespace: edb-system
+      state: Valid
+    - secret:
+        name: edb-object-storage
+        namespace: edb-system
+      state: Invalid
+      messages:
+        - "failed to pass the rule: aws-configurations"
+    - secret:
+        name: db-upm
+        namespace: edb-system
+      state: SecretNotFound
+```
+
+## Understanding the states
+
+| State              | Meaning                                                | Action required                                                                          |
+| ------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| **Valid**          | Secret exists and passes all validation rules.         | None.                                                                                    |
+| **Invalid**        | Secret exists but one or more validation rules failed. | Review the `messages` field to identify which rules failed, then fix the secret content. |
+| **SecretNotFound** | The referenced secret does not exist.                  | Create the secret in the correct namespace with the required keys.                       |
+
+> **Warning**
+>
+> Deployment remains blocked until **every** secret requirement reaches the `Valid` state. The operator retries automatically every 30 seconds. Once all requirements pass, deployment proceeds without manual intervention.
+
+## How scenarios affect preflight
+
+Each secret requirement is associated with an **installation scenario**, such as `core`, `ai`, `analytics`, etc. The operator uses the scenarios configured in `spec.scenarios` on the `HybridControlPlane` to filter which requirements are checked.
+
+- If your configuration defines specific scenarios (for example, `core, ai`), only requirements matching those scenarios are validated. Requirements for other scenarios (such as `analytics`) are skipped.
+
+- If your configuration does **not** define `spec.scenarios`, the operator applies its default scenario set and validates the requirements for those scenarios. On operator 2.1, the default is the full set. On operator 2.2 or later, it's only `core`. List your scenarios explicitly.
+
+This means you only need to provide the secrets for the scenarios you are actually deploying. For example, if you are not using the `analytics` scenario, you do not need to provide the Lakekeeper confounding key secret.
+
+## Troubleshooting preflight failures
+
+### Installation appears stuck
+
+If the Helm command completes but pods are not starting, the preflight checks may be blocking the deployment. Check the preflight status first:
+
+```bash
+kubectl get preflight -o yaml
+```
+
+Look at `status.secretRequirementsStatus` for any entries that are not `Valid`.
+
+### Secret not found
+
+If a requirement shows `SecretNotFound`, verify the secret exists:
+
+```bash
+kubectl get secret <secret-name> -n <namespace>
+```
+
+If the secret does not exist, create it following the documentation for [Preparing your environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/). Ensure the name and namespace match exactly what the preflight expects.
+
+### Validation rule failures
+
+If a requirement shows `Invalid`, the `messages` field identifies which rules failed. For example:
+
+```
+failed to pass the rule: aws-configurations
+```
+
+This means the secret exists but does not meet the expected structure. Inspect the secret:
+
+```bash
+kubectl get secret <secret-name> -n <namespace> -o yaml
+```
+
+Compare the secret's data keys and values against the rule message. Common causes include:
+
+- **Missing keys** — The secret is missing a required data field (for example, `aws_region` or `bucket_name` for AWS object storage).
+- **Missing annotations** — Some secrets require specific replicator annotations to be set on the secret metadata.
+- **Wrong secret type** — For example, a TLS secret requires type `kubernetes.io/tls`.
+- **Empty values** — A required field exists but contains no data.
+
+After fixing the secret, the operator automatically re-evaluates within 30 seconds.
+
+### Requirements not being checked
+
+If you expect a requirement to be validated but it does not appear in the status, check the scenario configuration:
+
+1. Verify which scenarios are defined for your HM installation:
+
+   ```bash
+   kubectl get hybridcontrolplane <name> -o jsonpath='{.spec.scenarios}'
+   ```
+
+2. Confirm the established scenario matches the scenarios established by the CTO / Architect / Lead Engineer during the [Planning architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/#choosing-an-installation-scenario) phase. If the output of the command doesn't match the expected scenarios, it means that the installation was not carried out as planned, and one or several of the scenarios were skipped during the installation.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

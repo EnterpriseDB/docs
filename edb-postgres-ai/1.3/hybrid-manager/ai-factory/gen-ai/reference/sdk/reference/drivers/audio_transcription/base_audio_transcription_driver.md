@@ -1,0 +1,140 @@
+---
+title: base_audio_transcription_driver
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/audio_transcription/base_audio_transcription_driver/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# base\_audio\_transcription\_driver
+
+<span id="griptape.drivers.audio_transcription.base_audio_transcription_driver.BaseAudioTranscriptionDriver"></span>
+
+Bases:
+[`SerializableMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/mixins/serializable_mixin/#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+,  [`ExponentialBackoffMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/mixins/exponential_backoff_mixin/#griptape.mixins.exponential_backoff_mixin.ExponentialBackoffMixin "ExponentialBackoffMixin (griptape.mixins.exponential_backoff_mixin.ExponentialBackoffMixin)")
+, <span title="abc.ABC">ABC</span>
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/audio\_transcription/base\_audio\_transcription\_driver.py</code>
+
+</summary>
+
+```python
+@define
+class BaseAudioTranscriptionDriver(SerializableMixin, ExponentialBackoffMixin, ABC):
+    model: str = field(kw_only=True, metadata={"serializable": True})
+
+    def before_run(self) -> None:
+        EventBus.publish_event(StartAudioTranscriptionEvent())
+
+    def after_run(self) -> None:
+        EventBus.publish_event(FinishAudioTranscriptionEvent())
+
+    def run(self, audio: AudioArtifact, prompts: Optional[list[str]] = None) -> TextArtifact:
+        for attempt in self.retrying():
+            with attempt:
+                self.before_run()
+                result = self.try_run(audio, prompts)
+                self.after_run()
+
+                return result
+
+        raise Exception("Failed to run audio transcription")
+
+    @abstractmethod
+    def try_run(self, audio: AudioArtifact, prompts: Optional[list[str]] = None) -> TextArtifact: ...
+```
+
+</details>
+
+- `model = field(kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.audio_transcription.base_audio_transcription_driver.BaseAudioTranscriptionDriver.model"></span>
+
+<span id="griptape.drivers.audio_transcription.base_audio_transcription_driver.BaseAudioTranscriptionDriver.after_run"></span>
+
+### after\_run()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/audio\_transcription/base\_audio\_transcription\_driver.py</code>
+
+</summary>
+
+```python
+def after_run(self) -> None:
+    EventBus.publish_event(FinishAudioTranscriptionEvent())
+```
+
+</details>
+
+<span id="griptape.drivers.audio_transcription.base_audio_transcription_driver.BaseAudioTranscriptionDriver.before_run"></span>
+
+### before\_run()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/audio\_transcription/base\_audio\_transcription\_driver.py</code>
+
+</summary>
+
+```python
+def before_run(self) -> None:
+    EventBus.publish_event(StartAudioTranscriptionEvent())
+```
+
+</details>
+
+<span id="griptape.drivers.audio_transcription.base_audio_transcription_driver.BaseAudioTranscriptionDriver.run"></span>
+
+### run(audio, prompts=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/audio\_transcription/base\_audio\_transcription\_driver.py</code>
+
+</summary>
+
+```python
+def run(self, audio: AudioArtifact, prompts: Optional[list[str]] = None) -> TextArtifact:
+    for attempt in self.retrying():
+        with attempt:
+            self.before_run()
+            result = self.try_run(audio, prompts)
+            self.after_run()
+
+            return result
+
+    raise Exception("Failed to run audio transcription")
+```
+
+</details>
+
+<span id="griptape.drivers.audio_transcription.base_audio_transcription_driver.BaseAudioTranscriptionDriver.try_run"></span>
+
+### try\_run(audio, prompts=None)abstractmethod
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/audio\_transcription/base\_audio\_transcription\_driver.py</code>
+
+</summary>
+
+```python
+@abstractmethod
+def try_run(self, audio: AudioArtifact, prompts: Optional[list[str]] = None) -> TextArtifact: ...
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,24 @@
+---
+title: Configuring logical decoding on standby
+description: Describes how to create a logical replication slot on a standby server
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/application_programming/15_enhanced_sql_and_other_misc_features/logical_decoding/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# Configuring logical decoding on standby
+
+Logical decoding on a standby server allows you to create a logical replication slot on a standby server that can respond to API operations such as `get`, `peek`, and `advance`.
+
+For more information about logical decoding, refer to the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/logicaldecoding-explanation.html).
+
+For a logical slot on a standby server to work, you must set the `hot_standby_feedback` parameter to `ON` on the standby. The `hot_standby_feedback` parameter prevents `VACCUM` from removing recently dead rows that are required by an existing logical replication slot on the standby server. If a slot conflict occurs on the standby, the slots are dropped.
+
+For logical decoding on a standby to work, you must set `wal_level` to `logical` on both the primary and standby servers. If you set `wal_level` to a value other than `logical`, then slots aren't created. If you set `wal_level` to a value other than `logical` on primary, and if existing logical slots are on standby, such slots are dropped. You can't create new slots.
+
+When transactions are written to the primary server, the activity triggers the creation of a logical slot on the standby server. If a primary server is idle, creating a logical slot on a standby server might take noticeable time.
+
+For more information about functions that support replication, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-REPLICATION). See also this [logical decoding example](https://www.postgresql.org/docs/current/logicaldecoding-example.html).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

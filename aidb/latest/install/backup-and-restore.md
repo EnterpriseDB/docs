@@ -1,0 +1,103 @@
+---
+title: Backing up and restoring AIDB
+description: What pg_dump includes for an AIDB database, the privileges and roles a dump and restore need, and the commands to run.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/install/backup-and-restore/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Backing up and restoring AIDB
+
+`pg_dump` includes the rows of AIDB's configuration and history tables. A database restored from the dump keeps its pipelines, knowledge bases, agents, MCP servers, semantic knowledge bases, and agent memory. Caches, metrics, and telemetry stay out of the dump.
+
+## Understanding what a dump includes
+
+A dump includes these AIDB tables and their ID sequences, grouped by feature:
+
+| Feature                  | Tables                                                                                                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Pipelines                | `aidb.pipeline_registry`, `aidb.pipeline_step`, `aidb.pipeline_runtime_state`                                                                                                                                                              |
+| Knowledge bases          | `aidb.knowledge_base_registry`, `aidb.knowledge_base_pipeline`                                                                                                                                                                             |
+| Agents                   | `aidb.agents`, `aidb.agent_plugins_registry`, `aidb_internal.agent_task_queue` (which holds only finished tasks), `aidb_internal.action_log`                                                                                               |
+| Tools and MCP servers    | `aidb.sql_tool_registry`, `aidb.mcp_registry`                                                                                                                                                                                              |
+| Purposes                 | `aidb_internal.purpose_registry`                                                                                                                                                                                                           |
+| Semantic knowledge bases | `aidb_internal.semantic_knowledge_bases`, `aidb_internal.semantic_aliases`, `aidb_internal.semantic_alias_embeddings`, `aidb_internal.semantic_kb_state`, `aidb_internal.semantic_kb_history_imports`, `aidb_internal.semkb_audit_log`     |
+| Agent memory             | `aidb_memory.namespaces`, `aidb_memory.bindings`, `aidb_memory.events`, `aidb_memory.messages`, `aidb_memory.sessions`, `aidb_memory.session_compactions`, `aidb_memory.delete_audit`, `aidb_memory.work_queue`, `aidb_memory.work_errors` |
+| Leaked credential audit  | `aidb_internal.leaked_model_credentials`, which `aidb.audit_leaked_credentials()` reads                                                                                                                                                    |
+
+The dump leaves out the built-in `pg_agents` memory namespace and its binding, because `CREATE EXTENSION aidb` creates them again during the restore.
+
+## Prerequisites
+
+Check these requirements before you dump or restore a database:
+
+- **Dump privileges:** Use a superuser, or a role with both `pg_read_all_data` and `BYPASSRLS`, to run `pg_dump`. Run `pg_dumpall --globals-only` as a superuser, because only a superuser can read role passwords from `pg_authid`.
+
+- **Roles first:** Restore the roles before the database. The dump stores the owners of pipelines and MCP servers as role names, and AIDB matches each name against the roles in the target cluster. If an MCP server's owner role doesn't exist there, no role can refresh or delete the server.
+
+- **Restore as a superuser:** Connect to the target as a superuser. Superusers skip the owner role checks of `aidb.protect_owner_role()`, so a pipeline whose owner role no longer exists still restores.
+
+- **AIDB on the target:** [Install AIDB](https://www.enterprisedb.com/docs/aidb/latest/install/install/) on the target server. The restore runs the dump's `CREATE EXTENSION aidb`.
+
+## Dumping and restoring a database
+
+To move an AIDB database into a new one, dump the roles and the database from the source, restore the roles on the target, create the target database, and load the dump. The examples use a source database, `src`, and a new database, `dst`.
+
+Dump the roles and the database:
+
+```shell
+pg_dumpall --globals-only > globals.sql
+pg_dump -Fc -d src -f src.dump
+```
+
+Restore the roles, create the target database, and load the dump:
+
+```shell
+psql -d postgres -f globals.sql
+createdb dst
+pg_restore --single-transaction --exit-on-error -d dst src.dump
+```
+
+Use `--single-transaction` and `--exit-on-error` so `pg_restore` stops at the first error and loads nothing.
+
+If the target cluster already has some of the roles, ignore the `role ... already exists` messages from `psql`. They don't stop the restore, and `globals.sql` sets the source's attributes and password on each existing role too. If the target has roles of its own, edit `globals.sql` first to remove them.
+
+## Restoring what a dump leaves out
+
+The dump leaves out these tables. The table shows what to expect after a restore and what to do about each one:
+
+| Table                                 | Holds                                   | After the restore                                                                                                                                                                                                     |
+| ------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aidb_internal.mcp_tool_cache`        | The tools each MCP server advertised    | `aidb.tools` lists no MCP tools. As the owner of each MCP server, run [`aidb.refresh_mcp_tools()`](https://www.enterprisedb.com/docs/aidb/latest/tools/mcp-tools/#keeping-the-tool-list-current) to fetch them again. |
+| `aidb_internal.action_queue`          | Agent actions not finished at dump time | Not restored. Finished actions are in `aidb_internal.action_log`, which the dump includes.                                                                                                                            |
+| `aidb.pipeline_metrics_collection`    | Materialized pipeline metrics           | The [metrics collector](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/observability/#enabling-the-collector) fills it again when it runs.                                                |
+| Every table in the `aidb_otel` schema | Traces, logs, and metrics               | Not restored. To keep telemetry outside the database, set up the [OTel exporter](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#exporter-background-worker).                                        |
+
+After the restore, complete these follow-up tasks.
+
+AIDB restores schema changes still queued for a semantic knowledge base at dump time and processes them in the new database. A restore gives each schema a new OID, so a restored semantic knowledge base looks up its schemas again by name and keeps tracking their changes. WarehousePG doesn't do this lookup, so on WarehousePG, run `aidb.refresh_semantic_kb()` on each semantic knowledge base after the restore and before any DDL. Otherwise, AIDB doesn't track a schema rename.
+
+A pipeline whose owner role no longer exists restores but doesn't process. To restart, disable, or delete the pipeline, see [Recovering a pipeline with a renamed or dropped owner role](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/troubleshooting/#recovering-a-pipeline-with-a-renamed-or-dropped-owner-role) for the steps.
+
+## Handling the agent memory warning when updating the extension
+
+`ALTER EXTENSION aidb UPDATE` checks for agent memory that a later restore can't load. If the built-in `pg_agents` memory namespace has an ID other than 1, the update prints this warning and then finishes:
+
+```sql
+ALTER EXTENSION aidb UPDATE;
+```
+
+```output title="Output"
+WARNING:  pg_restore of a pg_dump of this database will fail to load Agent Memory
+DETAIL:  The pg_agents memory namespace has an id other than 1, and a fresh install recreates it as id 1 on restore.
+HINT:  Dump with --exclude-table-data='aidb_memory.*' so the rest restores, and contact support to carry Agent Memory over.
+```
+
+A database can be in this state if you called `aidb_memory.init()` on AIDB 7.6.0 and then upgraded through 7.7.0. If you see this warning, dump the database without its agent memory rows so the rest restores, and contact [EDB Support](https://support.enterprisedb.com) to move agent memory to the new database:
+
+```shell
+pg_dump -Fc --exclude-table-data='aidb_memory.*' -d src -f src.dump
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

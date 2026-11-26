@@ -1,0 +1,40 @@
+---
+title: Kubernetes at EDB
+description: Learn how EDB uses Kubernetes to support its products, services, and customer solutions.
+product: Developer Portal
+url: https://www.enterprisedb.com/docs/portal/kubernetes/learn/explained/k8s-at-edb/
+lastModified: 2025-09-10T02:29:30Z
+---
+
+# Kubernetes at EDB
+
+Kubernetes is a strategic enabler across EDB’s product portfolio and internal platforms.
+It supports both our customer-facing offerings and our internal development and delivery processes.
+
+## Why Kubernetes matters at EDB
+
+- **Platform consistency**: Kubernetes provides a common foundation across cloud and on-premises environments.
+- **Product architecture**: Many EDB products—including Hybrid Manager and cloud services—run on Kubernetes.
+- **DevOps acceleration**: Kubernetes enables modern CI/CD, testing, and delivery workflows across engineering teams.
+- **Customer enablement**: EDB supports Kubernetes-native patterns and operators for deploying Postgres and related services.
+- **Cloud integration**: Kubernetes allows EDB to integrate flexibly with cloud-native services while retaining portability.
+
+## How EDB uses Kubernetes
+
+- Hybrid Manager: Core platform runs on Kubernetes to orchestrate services and manage customer workloads.
+- EDB Postgres operators: Enable lifecycle automation of Postgres databases on Kubernetes.
+- EDB Postgres AI and Analytics: Designed for Kubernetes-native deployment patterns.
+- Internal testing and CI/CD: Kubernetes-based pipelines accelerate validation and delivery of product releases.
+- Customer solutions: EDB partners with customers to architect Kubernetes-based database platforms and support hybrid and multi-cloud strategies.
+
+## Next steps
+
+- [Kubernetes terminology](https://www.enterprisedb.com/docs/portal/kubernetes/learn/explained/terminology/)
+- [Kubernetes troubleshooting](https://www.enterprisedb.com/docs/portal/kubernetes/learn/how-to/troubleshooting-on-kubernetes/)
+
+Explore:
+
+- [Kubernetes in Hybrid Manager](https://www.enterprisedb.com/docs/portal/kubernetes/learn/explained/k8s-in-hybrid-manager/)
+- [Kubernetes explained by role](https://www.enterprisedb.com/docs/portal/kubernetes/learn/explained/for/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

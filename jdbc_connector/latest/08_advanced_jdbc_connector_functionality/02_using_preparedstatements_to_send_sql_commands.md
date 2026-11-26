@@ -1,0 +1,72 @@
+---
+title: Using PreparedStatements to send SQL commands
+product: JDBC Connector
+version: 42.7.3.5
+url: https://www.enterprisedb.com/docs/jdbc_connector/latest/08_advanced_jdbc_connector_functionality/02_using_preparedstatements_to_send_sql_commands/
+lastModified: 2026-06-03T16:11:45+05:30
+---
+
+# Using PreparedStatements to send SQL commands
+
+<div id="using_preparedstatements_to_send_sql_commands" class="registered_link"></div>
+
+Many applications execute the same SQL statement over and over again, changing one or more of the data values in the statement between each iteration. If you use a `Statement` object to repeatedly execute a SQL statement, the server must parse, plan, and optimize the statement every time. JDBC offers another `Statement` derivative, the `PreparedStatement`, to reduce the amount of work required in this scenario.
+
+The following code shows invoking a `PreparedStatement` that accepts an employee ID and employee name and inserts that employee information in the `emp` table:
+
+```java
+public void AddEmployee(Connection con)
+{
+  try
+  {
+    Console c = System.console();
+    String command = "INSERT INTO emp(empno,ename) VALUES(?,?)";
+    PreparedStatement stmt = con.prepareStatement(command);
+    stmt.setObject(1,new Integer(c.readLine("ID:")));
+    stmt.setObject(2,c.readLine("Name:"));
+    stmt.execute();
+
+    System.out.println("The procedure successfully executed.");
+  }
+  catch(Exception err)
+  {
+     System.out.println("An error has occurred.");
+     System.out.println("See full details below.");
+     err.printStackTrace();
+  }
+}
+```
+
+Instead of hard coding data values in the SQL statement, you insert placeholders to represent the values that change with each iteration. The following shows an `INSERT` statement that includes two placeholders (each represented by a question mark):
+
+```java
+String command = "INSERT INTO emp(empno,ename) VALUES(?,?)";
+```
+
+With the parameterized SQL statement in hand, the `AddEmployee()` method can ask the `Connection` object to prepare that statement and return a `PreparedStatement` object:
+
+```java
+PreparedStatement stmt = con.prepareStatement(command);
+```
+
+At this point, the `PreparedStatement` has parsed and planned the `INSERT` statement, but it doesn't know the values to add to the table. Before executing the `PreparedStatement`, you must supply a value for each placeholder by calling a `setter` method. `setObject()` expects two arguments:
+
+- A parameter number. Parameter number one corresponds to the first question mark, parameter number two corresponds to the second question mark, etc.
+- The value to substitute for the placeholder.
+
+The `AddEmployee()` method prompts the user for an employee ID and name and calls `setObject()` with the values supplied by the user:
+
+```java
+stmt.setObject(1,new Integer(c.readLine("ID:")));
+stmt.setObject(2, c.readLine("Name:"));
+```
+
+It then asks the `PreparedStatement` object to execute the statement:
+
+```java
+stmt.execute();
+```
+
+If the SQL statement executes as expected, `AddEmployee()` displays a message that confirms the execution. If the server encounters an exception, the error handling code displays an error message.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

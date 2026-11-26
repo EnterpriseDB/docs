@@ -1,0 +1,30 @@
+---
+title: Prerequisites
+description: Understand the prerequisites before loading data with FlowServer.
+product: FlowServer for WarehousePG
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/flowserver/loading/prerequisites/
+lastModified: 2026-01-21T17:42:05Z
+---
+
+# Prerequisites
+
+Before you configure FlowServer to load data into WarehousePG (WHPG), you must have a running FlowServer instance. Refer to the [Installing](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/flowserver/installing/) section for more details.
+
+If you are loading data from Kakfa, verify the following requirements:
+
+- Kafka cluster must be running version 0.8.0 or later through v4.0+.
+- You must manually create or identify your Kafka topic prior to loading the data.
+- The host running the FlowServer instance must have connectivity to:
+  - Each Kafka broker within the Kafka cluster.
+  - The WHPG coordinator and all segment hosts within the WHPG cluster.
+
+If you are loading data from RabbitMQ, verify the following requirements:
+
+- All primary versions of RabbitMQ are supported.
+- You must have access to an active RabbitMQ cluster and be able to provide the hostname and port number for the specific server serving your data.
+- You must identify the specific name of the RabbitMQ queue to load the data from.
+- The host running the FlowServer instance must have connectivity to:
+  - Each RabbitMQ host within the RabbitMQ cluster.
+  - The WHPG coordinator and all segment hosts within the WHPG cluster.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

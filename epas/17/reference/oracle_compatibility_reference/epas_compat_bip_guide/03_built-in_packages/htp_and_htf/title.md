@@ -1,0 +1,33 @@
+---
+title: TITLE
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/htp_and_htf/title/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# TITLE
+
+This function and procedure generates the `<TITLE>` and `</TITLE>` tags, which specify the text to display in the title bar of the browser window.
+
+## Syntax
+
+The following is the syntax for HTP:
+
+```
+HTP.TITLE (ctitle IN VARCHAR2);
+```
+
+The following is the syntax for HTF:
+
+```
+HTF.TITLE (ctitle) RETURN VARCHAR2;
+```
+
+## Parameters
+
+| Parameter | Purpose                                                    |
+| --------- | ---------------------------------------------------------- |
+| ctitle    | The text to display in the title bar of the browser window |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

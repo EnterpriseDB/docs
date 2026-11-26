@@ -1,0 +1,43 @@
+---
+title: Configuring the client
+product: JDBC Connector
+version: 42.7.3.5
+url: https://www.enterprisedb.com/docs/jdbc_connector/latest/09_security_and_encryption/01_using_ssl/02_configuring_the_client/
+lastModified: 2026-06-03T16:11:45+05:30
+---
+
+# Configuring the client
+
+<div id="configuring_the_client" class="registered_link"></div>
+
+A number of connection parameters are available for configuring the client for SSL. To know more about the SSL connection parameters and additional connection properties, see [Connecting to the database](https://www.enterprisedb.com/docs/jdbc_connector/latest/05_using_the_advanced_server_jdbc_connector_with_java_applications/02_connecting_to_the_database/#connecting_to_the_database).
+
+When passed different values, the behavior of SSL connection parameters differs. When you pass the connection parameter `ssl=true` into the driver, the driver validates the SSL certificate and verifies the hostname. Conversely, using `libpq` defaults to a nonvalidating SSL connection.
+
+You can get better control of the SSL connection using the `sslmode` connection parameter. This parameter is the same as the `libpq sslmode` parameter, and the existing SSL implements the following `sslmode` connection parameters.
+
+## sslmode connection parameters
+
+### sslmode=require
+
+This mode makes the encryption mandatory and also requires the connection to fail if it can’t be encrypted. The server is configured to accept SSL connections for this host/IP address and that the server recognizes the client certificate.
+
+> **Note**
+>
+> In this mode, the JDBC driver accepts all server certificates.
+
+### sslmode=verify-ca
+
+If `sslmode=verify-ca`, the server is verified by checking the certificate chain up to the root certificate stored on the client.
+
+### sslmode=verify-full
+
+If `sslmode=verify-full`, the server hostname is verified to make sure it matches the name stored in the server certificate. The SSL connection fails if it can't verify the server certificate. This mode is recommended in most security-sensitive environments.
+
+In the case where the certificate validation is failing, you can try `sslcert=`, and `LibPQFactory` will not send the client certificate. If the server isn't configured to authenticate using the certificate, it should connect.
+
+You can override the location of the client certificate, client key, and root certificate with the `sslcert`, `sslkey`, and `sslrootcert` settings, respectively. These default to `/defaultdir/postgresql.crt`, `/defaultdir/postgresql.pk8`, and `/defaultdir/root.crt`, respectively, where `defaultdir` is `${user.home}/.postgresql/` in Unix systems and `%appdata%/postgresql/` on Windows.
+
+In this mode, when establishing an SSL connection, the JDBC driver validates the server's identity, preventing "man in the middle" attacks. It does this by checking that the server certificate is signed by a trusted authority and that the host you're connecting to is the same as the hostname in the certificate.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

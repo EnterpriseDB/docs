@@ -1,0 +1,445 @@
+---
+title: Registering a PEM agent
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/registering_agent/
+lastModified: 2026-09-29T19:38:32+05:30
+---
+
+# Registering a PEM agent
+
+Before you can use a PEM agent, you must register it with a PEM server.
+**PEM agents installed by the PEM server package are registered automatically during server configuration.** For all other agents, follow these instructions.
+
+> **Note**
+>
+> After upgrading the PEM agent, you need to restart it. You don't need to register it again.
+
+## How to register PEM agents
+
+On Linux and Windows hosts, the PEM agent package includes a command line utility called pemworker. You can use it to perform management tasks, including [registering the PEM agent](#registering-a-pem-agent-using-the-pemworker-utility).
+
+On Windows, the PEM agent graphical installer allows you to register the agent when installing it. This convenience option doesn't support all the possibilities provided by the pemworker utility.
+If you don't want the installer to register the agent, clear the **Register now** checkbox. For more details, see the [installation instructions](https://www.enterprisedb.com/docs/pem/latest/installing/windows/).
+
+## Registering a PEM agent using the pemworker utility
+
+The pemworker utility is installed with the PEM agent. It's located in `/usr/edb/pem/agent/bin` on Linux and `C:\Program Files\edb\pem\agent-x64\bin` on Windows.
+
+To register an agent, set the PEM server password, invoke the utility as shown in the examples, and add the relevant options from the table as needed. Follow each option with a corresponding value.
+
+#### Linux
+
+```shell
+export PEM_SERVER_PASSWORD=edb
+# Running as root
+pemworker --register-agent
+```
+
+#### Windows
+
+```shell
+set PEM_SERVER_PASSWORD=edb
+# Running as admin
+./pemworker.exe REGISTER
+```
+
+| Option                           | Description                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--pem-server`                   | The IP address of the PEM backend database server. This parameter is required unless `--pem-registration-conn-string` is specified.                                                                                                                                                                                                                                                                                             |
+| `--pem-port`                     | The port of the PEM backend database server. The default value is `5432`.                                                                                                                                                                                                                                                                                                                                                       |
+| `--pem-user`                     | The name of a database user with the pem\_admin role and the `rolcreaterole` flag set on the PEM backend database server (the latter is not required if you specify an existing user via `--pem-agent-user` or an agent connection string), or a superuser. This user will be used to connect to the PEM server to perform agent registration. This parameter is required unless `--pem-registration-conn-string` is specified. |
+| `--pem-agent-user`               | The name of a database user on the PEM backend database server. After registration, the agent will use this user to open connections to the PEM database server to write probe data, evaluate alerts, and so on. This parameter is optional. If omitted, the agent connects using a new user named `agent<N>` created during registration, where `<N>` is the agent ID.                                                         |
+| `--pem-ssl-mode`                 | The [SSL mode](https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-PROTECTION) for the PEM agent user to use (see above). The possible values are `prefer`, `require`, `disable`, `verify-CA`, and `verify-full`. The default value is `require`.                                                                                                                                                                  |
+| `--pem-registration-conn-string` | The connection string used to connect to the PEM server during registration. Available in PEM 10.4 and later. See [Using connection strings](#using-connection-strings).                                                                                                                                                                                                                                                        |
+| `--cert-path`                    | The complete path to a directory in which to store certificates. If you don't provide a path, certificates are created in `~/.pem` on Linux and `%APPDATA%/pem` on Windows.                                                                                                                                                                                                                                                     |
+| `--config-dir`                   | The directory path for the configuration file. The default is `<pemworker path>/../etc`.                                                                                                                                                                                                                                                                                                                                        |
+| `--display-name`                 | A user-friendly name for the agent to display in the PEM browser tree. The default is the host's fully qualified domain name (FQDN), falling back to the hostname if this option isn't set.                                                                                                                                                                                                                                     |
+| `--force-registration`           | Include the `force-registration` clause to register the agent with the arguments provided. This clause is useful if you're overriding an existing agent configuration. The default value is `No`.                                                                                                                                                                                                                               |
+| `--group`                        | The name of a group in which to place the agent. This parameter is optional. If omitted, the agent isn't placed in a group.                                                                                                                                                                                                                                                                                                     |
+| `--team`                         | The name of a database role on the PEM backend database server. Access to this agent is restricted to only the named role, the owner, and the pem\_super\_admin role. This parameter is optional. If omitted, no team is assigned, meaning all users can access this agent.                                                                                                                                                     |
+| `--owner`                        | The name of a database user on the PEM backend database server. This user will be assigned as the owner of the agent. If omitted, the specified `pem-user` is assigned as the owner.                                                                                                                                                                                                                                            |
+| `--cluster-name`                 | Specifies the cluster name in Object Explorer to which the agent object will be added. If the cluster does not exist, it will be created automatically. This parameter is optional.                                                                                                                                                                                                                                             |
+| `--profile-id`                   | Specifies the ID of an existing agent profile to assign to this agent. Optional.                                                                                                                                                                                                                                                                                                                                                |
+| `--profile-name`                 | Specifies the name of an existing agent profile to assign to this agent. This parameter is optional and will be overridden by `--profile-id` if set.                                                                                                                                                                                                                                                                            |
+| `--allow_server_restart`         | Allow PEM to restart the monitored server. The default value is `True`.                                                                                                                                                                                                                                                                                                                                                         |
+| `--allow-batch-probes`           | Allow PEM to run batch probes on this agent. The default value is `False`.                                                                                                                                                                                                                                                                                                                                                      |
+| `--batch-script-user`            | The operating system user to use for executing the batch/shell scripts. The default value is none. If you leave this parameter blank or the specified user doesn't exist, the scripts don't execute.                                                                                                                                                                                                                            |
+| `--enable-heartbeat-connection`  | Create a dedicated heartbeat connection between the PEM agent and server to update the active status. The default value is `False`.                                                                                                                                                                                                                                                                                             |
+| `--enable-smtp`                  | Allow the PEM agent to send the email on behalf of the PEM server. The default value is `False`.                                                                                                                                                                                                                                                                                                                                |
+| `--enable-snmp`                  | Allow the PEM agent to send the SNMP traps on behalf of the PEM server. The default value is `False`.                                                                                                                                                                                                                                                                                                                           |
+| `--enable-webhook`               | Allow the PEM agent to call webhook endpoints on behalf of the PEM server. The default value is `False`.                                                                                                                                                                                                                                                                                                                        |
+| `-o`                             | Override the configuration file options. See the following [example](#overriding-default-configurations---examples) for usage.                                                                                                                                                                                                                                                                                                  |
+
+> **Note**
+>
+> If you remove `pem-agent-user` parameter from the `agent.cfg` file manually, then the agent will not connect using the default users.
+
+> **Note: Allowing the agent to restart the database server**
+>
+> If you use any feature of PEM that requires a database server restart by the PEM agent (such as Audit Manager, Log Manager, or the Tuning Wizard), then you must set the value of `allow_server_restart` to `true` in the `agent.cfg` file or restart the server manually for changes to take effect.
+
+> **Note: Running shell/batch jobs**
+>
+> If you want to run shell/batch jobs using an agent, you must specify the user for the `batch_script_user` parameter. We strongly recommend that you use a non-root user to run the scripts.
+> Using the root user might result in compromising the data security and operating system security.
+
+### Authenticating the pemworker utility
+
+Before any changes are made on the PEM database, the connection is authenticated with the PEM database server.
+When invoking the pemworker utility, you must provide the password associated with the PEM server administrative user role (postgres). You can specify the administrative password in three ways:
+
+- Set the `PEM_SERVER_PASSWORD` environment variable.
+- Provide the password on the command line with the `PGPASSWORD` keyword.
+- Create an entry in the `.pgpass` file.
+- Include a password, or encrypted password, in `--pem-registration-conn-string`
+
+If you don't provide the password, a password authentication error occurs. After authentication succeeds, you're prompted for any other missing required information. When the registration is complete, the server confirms that the agent was successfully registered.
+
+### Enable the PEM Agent service
+
+Your agent is now registered but is not yet running. To start the agent running and make sure it remains running after a system reboot, you must enable the PEM Agent service.
+
+#### Linux
+
+```shell
+systemctl enable --now pemagent
+```
+
+#### Windows
+
+Locate the pemAgent service in the Windows Service Manager (services.msc), right-click on it and select **Restart**.
+Ensure the **Startup Type** is set to **Automatic**.
+
+## Verifying PEM agent registration
+
+The `verify-registration` subcommand is a diagnostic utility introduced in PEM 10.4. It allows administrators to confirm that a PEM Agent is properly registered, active in the PEM database, and capable of connecting to the PEM Server.
+
+This command validates the agent's operational status by performing the following checks:
+
+1. **Configuration integrity:** Validates that the local configuration contains a proper and recognizable Agent ID.
+2. **Secure connectivity:** Verifies the ability to establish a connection to the PEM server using the certificate-based authentication configured in the `agent.cfg` file.
+3. **Database status:** Confirms that the agent is registered and explicitly marked as **active** in the PEM database.
+
+This subcommand is particularly useful for:
+
+- **Post-registration validation:** Validating agent setup immediately after initial registration.
+- **Connectivity troubleshooting:** Diagnosing connectivity issues between the agent and the PEM server.
+- **SSL/certificate audits:** Verifying that SSL certificates are properly configured and valid.
+- **Health monitoring:** Confirming agent status in automated health checks and monitoring scripts.
+
+### Command syntax
+
+The syntax for the `verify-registration` subcommand is specific to each operating system:
+
+**Linux**
+
+```shell
+pemworker --verify-registration [verify-registration-options]
+```
+
+**Windows**
+
+```shell
+pemworker VERIFY-REGISTRATION [verify-registration-options]
+```
+
+| Option                | Description                                                                                                                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--config-dir <path>` | The directory path where the agent configuration file (`agent.cfg`) is located. If not specified, the default configuration directory is used (e.g., `/usr/edb/pem/agent/etc/` on Linux). |
+
+When the command is executed, the `pemworker` utility performs a four-step validation process:
+
+1. **Load configuration:** Reads the `agent.cfg` (from the default or specified path) to retrieve the Agent ID and connection string.
+2. **Establish connection:** Attempts to open a connection to the PEM database server using the certificate-based SSL authentication defined during registration.
+3. **Query status:** Executes a check against the `pem.agent` system table to verify the ID exists and the status is set to active.
+4. **Report result:** Outputs the success or failure message to the console and returns a specific exit code.
+
+### Understanding exit codes
+
+The command returns the following exit codes:
+
+| Code | Status           | Description                                                           |
+| ---- | ---------------- | --------------------------------------------------------------------- |
+| 0    | Success          | Agent is registered, active, and connected.                           |
+| 1    | Config Error     | Failed to retrieve a valid Agent ID from the local configuration.     |
+| 2    | Connection Error | Unable to establish a connection to the PEM Server.                   |
+| 3    | Database Error   | Agent ID was found, but it is marked as inactive in the PEM database. |
+
+### Usage examples
+
+**Example 1 : Basic Verification**
+
+To verify the registration using default settings:
+
+**Linux**
+
+```shell
+pemworker --verify-registration
+```
+
+**Windows**
+
+```shell
+pemworker VERIFY-REGISTRATION
+```
+
+**Expected output on success:**
+
+```text
+Verify registration done successfully.
+```
+
+**Example 2: Using Custom Configuration Directory**
+
+To verify an agent that uses a non-default configuration directory:
+
+**Linux**
+
+```shell
+pemworker --verify-registration --config-dir /opt/custom/pem/agent/etc
+```
+
+**Windows**
+
+```shell
+pemworker VERIFY-REGISTRATION --config-dir "C:\custom\pem\agent\etc"
+```
+
+## Unregistering a PEM agent
+
+You can use the pemworker utility to unregister a PEM agent. To unregister an agent, invoke the pemworker utility as shown in the examples that follow.
+
+**Linux**
+
+```shell
+# Running as root
+pemworker --unregister-agent
+```
+
+**Windows**
+
+```shell
+./pemworker.exe UNREGISTER-AGENT
+```
+
+When invoking the pemworker utility, append command line options to the command string. Follow each option with a corresponding value.
+
+| Option                  | Description                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `--pem-user <username>` | The name of the database user (member of pem\_admin role) of the PEM backend database server. This parameter is required. |
+| `--config-dir`          | The directory path for the configuration file. The default is `"<pemworker path>/../etc"`.                                |
+
+## Advanced usage
+
+The following are some advanced options for PEM agent registration.
+
+### Using connection strings
+
+Beginning with PEM 10.4, for finer control over how the PEM agent connects to the PEM backend database, you can specify connection strings.
+There are two connection strings you can specify, the \*registration connection string and the \*agent\* connection string.
+These connection strings can be in either key-value or URI format and include any options supported by libpq with the exception of `dbname` which is hardcoded to `pem` and `target_session_attrs` which is hardcoded to `read-write`.
+
+#### The registration connection string
+
+The registration connection string, specified using `--pem-registration-conn-string`, is used for 'one time' privileged connections to the PEM backend to perform the following tasks.:
+
+- Agent registration (--register-agent)
+- Agent unregistration (--unregister-agent)
+- Server registration (--register-server)
+- Server unregistration (--unregister-server)
+
+The registration string must specify a user with the necessary permissions to perform these actions, specifically
+
+- `pem_admin` role
+- `rolcreaterole` unless you also specify an existing user via `--pem-agent-user` or an agent connection string (see below)
+
+The registration connection string itself is never stored, so must be entered whenever you wish to use it to perform one of these tasks.
+Note that the host and port will be extracted from the connection string used for agent registration and stored in the agent.cfg file so the agent knows where to find the PEM backend.
+
+You can also specify the registration connection string using the environment variable `PEM_REGISTRATION_CONN_STRING` The order of precedence is as follows:
+
+1. Command-line Argument (--pem-registration-conn-string) - Highest priority
+2. Environment Variable (PEM\_REGISTRATION\_CONN\_STRING)
+3. Individual Parameters (--pem-server, --pem-port, --pem-user) - Lowest priority
+
+#### The agent connection string
+
+The agent connection string is used for the persistent connection used by the agent to connect to the PEM backend for ongoing data collection, etc.
+This is an override option, written directly to agent.cfg so must be specified using `-o agent_connection_string`.
+
+When the agent connection string is not set, the agent will use the individual parameters in `agent.cfg` (`pem_host`, `pem_port`, etc.), or the registry on Windows, to determine how and where to connect.
+
+When the agent connection string is set, these parameters are ignored. If the agent connection string is specified during agent registration, PEM will not attempt to create a user or a client certificate for the agent connection.
+If you supply a connection string, you must ensure that the specified user exists, can authenticate and has the `pem_agent` role.
+
+The agent connection string will be stored in `agent.cfg`, or the registry on Windows.
+If the string contains a `password` or `sslpassword` value, it will be encrypted and replaced with the custom `pemenc_password` or `pemenc_sslpassword` values respectively.
+Passwords containing special characters must be enclosed in single quotes (key-value style) or URL encoded (URI style).
+
+You can also specify the agent connection string using the environment variable `PEM_AGENT_CONN_STRING` The order of precedence is as follows:
+
+1. Command-line Argument (`-oagent_conn_string=...`) - Highest priority
+2. Environment Variable (`PEM_AGENT_CONN_STRING`)
+3. Configuration File/Registry (`agent_conn_string` / `AGENT_CONN_STRING`)
+4. Individual Parameters (`pem_host`, `pem_port`, `pem_ssl_mode`, etc.) - Lowest priority
+
+### Setting the agent ID
+
+Each registered PEM agent must have a unique agent ID. The value `max(id)+1` is assigned to each agent ID unless a value is provided using the `-o` options as shown [in these examples](#overriding-default-configurations---examples).
+
+### Overriding default configurations - examples
+
+The `-o` option allows you to override agent configuration parameters (stored in `agent.cfg` on Linux and `HKEY_LOCAL_MACHINE\Software\EnterpriseDB\PEM\agent` on Windows) that cannot otherwise be set during registration.
+This option should be used with caution because these inputs will not be validated in the same way as regular CLI options.
+The full list of parameters is given in [Modifying agent configuration](https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/modifying_agent_configuration/)
+
+Below are some examples of uses of the `-o` option.
+
+#### Setting the agent ID
+
+Register the PEM agent using the command line. Assign an `agent_id` value of 8 using the `-o` option.
+
+```shell
+# Running as root
+/usr/edb/pem/agent/bin/pemworker --register-agent \
+--pem-server pemserver \
+--pem-user postgres \
+--pem-port 5432 \
+--display-name agent8 \
+-o agent_id=8
+```
+
+```output title="Output"
+Postgres Enterprise Manager Agent registered successfully!
+```
+
+Because the `agent_id` of 8 is available, the PEM agent registers successfully. If the given ID is already in use by an existing agent, an error occurs.
+
+#### Providing an existing SSL certificate and key
+
+Register the PEM agent using the command line. Assign the existing SSL certificates and key files to avoid generating new ones for a particular agent ID.
+The SSL certificates and key files must be valid for the database user `agent<ID>`, where `<ID>` must be the same as provided using the command line. Use the `-o` option.
+
+```shell
+# Running as root
+# List the location of valid SSL certificates and key files.
+ls -l /root/.pem/agent5.*
+-rw------- 1 root root 2192 Nov  7 11:27 /root/.pem/agent5.crt
+-rw------- 1 root root 3244 Nov  7 11:27 /root/.pem/agent5.key
+   
+# Register the PEM agent using command line. Assign the 
+# SSL certificates and key files using the -o option.
+/usr/edb/pem/agent/bin/pemworker --register-agent \
+--pem-server pemserver \
+--pem-user postgres \
+--pem-port 5432 \
+--config-dir /tmp/pem-config \
+--display-name agent5 \
+-o agent_id=5 \
+-o agent_ssl_crt=/root/.pem/agent5.crt \
+-o agent_ssl_key=/root/.pem/agent5.key
+```
+
+```output title="Output"
+Postgres Enterprise Manager Agent registered successfully!
+```
+
+Because the valid SSL certificates and key files are available at the given location with proper permissions, the PEM agent registers successfully. If the certificate or key files aren't valid or don't have proper permissions, an error occurs.
+
+### Using a non-root user account to register a PEM agent on Linux
+
+To use a non-root user account to register a PEM agent, you must first install the PEM agent as a root user. After installation, assume the identity of a non-root user, such as edb. Then:
+
+1. Log in as edb. Create `pem` and `logs` directories and assign read, write, and execute permissions:
+
+   ```shell
+   # Running as nonroot user edb
+   mkdir /home/edb/pem
+   mkdir /home/edb/pem/logs
+   chmod 700 /home/edb/pem
+   chmod 700 /home/edb/pem/logs
+   ```
+
+2. Register the agent with PEM server:
+
+   ```shell
+   export PEM_SERVER_PASSWORD=edb
+
+   # Use the following command to create agent certificates and an agent 
+   # configuration file (`agent.cfg`) in the `/home/edb/pem` directory. 
+   /usr/edb/pem/agent/bin/pemworker --register-agent --pem-server <172.19.11.230> --pem-user postgres --pem-port 5432 --display-name non_root_pem_agent --cert-path /home/edb/pem --config-dir /home/edb/pem
+
+   # Use the following command to assign read and write permissions to 
+   # these files:
+   chmod -R 600 /home/edb/pem/agent*
+   ```
+
+3. Change the parameters of the `agent.cfg` file:
+
+   ```ini
+   vi /home/edb/pem/agent.cfg
+   agent_ssl_key=/home/edb/pem/agent<id>.key
+   agent_ssl_crt=/home/edb/pem/agent<id>.crt
+   log_location=/home/edb/pem/worker.log
+   agent_log_location=/home/edb/pem/agent.log
+   ```
+
+   Where `<id>` is the assigned PEM agent ID.
+
+4. Create a `tmp` directory, set the environment variable, and start the agent:
+
+   ```ini
+   mkdir /home/edb/pem/tmp
+
+   # Create a script file, add the environment variable, give permissions, and execute:
+   vi /home/edb/pem/run_pemagent.sh
+   #!/bin/bash
+   export TEMP=/home/edb/agent/tmp
+   /usr/edb/pem/agent/bin/pemagent -c /home/edb/agent/agent.cfg
+   chmod a+x /home/edb/pem/run_pemagent.sh
+   cd /home/edb/pem
+   ./run_pemagent.sh
+   ```
+
+   Your PEM agent is now registered and started with the edb user. If your machine restarts, then this agent doesn't restart automatically. You need to start it manually using the previous command.
+
+5. Optionally, you can create the service for this PEM agent as the root user to start this agent automatically at machine restart as follows:
+
+   a.  Update the values for the configuration file path and the user in the `pemagent` service file as superuser:
+
+   ```ini
+   # Running as superuser
+   sudo vi  /usr/lib/systemd/system/pemagent.service
+   [Service]
+   Type=forking
+   WorkingDirectory=/home/edb/pem
+   Environment=LD_LIBRARY_PATH=/usr/edb/pem/agent/lib:/usr/libexec/edb-snmp++40/lib 
+   Environment=TEMP=/home/edb/pem/tmp
+   ExecStart=/usr/edb/pem/agent/bin/pemagent -c /home/edb/pem/agent.cfg
+   ```
+
+   Replace `edb-snmp++40` with `edb-snmp++36` if you're running RHEL 8. See [SNMP++](https://www.enterprisedb.com/docs/pem/latest/installing/dependencies/#snmp) for the package used on each platform.
+
+   b.  Stop the running agent process and restart the agent service:
+
+   ```shell
+   # Find the process id of the running pem agent and pem worker process and kill that process
+   ps -ax | grep pemagent
+   kill -9 <process_id_of_pemagent>
+   ps -ax | grep pemworker
+   kill -9 <process_id_of_pemworker>
+   # Enable and start pemagent service
+   sudo systemctl enable pemagent
+   sudo systemctl start pemagent
+   sudo systemctl status pemagent
+   ```
+
+6. Check the agent status on the PEM dashboard.
+
+> **Note**
+>
+> - Any probes and jobs that require root permission or access to a file owned by another user (for example,  enterprisedb) fail.
+> - If you move the `agent.cfg` file from its default location to another, the PEM dashboard might display the agent status as `unknown`. See [Troubleshooting agent issues](https://www.enterprisedb.com/docs/pem/latest/troubleshooting_agent/#updating-configuration-file-path-agent-status-displaying-as-unknown) for more information.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

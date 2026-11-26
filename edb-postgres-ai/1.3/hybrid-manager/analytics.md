@@ -1,0 +1,27 @@
+---
+title: Analytics in Hybrid Manager
+description: Run analytical queries on object storage using Postgres Analytics Accelerator (PGAA), pre-installed on Hybrid Manager AHA, DHA, and Lakehouse clusters.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/analytics/
+lastModified: 2026-06-02T13:21:17+01:00
+---
+
+# Analytics in Hybrid Manager
+
+Hybrid Manager (HM) includes Postgres Analytics Accelerator (PGAA), a high-performance extension that enables Postgres to query large-scale data stored in open table formats like Delta Lake, Apache Iceberg, and Parquet.
+
+For concepts, architecture, and reference documentation, see the [PGAA documentation](https://www.enterprisedb.com/docs/pgaa/1.3/).
+
+PGAA is available on two cluster types in HM:
+
+- **Advanced High Availability (AHA) and Distributed High Availability (DHA) clusters** — EDB Postgres Distributed (PGD)-based cluster types that support data tiering and analytics. Catalog and storage configuration are done directly in your database client using PGAA and PGD functions. See [Using tiered storage](https://www.enterprisedb.com/docs/pgd/latest/tiered-storage/) in the PGD documentation for implementation details.
+- **Lakehouse clusters** — Dedicated analytical compute nodes with PGAA pre-installed for querying object storage using standard Postgres SQL. The HM console provisions and connects to Lakehouse clusters, but catalog and storage configuration is done directly in your database client. See [Lakehouse clusters](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/hm_overview/lakehouse/).
+
+## Lakehouse clusters
+
+Lakehouse clusters are HM-managed Postgres nodes with PGAA pre-installed, dedicated to querying Apache Iceberg®, Delta Lake, and Parquet files in object storage using standard Postgres SQL. The `pgaa` and `pgfs` extensions are pre-installed and ready to use. Catalog attachment and storage configuration are done directly in your database client using PGAA functions.
+
+To create and manage Lakehouse clusters, see [Lakehouse clusters](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/hm_overview/lakehouse/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

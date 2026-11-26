@@ -1,0 +1,286 @@
+---
+title: Configuring external storage
+description: How to connect AIDB pipelines to external storage — S3-compatible object stores, Google Cloud Storage, Azure, and local file systems — using PGFS storage locations and AIDB volumes.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Configuring external storage
+
+AIDB pipelines can read from two types of data source:
+
+- **Postgres tables** — reference a table directly by name using the `source` parameter in `aidb.create_pipeline()`. See [Creating pipelines](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/data-processing/#table-sources).
+- **External storage volumes** — connect S3-compatible object stores, Google Cloud Storage, Azure, or local file systems via PGFS. The rest of this page covers how to set this up.
+
+External storage is accessed through the Postgres File System (PGFS) extension, which maps external storage into Postgres as storage locations. AIDB then wraps each storage location in a _volume_ that pipelines reference by name. A volume is a [foreign table](https://www.postgresql.org/docs/current/sql-createforeigntable.html), so you can list, read, write, and delete objects with standard SQL.
+
+## How it works
+
+Connecting external storage to an AIDB pipeline involves two objects:
+
+- **PGFS storage location** — Defines the external storage provider: its URI, credentials, and connection options. Created with [`pgfs.create_storage_location()`](https://www.enterprisedb.com/docs/pg_extensions/pgfs/reference/#pgfscreate_storage_location).
+- **AIDB volume** — A foreign table that exposes the contents of a PGFS storage location as rows. Stores the data format (`Text`, `Image`, `Pdf`) and an optional sub-path. Created with `aidb.create_volume()`.
+
+Once a volume exists, reference it as the `source` in `aidb.create_pipeline()` exactly as you would a Postgres table, or query it directly with SQL.
+
+> **Note**
+>
+> The PGFS extension must be installed before creating storage locations. See [Configuring AIDB](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#creating-the-extensions).
+
+## Step 1: Creating a storage location
+
+Use `pgfs.create_storage_location()` to define the connection to external storage. The `url` parameter identifies the storage backend and path; the `options` JSONB object carries provider-specific settings such as region; the `credentials` JSONB object carries authentication secrets such as access keys.
+
+> **Note**
+>
+> Explicit credentials in the `credentials` parameter aren't the only way to authenticate. If you omit them, S3, Azure, and GCS storage locations fall back to the respective cloud provider's own native credential resolution (IAM roles, managed/workload identity, instance metadata, Application Default Credentials) — useful when Postgres is already running with a cloud identity attached, so there's no secret to store at all. See the [PGFS documentation](https://www.enterprisedb.com/docs/pg_extensions/pgfs/) for details.
+
+### S3-compatible object store
+
+```sql
+-- Private S3 bucket with credentials
+SELECT pgfs.create_storage_location(
+    name        => 'my_s3_location',
+    url         => 's3://my-bucket/my-folder',
+    options     => '{"region": "us-east-1"}',
+    credentials => '{"access_key_id": "<key>", "secret_access_key": "<secret>"}'
+    -- or omit the credentials argument to use the cloud provider's native credential chain (IAM role, managed identity, etc.) instead
+);
+
+-- Public S3 bucket (no credentials required)
+SELECT pgfs.create_storage_location(
+    name    => 'my_public_bucket',
+    url     => 's3://aidb-rag-app',
+    options => '{"region": "eu-central-1", "skip_signature": "true"}'
+);
+```
+
+### Local file system
+
+For local file system access, declare the allowed base paths in `postgresql.conf` before creating the storage location. PGFS restricts access to these paths for security.
+
+```ini
+# postgresql.conf
+pgfs.allowed_local_fs_paths = '/tmp/pgfs'
+```
+
+After restarting Postgres, create the storage location using a `file://` URI:
+
+```sql
+SELECT pgfs.create_storage_location(
+    name => 'local_tmp_pgfs',
+    url  => 'file:///tmp/pgfs/'
+);
+```
+
+For full details on storage location options for S3, GCS, and Azure, see the [PGFS documentation](https://www.enterprisedb.com/docs/pg_extensions/pgfs/).
+
+> **Note: Restricting egress to your object store**
+>
+> PGFS supports an optional outbound allowlist (`pgfs.egress_allowlist`, with `edb.egress_allowlist` as a shared fallback) that restricts which hosts PGFS is allowed to reach when accessing storage locations. This is independent of AIDB's allowlist for model-provider traffic; both can be configured together. See [PGFS — Network egress](https://www.enterprisedb.com/docs/pg_extensions/pgfs/configuring/#network-egress) and [AIDB — Network egress](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#network-egress).
+
+## Step 2: Creating a volume
+
+Use `aidb.create_volume()` to create a foreign table that exposes a PGFS storage location to AIDB. The volume name is the foreign-table name that you reference in pipelines and SQL queries.
+
+```sql
+SELECT aidb.create_volume(
+    name        => 'my_volume',
+    server_name => 'my_s3_location',
+    path        => '/',
+    data_format => 'Text'
+);
+```
+
+Parameters:
+
+| Parameter     | Description                                                                                                                                                                                                                       |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | Unique name for the volume. Must be a valid unquoted PostgreSQL identifier (lowercase, starts with a letter or underscore, contains only letters, digits, and underscores — no dashes or spaces). Used as the foreign-table name. |
+| `server_name` | Name of the PGFS storage location to attach.                                                                                                                                                                                      |
+| `path`        | Optional sub-path within the storage location. See [Path handling](#path-handling) below.                                                                                                                                         |
+| `data_format` | The type of data in this volume. One of `Text`, `Image`, or `Pdf`. Pipelines use this to choose the correct parsing step.                                                                                                         |
+
+> **Note**
+>
+> `data_format` is metadata — it tells AIDB how to treat the objects, but doesn't filter them. Ensure the volume only contains objects of the declared format.
+
+### Path handling
+
+The `path` argument is canonicalized at creation time: any leading and trailing slashes are stripped, then exactly one trailing slash is appended. This means the following all store as `foo/`:
+
+- `foo`
+- `/foo`
+- `foo/`
+- `/foo/`
+
+Passing `NULL` or `/` stores as `/`, which targets the storage location's root. The canonical value is what you see in `aidb.volumes` and what's used to compute object keys.
+
+### Example: PDFs in S3
+
+```sql
+SELECT pgfs.create_storage_location(
+    'pdf_bucket',
+    's3://my-docs-bucket',
+    options     => '{"region": "us-east-1"}',
+    credentials => '{"access_key_id": "<key>", "secret_access_key": "<secret>"}'
+    -- or omit the credentials argument to use the cloud provider's native credential chain instead
+);
+
+SELECT aidb.create_volume('pdf_volume', 'pdf_bucket', '/', 'Pdf');
+```
+
+### Example: Images in a local directory
+
+```sql
+SELECT pgfs.create_storage_location('local_tmp_pgfs', 'file:///tmp/pgfs/');
+
+SELECT aidb.create_volume('ocr_input_volume', 'local_tmp_pgfs', 'ocr_input/', 'Image');
+```
+
+## Step 3: Using the volume as a pipeline source
+
+Set the `source` parameter in `aidb.create_pipeline()` to the volume name. Volume sources work the same as table sources from the pipeline's perspective:
+
+```sql
+SELECT aidb.create_pipeline(
+    name       => 'my_pdf_pipeline',
+    source     => 'pdf_volume',
+    step_1     => 'ParsePdf',
+    step_2     => 'ChunkText',
+    step_3     => 'KnowledgeBase',
+    step_3_options => aidb.knowledge_base_config('bert_local', 'Text')
+);
+```
+
+See [Create a pipeline](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/data-processing/#volume-sources-pgfs) for a full walkthrough.
+
+## Managing volumes
+
+### Listing volumes
+
+List all volumes via the `aidb.volumes` view:
+
+```sql
+SELECT * FROM aidb.volumes;
+```
+
+```output title="Output"
+ schema |    volume    | storage_location |    path
+--------+--------------+------------------+---------------
+ public | pdf_volume   | pdf_bucket       | /
+ public | text_bucket  | text_bucket      | aidb-rag-app/
+(2 rows)
+```
+
+The view returns four columns: `schema`, `volume`, `storage_location`, and `path` (canonicalized).
+
+### Deleting a volume
+
+```sql
+SELECT aidb.delete_volume('my_volume');
+```
+
+> **Note**
+>
+> Deleting a PGFS storage location also deletes all volumes built on top of it.
+
+## Volume privileges
+
+A volume is a foreign table, so access to its files follows the privileges on that table. AIDB checks them for each volume, the same way PostgreSQL checks them for SQL on the table:
+
+| Operation          | Functions and pipelines                                                                                          | Privileges needed                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Read or list files | `aidb.list_volume_content()`, `aidb.read_volume_file()`, pipelines and knowledge bases that read from the volume | `SELECT` on the volume              |
+| Write files        | `aidb.write_volume_data()`, pipelines that write to the volume                                                   | `INSERT` on the volume              |
+| Delete files       | `aidb.delete_volume_file()`                                                                                      | `SELECT` and `DELETE` on the volume |
+
+Every operation also needs `USAGE` on the volume's schema, shown in `aidb.volumes`. The volume's owner and superusers have all of these privileges. A pipeline's worker runs as the pipeline's owner role, so grant the privileges to that role:
+
+```sql
+GRANT USAGE ON SCHEMA public TO pipeline_owner;
+GRANT SELECT ON my_volume TO pipeline_owner;
+```
+
+Grants on the `pgfs.v_foreign_table_options` and `pgfs.v_server_options` views aren't needed to use a volume.
+
+## Accessing volume contents with SQL
+
+A volume is a foreign table backed by PGFS, so the storage location's objects are exposed as rows. The columns are:
+
+| Column          | Type        | Description                                                                                           |
+| --------------- | ----------- | ----------------------------------------------------------------------------------------------------- |
+| `key`           | TEXT        | Object key (file path) relative to the volume's `path`.                                               |
+| `size`          | BIGINT      | Object size in bytes.                                                                                 |
+| `last_modified` | TIMESTAMPTZ | Last-modified timestamp reported by the storage backend.                                              |
+| `e_tag`         | TEXT        | Entity tag (ETag) reported by the storage backend, when available.                                    |
+| `body`          | BYTEA       | Object contents. Only populated when the query includes `WHERE key = '<exact-key>'` (see note below). |
+
+> **Note**
+>
+> The `body` column is only fetched when you select it **and** filter on a single key with `WHERE key = '...'`. Selecting `body` without a key filter returns `NULL` — this is a safeguard against accidentally downloading every object in the volume.
+
+### Listing objects in a volume
+
+```sql
+SELECT key, size, last_modified
+FROM my_volume
+ORDER BY key;
+```
+
+```output title="Output"
+       key              | size |       last_modified
+------------------------+------+------------------------
+ Test 1.html            | 1093 | 2026-05-14 15:49:32+00
+ Test 2.html            | 1563 | 2026-05-14 15:50:02+00
+ Test 3.html            | 1395 | 2026-05-14 15:49:32+00
+(3 rows)
+```
+
+`LIMIT` is pushed down to the storage backend, so it's safe to peek at large buckets:
+
+```sql
+SELECT key, size FROM my_volume LIMIT 5;
+```
+
+### Reading a single object
+
+Filter on the exact key to fetch the object body:
+
+```sql
+-- Read a binary file as BYTEA
+SELECT body FROM my_volume WHERE key = 'report.pdf';
+
+-- Read a text file as text
+SELECT convert_from(body, 'utf8')
+FROM my_volume
+WHERE key = 'notes.txt';
+```
+
+### Writing, overwriting, and deleting objects
+
+Volumes support standard `INSERT`, `UPDATE`, and `DELETE`. `body` is `BYTEA`; cast text to bytea as needed.
+
+```sql
+-- Upload a new object
+INSERT INTO my_volume (key, body)
+VALUES ('hello.txt', 'Hello, world'::bytea);
+
+-- Overwrite an existing object
+UPDATE my_volume
+SET body = 'Hello again'::bytea
+WHERE key = 'hello.txt';
+
+-- Delete an object
+DELETE FROM my_volume WHERE key = 'hello.txt';
+```
+
+> **Note**
+>
+> Object-store writes aren't transactional. A successful `INSERT`, `UPDATE`, or `DELETE` isn't rolled back if the surrounding PostgreSQL transaction aborts.
+
+Renaming a key (`UPDATE my_volume SET key = ...`) isn't supported.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

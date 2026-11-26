@@ -1,0 +1,137 @@
+---
+title: Using Migration Portal in HM
+description: Supporting material on Migration Portal features, access modes, and project management for Oracle and Postgres schema migrations with Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/
+lastModified: 2026-10-14T11:17:37+02:00
+---
+
+# Using Migration Portal in HM
+
+Migration Portal manages the schema migration project created for every database registered with Hybrid Manager (HM), Oracle or Postgres. For Oracle sources, it also assesses, analyzes, and converts schemas to be compatible with EDB Postgres Advanced Server.
+
+Migration Portal is available as an [EDB-hosted service](https://www.enterprisedb.com/docs/migration_portal/latest/) or as an application in HM.
+
+Use Migration Portal in HM to create, delete, and share projects, control access modes, and manage permissions. For the schema migration workflow itself, see [Migrating Oracle schemas](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/oracle/) or [Migrating Postgres schemas](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/postgres/).
+
+## Comparing Migration Portal in HM with the EDB-hosted version
+
+Some features in the HM deployment of Migration Portal are unique or function differently from the EDB-hosted version.
+
+### AI Copilot
+
+> **Note**
+>
+> You must manually enable this feature in Migration Portal in HM. In the EDB-hosted version, it's included out-of-the-box.
+
+AI Copilot is an AI-driven chatbot tool that assists you with issues that can occur during the schema assessment and conversion in Migration Portal. It uses third-party AI services and is trained on both EDB's product documentation and support knowledge base to deliver use-case-specific solutions.
+
+The AI Copilot isn't enabled by default in HM.
+
+- To use the AI Copilot for Migration Portal queries, ask the HM administrator to [enable and configure it with the AI/LLM of your organization](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/).
+
+- See [AI Copilot](https://www.enterprisedb.com/docs/migration_portal/latest/03_mp_using_portal/mp_ai_copilot/) for more information.
+
+### AI DDL repair
+
+> **Note**
+>
+> This feature is available only in Migration Portal in HM, and requires the AI Copilot to be [enabled](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/) first. If the AI Copilot isn't enabled, automatic repair fails with **AI repair unavailable: AI repair could not be generated**, and **Generate AI Suggested Fix** still appears but can't produce a fix.
+
+AI DDL repair automatically suggests a fix for a DDL object that fails schema assessment, so you don't have to work out a fix yourself or ask the AI Copilot chat a question about it. Suggestions appear directly on the incompatible object you're viewing, instead of in the chat window.
+
+#### Enabling AI DDL repair
+
+AI DDL repair shares its terms-of-use opt-in with the AI Copilot chat, so you only need to agree once. If you already opted in while using the AI Copilot chat, AI DDL repair is available immediately and skips the dialog below.
+
+If you haven't opted in yet:
+
+1. During [schema assessment](https://www.enterprisedb.com/docs/migration_portal/latest/04_mp_migrating_database/mp_schema_assessment/), open the detail view for an incompatible object.
+
+2. In the **Would you like to use AI DDL Repair?** dialog box, read the terms of use.
+
+3. Select the **I have read and agree to the terms of use for AI DDL Repair** checkbox.
+
+4. Select **Close**.
+
+If the project was already assessed, accepting the terms of use also starts automatic repair of its failed objects. See [Reviewing automatic fixes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/#reviewing-automatic-fixes).
+
+> **Note**
+>
+> AI DDL repair uses whichever AI vendor or model your HM administrator [configured for the AI Copilot](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/) — a third-party cloud service or a self-hosted model. Your DDL statements, along with additional context such as error messages, are sent to the AI Copilot's repair engine, which interacts with that AI model to generate a suggestion. Always review a suggested fix before accepting it.
+
+#### Using AI DDL repair
+
+AI DDL repair fixes objects in two ways: automatically, in the background after schema assessment, and on demand, when you request a fix for a specific object.
+
+##### Reviewing automatic fixes
+
+Migration Portal fixes failed objects automatically only after you accept the AI terms of use, and only in these situations:
+
+- When a schema is assessed, either in a new project or when you upload a new schema to an existing project.
+- When someone accepts the terms of use on a project that was already assessed. Only that project is repaired.
+
+Reassessing an individual object doesn't start automatic repair, and you can't run automatic repair on demand for a whole project. Automatic repair works the same whether you uploaded the DDL or the EDB Postgres AI agent ingested it.
+
+Migration Portal makes a limited number of attempts to fix each failed object. Generating fixes can take several minutes per object, depending on the DDL and the AI model your administrator configured. For schemas with many failed objects, the automatic fixes can take considerably longer.
+
+To see the result, open each object that failed the initial assessment. The **Target** panel shows one of the following:
+
+- **This DDL was replaced by an AI-suggested fix.** Migration Portal applied a fix, and the copilot's own reviewer signed off on it.
+- **This DDL was replaced by an AI-suggested fix. The copilot's own reviewer did not sign off on it — verify the semantics before relying on it.** Migration Portal applied a fix, but the copilot's own reviewer didn't sign off on it.
+- **AI repair unavailable: AI repair could not be generated.** No attempt produced a usable fix, and the DDL is unchanged. Request a fix manually, or resolve the object yourself.
+
+Migration Portal applies the first attempt that passes reassessment. If no attempt passes, it applies the one with the fewest errors. The copilot's own reviewer only determines which message appears, so neither message guarantees that the fix is correct. Any applied fix can still fail assessment, or contain placeholder values that you must replace, such as a password in a database link.
+
+##### Requesting a fix manually
+
+1. Open the detail view for an incompatible object and select **Generate AI Suggested Fix**. Generating a suggestion can take several minutes.
+
+2. Review the suggested DDL, labeled **AI SUGGESTION** with the disclaimer **AI-generated — review before accepting**. If the copilot's own reviewer didn't sign off on the suggestion, it also shows a **Not confirmed by AI review** badge.
+
+3. Choose one of the following:
+
+   - **Accept & Reassess**: Applies the suggested DDL to the object and reassesses it immediately. You don't need to select **Reassess** separately afterward. If the object passes, the object tree marks it as **fixed by AI**.
+   - **Edit**: Lets you modify the suggested DDL yourself before accepting it.
+   - **Regenerate**: Discards the current suggestion and asks the AI Copilot to try again. Optionally, describe what you'd like fixed differently, then select **Submit**.
+   - **Reject**: Dismisses the suggestion without applying it. Optionally, enter a reason, then select **Submit**.
+
+> **Warning**
+>
+> Test all AI-suggested fixes to confirm the converted object behaves as expected, the same way you would for any other schema-assessment repair.
+
+### Project collaboration
+
+> **Note**
+>
+> The project collaboration feature is available only in Migration Portal in HM.
+
+Migration Portal supports collaborative DDL editing, enabling multiple users in the same HM project to work on the same schema file simultaneously. If another user modifies a DDL you're also editing, your changes will trigger a conflict resolution view. This view displays the other user's update in an **Update** view and your own edit in a **Target** view. You can then select **Use Updated** to adopt the other user's fix or **Reassess** to apply and save your own changes, overwriting the previous update. This approach ensures efficient, concurrent schema compatibility adjustments.
+
+### Portal access
+
+Accessing the Migration Portal interface differs based on the version you're using.
+
+- Access the EDB-hosted Migration Portal through the [EDB portal](https://www.enterprisedb.com/accounts/login).
+
+- Access the Migration Portal built into HM from the HM console.
+
+- Use [project-scoped access](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/hm_schema_migration/) to migrate schemas loaded by the EDB Postgres AI agent.
+
+- Use the [user's workspace access](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/external_schema_migration/) to migrate externally provided schemas.
+
+### User permissions and role-based access
+
+- The EDB-hosted Migration Portal provides each EDB account with a dedicated workspace, meaning you can't share projects with other users.
+
+- Migration Portal built into HM offers project-scoped, collaborative access. Users with access to a specific HM project gain access to its associated Migration Portal project.
+
+- In HM, Migration Portal user permissions are managed directly through HM. For instance, a user with Viewer permissions can't migrate schemas or reassess DDL.
+
+* [Accessing Migration Portal in HM](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/access_mp/): Supporting material on accessing Migration Portal workspaces for database migrations with Hybrid Manager, for the step-by-step migration guides.
+* [Managing Migration Portal projects](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/hm_schema_migration/): Supporting material on creating, viewing, and deleting Migration Portal projects with Hybrid Manager, for the step-by-step migration guides.
+* [Managing external schemas](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/external_schema_migration/): Supporting material on creating and managing Migration Portal projects for externally provided schemas with Hybrid Manager, for the step-by-step migration guides.
+* [Controlling Migration Portal project creation](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/controlling_project_creation/): Supporting material on automatic Migration Portal project creation and how to disable or customize this capability, for the step-by-step migration guides.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

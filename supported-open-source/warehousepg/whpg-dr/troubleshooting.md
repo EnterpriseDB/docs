@@ -1,0 +1,293 @@
+---
+title: Troubleshooting WarehousePG Disaster Recovery
+description: Diagnose and resolve common issues with whpg-dr backup, restore, and configuration.
+product: WarehousePG Disaster Recovery
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/troubleshooting/
+lastModified: 2026-11-09T15:30:56Z
+---
+
+# Troubleshooting WarehousePG Disaster Recovery
+
+WarehousePG Disaster Recovery (`whpg-dr`) issues typically surface as backup failures, restore errors, or configuration problems. In each case, the operational logs contain the detailed output needed to identify the cause.
+
+## Finding logs
+
+`whpg-dr` writes operational logs to `$HOME/gpAdminLogs` by default. The log file for a given day is `whpg_dr-YYYY-MM-DD.log`. Barman per-segment logs are written to the same directory as `barman-<cluster_name>.log`.
+
+To increase log file verbosity for a single command, use `--log-file-level debug`:
+
+```bash
+whpg-dr check my_cluster --log-file-level debug
+```
+
+## Backup configuration failures
+
+**Symptom:**
+
+```
+Error: distribute barman configs: rsync barman_conf to host sdw1 failed: exit status 23
+rsync: [receiver] failed to set permissions on ".../.whpg-lab-global.conf.yU9Gmu": No such file or directory
+```
+
+**Cause:** The `WHPG_DR_HOME` directory doesn't exist on the target segment host. `whpg-dr` uses rsync to distribute Barman configuration to segment hosts, and rsync can't create the intermediate directories.
+
+**Resolution:** Create the `WHPG_DR_HOME` directory on all segment hosts (as `gpadmin`), then re-run `configure backup`:
+
+```bash
+gpssh -f all_hosts -e "mkdir -p $WHPG_DR_HOME/my_cluster/backup/barman_conf"
+whpg-dr configure backup /home/gpadmin/backup.yaml
+```
+
+## Verifying backup integrity
+
+Use [`whpg-dr check-backup`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/reference/commands/#whpg-dr-check-backup) to verify that all backup files for each segment are present and accessible in the storage repository:
+
+```bash
+whpg-dr check-backup my_cluster --backup-name 20260601T120000_base_backup
+```
+
+```output title="Output"
+Finding backup...
+Checked backup 20260601T120000 on server my_cluster-seg-1
+Checked backup 20260601T120000 on server my_cluster-seg0
+Checked backup 20260601T120000 on server my_cluster-seg1
+Checked backup 20260601T120000 on server my_cluster-seg2
+Checked backup 20260601T120000 on server my_cluster-seg3
+All backup checks completed successfully
+```
+
+## whpg-dr check failures
+
+These errors surface when running `whpg-dr check`, which verifies that Barman can reach each segment and that WAL archiving is configured correctly.
+
+### Barman can't connect to a segment
+
+**Symptom:**
+
+```
+check completed with 2 errors:
+  - my_cluster-seg0: Server my_cluster-seg0:
+      PostgreSQL: FAILED
+```
+
+**Cause:** Barman can't connect to the segment's Postgres process. Check the Barman log for the actual connection error:
+
+```bash
+cat $HOME/gpAdminLogs/barman-my_cluster.log
+```
+
+A typical entry looks like:
+
+```
+barman.postgres WARNING: Error retrieving PostgreSQL status: connection to server at "sdw1" (192.168.1.10), port 6000 failed: FATAL: no pg_hba.conf entry for host "192.168.1.10", user "gpadmin", database "postgres", SSL off
+```
+
+Barman uses the connection string:
+
+```
+host=<segment_host> user=<pg_user> dbname=postgres port=<segment_port> options='-c gp_role=utility'
+```
+
+> **Note**
+>
+> On WarehousePG 6, use `gp_session_role=utility` instead of `gp_role=utility`.
+
+**Resolution:**
+
+1. Confirm that `pg_hba.conf` has an entry allowing the Barman user to connect from the segment host using a non-local socket:
+
+   ```
+   host    all    gpadmin    <segment_host_ip>/32    trust
+   ```
+
+2. After editing `pg_hba.conf`, reload:
+
+   ```bash
+   gpstop -u
+   ```
+
+3. Re-run the check:
+
+   ```bash
+   whpg-dr check my_cluster
+   ```
+
+### whpg-dr check fails immediately after enabling whpg-dr
+
+**Symptom:**
+
+```
+whpg-dr check my_cluster
+Running barman check for server my_cluster-seg-1
+Running barman check for server my_cluster-seg0
+Running barman check for server my_cluster-seg1
+Running barman check for server my_cluster-seg2
+Running barman check for server my_cluster-seg3
+Server w9-2-seg1:
+	WAL archive: FAILED (please make sure WAL shipping is setup)
+```
+
+**Cause:** Running `whpg-dr check` immediately after enabling `whpg-dr` and restarting the cluster, a segment hasn't archived a WAL file yet.
+
+**Resolution:** Generate some database activity, or wait for activity to occur, then run the check again:
+
+```bash
+whpg-dr check my_cluster
+```
+
+### WAL archive check keeps failing after activity
+
+**Symptom:**
+
+Unlike [whpg-dr check fails immediately after enabling whpg-dr](#whpg-dr-check-fails-immediately-after-enabling-whpg-dr), the check still fails on every segment after generating real write activity or forcing a WAL switch. The Barman log shows each segment finding nothing to archive:
+
+```bash
+cat $HOME/gpAdminLogs/barman-my_cluster.log
+```
+
+```
+barman.wal_archiver INFO: No xlog segments found from file archival for my_cluster-seg0.
+barman.server ERROR: Check 'WAL archive' failed for server 'my_cluster-seg0'
+```
+
+**Cause:** The storage repository path exists on the coordinator but wasn't created or mounted on one or more segment hosts. Each segment archives its own WAL locally to that path, if the path is missing there, WAL never reaches the shared repository, no matter how much write activity occurs. Confirm this by checking the path directly on the segment hosts:
+
+```bash
+gpssh -f all_hosts -e "ls -ld /path/to/storage"
+```
+
+**Resolution:** Create or mount the storage path on every segment host, owned by the WarehousePG cluster owner, then re-run the check:
+
+```bash
+gpssh -f all_hosts -e "sudo mkdir -p /path/to/storage && sudo chown gpadmin:gpadmin /path/to/storage"
+whpg-dr check my_cluster
+```
+
+If the path is meant to be a shared NFS mount rather than local disk, mount the actual share on each segment host instead of creating a bare local directory, otherwise each segment archives to its own local disk rather than the shared repository. See [Setting up the storage repository](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/storage/) for the full requirement.
+
+## Backup failures
+
+### Backup fails because the storage repository is full
+
+**Symptom:** `whpg-dr backup` fails with a `Cloud backup failed with error` message, and the Barman log on a segment host shows `XMinioStorageFull`. `whpg-dr list-backup` shows the failed backup as `[FAILED]`, and `whpg-dr check` reports `failed backups`.
+
+**Cause:** The S3-compatible storage backend has no free space left, so it rejects the upload. WAL archiving fails too, and WAL accumulates in `pg_wal` on every host until space is freed.
+
+**Resolution:** Free space in the storage backend, then delete each failed backup and run `whpg-dr check`. Before you take the next backup, confirm that the output shows `continuous_archiving: OK` again:
+
+```bash
+whpg-dr delete my_cluster --backup-name <failed_backup_name>
+whpg-dr check my_cluster
+```
+
+See [Deleting backups](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/setting-up-primary/backups/#deleting-backups).
+
+## Restore point failures
+
+If a `whpg-dr create-restore-point` command is interrupted, it may leave a lock file at:
+
+```
+$WHPG_DR_HOME/state/my_cluster_backup.lock
+```
+
+If subsequent runs fail with a lock error and you're certain no other `whpg-dr` process is running, remove the lock file:
+
+```bash
+whpg-dr clean-lock-file my_cluster
+```
+
+## Restore failures
+
+### WAL replay did not complete
+
+**Symptom:**
+
+```
+WARNING: WAL replay did not complete. Data directories for 1 coordinator and N segments
+were modified, but the restore-last state file has NOT been updated.
+Error: WAL replay failed: segments are not running and not in expected recovery state
+```
+
+**Cause:** One or more segments failed to replay WAL to the target restore point. A WAL file may be missing from the storage repository, or there's a network or permission issue accessing storage.
+
+**Resolution:**
+
+1. Check the segment startup log in `$HOME/gpAdminLogs`. Look for `pg_ctl start` failures and the last line before the failure.
+
+2. Confirm all WAL files between the current restore state and the target are present in storage. For S3, list the WAL objects for the failing segment:
+
+   ```bash
+   aws s3 ls s3://my-bucket/whpg/my_cluster/my_cluster-seg0/wals/ --recursive
+   ```
+
+   WAL file names are hex-sequential (for example `000000010000000000000019`). A gap in the sequence indicates a missing file.
+
+3. If the repository is intact, re-run the restore with `--resume-failed`:
+
+   ```bash
+   whpg-dr restore my_cluster --resume-failed
+   ```
+
+### Stale FAILED mark on S3 storage
+
+1.1.0 and earlier releases with S3 storage could mark a good backup as `FAILED` in the bucket when a restore attempt checked it from the recovery site.
+
+**Symptom:**
+
+The restore fails at backup verification, even though the WAL files exist in the bucket:
+
+```
+Verifying backup 20260825T082845_base_backup integrity...
+Error: backup verification failed
+  ↳ check-backup completed with 4 errors:
+  - w9-2-seg0: ERROR: This backup has been marked as FAILED due to the following reason: At least one WAL file is missing. The first missing WAL file is 000000010000000F0000000E
+```
+
+Later attempts fail with:
+
+```
+ERROR: The validity of a failed backup cannot be checked
+```
+
+**Cause:** Earlier releases ran `barman check-backup` from the recovery site and recorded the result as `status=FAILED` in the `backup.info` file of each server in the bucket. The backup data is intact, but the mark stays until you clear it. Versions 1.1.1 and later verify backups with S3 reads only and never write a `FAILED` status from the recovery site. `whpg-dr restore` and `whpg-dr check-backup` report whether the mark is stale, meaning every WAL segment is archived, or real. Clear only a stale mark.
+
+**Resolution:**
+
+1. Upgrade `whpg-dr` on the recovery site to 1.1.1, as described in [Upgrading whpg-dr](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-dr/configuring-dr/#upgrading-whpg-dr).
+
+2. Clear the failed status depending on your situation:
+
+   **If the primary cluster is available:** run the integrity check on the primary cluster. The primary cluster still has the backup recorded as `DONE`, and the check uploads that status to the bucket:
+
+   ```bash
+   whpg-dr check-backup my_cluster --backup-name 20260825T082845_base_backup
+   ```
+
+   **If the primary cluster isn't available:** edit the status by hand. Only edit the status if the `error=` line in `backup.info` reads `At least one WAL file is missing`. Any other error means the backup actually failed, so don't change it.
+
+   For each server reported as failed:
+
+   1. Find the server's Barman backup ID, a timestamp such as `20260825T082846`. List `s3://<bucket>/<prefix>/<cluster>/basebackup/<server>/base/` and pick the directory whose `backup.info` has `backup_name=<backup name>`, where `<backup name>` is the name you pass to `whpg-dr check-backup` with the `--backup-name` option. The Barman ID has a different format from the backup name, and its timestamp can differ by a second. For example, the ID `20260825T082846` can belong to the backup named `20260825T082845_base_backup`.
+   2. Download `s3://<bucket>/<prefix>/<cluster>/basebackup/<server>/base/<backup_id>/backup.info` from the bucket.
+   3. In the file, change `status=FAILED` to `status=DONE` and change the `error=` line to `error=None`. Leave all other lines unchanged.
+   4. Upload the file back to the same location.
+
+   After you've updated all servers, run the integrity check on the DR coordinator to confirm the backup passes:
+
+   ```bash
+   whpg-dr check-backup my_cluster --backup-name 20260825T082845_base_backup
+   ```
+
+3. Run the restore again.
+
+### Stale FAILED mark on POSIX storage
+
+1.1.0 and earlier releases ran `barman check-backup` on the recovery site, which writes its verdict into the backup site's own `backup.info` file on POSIX storage. That check sometimes marked a good backup `FAILED`. Barman refuses to check a `FAILED` backup, so `whpg-dr check-backup` on the backup site can't clear the mark. If `whpg-dr restore` or `whpg-dr check-backup` on the recovery site reports that the mark is stale for a server, clear it by hand for that server only:
+
+1. Edit the `backup.info` file whose path is in the message. The path is `<storage.path>/<cluster_name>/<server>/meta/<backup_id>-backup.info`.
+
+2. Change `status=FAILED` to `status=DONE` and the `error=` line to `error=None`. Leave all other lines unchanged.
+
+3. Run `whpg-dr check-backup <cluster_name> --backup-name <backup_name>` on the recovery site. It must report success before you run `restore`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,277 @@
+---
+title: griptape_cloud_event_listener_driver
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/event_listener/griptape_cloud_event_listener_driver/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# griptape\_cloud\_event\_listener\_driver
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver"></span>
+
+Bases:
+[`BaseEventListenerDriver`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/event_listener/base_event_listener_driver/#griptape.drivers.event_listener.base_event_listener_driver.BaseEventListenerDriver "BaseEventListenerDriver (griptape.drivers.event_listener.base_event_listener_driver.BaseEventListenerDriver)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Type            | Description                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/event_listener/griptape_cloud_event_listener_driver/#griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.base_url" title="base_url = field(default=Factory(lambda: os.getenv('GT_CLOUD_BASE_URL', 'https://cloud.griptape.ai')), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.base_url)"><code class="language-python">base\_url</code></a>             | `str`           | The base URL of Gen AI Builder. Defaults to the GT\_CLOUD\_BASE\_URL environment variable.<br/>                            |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/event_listener/griptape_cloud_event_listener_driver/#griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.api_key" title="api_key = field(default=Factory(lambda: os.getenv('GT_CLOUD_API_KEY')), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.api_key)"><code class="language-python">api\_key</code></a>                                               | `Optional[str]` | The API key to authenticate with Gen AI Builder.<br/>                                                                      |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/event_listener/griptape_cloud_event_listener_driver/#griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.headers" title="headers = field(default=Factory(lambda self: {'Authorization': f'Bearer {self.api_key}'}, takes_self=True), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.headers)"><code class="language-python">headers</code></a>            | `dict`          | The headers to use when making requests to Gen AI Builder. Defaults to include the Authorization header.<br/>              |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/drivers/event_listener/griptape_cloud_event_listener_driver/#griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.structure_run_id" title="structure_run_id = field(default=Factory(lambda: os.getenv('GT_CLOUD_STRUCTURE_RUN_ID')), kw_only=True)           class-attribute       instance-attribute    (griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.structure_run_id)"><code class="language-python">structure\_run\_id</code></a> | `Optional[str]` | The ID of the Structure Run to publish events to. Defaults to the GT\_CLOUD\_STRUCTURE\_RUN\_ID environment variable.<br/> |
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+@define
+class GriptapeCloudEventListenerDriver(BaseEventListenerDriver):
+    """Driver for publishing events to Gen AI Builder.
+
+    Attributes:
+        base_url: The base URL of Gen AI Builder. Defaults to the GT_CLOUD_BASE_URL environment variable.
+        api_key: The API key to authenticate with Gen AI Builder.
+        headers: The headers to use when making requests to Gen AI Builder. Defaults to include the Authorization header.
+        structure_run_id: The ID of the Structure Run to publish events to. Defaults to the GT_CLOUD_STRUCTURE_RUN_ID environment variable.
+    """
+
+    base_url: str = field(
+        default=Factory(lambda: os.getenv("GT_CLOUD_BASE_URL", "https://cloud.griptape.ai")),
+        kw_only=True,
+    )
+    api_key: Optional[str] = field(default=Factory(lambda: os.getenv("GT_CLOUD_API_KEY")), kw_only=True)
+    headers: dict = field(
+        default=Factory(lambda self: {"Authorization": f"Bearer {self.api_key}"}, takes_self=True),
+        kw_only=True,
+    )
+    structure_run_id: Optional[str] = field(
+        default=Factory(lambda: os.getenv("GT_CLOUD_STRUCTURE_RUN_ID")), kw_only=True
+    )
+
+    @structure_run_id.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+    def validate_run_id(self, _: Attribute, structure_run_id: Optional[str]) -> None:
+        if structure_run_id is None:
+            raise ValueError(
+                "structure_run_id must be set either in the constructor or as an environment variable (GT_CLOUD_STRUCTURE_RUN_ID).",
+            )
+
+    @api_key.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+    def validate_api_key(self, _: Attribute, api_key: Optional[str]) -> None:
+        if api_key is None:
+            raise ValueError(
+                "No value was found for the 'GT_CLOUD_API_KEY' environment variable. "
+                "This environment variable is required when running in Gen AI Builder for authorization. "
+                "You can generate a Gen AI Builder API Key by visiting https://cloud.griptape.ai/keys . "
+                "Specify it as an environment variable when creating a Managed Structure in Gen AI Builder."
+            )
+
+    def publish_event(self, event: BaseEvent | dict) -> None:
+        from griptape.observability.observability import Observability
+
+        event_payload = event.to_dict() if isinstance(event, BaseEvent) else event
+
+        span_id = Observability.get_span_id()
+        if span_id is not None:
+            event_payload["span_id"] = span_id
+
+        super().publish_event(event_payload)
+
+    def try_publish_event_payload(self, event_payload: dict) -> None:
+        self._post_event(self._get_event_request(event_payload))
+
+    def try_publish_event_payload_batch(self, event_payload_batch: list[dict]) -> None:
+        self._post_event([self._get_event_request(event_payload) for event_payload in event_payload_batch])
+
+    def _get_event_request(self, event_payload: dict) -> dict:
+        return {
+            "payload": event_payload,
+            "timestamp": event_payload.get("timestamp", time.time()),
+            "type": event_payload.get("type", "UserEvent"),
+        }
+
+    def _post_event(self, json: list[dict] | dict) -> None:
+        requests.post(
+            url=griptape_cloud_url(self.base_url, f"api/structure-runs/{self.structure_run_id}/events"),
+            json=json,
+            headers=self.headers,
+        ).raise_for_status()
+```
+
+</details>
+
+- `api_key = field(default=Factory(lambda: os.getenv('GT_CLOUD_API_KEY')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.api_key"></span>
+
+- `base_url = field(default=Factory(lambda: os.getenv('GT_CLOUD_BASE_URL', 'https://cloud.griptape.ai')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.base_url"></span>
+
+- `headers = field(default=Factory(lambda self: {'Authorization': f'Bearer {self.api_key}'}, takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.headers"></span>
+
+- `structure_run_id = field(default=Factory(lambda: os.getenv('GT_CLOUD_STRUCTURE_RUN_ID')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.structure_run_id"></span>
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver._get_event_request"></span>
+
+### \_get\_event\_request(event\_payload)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+def _get_event_request(self, event_payload: dict) -> dict:
+    return {
+        "payload": event_payload,
+        "timestamp": event_payload.get("timestamp", time.time()),
+        "type": event_payload.get("type", "UserEvent"),
+    }
+```
+
+</details>
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver._post_event"></span>
+
+### \_post\_event(json)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+def _post_event(self, json: list[dict] | dict) -> None:
+    requests.post(
+        url=griptape_cloud_url(self.base_url, f"api/structure-runs/{self.structure_run_id}/events"),
+        json=json,
+        headers=self.headers,
+    ).raise_for_status()
+```
+
+</details>
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.publish_event"></span>
+
+### publish\_event(event)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+def publish_event(self, event: BaseEvent | dict) -> None:
+    from griptape.observability.observability import Observability
+
+    event_payload = event.to_dict() if isinstance(event, BaseEvent) else event
+
+    span_id = Observability.get_span_id()
+    if span_id is not None:
+        event_payload["span_id"] = span_id
+
+    super().publish_event(event_payload)
+```
+
+</details>
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.try_publish_event_payload"></span>
+
+### try\_publish\_event\_payload(event\_payload)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+def try_publish_event_payload(self, event_payload: dict) -> None:
+    self._post_event(self._get_event_request(event_payload))
+```
+
+</details>
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.try_publish_event_payload_batch"></span>
+
+### try\_publish\_event\_payload\_batch(event\_payload\_batch)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+def try_publish_event_payload_batch(self, event_payload_batch: list[dict]) -> None:
+    self._post_event([self._get_event_request(event_payload) for event_payload in event_payload_batch])
+```
+
+</details>
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.validate_api_key"></span>
+
+### validat&#x65;_&#x61;pi\_key(_, api\_key)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+@api_key.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+def validate_api_key(self, _: Attribute, api_key: Optional[str]) -> None:
+    if api_key is None:
+        raise ValueError(
+            "No value was found for the 'GT_CLOUD_API_KEY' environment variable. "
+            "This environment variable is required when running in Gen AI Builder for authorization. "
+            "You can generate a Gen AI Builder API Key by visiting https://cloud.griptape.ai/keys . "
+            "Specify it as an environment variable when creating a Managed Structure in Gen AI Builder."
+        )
+```
+
+</details>
+
+<span id="griptape.drivers.event_listener.griptape_cloud_event_listener_driver.GriptapeCloudEventListenerDriver.validate_run_id"></span>
+
+### validat&#x65;_&#x72;un\_id(_, structure\_run\_id)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/event\_listener/griptape\_cloud\_event\_listener\_driver.py</code>
+
+</summary>
+
+```python
+@structure_run_id.validator  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
+def validate_run_id(self, _: Attribute, structure_run_id: Optional[str]) -> None:
+    if structure_run_id is None:
+        raise ValueError(
+            "structure_run_id must be set either in the constructor or as an environment variable (GT_CLOUD_STRUCTURE_RUN_ID).",
+        )
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

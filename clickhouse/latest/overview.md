@@ -1,0 +1,69 @@
+---
+title: Overview
+description: How EDB Postgres AI for ClickHouse is built and distributed, and what's covered in this documentation.
+product: EDB Postgres AI for ClickHouse
+version: "26.8"
+url: https://www.enterprisedb.com/docs/clickhouse/latest/overview/
+lastModified: 2026-11-02T13:02:55+01:00
+---
+
+# Overview
+
+Understand how EDB packages and distributes ClickHouse® software, what's covered in this documentation, and what falls outside its scope.
+
+## How EDB provides ClickHouse®
+
+EDB Postgres AI for ClickHouse isn't a fork. EDB builds and distributes the open-source ClickHouse binary, identical to the upstream release, repackaged as RPM and DEB packages for enterprise Linux distributions and Debian, container images, and a Kubernetes operator, and supported by EDB.
+
+EDB's contribution is:
+
+- Building the official open-source ClickHouse source at a pinned upstream release
+- Packaging the binary as RPM and DEB packages, a container image, and a Kubernetes operator, distributed through the EDB package repository
+- Integrating ClickHouse into the EDB Postgres AI Analytics pillar alongside WarehousePG and the EDB Postgres Lakehouse
+- Providing EDB support
+
+The ClickHouse query engine, SQL dialect, table engines, and performance characteristics are identical to the [upstream open-source release](https://github.com/ClickHouse/ClickHouse).
+
+Verify you're running an EDB-packaged build:
+
+```sql
+SELECT version();
+```
+
+The output includes the EDB release version, for example `26.8.15.10+1edb1`.
+
+## What's included
+
+EDB packages and supports the open-source ClickHouse binary. The following capabilities are available in the EDB distribution.
+
+| Area                                                                                          | What's covered                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Table engines](https://clickhouse.com/docs/engines/table-engines)                            | MergeTree family, integration engines (`PostgreSQL`, `S3`, `Kafka`, `IcebergS3`, `DeltaLake`, `MongoDB`, `Redis`, and more), and special engines (`Distributed`, `MaterializedView`, `Dictionary`, and more)                                               |
+| [Database engines](https://clickhouse.com/docs/engines/database-engines)                      | `Atomic`, `Replicated`, `PostgreSQL`, `MySQL`, `SQLite`, `DataLakeCatalog`                                                                                                                                                                                 |
+| [SQL and query capabilities](https://clickhouse.com/docs/sql-reference)                       | Aggregations, window functions, CTEs, subqueries, materialized views, all major data formats (Parquet, JSON, CSV, Avro, ORC, Arrow), dictionaries, projections, and RBAC                                                                                   |
+| [Data lake integration](https://clickhouse.com/docs/engines/database-engines/datalakecatalog) | Read access to Apache Iceberg® tables via `DataLakeCatalog` (REST, AWS Glue, Databricks Unity Catalog, Hive, OneLake) and directly via `IcebergS3`, `IcebergAzureBlobStorage`, and related engines; Delta Lake and Apache Hudi via dedicated table engines |
+| [Operations](https://clickhouse.com/docs/guides/manage-and-deploy-index)                      | ClickHouse Keeper, `clickhouse-client`, `clickhouse-local`, and Named Collections                                                                                                                                                                          |
+
+## What's not covered
+
+The following features are exclusive to ClickHouse® Cloud, a separate commercial service from the upstream ClickHouse project. They're not part of the open-source binary and aren't covered in this documentation.
+
+| Feature                        | Description                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| **ClickPipes**                 | Managed ingestion pipelines for Kafka, S3, Postgres CDC, MySQL, MongoDB, and others |
+| **SharedMergeTree**            | Proprietary table engine for ClickHouse® Cloud's shared-storage architecture        |
+| **SQL Console**                | Web-based query editor with dashboards, visualizations, and GenAI SQL assistance    |
+| **Query Insights**             | Managed query log analytics built into the Cloud console                            |
+| **Managed Postgres**           | Fully managed Postgres service collocated with ClickHouse                           |
+| **Compute-compute separation** | Architecture for scaling compute independently of storage                           |
+| **Auto-scaling**               | Automatic vertical and horizontal scaling                                           |
+| **Managed backups**            | Automated, configurable backups with external export                                |
+| **BYOC**                       | Bring Your Own Cloud, a managed service deployed in your AWS account                |
+| **Compliance certifications**  | HIPAA, SOC2, PCI DSS, ISO 27001 (managed by the Cloud service)                      |
+| **SSO / CMEK**                 | Single sign-on and customer-managed encryption keys via Cloud console               |
+
+- [Architecture](https://www.enterprisedb.com/docs/clickhouse/latest/overview/architecture/): How ClickHouse distributes data across nodes using sharding and replication, and how ClickHouse Keeper coordinates replicas.
+- [Compatibility](https://www.enterprisedb.com/docs/clickhouse/latest/overview/compatibility/): Platform, storage, and integration compatibility for EDB Postgres AI for ClickHouse 26.8.
+- [Known issues](https://www.enterprisedb.com/docs/clickhouse/latest/overview/known_issues/): Known limitations and workarounds for EDB Postgres AI for ClickHouse.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

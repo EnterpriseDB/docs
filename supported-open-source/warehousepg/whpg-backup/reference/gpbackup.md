@@ -1,0 +1,415 @@
+---
+title: gpbackup
+description: Command reference for the gpbackup utility, including all options and examples.
+product: WarehousePG Backup and Restore
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gpbackup/
+lastModified: 2026-11-03T13:33:04Z
+---
+
+# gpbackup
+
+Create backup metadata and data files of a WarehousePG cluster compatible with the `gprestore` utility
+
+## Synopsis
+
+```
+gpbackup --dbname <database_name>
+   [--backup-dir <directory>]
+   [--compression-level <level>]
+   [--compression-type <type>]
+   [--copy-queue-size <int>]
+   [--data-only]
+   [--debug]
+   [--exclude-schema <schema_name> [--exclude-schema <schema_name> ...]]
+   [--exclude-table <schema.table> [--exclude-table <schema.table> ...]]
+   [--exclude-schema-file <file_name>]
+   [--exclude-table-file <file_name>]
+   [--include-schema <schema_name> [--include-schema <schema_name> ...]]
+   [--include-table <schema.table> [--include-table <schema.table> ...]]
+   [--include-schema-file <file_name>]
+   [--include-table-file <file_name>]
+   [--incremental [--from-timestamp <backup-timestamp>]]
+   [--jobs <int>]
+   [--leaf-partition-data]
+   [--metadata-only]
+   [--no-compression]
+   [--no-inherits]
+   [--no-history]
+   [--plugin-config <config_file_location>]
+   [--quiet]
+   [--single-data-file]
+   [--single-backup-dir]
+   [--verbose]
+   [--version]
+   [--with-stats]
+   [--without-globals]
+
+gpbackup --help
+```
+
+`gprestore` [reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gprestore/)
+
+## Description
+
+The `gpbackup` utility backs up a database into metadata and data files that `gprestore` can use to restore it later. For background on what gets backed up and how `gpbackup` and `gprestore` work together, see [Architecture](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/overview/architecture/). For a full walkthrough, see [Backing up and restoring your tables](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/) and [Creating incremental backups of append-optimized tables](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/incremental/).
+
+> **Note**
+>
+> - `gpbackup` can't run while `gpexpand` is initializing new segments. Existing backup sets taken with a different cluster configuration may no longer be compatible after an expansion completes. To restore onto a cluster with a different number of segments, use `gprestore`'s `--resize-cluster` option.
+> - On completion, `gpbackup` returns a status code. See [Return codes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gprestore/#return-codes).
+> - `gpbackup` can send status email notifications after it completes. See [Setting up email alerts](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#setting-up-email-alerts).
+> - This utility uses SSH connections between hosts. In large or cloud deployments, it may exceed a host's maximum threshold for unauthenticated connections. Consider raising the SSH `MaxStartups` and `MaxSessions` configuration parameters.
+
+## Subcommands
+
+`gpbackup` also provides subcommands for inspecting and maintaining the [backup history database](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#understanding-the-backup-history-database). Run `gpbackup <subcommand> --help` for command-specific help.
+
+### list-backups
+
+```
+gpbackup list-backups
+   [--debug]
+   [--format text|json]
+   [--quiet]
+   [--show-all]
+   [--verbose]
+```
+
+Lists the backups recorded in the local backup history database, including the `--backup-dir` value recorded for each one.
+
+- `--debug`: Optional. Displays verbose debug messages during operation.
+- `--format text|json`: Optional. Sets the output format. The default is `text`.
+- `--quiet`: Optional. Suppress all non-warning, non-error log messages.
+- `--show-all`: Optional. Includes deleted backups in the list.
+- `--verbose`: Optional. Print verbose log messages.
+
+### find-table schema.table
+
+```
+gpbackup find-table <schema.table>
+   [--debug]
+   [--format text|json]
+   [--quiet]
+   [--verbose]
+```
+
+Lists the successful, not-deleted backups that contain data for the specified table. Quote the table name using the same rules as `--include-table`.
+
+- `--debug`: Optional. Displays verbose debug messages during operation.
+- `--format text|json`: Optional. Sets the output format. The default is `text`.
+- `--quiet`: Optional. Suppress all non-warning, non-error log messages.
+- `--verbose`: Optional. Print verbose log messages.
+
+### display-report timestamp
+
+```
+gpbackup display-report <timestamp>
+   [--debug]
+   [--format text|json]
+   [--plugin-config <config_file_location>]
+   [--quiet]
+   [--verbose]
+```
+
+Displays the backup report for the specified backup timestamp.
+
+- `--debug`: Optional. Displays verbose debug messages during operation.
+- `--format text|json`: Optional. Sets the output format. The default is `text`.
+- `--plugin-config config_file_location`: Optional. Retrieves a plugin-backed report when the local report file is no longer present. See [Using the S3 storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/s3-plugin/) or [Backing up to Dell Data Domain](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/ddboost-plugin/).
+- `--quiet`: Optional. Suppress all non-warning, non-error log messages.
+- `--verbose`: Optional. Print verbose log messages.
+
+### delete-backup timestamp
+
+```
+gpbackup delete-backup <timestamp>
+   [--cascade]
+   [--debug]
+   [--no-prompt]
+   [--plugin-config <config_file_location>]
+   [--quiet]
+   [--verbose]
+```
+
+Deletes the backup set for the specified timestamp and records the deletion in the backup history database.
+
+- `--cascade`: Optional. Also deletes incremental backups that depend on the deleted backup.
+- `--debug`: Optional. Displays verbose debug messages during operation.
+- `--no-prompt`: Optional. Skips the confirmation prompt, for non-interactive use.
+- `--plugin-config config_file_location`: Optional. Deletes a plugin-backed backup. See [Using the S3 storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/s3-plugin/) or [Backing up to Dell Data Domain](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/ddboost-plugin/).
+- `--quiet`: Optional. Suppress all non-warning, non-error log messages.
+- `--verbose`: Optional. Print verbose log messages.
+
+### delete-backups-before timestamp
+
+```
+gpbackup delete-backups-before <timestamp>
+   [--debug]
+   [--no-prompt]
+   [--plugin-config <config_file_location>]
+   [--quiet]
+   [--verbose]
+```
+
+Deletes full backups older than the specified timestamp. Skips incremental backups and any full backup that still has live dependents, logging each skipped backup instead of stopping the cleanup run.
+
+- `--debug`: Optional. Displays verbose debug messages during operation.
+- `--no-prompt`: Optional. Skips the confirmation prompt, for non-interactive use.
+- `--plugin-config config_file_location`: Optional. Deletes plugin-backed backups. See [Using the S3 storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/s3-plugin/) or [Backing up to Dell Data Domain](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/ddboost-plugin/).
+- `--quiet`: Optional. Suppress all non-warning, non-error log messages.
+- `--verbose`: Optional. Print verbose log messages.
+
+## Options
+
+### --dbname database\_name
+
+Required. Specifies the database to back up.
+
+### --backup-dir directory
+
+Optional. Copies all required backup files (metadata files and data files) to the specified directory. You must specify directory as an absolute path (not relative). If you do not supply this option, metadata files are created on the WarehousePG coordinator host in the `$COORDINATOR_DATA_DIRECTORY/backups/YYYYMMDD/YYYYMMDDhhmmss/` directory. Segment hosts create CSV data files in the `<seg_dir>/backups/YYYYMMDD/YYYYMMDDhhmmss/` directory. When you specify a custom backup directory, files are copied to these paths in subdirectories of the backup directory.
+
+When invoked together with the `--metadata-only` and `--no-history` options, a backup may have the same timestamp as another backup, provided that each of the two backups has a distinct `--backup-dir` location.
+
+Don't combine this option with the option `--plugin-config`.
+
+### --compression-level level
+
+Optional. Specifies the compression level (from 1 to 9) used to compress data files. The default is 1.
+
+> **Note**
+>
+> `gpbackup` uses compression by default.
+
+### --compression-type type
+
+Optional. Specifies the compression type (gzip or zstd) used to compress data files. The default is gzip.
+
+> **Note**
+>
+> To use the zstd compression type, Zstandard must be installed in a `$PATH` accessible by the `gpadmin` user.
+
+### --copy-queue-size int
+
+Optional. Specifies the number of `COPY` commands `gpbackup` must enqueue when backing up using the `--single-data-file` option. This option optimizes backup performance by reducing the amount of time spent initializing `COPY` commands. If you don't set this option, `gpbackup` enqueues 1 `COPY` command at a time. If you do set it explicitly, the value must be 2 or greater.
+
+> **Note**
+>
+> This option must be used with the `--single-data-file` option.
+
+### --data-only
+
+Optional. Backs up only the table data into CSV files, but doesn't backup metadata files needed to recreate the tables and other database objects.
+
+You can't combine this option with `--metadata-only`, `--incremental`, or `--leaf-partition-data`.
+
+### --debug
+
+Optional. Displays verbose debug messages during operation.
+
+### --exclude-schema schema\_name
+
+Optional. Specifies a database schema to exclude from the backup. You can specify this option multiple times to exclude multiple schemas. You cannot combine this option with the option `--include-schema`, `--include-schema-file`, or a table filtering option such as `--include-table`.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --exclude-schema-file file\_name
+
+Optional. Specifies a text file containing a list of schemas to exclude from the backup. Each line in the text file must define a single schema. The file must not include trailing lines. If a schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes. You cannot combine this option with the option `--include-schema` or `--include-schema-file`, or a table filtering option such as `--include-table`.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --exclude-table schema.table
+
+Optional. Specifies a table to exclude from the backup. The table must be in the format `<schema-name>.<table-name>`. If a table or schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes. You can specify this option multiple times. You cannot combine this option with the option `--exclude-schema`, `--exclude-schema-file`, or another table filtering option such as `--include-table`.
+
+If you specify a leaf partition name, `gpbackup` ignores the partition names. The leaf partition isn't excluded.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --exclude-table-file file\_name
+
+Optional. Specifies a text file containing a list of tables to exclude from the backup. Each line in the text file must define a single table using the format `<schema-name>.<table-name>`. The file must not include trailing lines. If a table or schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes. You cannot combine this option with the option `--exclude-schema`, `--exclude-schema-file`, or another table filtering option such as `--include-table`.
+
+If you specify leaf partition names in a file that is used with `--exclude-table-file`, `gpbackup` ignores the partition names. The leaf partitions aren't excluded.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --include-schema schema\_name
+
+Optional. Specifies a database schema to include in the backup. You can specify this option multiple times to include multiple schemas. If you specify this option, any schemas that are not included in subsequent `--include-schema` options are omitted from the backup set. You cannot combine this option with the options `--exclude-schema`, `--exclude-schema-file`, `--include-table`, or `--include-table-file`.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --include-schema-file file\_name
+
+Optional. Specifies a text file containing a list of schemas to back up. Each line in the text file must define a single schema. The file must not include trailing lines. If a schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --include-table schema.table
+
+Optional. Specifies a table to include in the backup. The table must be in the format `<schema-name>.<table-name>`. You can specify this option multiple times. You can't combine this option with a schema filtering option such as `--include-schema`, or another table filtering option such as `--exclude-table-file`.
+
+You can also specify the qualified name of a sequence, a view, or a materialized view.
+
+If you specify this option, the utility doesn't automatically back up dependent objects. You must also explicitly specify dependent objects that are required. For example, if you back up a view or a materialized view, you must also back up the tables that the view or materialized view uses. If you back up a table that uses a sequence, you must also back up the sequence.
+
+You can optionally specify a table leaf partition name in place of the table name, to include only specific leaf partitions in a backup with the `--leaf-partition-data` option. When a leaf partition is backed up, the leaf partition data is backed up along with the metadata for the partitioned table.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --include-table-file file\_name
+
+Optional. Specifies a text file containing a list of tables to include in the backup. Each line in the text file must define a single table using the format `<schema-name>.<table-name>`. The file must not include trailing lines. If a table or schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes.
+
+Any tables not listed in this file are omitted from the backup set. You can't combine this option with a schema filtering option such as `--include-schema`, or another table filtering option such as `--exclude-table-file`.
+
+You can also specify the qualified name of a sequence, a view, or a materialized view.
+
+If you specify this option, the utility doesn't automatically back up dependent objects. You must also explicitly specify dependent objects that are required. For example, if you back up a view or a materialized view, you must also specify the tables that the view or the materialized view uses. If you specify a table that uses a sequence, you must also specify the sequence.
+
+You can optionally specify a table leaf partition name in place of the table name, to include only specific leaf partitions in a backup with the `--leaf-partition-data` option. When a leaf partition is backed up, the leaf partition data is backed up along with the metadata for the partitioned table.
+
+See [Filtering backups and restores](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-and-restores) for more information.
+
+### --incremental
+
+Specify this option to add an incremental backup to an incremental backup set. A backup set is a full backup and one or more incremental backups. The backups in the set must be created with a consistent set of backup options to ensure that the backup set can be used in a restore operation.
+
+You must specify `--leaf-partition-data` with this option. You can't combine this option with `--data-only` or `--metadata-only`.
+
+By default, `gpbackup` attempts to find the most recent existing backup with a consistent set of options. If the backup is a full backup, the utility creates a backup set. If the backup is an incremental backup, the utility adds the backup to the existing backup set. The incremental backup is added as the latest backup in the backup set. You can specify `--from-timestamp` to override the default behavior.
+
+See [Creating incremental backups of append-optimized tables](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/incremental/) for more information.
+
+#### --from-timestamp backup-timestamp
+
+Optional. Specifies the timestamp of a backup. The specified backup must have backup options that are consistent with the incremental backup that's being created. If the specified backup is a full backup, the utility creates a backup set. If the specified backup is an incremental backup, the utility adds the incremental backup to the existing backup set.
+
+A backup isn't created and the utility returns an error if the backup can't add the backup to an existing incremental backup set or can't use the backup to create a backup set.
+
+### --jobs int
+
+Optional. Specifies the number of jobs to run in parallel when backing up tables. By default, `gpbackup` uses 1 job (database connection). Increasing this number can improve the speed of backing up data. When running multiple jobs, each job backs up tables in separate transactions.
+
+Important: If you specify a value higher than 1, the database must be in a quiescent state while the utility acquires a lock on the tables that are being backed up. If the utility can't acquire a lock on a table being backed up it will exit.
+
+Don't use this option in combination with the options `--metadata-only` or `--single-data-file`.
+
+> **Note**
+>
+> If a third-party process (`TRUNCATE`, `DROP`, `ALTER`) takes an `Exclusive` lock on a table between the metadata and data phases, the worker hands that table off to the main worker instead of failing, and logs a warning like `[WARNING]:-Worker 5 could not acquire AccessShareLock for table public.foo.`
+
+### --leaf-partition-data
+
+Optional. For partitioned tables, creates one data file per leaf partition instead of one data file for the entire table (the default). Using this option also enables you to specify individual leaf partitions to include in or exclude from a backup, with the `--include-table`, `--include-table-file`, `--exclude-table`, and `--exclude-table-file` options.
+
+### --metadata-only
+
+Optional. Creates only the metadata files (DDL) needed to recreate the database objects, but doesn't back up the actual table data.
+
+Don't combine this option with `--data-only`, `--incremental`, or `--leaf-partition-data`.
+
+### --no-compression
+
+Optional. Don't compress the table data CSV files. Required when using the [DD Boost storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/ddboost-plugin/), since Data Domain deduplicates data as it arrives and gzip compression defeats that deduplication.
+
+### --no-history
+
+Optional. When invoked, `gpbackup` doesn't write backup run metadata to the history database. This is useful if you prefer not to have an application-maintained SQLite database on your system. However, if you choose not to back up to the history database you lose access to the features of the gpbackup\_manager utility.
+
+### --no-inherits
+
+Optional. Only works when invoked with either the `--include-table` option or the `--include-table-file` option. When invoked, only the metadata of the table itself is backed up, ignoring any inheritance relationships with other tables that would normally cause those tables to also be included in the backup set.
+
+### --plugin-config config-file\_location
+
+Specify the location of the `gpbackup` plugin configuration file, a YAML-formatted text file. The file contains configuration information for the plugin application that `gpbackup` uses during the backup operation.
+
+If you specify the `--plugin-config` option when you back up a database, you must specify this option with configuration information for a corresponding plugin application when you restore the database from the backup.
+
+Don't combine this option with the option `--backup-dir`.
+
+See [Using the S3 storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/s3-plugin/) or [Backing up to Dell Data Domain](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/ddboost-plugin/) for information about using a storage plugin. When using the DD Boost storage plugin, always include `--no-compression` alongside `--plugin-config`, and use `--single-data-file` too.
+
+### --quiet
+
+Optional. Suppress all non-warning, non-error log messages.
+
+### --single-backup-dir
+
+Optional. Store all backup files on a given host in a single directory rather than in distinct per-segment subdirectories under the chosen backup directory. For example, files that were previously created in the `<backup-dir>/gpseg0/backups/<datestamp>/<timestamp>` or `<backup-dir>/gpseg1/backups/<datestamp>/<timestamp>` directories will now be created under `<backup-dir>/backups/<datestamp>/<timestamp>`. You may restore backups taken with this option as normal, but there will be a performance penalty when doing so on some systems. However, this protects you from having to manually reorganize files to the correct segment when you pass the `--resize-cluster` restore option to `gprestore`.
+
+You must use the `--backup-dir` option with this option.
+
+### --single-data-file
+
+Optional. Create a single data file on each segment host for all tables backed up on that segment. By default, each `gpbackup` creates one compressed CSV file for each table that's backed up on the segment. Recommended when using the [DD Boost storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/ddboost-plugin/), since backing up to multiple data files per segment adds overhead on the Data Domain file system and slows the backup down.
+
+> **Note**
+>
+> If you use the `--single-data-file` option to combine table backups into a single file per segment, you can't set the gprestore option `--jobs` to a value higher than 1 to perform a parallel restore operation.
+
+### --verbose
+
+Optional. Print verbose log messages.
+
+### --version
+
+Optional. Print the version number and exit.
+
+### --with-stats
+
+Optional. Include query plan statistics in the backup set.
+
+### --without-globals
+
+Optional. Omit the global WarehousePG system objects during backup.
+
+### --help
+
+Displays the online help.
+
+## Environment variables
+
+### WHPGBACKUP\_SNAPSHOT\_ATTEMPTS
+
+Optional. Set in the environment of `gpbackup`. The maximum number of snapshots `gpbackup` takes while it backs up tables that change during the backup. The default is `3`.
+
+After locking the tables, `gpbackup` checks whether any of them changed since the snapshot, for example because of `TRUNCATE`, `DROP`, or `ALTER TABLE ... SET WITH (REORGANIZE=true)`. If so, it takes a new snapshot and tries again. The value must be a whole number of at least 1. A value of `1` turns retries off. A value of `0`, a negative value, or a value that isn't a number stops the backup before it creates anything, with the error `WHPGBACKUP_SNAPSHOT_ATTEMPTS must be a whole number of at least 1`. `gpbackup` reads the variable once at startup.
+
+A table that still changes after the last attempt has its data and statistics left out of the backup, and `gpbackup` logs a warning. The backup report lists the table under `data not backed up:`. The backup still finishes with `backup status: Success` and return code 0, so scripts that check the return code don't detect the skipped table. Check the log for warnings or the report after each backup. The table's DDL is still backed up, so it restores empty. Without `--leaf-partition-data`, a partition that keeps changing leaves out the data of the whole partitioned table. A skipped append-optimized table also gets no incremental metadata, so the next incremental backup backs it up in full. For example:
+
+```
+export WHPGBACKUP_SNAPSHOT_ATTEMPTS=5
+gpbackup --dbname ww_sales
+```
+
+## Examples
+
+To take a full backup:
+
+```
+gpbackup --dbname ww_sales --compression-type zstd
+```
+
+To take a full backup with a consolidated, single data file per segment:
+
+```
+gpbackup --dbname ww_sales --single-data-file --no-compression --backup-dir /tmp/single_file
+```
+
+To back up only the `emea_customer` schema:
+
+```
+gpbackup --dbname ww_sales --include-schema emea_customer
+```
+
+To take an incremental backup, which requires `--leaf-partition-data`:
+
+```
+gpbackup --dbname ww_sales --incremental --backup-dir /nfsmount/whpg_backups/ww_sales --leaf-partition-data
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

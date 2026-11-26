@@ -1,0 +1,46 @@
+---
+title: Prerequisite steps before using the Replication Server CLI
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/01_prereq_steps/
+lastModified: 2023-05-25T11:31:33-04:00
+---
+
+# Prerequisite steps before using the Replication Server CLI
+
+<div id="prereq_steps" class="registered_link"></div>
+
+Perform these installation and setup steps before using the Replication Server CLI.
+
+The Replication Server CLI is included if you choose the Replication Server console component when installing Replication Server. The Replication Server CLI is a Java application found in the directory `XDB_HOME/bin`.
+
+1. Follow the installation steps in [Installation and uninstallation](https://www.enterprisedb.com/docs/eprs/latest/installing/) to install Replication Server.
+
+2. Follow the prerequisite steps in [Prerequisite steps](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/01_prerequisites/) for single-master replication systems or [Prerequisite steps](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/01_prerequisites/#prerequisites) for multi-master replication systems.
+
+3. Set the Java Runtime Environment:
+
+   The Java Runtime Environment (JRE) must be present on the host from which you intend to run the Replication Server CLI. The Java runtime `bin` directory must be included in the path of the operating system user name that will run Replication Server CLI.
+
+   The Replication Server startup configuration file, `xdbReplicationServer-xx.config`, contains the path of the JRE runtime program that was detected during the installation of Replication Server. The following is an example of the Replication Server startup configuration file. (See [Installation details](https://www.enterprisedb.com/docs/eprs/latest/installing/installation_details/) for the location of this file.)
+
+   ```sql
+   #!/bin/sh
+
+   JAVA_EXECUTABLE_PATH="/usr/bin/java"
+   JAVA_MINIMUM_VERSION=1.7
+   JAVA_BITNESS_REQUIRED=64
+   JAVA_HEAP_SIZE="-Xms2048m -Xmx4096m"
+   PUBPORT=9051
+   SUBPORT=9052
+   ```
+
+   For example, using the JRE path shown in the configuration file, enter the following on the command line or add it to your profile:
+
+   `export PATH=/usr/bin:$PATH`
+
+   On Windows systems, open the Properties dialog box of My Computer. Select **Advanced System Settings**, and then select **Environment Variables**. Edit the `Path` system environment variable to include the Java Runtime Environment `bin` directory. Alternatively, you can set the path for just the current session when you open the Command Prompt as in the following example:
+
+   `SET Path=C:\Program Files\Java\jre1.8.0_45\bin;%Path%`
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

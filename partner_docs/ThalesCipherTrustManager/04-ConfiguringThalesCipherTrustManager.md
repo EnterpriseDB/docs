@@ -1,0 +1,193 @@
+---
+title: Configuring
+description: Walkthrough of configuring the integration
+product: Partner Docs
+url: https://www.enterprisedb.com/docs/partner_docs/ThalesCipherTrustManager/04-ConfiguringThalesCipherTrustManager/
+lastModified: 2024-10-07T15:41:39+02:00
+---
+
+# Configuring
+
+> **Note**
+>
+> We refer to the EDB Postgres Advanced Server version 15.2 and later and EDB Postgres Extended Server version 15.2 and later products as the EDB Postgres distribution. The specific distribution type depends on your needs and preferences.
+
+Implementing Thales CipherTrust Manager with EDB Postgres Advanced Server 15.2 and later or EDB Postgres Extended 15.2 and later requires the following components:
+
+- EDB Postgres distribution (15.2 or later)
+- Thales CipherTrust Manager
+- [PyKMIP](https://pypi.org/project/PyKMIP/#files)
+- Python
+
+## Prerequisites
+
+- A running EDB Postgres distribution
+- Thales CipherTrust Manager installed and deployed per your environment
+
+## Check/install Python on server
+
+Many Unix-compatible operating systems, such as macOS and some Linux distributions, have Python installed by default, as it's included in a base installation.
+
+To check the version of Python on your machine, or to see if it's installed, enter `python3`, which returns the version. You can also enter `ps -ef |grep python` to return a Python running process.
+
+```bash
+root@ip-172-31-46-134:/home/ubuntu# python
+Python 3.8.10 (default, May 26 2023, 14:05:08) 
+[GCC 9.4.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+```
+
+If you run a check and find that your system doesn't have Python installed, you can download it from [Python.org](https://www.python.org/downloads/). Select your specific OS, and download and install on your system.
+
+## Install PyKMIP
+
+After your EDB repository is installed on your server, you can then install the PyKMIP utility.
+
+As  root user, issue the `install python3-pykmip` command. This example uses a RHEL8 server, so the command is:
+
+```
+dnf install python3-pymkip
+```
+
+The output looks something like this:
+
+```bash
+[root@ip-172-31-7-145 ec2-user]# dnf install python3-pykmip
+Updating Subscription Management repositories.
+Red Hat Enterprise Linux 8 for x86_64 - AppStre  63 MB/s |  58 MB     00:00    
+Red Hat Enterprise Linux 8 for x86_64 - BaseOS   71 MB/s |  62 MB     00:00    
+Red Hat Ansible Engine 2 for RHEL 8 (RPMs) from  19 MB/s | 2.5 MB     00:00    
+RHUI Client Configuration Server 8               45 kB/s | 3.7 kB     00:00    
+Last metadata expiration check: 0:00:01 ago on Thu 06 Jul 2023 01:30:54 PM UTC.
+Dependencies resolved.
+================================================================================
+ Package            Arch   Version         Repository                      Size
+================================================================================
+Installing:
+ python3-pykmip     noarch 0.9.1-1.el8     enterprisedb-enterprise-noarch 401 k
+Installing dependencies:
+ python3-sqlalchemy x86_64 1.3.2-2.module+el8.3.0+6646+6b4b10ec
+                                           rhel-8-appstream-rhui-rpms     1.9 M
+Enabling module streams:
+ python36                  3.6                                                 
+
+Transaction Summary
+================================================================================
+Install  2 Packages
+
+Total download size: 2.3 M
+Installed size: 13 M
+Is this ok [y/N]: y
+Downloading Packages:
+(1/2): python3-sqlalchemy-1.3.2-2.module+el8.3.  23 MB/s | 1.9 MB     00:00    
+(2/2): python3-pykmip-0.9.1-1.el8.noarch.rpm    450 kB/s | 401 kB     00:00    
+--------------------------------------------------------------------------------
+Total                                           2.5 MB/s | 2.3 MB     00:00     
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Preparing        :                                                        1/1 
+  Installing       : python3-sqlalchemy-1.3.2-2.module+el8.3.0+6646+6b4b1   1/2 
+  Installing       : python3-pykmip-0.9.1-1.el8.noarch                      2/2 
+  Running scriptlet: python3-pykmip-0.9.1-1.el8.noarch                      2/2 
+  Verifying        : python3-pykmip-0.9.1-1.el8.noarch                      1/2 
+  Verifying        : python3-sqlalchemy-1.3.2-2.module+el8.3.0+6646+6b4b1   2/2 
+Installed products updated.
+
+Installed:
+  python3-pykmip-0.9.1-1.el8.noarch                                             
+  python3-sqlalchemy-1.3.2-2.module+el8.3.0+6646+6b4b10ec.x86_64                
+
+Complete!
+```
+
+## Configure Thales CipherTrust Manager for your EDB Postgres distribution
+
+After Thales CipherTrust Manager is up and running, create the required certificates.
+
+## Log in to Thales CipherTrust Manager and create user
+
+When creating a key on Thales CipherTrust Manager with an EDB Postgres distribution, you need to create a user for future authentication. This process verifies the username and password against the Thales CipherTrust Manager internal database.
+
+1. Log in to Thales CipherTrust Manager.
+
+   ![Thales CipherTrust Manager Login](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/ThalesCipherTrustLoginScreen.png)
+
+2. Navigate to the Access Management section, and select **Users**.
+
+3. Select **Add Users**, and provide the required information:
+   - Username
+   - Password
+
+4. Select **Add User**.
+
+   ![Thales CipherTrust Manager Add User](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/ThalesCipherTrustAddUser.png)
+
+5. From the ellipsis menu next to the user you created, select **View/Edit**.
+
+6. Select **Expand All**, and select or add the following groups for the user:
+   - **Key Admins**
+   - **Key Users**
+   - **All Clients**
+
+The user that you created now has the appropriate settings and permissions to create and download certificates in Thales.
+
+## Create and download certificates on Thales CipherTrust Manager
+
+You need to generate ca.pem, key.pem, and cert.pem certificates in Thales CipherTrust Manager for your KMIP server and `pykmip.conf` file.
+
+### Download the CA certificate
+
+The local CA certificate is provided by default. To access and download the certificate for your `pykmip.conf` file:
+
+1. On the left-hand side of Thales CipherTrust Manager, navigate to CA and select **Local**, which brings you to the Local Certificate Authorities page.
+
+2. From the ellipses menu on the far-right side, select **Download**.
+
+   ![Thales CipherTrust Manager CA Certificate](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/ThalesCipherTrustCACert.png)
+
+3. For your download, change the name from `Certificate.pem` to `ca.pem`. Keep track of where you downloaded your certificate, as you will need it later.
+
+### Create and download the key.pem and cert.pem certificates
+
+These are the other two certificates you need for your KMIP server and `pykmip.conf` file.
+
+1. Navigate to the Thales CipherTrust Manager main page.
+
+2. Under **Products**, select **KMIP**.
+
+3. Select **Client Profile > Add Profile**.
+
+4. Give the profile a name, and select **Save**. This example uses the name **newtestprofile**.
+
+   ![Thales CipherTrust Manager Add Client Profile](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/ThalesCipherTrustManagerAddClientProfile.png)
+
+5. Select **Registration Token > New Registration Token**.
+
+6. Select **Begin**, and then configure your token:
+   1. Give the token a name. In this example, it's **edbnewtoken2**.
+      ![Create New Registration Token Name](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/CreateNewRegistrationTokenName.png)
+   2. Select **local CA**.
+      ![Create New Registration Token CA](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/CreateNewRegistrationTokenCA.png)
+   3. Select the client profile you created earlier. In this example, it's **newtestprofile**.
+      ![Create New Registration Token Select Profile](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/CreateNewRegistrationTokenSelectProfile.png)
+   4. Select **Create Token**.
+   5. Copy the token you created.
+      ![Create New Registration Token Copy Token](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/CreateNewRegistrationTokenCopyToken.png)
+   6. Select **Done**.
+
+7. Navigate to Registered Clients, and select **Add Client**.
+
+8. Give the client a name.
+
+9. Paste the token that you copied into the **Registration Token** box, and then select **Save**, which generates the final two certificates.
+   ![Thales Create New Registration Client](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/ThalesRegistrationClient.png)
+
+10. To download the final two certificates, select **Save Private Key**, and then select **Save Certificate**.  Make sure to note their downloaded location for later.
+    ![Thales Download Certificate Files](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustManager/Images/ThalesDownloadCerts.png)
+
+You are now ready to use Thales CipherTrust Manager and your EDB Postgres distribution with TDE for key management.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

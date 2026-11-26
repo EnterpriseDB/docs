@@ -1,0 +1,79 @@
+---
+title: Performing administrative management
+description: Manage user accounts, define role-based access controls, and configure system-wide settings for WarehousePG Enterprise Manager.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/system-access/management/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Performing administrative management
+
+Manage user accounts, access controls, and system-wide settings from the **Management** panel on the left sidebar. Use these administrative actions to oversee account security, define permission tiers, and configure core integration parameters.
+
+> **Important**
+>
+> Access to this panel is restricted to users with the Admin role privilege. Non-admin users who navigate to a restricted page receive a 403 access denied page. Destructive actions prompt for confirmation before proceeding.
+
+### Managing the user lifecycle
+
+Monitor account status and provision new access credentials with the **WEM Users** tab.
+
+- Check the header cards for **Total Users**, **Active Users**, **Locked Users**, and **Admin Users**. A non-zero **Locked Users** count indicates that users have exceeded the failed login threshold. Investigate potential security incidents or assist users with password resets.
+- Provision new users by selecting the **Add WEM User** button. In the **Database Authentication** section, link the WEM account to an existing WHPG user by selecting from the **WarehousePG Username** dropdown, or create a new WHPG identity by entering a username directly.
+- Assign users to one of the three built-in profiles:
+  - **Admin:** Full system control.
+  - **Operator:** Operational dashboard access, including query management and cancellation.
+  - **Viewer:** Read-only access to metrics.
+- Use the **Active** toggle when editing or creating a user to revoke access immediately without deleting the account's history.
+- To require a user to change their password at next login, select the key icon for that user. The user is prompted to set a new password the next time they log in to WEM.
+- Regularly review the **Admin Users** count. Keeping the number of high-privileged accounts to a minimum is a core security best practice.
+
+### Managing profiles
+
+Review the built-in profiles and their user assignments with the **Profiles** tab. The **Profiles** table lists each profile's name, description, and the number of users currently assigned to it.
+
+### Defining role-based access control
+
+Control what your team can see and do within the platform with the **Permissions** tab. You can grant a profile access to individual actions within a panel, instead of only all-or-nothing access to the entire panel.
+
+- Expand a panel's row to grant or revoke **View Access** and each of its actions per profile, using the **Admin**, **Operator**, and **Viewer** columns, or select **Expand All** or **Collapse All** to open or close every row at once. Selecting a panel's own checkbox grants or revokes view access and every eligible action together, and the text below it summarizes the profile's current standing, no access, **View Access only**, **Full access**, or **View Access** plus a count of granted actions.
+- An admin-only panel or action carries a lock icon and can't be granted to the Operator or Viewer profiles. Revoking a profile's view access to a panel also revokes every action you granted inside it, since an action grant requires view access to its panel.
+- Select **Save Changes** to review a summary of additions and removals per profile before applying them, or **Discard Changes** to revert unsaved edits. Affected users must log out and log in again for the changes to take effect.
+- If permissions become misconfigured, select **Reset to Defaults** to revert every profile's view access and action grants to the [factory-recommended state](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/#role-permissions-matrix). This can't be undone.
+
+> **Note**
+>
+> Set `WEM_ACTION_PERMISSIONS_ENABLED` to `false` in `wem.conf` to fall back to admin-only access for every action, regardless of what's granted in the **Permissions** tab, as an emergency rollback. Restart the WEM service for the change to take effect. See [Configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#access-control).
+
+### Auditing administrative actions
+
+Maintain a chronological record of every administrative action performed in the system with the **Audit Log** tab.
+
+- Filter by time range (Last 24 hours, Last 7 days, Last 30 days, Last 90 days) and by action type to narrow results.
+- Filter by **Failed Login** to identify potential brute-force attempts. Filter by **Login** and **Logout** to verify user activity during specific incident windows.
+- Apply the **Update User** and **Create User** filters to see who modified accounts or security flags.
+
+### Managing host agent registrations
+
+Track and control every host agent connecting to WEM with the **Host Agents** tab. See [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/) for the full self-registration and approval workflow.
+
+- Approve a pending agent or revoke an approved one from its row's actions menu, or handle several at once by selecting multiple agents and choosing **Approve selected**, **Revoke selected**, or **Delete selected** from the toolbar's **Actions** menu. Deleting an agent removes its registration entirely, and the agent must register again to reappear.
+- Confirm you're approving the agent you expect by comparing its **Verification Token** against the join token on the host itself (`cat /etc/edb/acp-host-agent/join-token`) before approving a pending agent.
+- Track each agent's registration state, **Pending**, **Approved**, or **Revoked**, in the **Status** column, and its OTel Collector state in the **Telemetry** column. Request a live status check instead of waiting for WEM's periodic cache by selecting **Refresh**.
+- Show additional bookkeeping columns, such as **Approved By** and **Approved At** and hidden by default to keep the table uncluttered, using the columns selector.
+
+### Configuring system integration settings
+
+Review and change your WEM installation's configuration with the **Settings** tab. The tab has two parts. See [Configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/configuring/) for the full list of settings.
+
+- **Startup Settings** shows the settings that WEM reads when it starts: the WHPG connection (host, port, database, user, password, and monitoring database), ClickHouse (URL and database name), the OTel gateway collector endpoint, high-load mode, and WEM's own state database. They're read-only here. Select **How to change Startup Settings** to learn how to edit them in `/etc/edb/wem/wem.conf`, then restart WEM. Use the **Copy** menu in the **WHPG Connection** section to copy the connection as a `psql` command, a connection URI, or environment variables.
+- **Runtime Settings** shows the settings that take effect as soon as you save them, with no restart:
+  - Set your cluster's display name and environment (`dev`, `uat`, or `prod`) in the **Cluster Identity** section.
+  - In the **Query Monitoring** section, adjust **Slow Query Logging**, which defines what constitutes a slow query in milliseconds and controls which queries are logged for performance analysis, and **Long-Running Threshold**, the number of minutes after which WEM flags a running query. See [Runtime settings](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#runtime-settings) for what each setting does.
+  - Set how often the OTel collectors gather metrics in the **OpenTelemetry Collector** section.
+  - Set the address of FlowServer and how long WEM keeps finished FlowServer actions in the **FlowServer** section.
+  - Configure the integrated AI Assistant's API key and model in the **AI Assistant** section. Select **Remove Key** to delete a saved key and turn the assistant off.
+
+Select **Save Changes** to apply your runtime edits, or **Discard** to reset them. WEM validates fields inline, such as duration fields, and warns you if you navigate away or close the browser with unsaved changes.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

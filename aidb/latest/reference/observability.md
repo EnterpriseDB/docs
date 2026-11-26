@@ -1,0 +1,449 @@
+---
+title: Observability reference
+description: "Reference for AIDB's built-in OpenTelemetry tracing: the aidb_otel schema, who can read it, storage format, functions, background workers, and every attribute AIDB emits."
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/reference/observability/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Observability reference
+
+AIDB emits OpenTelemetry (OTel) traces, logs, and metrics for its own function calls, background workers, and SQL query execution. AIDB records nothing by default. When you set `aidb.otel_client` to `database`, it stores the data in your own database, where a member of the `aidb_governance` role can query it or retrieve it for other tools. For the GUCs that turn this feature on and configure it, see [OpenTelemetry tracing](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#opentelemetry-tracing).
+
+## Schemas
+
+When `aidb.otel_client = 'database'`, AIDB writes traces, logs, and metrics into three tables in the `aidb_otel` schema:
+
+- `aidb_otel.traces` — one row per span.
+- `aidb_otel.logs` — one row per log record.
+- `aidb_otel.metrics` — one row per batch of metric readings, such as a periodic collection of instrument values.
+
+AIDB also keeps `aidb_otel.cleanup_log`, which records retention cleanups instead of telemetry. See [Auditing retention cleanups](#auditing-retention-cleanups).
+
+A span describes an operation and its timing. AIDB stores log messages as separate OTel log records, not as events embedded inside spans. A log record can link to its span through the `trace_id` and `span_id` columns. Governance decisions are spans named `purpose_decision` in `aidb_otel.traces`.
+
+This follows OpenTelemetry's recommendation to record new events as logs correlated with spans. The [Span Events API is being deprecated](https://opentelemetry.io/blog/2026/deprecating-span-events/); this doesn't remove span events from the OTel data model or invalidate existing data. Because AIDB doesn't use span events, the `events` array of every span in `payload_json` is empty. To see what happened during a span, query `aidb_otel.logs` by the same `trace_id` and `span_id`. For an example, see [Seeing what happened during a denied call](https://www.enterprisedb.com/docs/aidb/latest/governance/decision-records/#seeing-what-happened-during-a-denied-call).
+
+[EDB Agent Governance](https://www.enterprisedb.com/docs/agent-governance/latest/architecture/) reads spans and log records directly from the database. It doesn't require an OTLP collector and doesn't display all AIDB telemetry. Export to an external monitoring system is configured separately through the [exporter worker](#exporting-traces-logs-and-metrics).
+
+By default, AIDB grants read access to these tables to `aidb_governance`, not to `aidb_users`. Administrators can grant a separate login role read access to the tables it needs. For the dashboard, use the [dedicated viewer role](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/#creating-the-viewer-role): membership in `aidb_governance` also permits retention cleanup and purpose management. To grant read access, see [Managing audit access with the aidb\_governance role](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#managing-audit-access-with-the-aidb_governance-role).
+
+All three tables share a common set of columns, plus a few columns specific to each.
+
+### Common columns
+
+Every row in all three tables carries these columns:
+
+| Column                   | Type        | Description                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                     | bigint      | Row identity.                                                                                                                                                                                                                                                                                    |
+| `recorded_at`            | timestamptz | When the row was written.                                                                                                                                                                                                                                                                        |
+| `payload_json`           | jsonb       | The item as an OTLP protojson `Export{Metrics,Logs,Trace}ServiceRequest`. Populated when `aidb.otel_client_storage_format` is `json` or `both`. Rows from [external senders](#receiving-telemetry-from-external-agents) keep the format they were sent in.                                       |
+| `payload_binary`         | bytea       | The same item as raw OTLP protobuf wire bytes. Populated when `aidb.otel_client_storage_format` is `binary` or `both`.                                                                                                                                                                           |
+| `export_status`          | text        | `pending`, `exported`, or `failed`. Only meaningful when the [exporter worker](#exporting-traces-logs-and-metrics) is enabled — stays `pending` forever otherwise.                                                                                                                               |
+| `export_attempts`        | integer     | Number of export attempts made so far.                                                                                                                                                                                                                                                           |
+| `next_export_attempt_at` | timestamptz | Earliest time the exporter will retry this row. `NULL` once exported or permanently failed.                                                                                                                                                                                                      |
+| `last_export_error`      | text        | Error message from the most recent failed export attempt.                                                                                                                                                                                                                                        |
+| `source`                 | text        | `internal` for telemetry emitted by AIDB itself; `external` for telemetry submitted by other callers. Added in AIDB 7.9.0.                                                                                                                                                                       |
+| `principal`              | text        | The database login (`session_user`) that wrote the row, for both internal and external telemetry. Behind a shared login or a connection pooler, the column names the login, not the person. The column is separate from the calling user recorded in a governance decision. Added in AIDB 7.9.0. |
+
+At least one of `payload_json`/`payload_binary` is always populated — see [Storage format](#configuring-storage-format).
+
+Starting in 7.9.0, use `source` to distinguish AIDB's own decisions from decisions reported by external senders. Rows retained from an earlier version are labeled `internal` during upgrade and have no `principal`; their original source can't be verified from those columns.
+
+A span is stored once per writer: `aidb_otel.traces` is unique on `(trace_id, span_id, source, principal)`, so a span sent twice by the same writer is not duplicated.
+
+### `aidb_otel.traces` — additional columns
+
+Each row is exactly one span. The identifier and attribute columns are stored separately from the payload, so you can query them without parsing JSON or protobuf.
+
+| Column                   | Type        | Description                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trace_id`               | text        | 32-character lowercase hex trace ID. Indexed (`traces_trace_id_idx`).                                                                                                                                                                                                                                                                                                                                                                   |
+| `span_id`                | text        | 16-character lowercase hex span ID.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `parent_span_id`         | text        | 16-character lowercase hex parent span ID. `NULL` for a root span.                                                                                                                                                                                                                                                                                                                                                                      |
+| `pg_session_id`          | text        | The `db.postgresql.session_id` attribute, when present. Partial index excluding `NULL` (`traces_pg_session_id_idx`).                                                                                                                                                                                                                                                                                                                    |
+| `gen_ai_conversation_id` | text        | The `gen_ai.conversation.id` attribute, when present. Partial index excluding `NULL` (`traces_gen_ai_conversation_id_idx`).                                                                                                                                                                                                                                                                                                             |
+| `mcp_session_id`         | text        | The `mcp.session.id` attribute, when present. Partial index excluding `NULL` (`traces_mcp_session_id_idx`).                                                                                                                                                                                                                                                                                                                             |
+| `decision_status`        | text        | The `aidb.agent.decision.action_status` attribute (`allowed` or `denied`), when present — only the one `purpose_decision` span per enforcement decision carries it. Partial index excluding `NULL` (`traces_decision_status_idx`). Lets a per-agent allowed/denied rollup over a time window use an index range scan instead of scanning `payload_json`. See [Purpose-enforcement decisions](#recording-purpose-enforcement-decisions). |
+| `decision_id`            | text        | The `aidb.agent.decision.decision_id` attribute, when present. Links a denied call to its decision record.                                                                                                                                                                                                                                                                                                                              |
+| `agent_name`             | text        | The `gen_ai.agent.name` attribute, when present.                                                                                                                                                                                                                                                                                                                                                                                        |
+| `span_status_code`       | integer     | OTel span status: `0` (unset), `1` (OK), or `2` (error). This is separate from the governance decision's allowed/denied status.                                                                                                                                                                                                                                                                                                         |
+| `span_start_time`        | timestamptz | The start time supplied by an external telemetry sender. `NULL` for AIDB's own stored spans; their timing remains in the payload. Added in AIDB 7.9.0.                                                                                                                                                                                                                                                                                  |
+| `span_end_time`          | timestamptz | The end time supplied by an external telemetry sender. `NULL` for AIDB's own stored spans. Added in AIDB 7.9.0.                                                                                                                                                                                                                                                                                                                         |
+
+`recorded_at` is the time the row was stored, which can be later than the operation itself. Use the span's start and end times to measure its duration.
+
+`trace_id`/`span_id`/`parent_span_id` are lowercase hex, the same representation `payload_json`'s own `traceId`/`spanId`/`parentSpanId` fields use — the two match as strings, so you can look up a row by either. (This isn't the same as `payload_binary`'s raw OTLP protobuf `bytes` fields, which aren't hex or text at all.)
+
+### `aidb_otel.logs` — additional columns
+
+Each row is one log record, with two columns linking it back to the span it was emitted under:
+
+| Column     | Type | Description                                                                                                                       |
+| ---------- | ---- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `trace_id` | text | Trace ID of the span this log record was emitted under. `NULL` if emitted outside any active span. Indexed (`logs_trace_id_idx`). |
+| `span_id`  | text | Span ID of the span this log record was emitted under. `NULL` under the same condition as `trace_id`.                             |
+
+## Configuring storage format
+
+The `aidb.otel_client_storage_format` GUC controls which payload column the `database` client (one of the `aidb.otel_client` destinations — see [Configuring AIDB parameters](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#opentelemetry-tracing)) writes to: `payload_json`, `payload_binary`, or both — the two columns described under [Common columns](#common-columns). Values:
+
+| Value    | `payload_json` | `payload_binary` | Notes                                                                                          |
+| -------- | :------------: | :--------------: | ---------------------------------------------------------------------------------------------- |
+| `json`   |        ✅       |         —        | Default. Human-readable, directly queryable with standard `jsonb` operators.                   |
+| `binary` |        —       |         ✅        | Raw OTLP protobuf. Cheaper to produce (no intermediate JSON tree), but not directly queryable. |
+| `both`   |        ✅       |         ✅        | Both populated from the same underlying data. Roughly doubles storage and write cost.          |
+
+`aidb.otel_client_storage_format` only affects the `database` client (`aidb.otel_client = 'database'`). It has no effect on `noop` (nothing is written), `stdout` or `grpc` (both always emit the full OTLP payload directly, not through these columns), or `log`, which always writes `payload_json` regardless of this setting, since a server log line is a human-readable debugging aid, not storage a collector later forwards.
+
+When exporting a row that has both payloads populated (`storage_format = both`), the [exporter worker](#exporting-traces-logs-and-metrics) sends only `payload_binary`, since it's cheaper to have produced.
+
+Starting in 7.9.0, telemetry ingested from external senders retains the format received: JSON or protobuf. `aidb.otel_client_storage_format` controls AIDB's own telemetry, not these incoming records.
+
+## Receiving telemetry from external agents
+
+Agents outside AIDB can write their own OTLP telemetry into the same tables, so one audit trail covers both. Six functions accept it, one per signal and format:
+
+| Signal  | JSON                                     | Binary protobuf                            |
+| ------- | ---------------------------------------- | ------------------------------------------ |
+| Traces  | `aidb_otel.ingest_traces_json(jsonb[])`  | `aidb_otel.ingest_traces_binary(bytea[])`  |
+| Logs    | `aidb_otel.ingest_logs_json(jsonb[])`    | `aidb_otel.ingest_logs_binary(bytea[])`    |
+| Metrics | `aidb_otel.ingest_metrics_json(jsonb[])` | `aidb_otel.ingest_metrics_binary(bytea[])` |
+
+Each array element is one complete OTLP request, and each function returns the number of rows it stored. Most senders reach these functions through the [OTLP/HTTP receiver](https://www.enterprisedb.com/docs/aidb/latest/otlp-server/), which calls them for you. Only members of the `aidb_otel_writer` role can run them. For the grant, and for how the functions store what they receive, see [How AIDB stores received telemetry](https://www.enterprisedb.com/docs/aidb/latest/otlp-server/#how-aidb-stores-received-telemetry).
+
+## Protecting telemetry from direct changes
+
+AIDB protects the `aidb_otel` tables from direct changes. Only a superuser, or a role holding the table owner's privileges, can change data in the tables directly. The `store_*`, `ingest_*`, and cleanup functions run as the table owner. The exporter and cleaner workers run as a superuser. The protections don't apply to the functions or the workers.
+
+Table privileges alone don't stop a role granted write access by mistake, or a member of `pg_write_all_data`, which bypasses table privileges. AIDB therefore enforces the protection in three ways:
+
+- AIDB revokes every privilege except `SELECT` from every role except the owner, including `PUBLIC`. The revoke covers the `aidb_otel` tables, their columns, and their `id` sequences. `SELECT` stays with `aidb_governance` and with each role granted `SELECT` by `aidb_governance`.
+- A `deny_direct_write` trigger on each table refuses `INSERT`, `UPDATE`, `DELETE`, and `TRUNCATE` from any other role with an `insufficient_privilege` error naming the role and the statement. The trigger is always enabled, so setting `session_replication_role` doesn't skip the trigger. On WarehousePG the triggers aren't created.
+- The `store_*` functions only run while AIDB's own telemetry flush holds an internal-write mark, and no SQL can set the mark. AIDB refuses a direct call. So only AIDB can write a row with `source = 'internal'`. Every row from `ingest_*` is `external`.
+
+> **Note**
+>
+> The upgrade to 7.10.0 also drops triggers and foreign keys created on the tables by roles other than the owner or a superuser. Such a trigger or key can run a role's code as the owner, or make retention deletes fail. AIDB logs a `WARNING` naming each dropped trigger.
+
+The protections guard against other roles. The data still isn't tamper-evident: a superuser can change anything without a trace.
+
+A member of `pg_write_all_data` can still make writes fail without changing a row. The member can set an `id` sequence to the maximum value or hold a lock on a table. Only withholding the role prevents the failure.
+
+To recover, connect as the owner or a superuser and fix whichever cause applies:
+
+- Sequence at the maximum value: reset each sequence.
+
+  ```sql
+  SELECT pg_catalog.setval(
+      pg_catalog.pg_get_serial_sequence('aidb_otel.traces', 'id'),
+      (SELECT pg_catalog.max(id) FROM aidb_otel.traces)
+  );
+  ```
+
+  Repeat for `metrics`, `logs`, and `cleanup_log`. On an empty table, use `setval(..., 1, false)`.
+
+- Lock held on a table: find the lock holder in `pg_locks`, and end the holder's session with `pg_terminate_backend()`.
+
+## Triggering retention cleanup
+
+The cleaner background worker deletes old rows automatically (see [Running background workers](#running-background-workers)), but this function lets you trigger a cleanup pass immediately instead of waiting for its next tick.
+
+### `aidb.run_otel_retention_cleanup()`
+
+Manually triggers a full retention cleanup pass, deleting rows older than `aidb.otel_cleaner_retention_days` from all three `aidb_otel` tables, in the same bounded batches the [cleaner background worker](#cleaning-up-expired-rows) uses. Runs immediately, regardless of `aidb.otel_cleaner_enabled` — useful for an ops task or a test that shouldn't wait for the worker's own wake-up interval.
+
+Requires the `aidb_governance` role (see [Managing audit access](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#managing-audit-access-with-the-aidb_governance-role)) — `aidb_users` has no `EXECUTE` on this function.
+
+Each call writes one row to [`aidb_otel.cleanup_log`](#auditing-retention-cleanups). The cleanup uses the configured value of `aidb.otel_cleaner_retention_days` and ignores any value set in a session with `SET` or `SET LOCAL`. If the session's value differs, AIDB raises a `WARNING` naming both values, and the call uses the configured value. A manual cleanup fails in a session connected with an option such as `PGOPTIONS` or `options=-c`. Reconnect without the option.
+
+Per-database retention still takes effect through `ALTER DATABASE ... SET` for sessions starting afterward. Postgres trusts a value set with `ALTER ROLE ... SET` the same way, so granting a role `SET` on `aidb.otel_cleaner_retention_days` lets the role control retention for the cleanups the role runs.
+
+Takes no arguments and returns `void`. Safe to call while the cleaner background worker is running — the two don't compete over the same rows.
+
+```sql
+SELECT aidb.run_otel_retention_cleanup();
+```
+
+> **Note**
+>
+> There's no equivalent manual trigger for the exporter. Forwarding to an external collector only ever runs from the exporter worker's own tick, so that a delivery in progress never shares a transaction with anything else that could roll it back and risk sending the same row twice.
+
+Internally, the `database` client writes through `aidb_otel.store_metrics()`, `aidb_otel.store_logs()`, and `aidb_otel.store_traces()`. You can't call the functions directly. Outside AIDB's own telemetry flush, the functions refuse to run, even for a superuser, and raise an `insufficient_privilege` error pointing to the `ingest_*` functions. `aidb_users` keeps `EXECUTE` on the functions because a traced call needs the grant, but has no `SELECT` on the tables the functions write to.
+
+## Running background workers
+
+Two background workers run per database, each spawned only when enabled for that database (see [Configuring AIDB parameters](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#opentelemetry-tracing) for the governing GUCs).
+
+### Exporting traces, logs, and metrics
+
+Export is disabled by default. Enable `aidb.otel_exporter_enabled` and configure `aidb.otel_exporter_endpoint` to forward stored telemetry. EDB Agent Governance reads the database directly and doesn't need this worker.
+
+Forwards pending, due rows from `aidb_otel.{traces,logs,metrics}` to the OTLP/HTTP collector at `aidb.otel_exporter_endpoint`, on a 15-second tick. `payload_json` rows are sent as OTLP/HTTP+JSON. `payload_binary` rows are sent as OTLP/HTTP+protobuf (`Content-Type: application/x-protobuf`) — a real OTel Collector's HTTP receiver dispatches on that header, so both formats share the same endpoint. Every outbound request goes through AIDB's [egress allowlist](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#network-egress).
+
+Failed deliveries back off per row (not per tick), so one row's retry schedule never blocks the rest of the batch. After `aidb.otel_exporter_max_retries` attempts, a row is marked `export_status = 'failed'` and stops being retried automatically — find these with:
+
+```sql
+SELECT * FROM aidb_otel.traces WHERE export_status = 'failed';
+```
+
+### Exporting to Langfuse
+
+To view agent runs in [Langfuse](https://langfuse.com), set `aidb.otel_exporter_langfuse_endpoint` to the OTLP/HTTP base URL of Langfuse. The exporter then sends traces to Langfuse instead of to `aidb.otel_exporter_endpoint`. Logs and metrics, which Langfuse doesn't ingest, still go to the general endpoint. A signal with no destination stays `pending` until the cleaner deletes the signal by age.
+
+To set up the export:
+
+1. Enable the exporter and set the Langfuse endpoint:
+
+   ```sql
+   ALTER SYSTEM SET aidb.otel_exporter_enabled = on;
+   ALTER SYSTEM SET aidb.otel_exporter_langfuse_endpoint = 'http://langfuse:3000/api/public/otel';
+   ```
+
+2. Put the authentication headers in the `AIDB_OTEL_EXPORTER_LANGFUSE_HEADERS` environment variable of the Postgres server:
+
+   ```sh
+   AIDB_OTEL_EXPORTER_LANGFUSE_HEADERS="Authorization=Basic <base64 of public_key:secret_key>,x-langfuse-ingestion-version=4"
+   ```
+
+3. Restart Postgres. The server reads the environment at startup, and enabling the exporter with `ALTER SYSTEM` also needs a restart.
+
+For the header format and rules, and for the variable for the general endpoint, see [Exporter headers](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#exporter-headers). AIDB also adds attributes for Langfuse to group and classify spans. See [Recording Langfuse attributes](#recording-langfuse-attributes).
+
+Every outbound request goes through AIDB's [egress allowlist](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#network-egress).
+
+### Cleaning up expired rows
+
+Deletes rows older than `aidb.otel_cleaner_retention_days` from all three tables, in batches of `aidb.otel_cleaner_batch_size`, on an hourly tick. Set `aidb.otel_cleaner_retention_days = 0` to disable cleanup entirely without stopping the worker itself.
+
+The cleaner doesn't touch [`aidb.purpose_history`](https://www.enterprisedb.com/docs/aidb/latest/reference/purposes/#aidbpurpose_history). See [`aidb.prune_purpose_history`](https://www.enterprisedb.com/docs/aidb/latest/reference/purposes/#aidbprune_purpose_history).
+
+AIDB records each batch with deleted rows in `aidb_otel.cleanup_log`. See [Auditing retention cleanups](#auditing-retention-cleanups).
+
+## Auditing retention cleanups
+
+Query `aidb_otel.cleanup_log` to see who ran each retention cleanup, what the cleanup deleted, and why. AIDB records every retention cleanup in the log. AIDB inserts each row in the same transaction as the `DELETE`, so a deletion always has a row, and a rolled-back cleanup leaves none. `aidb_governance` can read the log, and the cleaner never deletes from the log. `pg_dump` includes the log, though not the telemetry tables, so the record survives a restore. A restore writes the log through the `deny_direct_write` trigger, so the restore must run as a superuser or the table owner.
+
+`aidb.run_otel_retention_cleanup()` writes one row per call, even when the call deleted nothing. The cleaner worker writes one row per batch with deleted rows, and none for an empty hourly pass.
+
+| Column                                                | Description                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `trigger_kind`                                        | `manual` for a call to `aidb.run_otel_retention_cleanup()`, or `worker`.                                                                                                                                                                                                 |
+| `worker_name`                                         | The cleaner worker's name. `NULL` for a manual call.                                                                                                                                                                                                                     |
+| `caller`                                              | The `session_user` who ran a manual cleanup. A `SECURITY DEFINER` function doesn't change the value.                                                                                                                                                                     |
+| `pg_session_id`, `backend_pid`, `client_addr`, `txid` | Which session ran the cleanup. `pg_session_id` has the same value as the `db.postgresql.session_id` span attribute and the `%c` log prefix.                                                                                                                              |
+| `started_at`, `finished_at`                           | When the cleanup started and finished.                                                                                                                                                                                                                                   |
+| `retention_days`, `batch_size`, `cutoff`              | The retention, the batch size, and the cutoff time the cleanup used.                                                                                                                                                                                                     |
+| `retention_source`, `retention_source_file`           | Where the retention value came from.                                                                                                                                                                                                                                     |
+| `ignored_session_retention_days`                      | A different value set in the session with `SET` and ignored by the cleanup. When the column has a value, `retention_source` is `NULL`.                                                                                                                                   |
+| `outcome`                                             | `completed`, `nothing_eligible`, or `retention_disabled`.                                                                                                                                                                                                                |
+| `metrics_*`, `logs_*`, `traces_*`                     | Per table, the rows deleted (`_deleted`) and the number of deleted rows never marked `exported` (`_not_exported`). `_not_exported` counts every row when the exporter doesn't run. The `_oldest` and `_newest` columns hold the oldest and newest `recorded_at` deleted. |
+
+A failed manual call writes no row, because the row rolls back with the error. The call writes a `LOG` line naming the caller's `session_user` instead.
+
+## Traced attributes
+
+AIDB records attributes automatically when telemetry is enabled. It follows [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/) where applicable (`gen_ai.*`, `db.*`, `error.type`), with custom `aidb.*` attributes for other AIDB concepts. The reference below covers the attributes emitted by AIDB on spans, logs, and metrics. Each section identifies where they appear; an attribute can be absent when it doesn't apply to the operation.
+
+Database telemetry from AIDB 7.8.0 uses schema version `1`; AIDB 7.9.0 introduces schema version `2`. The schema version identifies the telemetry structure and changes independently of the AIDB release number. Upgrading doesn't add new attributes to older records. These fields are available in the stored telemetry; the [dashboard displays a subset](https://www.enterprisedb.com/docs/agent-governance/latest/architecture/#understanding-what-the-dashboard-shows).
+
+Some tables include a Carrier column, which shows the kind of OpenTelemetry record an attribute is set on, such as a span or a metric. An attribute with two carriers has the same meaning on both.
+
+### Setting resource attributes
+
+Set once per process, shared by every signal (traces, logs, and metrics):
+
+| Attribute                  | Description                                                                                     |
+| -------------------------- | ----------------------------------------------------------------------------------------------- |
+| `service.version`          | The AIDB extension version that produced the data.                                              |
+| `service.name`             | Always `aidb`. Identifies AIDB when a monitoring system receives data from multiple services.   |
+| `aidb.otel_schema_version` | The telemetry schema version: `1` in AIDB 7.8.0, `2` in AIDB 7.9.0, and `3` starting in 7.10.0. |
+| `aidb.database.name`       | Name of the database the backend is connected to.                                               |
+| `aidb.database.oid`        | OID of that database.                                                                           |
+
+### Setting root-span attribute
+
+Set once per trace, only on its root span:
+
+| Attribute                  | Carrier | Type   | Description                                                                                                                                     |
+| -------------------------- | ------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `db.postgresql.session_id` | span    | string | Correlates a trace with the Postgres server log lines from the same backend. Set only on the root span of a trace, not on every span within it. |
+
+`db.postgresql.session_id` uses the format `<start_time_hex>.<pid_hex>`, matching Postgres's own `%c` log\_line\_prefix escape. It's per-connection, so it's set only on each trace's root span, not on every span and not as a resource attribute, since sharing it with the metrics pipeline would inflate metric cardinality. It's promoted to the indexed `pg_session_id` column on `aidb_otel.traces`.
+
+### Recording Agent Hub attributes
+
+Set on spans for agent conversations, tasks, and messages, and on the failure log record:
+
+| Attribute                        | Description                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gen_ai.operation.name`          | Static operation label on agent conversation spans.                                                                                                                                                                                                                                                                               |
+| `gen_ai.agent.name`              | Agent name.                                                                                                                                                                                                                                                                                                                       |
+| `gen_ai.agent.id`                | Agent ID.                                                                                                                                                                                                                                                                                                                         |
+| `gen_ai.conversation.id`         | Conversation ID. Promoted to the indexed `gen_ai_conversation_id` column on `aidb_otel.traces`.                                                                                                                                                                                                                                   |
+| `gen_ai.request.model`           | The registered AIDB model name the agent runs on, not the provider's model ID. Set on the conversation span only. A delegate's span carries the delegate's model. Added in AIDB 7.10.0.                                                                                                                                           |
+| `gen_ai.usage.input_tokens`      | Input tokens reported by the model provider, summed over every model call of the run. AIDB enforces the agent's `input_token_budget` against the same numbers. Set on the conversation span only, and absent when no call reported usage. A delegate's usage is on the delegate's own span. Added in AIDB 7.10.0.                 |
+| `gen_ai.usage.output_tokens`     | Output tokens reported by the provider, with the same rules as `gen_ai.usage.input_tokens`. Added in AIDB 7.10.0.                                                                                                                                                                                                                 |
+| `aidb.agent.model`               | Model used by the agent.                                                                                                                                                                                                                                                                                                          |
+| `aidb.agent.decision.count`      | On a conversation span, the number of `purpose_decision` spans the run recorded directly, allowed and denied, not counting the decisions of delegate agents. Compare the count with the stored decisions of the run to find missing decisions. Absent when the run ended before the reasoning loop started. Added in AIDB 7.10.0. |
+| `aidb.agent.purpose`             | The agent's declared purpose (see [Permissions](https://www.enterprisedb.com/docs/aidb/latest/agents/creating-agents/#permissions)).                                                                                                                                                                                              |
+| `aidb.agent.status`              | Outcome of the agent call: `COMPLETE`, `TIMEOUT`, or `ERROR`.                                                                                                                                                                                                                                                                     |
+| `aidb.agent.task.id`             | ID of one agent invocation, distinct from the conversation ID. Absent for read-only calls.                                                                                                                                                                                                                                        |
+| `aidb.agent.message.id`          | ID of the message requested by a `get_message` lookup.                                                                                                                                                                                                                                                                            |
+| `aidb.agent.system_prompt.chars` | Character count of the system prompt, including agent instructions and attached plugins. Added in AIDB 7.9.0.                                                                                                                                                                                                                     |
+| `aidb.agent.plugin.count`        | Number of plugins attached to the agent. Added in AIDB 7.9.0.                                                                                                                                                                                                                                                                     |
+| `aidb.read_only`                 | Whether the call was read-only. Shared with Tools Hub — not agent-exclusive.                                                                                                                                                                                                                                                      |
+| `error.type`                     | Error classification on a failed call: `timeout` or `_OTHER`. The error message is recorded separately in logs.                                                                                                                                                                                                                   |
+
+Token counts are the provider's figures and are recorded once per run, not per model call. A run that returned a cached response or hit an error before the first model call carries no usage attributes.
+
+### Recording Langfuse attributes
+
+Set on agent spans while `aidb.otel_exporter_langfuse_endpoint` is set or `aidb.otel_langfuse_attributes_enabled` is `on`, so Langfuse can group and classify the spans. With neither setting, AIDB records no Langfuse attributes, so the attributes don't appear in the `aidb_otel` tables or reach other OTLP receivers:
+
+| Attribute                   | Description                                                                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `langfuse.session.id`       | The conversation ID, on every span of an agent conversation. Langfuse groups traces into a session by the ID. A delegate keeps the ID of the calling agent.                           |
+| `langfuse.user.id`          | The database user (`session_user`) who ran the conversation, on every span of the conversation. A read-only run has no conversation ID, so only `langfuse.user.id` is set on the run. |
+| `langfuse.observation.type` | `agent` on the conversation span and `tool` on native, SQL, and MCP tool spans, so Langfuse's agent and tool views count the spans.                                                   |
+
+### Recording Tools Hub attributes
+
+Set on spans for tool calls, including those imported from an MCP server:
+
+| Attribute              | Description                                                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `gen_ai.tool.name`     | Tool name.                                                                                                                  |
+| `aidb.mcp.server_name` | Name of the MCP server a tool was imported from.                                                                            |
+| `aidb.mcp.url`         | MCP server URL. Recorded as-is, without redaction; restrict read access to telemetry accordingly.                           |
+| `aidb.mcp.transport`   | MCP transport: `streamable_http` or `sse`.                                                                                  |
+| `aidb.tool.call_count` | Number of tool calls in a batch invocation.                                                                                 |
+| `aidb.sleep.seconds`   | Requested duration, in seconds, of a native pause/sleep tool call.                                                          |
+| `mcp.session.id`       | MCP session ID, when a tool call happens within one. Promoted to the indexed `mcp_session_id` column on `aidb_otel.traces`. |
+
+### Recording purpose-enforcement decisions
+
+With telemetry enabled, purpose-scoped tool SQL produces `purpose_decision` spans with these attributes. Agents without a purpose don't produce these decision records.
+
+| Attribute                                        | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aidb.agent.decision.decision_id`                | Unique ID for this decision. Also embedded in the error message text when the action is denied, so an error can be linked back to its decision record.                                                                                                                                                                                                                                                                                                                                                                                       |
+| `aidb.agent.decision.action_status`              | `allowed` or `denied` — the only two values. Promoted to the indexed `decision_status` column on `aidb_otel.traces`.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `aidb.agent.decision.interaction_point`          | The kind of interaction being decided. Currently always `sql_exec` (SQL execution by a tool) — the only interaction point implemented so far.                                                                                                                                                                                                                                                                                                                                                                                                |
+| `aidb.agent.decision.principal`                  | The calling user's Postgres identity, captured before switching to the purpose's role.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `aidb.agent.decision.agent_role`                 | The purpose-resolved Postgres role the action ran (or would have run) as.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `aidb.agent.decision.denial_reason`              | Present only when denied. One of `role_not_found` (the purpose's role doesn't exist), `not_role_member` (the caller isn't a member of the purpose's role), `escalation_blocked` (the SQL tried to change the running role with `SET ROLE`, `RESET ROLE`, or `SET SESSION AUTHORIZATION`, or to change a privilege-restricted setting), `engine_privilege_denied` (Postgres rejected the SQL with a `42501` permission error), or `pre_execution_rejected` (the tool SQL failed validation before execution). Not promoted to its own column. |
+| `aidb.agent.decision.effective_purpose`          | The purpose actually enforced for the decision. It can differ from the agent's configured purpose when a delegated agent runs under its caller's purpose. Added in AIDB 7.8.0.                                                                                                                                                                                                                                                                                                                                                               |
+| `aidb.agent.decision.purpose_version`            | The version of `effective_purpose` from which AIDB resolved `agent_role`. Added in AIDB 7.10.0.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `aidb.agent.decision.referenced_relations`       | A JSON array stored as a string, listing distinct schema-qualified relations named by the SQL statement after parsing and analysis. The list is limited to 5 KiB. Added in AIDB 7.9.0. See [Referenced relations](https://www.enterprisedb.com/docs/aidb/latest/governance/decision-records/#referenced-relations) and its [limitations](https://www.enterprisedb.com/docs/aidb/latest/governance/decision-records/#limitations).                                                                                                            |
+| `aidb.agent.decision.referenced_relations_total` | The number of distinct relations before the list is shortened to fit the limit. Added in AIDB 7.9.0.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `aidb.agent.decision.denial_class`               | A category for a PostgreSQL privilege error, such as `object_privilege`, `sequence_privilege`, or `rls_policy`. Added in AIDB 7.9.0. See [Denial class](https://www.enterprisedb.com/docs/aidb/latest/governance/decision-records/#denial-class).                                                                                                                                                                                                                                                                                            |
+| `aidb.agent.decision.denial_funcname`            | The PostgreSQL function reported as the source of the error, when available. Useful when investigating a denial. Added in AIDB 7.9.0.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `aidb.agent.decision.denial_message`             | The database's error message, limited to 5 KiB. It can contain sensitive data. Added in AIDB 7.9.0. See [Error message and SQLSTATE](https://www.enterprisedb.com/docs/aidb/latest/governance/decision-records/#error-message-and-sqlstate).                                                                                                                                                                                                                                                                                                 |
+| `db.response.status_code`                        | The PostgreSQL SQLSTATE. On a decision span, this is `42501` for a PostgreSQL privilege error. Added in AIDB 7.9.0.                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+Referenced relations describe the submitted statement, including relations in joins and subqueries. They aren't a complete record of indirect access through functions or views, and they don't identify the object that caused a denial. An absent attribute means relation information wasn't captured. An empty list means the captured statement named no relations.
+
+The denial class, function name, message, and SQLSTATE apply to PostgreSQL privilege errors. They aren't recorded for decisions rejected before execution, such as a missing purpose role or a caller who isn't a member of that role. See [Decision records](https://www.enterprisedb.com/docs/aidb/latest/governance/decision-records/) for interpreting the outcome.
+
+### Tracing SQL queries
+
+Set on any span that executes SQL:
+
+| Attribute                 | Carrier | Type   | Description                                                                                                                                                                                      |
+| ------------------------- | ------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `db.query.text`           | span    | string | The SQL text a span ran, captured when the span starts, or set explicitly on a decision span when the denied or allowed query text is available. Truncated past a fixed byte ceiling.            |
+| `db.response.status_code` | span    | string | SQLSTATE of the Postgres error, 5 characters. On the decision span it's set only on a Postgres-raised privilege denial (42501), under the same conditions as `aidb.agent.decision.denial_class`. |
+
+Bound parameter values are included in `db.query.text` only when `aidb.otel_capture_query_parameters` is on (see [Configuring AIDB parameters](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#opentelemetry-tracing)).
+
+### Recording agent memory attributes
+
+Set on spans for agent memory sessions. `aidb.memory.operation` and `aidb.memory.outcome` are metric attributes, carried on the `aidb.memory.session.operations` counter and the `aidb.memory.session.operation.duration` histogram. `aidb.memory.compacting` is carried on both spans and metrics.
+
+| Attribute                       | Carrier      | Type                                                | Description                                                                                                                                                                                                                               |
+| ------------------------------- | ------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aidb.memory.name`              | span         | string                                              | The named memory instance a call targets.                                                                                                                                                                                                 |
+| `aidb.memory.provider`          | span         | string                                              | The configured memory runtime's name, only set when a memory runtime is actually configured.                                                                                                                                              |
+| `aidb.memory.namespace`         | span         | string                                              | The memory namespace a session/message operation is scoped to.                                                                                                                                                                            |
+| `aidb.memory.actor_id`          | span         | string                                              | The actor (end user or agent identity) a memory session belongs to.                                                                                                                                                                       |
+| `aidb.memory.session_id`        | span         | string                                              | The memory session id an operation reads or writes.                                                                                                                                                                                       |
+| `aidb.memory.session_closed`    | span         | boolean                                             | Whether a session-end call found the session already closed (an idempotent close) rather than closing it now.                                                                                                                             |
+| `aidb.memory.turns`             | span         | integer                                             | Number of conversation turns in a memory session at init/read time.                                                                                                                                                                       |
+| `aidb.memory.limit`             | span         | integer                                             | The configured item or character limit applied to a memory session read.                                                                                                                                                                  |
+| `aidb.memory.items`             | span         | integer                                             | Number of items returned by a memory session read.                                                                                                                                                                                        |
+| `aidb.memory.overflow_chars`    | span         | integer                                             | How many characters were trimmed because a memory read exceeded its character budget.                                                                                                                                                     |
+| `aidb.memory.compacted_entries` | span         | integer                                             | Number of entries folded into a compaction summary during a session read or end.                                                                                                                                                          |
+| `aidb.memory.warnings`          | span         | integer                                             | Number of non-fatal warnings raised during a memory session read, for example, a compaction the underlying model couldn't produce.                                                                                                        |
+| `aidb.memory.compacting`        | span, metric | boolean                                             | Whether this session read triggered a compaction model call. Same key, same meaning on both carriers; absent (not false) on the metric carrier for operations where the distinction is meaningless, such as opening or closing a session. |
+| `aidb.memory.operation`         | metric       | enum: `session_get`, `session_start`, `session_end` | Always present on every memory-session-operation data point.                                                                                                                                                                              |
+| `aidb.memory.outcome`           | metric       | enum: `ok`, `warning`                               | Always present alongside `aidb.memory.operation`. No `error` value; a failed operation isn't counted at all.                                                                                                                              |
+
+### Tracing pipelines, semantic KBs, and models
+
+These spans cover pipeline operations, semantic search, model inference and maintenance, data processing, and volume access.
+
+| Attribute                  | Description                                                                             |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| `aidb.pipeline.name`       | Pipeline name, on pipeline CRUD and execution spans.                                    |
+| `aidb.pipeline.id`         | Pipeline ID, on background worker batch-processing spans.                               |
+| `aidb.semantic_kb.name`    | Semantic knowledge base name.                                                           |
+| `aidb.model.name`          | Model name, on model inference and maintenance spans.                                   |
+| `aidb.model.provider`      | The model provider or adapter used for the call.                                        |
+| `aidb.hcp.model_name`      | Model name used by the remote service. It can differ from AIDB's registered model name. |
+| `aidb.semantic_alias.name` | Named alias over one or more semantic knowledge bases.                                  |
+| `aidb.search.top_k`        | Requested result count for a semantic knowledge base search.                            |
+| `aidb.search.max_results`  | Requested result count for a memory-search tool call.                                   |
+| `aidb.volume.name`         | Volume targeted by a file operation.                                                    |
+| `aidb.volume.file_name`    | File targeted by a read, write, or delete operation within the volume.                  |
+
+### Recording memory activity
+
+Set on spans for memory and memory-session operations:
+
+| Attribute                       | Description                                                                                                          |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `aidb.memory.name`              | Named memory instance used by the call.                                                                              |
+| `aidb.memory.provider`          | Configured memory runtime, when one is configured.                                                                   |
+| `aidb.memory.namespace`         | Namespace for a memory session or message operation.                                                                 |
+| `aidb.memory.actor_id`          | User or agent identity associated with the memory session.                                                           |
+| `aidb.memory.session_id`        | Memory session read or written by the operation.                                                                     |
+| `aidb.memory.session_closed`    | Whether the session was already closed when a close operation was requested.                                         |
+| `aidb.memory.turns`             | Number of conversation turns in the memory session at initialization or read time.                                   |
+| `aidb.memory.limit`             | Item or character limit applied to a session read.                                                                   |
+| `aidb.memory.items`             | Number of items returned by a session read.                                                                          |
+| `aidb.memory.overflow_chars`    | Number of characters removed to stay within the read's character limit.                                              |
+| `aidb.memory.compacted_entries` | Number of entries combined into a summary during a session read or close.                                            |
+| `aidb.memory.warnings`          | Number of non-fatal warnings during a session read.                                                                  |
+| `aidb.memory.compacting`        | Whether the session read triggered a model call to summarize memory. Also appears on memory metrics when applicable. |
+
+### Recording memory metrics
+
+The `aidb.memory.session.operations` counter counts completed memory operations. The `aidb.memory.session.operation.duration` histogram records their duration in seconds. Their data points carry these attributes:
+
+| Attribute                | Description                                                                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aidb.memory.operation`  | `session_get`, `session_start`, or `session_end`.                                                                                                        |
+| `aidb.memory.outcome`    | `ok` or `warning`. Failed operations aren't included in these metrics.                                                                                   |
+| `aidb.memory.compacting` | Whether a session read triggered a model call to summarize memory. Absent for operations where this doesn't apply, such as opening or closing a session. |
+
+### Recording registry and catalog activity
+
+Set on spans for catalog discovery and purpose or plugin management:
+
+| Attribute                  | Description                                                           |
+| -------------------------- | --------------------------------------------------------------------- |
+| `aidb.catalog.name`        | Name of the catalog object being inspected.                           |
+| `aidb.catalog.schema`      | Schema searched by the catalog discovery call.                        |
+| `aidb.catalog.object_type` | Type of object, such as a table, view, function, or sequence.         |
+| `aidb.purpose.name`        | Purpose being created or read.                                        |
+| `aidb.purpose.role`        | Postgres role assigned to a purpose when it is created.               |
+| `aidb.agent_plugin.name`   | Agent plugin being created, updated, or deleted. Added in AIDB 7.9.0. |
+
+### Recording failures as logs
+
+Failure log records can carry an `error` attribute containing the error text. This is separate from the span's `error.type` classification. When the log is emitted within a span, its trace and span IDs link it to that operation. Error text can contain sensitive data; restrict read access to the telemetry accordingly.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

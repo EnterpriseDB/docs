@@ -1,0 +1,72 @@
+---
+title: Managing authentication policy
+description: Configure authentication policy settings as an organization owner.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/managing_users/manage_authentication_policy/
+lastModified: 2026-08-20T18:08:41+02:00
+---
+
+# Managing authentication policy
+
+As an organization owner, you can configure authentication policies to control the security settings for your organization. These settings let you manage how users and machine users access your account. For example, limiting access key lifetimes reduces exposure from compromised keys, and capping the number of machine users supports least-privilege access.
+
+## Configuring your authentication policy
+
+> **Important**
+>
+> Only users with the **Organization owner** role can view and update authentication policy settings.
+
+To update your authentication policy settings:
+
+1. In the Hybrid Manager (HM) console, navigate to **Settings**.
+2. Select the **Authentication** tab.
+3. Enter the values you want to configure. For details on each setting, see [Parameter values](#parameter-values).
+4. Select **Save** to apply the changes.
+
+> **Note**
+>
+> Policy changes don't affect existing sessions, machine users, or access keys. Changes take effect immediately for new sessions and newly created machine users and access keys. Decreasing the access key or machine users quota does not impact already provisioned machine users and access keys.
+
+## Parameter values
+
+These settings are available under your organization's **Settings > Authentication**.
+
+| Setting                                  | Description                                                                             | Default | Valid range     |
+| ---------------------------------------- | --------------------------------------------------------------------------------------- | ------- | --------------- |
+| **Maximum Machine Users**                | Maximum number of machine users allowed in your organization.                           | 4096    | 1 to 2147483647 |
+| **Maximum Access Keys per Machine User** | Maximum number of access keys that can be created for each machine user.                | 2       | 1 to 2147483647 |
+| **Maximum Access Keys per User**         | Maximum number of access keys that can be created for each normal (human) user account. | 1       | 1 to 2147483647 |
+| **Maximum Access Key Duration**          | Maximum lifetime of an access key, in days. Keys expire after this period.              | 365     | 1 to 2147483647 |
+| **Maximum Web Session Duration**         | Maximum duration of a web session, in seconds. Users are logged out after this period.  | 86400   | 1 to 2147483647 |
+
+[comment]: # "Open question (RBAC eng-integration, claim #20): eng doc says session duration is configured via the Helm value portal.authentication.sessionDuration at install time. Docs describe it as an org-level runtime setting under Settings > Authentication (this page). Same default (86400s) — possibly a platform default vs. org override at different layers. Needs confirmation before reconciling. See comparison doc: https://docs.google.com/document/d/1Zz1x5mrO27dEDcw1Klk5V1VvydC_wYOhyouipSquV-M/edit"
+
+## Session behavior
+
+### Session expiry
+
+When a web session expires, HM doesn't warn you in advance. Any unsaved work, including partially completed cluster configuration forms, is lost. A **session expired** dialog appears and reloads the console, sending you back to your identity provider's login page.
+
+### Session security
+
+Session cookies are encrypted using AES-256, secured by the `cookieConfoundingKey` secret.
+
+### Session invalidation
+
+A session is invalidated when any of the following occurs:
+
+- The session duration expires.
+- The `cookieConfoundingKey` is rotated, which invalidates all active sessions.
+- The user explicitly logs out.
+- An organization owner or administrator revokes the user's access key.
+
+### Role-assignment propagation
+
+When a user's role assignment changes, the new permissions take effect on the API withi 10 seconds, without requiring the user to re-authenticate. In the console, the user sees the updated permissions the next time they navigate to a new page or reload the current one.
+
+### Permission-based result filtering
+
+Aggregating API endpoints, such as List Projects and List Estates, filter their results based on the caller's permissions. Each user or machine user sees only the projects and estates they have access to.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

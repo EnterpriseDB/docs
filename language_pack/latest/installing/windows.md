@@ -1,0 +1,126 @@
+---
+title: Installing Language Pack on Windows
+product: Language Pack
+version: "4"
+url: https://www.enterprisedb.com/docs/language_pack/latest/installing/windows/
+lastModified: 2025-01-16T11:57:58+05:30
+---
+
+# Installing Language Pack on Windows
+
+On Windows, EDB provides a graphical interactive installer for Language Pack. Use Stack Builder (with PostgreSQL) or StackBuilder Plus (with EDB Postgres Advanced Server) to download the EDB installer package and then invoke the graphical installer for Language Pack.  See [Using Stack Builder or StackBuilder Plus](#using-stack-builder-or-stackbuilder-plus).
+
+> **Note: Important**
+>
+> From EDB Postgres Advanced Server and PostgreSQL version 17 and later, the Language Pack is not bundled with the graphical interactive installer. You can download [liPerl 5.40.X](https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54001_64bit_UCRT/strawberry-perl-5.40.0.1-64bit.msi), [liPython 3.12.X](https://www.python.org/ftp/python/3.12.6/python-3.12.6-amd64.exe), and
+> [liTcl 8.6.X](https://sourceforge.net/projects/magicsplat/files/latest/download/li) using the respective links.
+
+## Using Stack Builder or StackBuilder Plus
+
+If you're using PostgreSQL, you can invoke the graphical installer for Language Pack with Stack Builder. See [Using Stack Builder](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/using_stackbuilder/).
+
+If you're using EDB Postgres Advanced Server, you can invoke the graphical installer for Language Pack with StackBuilder Plus. See [Using StackBuilder Plus](https://www.enterprisedb.com/docs/epas/latest/installing/windows/installing_advanced_server_with_the_interactive_installer/using_stackbuilder_plus/).
+
+1. In Stack Builder or StackBuilder Plus, follow the prompts until you get to the module selection page.
+
+   On the Welcome page, select the target server installation from the list of available servers. If your network requires you to use a proxy server to access the internet, select **Proxy servers** and specify a server. Select **Next**.
+
+2. Expand the **Add-ons, tools, and utilities** node.
+
+3. Select **EDB Language Pack** and select **Next**.
+
+4. Browse to a directory where you want to install the language pack, or leave the directory set to the default location. Select **Next**.
+
+5. When the installer states that all installation files have been downloaded, select **Next**.
+
+6. Proceed to [Using the graphical installer](#using-the-graphical-installer).
+
+## Using the graphical installer
+
+1. Select the installation language and select **OK**.
+
+2. On the Setup Language Pack page, select **Next**.
+
+   The Ready to Install window displays the Language Pack installation directory.
+
+   `C:/edb/languagepack/<version>`
+
+   You cannot modify the installation directory.
+
+3. Select **Next**.
+
+   An information box shows the installation progress of the selected components.
+
+4. When the installation is complete, select **Finish**.
+
+## Configuring Language Pack with EDB Postgres Advanced Server on Windows
+
+When using EPAS on Windows, the Language Pack installer places the languages in:
+
+`C:\edb\as\languagepack\<version>`
+
+> **Note**
+>
+> Check that the version of Language Pack you are running matches the version in the file path and in the following commands.
+
+After installing Language Pack, you must set the following variables:
+
+`set PYTHONHOME=C:\edb\as\languagepack\<version>\Python-3.11`
+
+where `<version>` is the current version of Language Pack.
+
+Follow these steps to add Python, Perl, and Tcl to your Language Pack:
+
+1. Go to **This PC > Properties > Advanced System Settings > Environment Variables**.
+
+2. Edit the system-wide PATH variable.
+
+   To add Python, enter the following:
+
+   ```text
+   C:\edb\as\languagepack\<version>\Python-3.11\
+   C:\edb\as\languagepack\<version>\Python-3.11\Scripts
+   ```
+
+   To add Perl and Tcl, enter the following:
+
+   ```text
+   C:\edb\as\languagepack\<version>\Perl-5.38\bin
+   C:\edb\as\languagepack\<version>\Tcl-8.6\bin
+   ```
+
+3. Close the dialog box.
+
+4. Use the Windows `Services` applet to restart the EDB Postgres Advanced Server.
+
+## Configuring Language Pack with PostgreSQL on Windows
+
+After installing Language Pack, you must set the following variables:
+
+`set PYTHONHOME=C:\edb\languagepack\v4\Python-3.11`
+
+Follow these steps to add Python, Perl, and Tcl to your Language Pack:
+
+1. Go to **This PC > Properties > Advanced System Settings > Environment Variables**.
+
+2. Edit the system-wide PATH variable.
+
+   To add Python, enter the following:
+
+   ```text
+   C:\edb\languagepack\v4\Python-3.11\
+   C:\edb\languagepack\v4\Python-3.11\Scripts
+   ```
+
+   To add Perl and Tcl, enter the following:
+
+   ```text
+   C:\edb\languagepack\v4\Perl-5.38\bin
+   C:\edb\languagepack\v4\Tcl-8.6\bin
+   ```
+
+3. Close the dialog box.
+
+4. Restart the database server.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

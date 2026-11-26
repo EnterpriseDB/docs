@@ -1,0 +1,75 @@
+---
+title: Configuring IDENT authentication on Linux
+product: EDB*Plus
+version: "41"
+url: https://www.enterprisedb.com/docs/edb_plus/latest/installing/configuring_linux_installation/
+lastModified: 2024-07-01T11:53:22+01:00
+---
+
+# Configuring IDENT authentication on Linux
+
+By default, the `pg_hba.conf` file for the RPM installer enforces `IDENT` authentication. Before invoking EDB\*Plus, you must either:
+
+- Modify the `pg_hba.conf` file, changing the authentication method to a form other than `IDENT` (and restarting the server.
+- Ensure that an `IDENT` server is accessible.
+
+To ensure an `IDENT` server is accessible, you must confirm that an `identd` server is installed and running. You can use the package manager to install an `identd` server.
+
+On RHEL/Rocky Linux/AlmaLinux 8:
+
+```text
+dnf -y install xinetd authd
+```
+
+The command creates a file named `/etc/xinetd.d/auth` that contains:
+
+```text
+service auth
+{
+     disable = yes
+     socket_type = stream
+wait =no
+user = ident
+cps = 4096 10
+instances = UNLIMITED
+server = /usr/sbin/in.authd server_args = -t60 --xerror –os
+}
+```
+
+> **Note**
+>
+> If the file includes a `-E` argument at the end of the server arguments, delete `-E`.
+
+To start the `identd` server:
+
+```text
+systemctl enable xinetd
+systemctl start xinetd
+```
+
+Open the `pg_ident.conf` file and create a user mapping:
+
+```text
+# map_name    system_username     postgres_username
+  edbas         enterprisedb        enterprisedb
+```
+
+Where:
+
+- The name specified in the `map_name` column is a name you define to identify the mapping in the `pg_hba.conf` file.
+- The name specified in the `system_username` column is `enterprisedb`.
+- The name specified in the `postgres_username` column is `enterprisedb`.
+
+Then, open the `pg_hba.conf` file and modify the `IDENT` entries:
+
+- If you're using an IPv4 local connection, modify the file entry to read:
+
+  `host all all 127.0.0.0/0 ident map=edbas`
+
+- If you're using an IPv6 local connection, modify the file entry to read:
+
+  `host all all ::1/128 ident map=edbas`
+
+You must restart the EDB Postgres Advanced Server service before invoking EDB\*Plus. For detailed information about EDB Postgres Advanced Server, see the [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/) documentation.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

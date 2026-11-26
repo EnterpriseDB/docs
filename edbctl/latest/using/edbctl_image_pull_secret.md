@@ -1,0 +1,70 @@
+---
+title: edbctl image-pull-secret
+description: Use the edbctl utility to manage pull secrets used in the bootstrapping process for Hybrid Manager.
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_image_pull_secret/
+lastModified: 2026-11-06T14:26:00+01:00
+---
+
+# edbctl image-pull-secret
+
+This command helps to manage pull secrets used in the bootstrapping process of Hybrid Manager (HM).
+
+## Commands
+
+`edbctl image-pull-secret` command has the following options available:
+
+- [edbctl image-pull-secret create](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_image_pull_secret/#edbctl-image-pull-secret-create) — Create or update the Kubernetes namespaces and ImagePullSecrets.
+- [edbctl image-pull-secret list](https://www.enterprisedb.com/docs/edbctl/latest/using/edbctl_image_pull_secret/#edbctl-image-pull-secret-list) — Lists the Kubernetes namespaces and ImagePullSecrets.
+
+### edbctl image-pull-secret create
+
+Create or update the necessary Kubernetes namespaces and ImagePullSecrets using the provided credentials to prepare for HM bootstrapping. Use `--force` if you need to update existing secrets with new credentials.
+
+The `edb-cred` secret is created in the `edbpgai-bootstrap`, `edb-hcp-operator-system`, and `edb-system` namespaces. The `edb-system` copy is the one that's replicated, and only to the namespaces that need it, such as those of Postgres clusters, marketplace apps, and Transporter writers, instead of every namespace in the cluster. Running the command on an existing installation also removes the cluster-wide replication set up by earlier edbctl versions.
+
+```
+edbctl image-pull-secret create --username <username> --password <password> --registry <registry> [options]
+```
+
+Where `options` are:
+
+```
+    --username string            Registry username (required).
+    --password string            Registry password (required).
+    --registry string            Container registry (required). The URL of the container registry.
+    --operator-username string   EDB Postgres AI Operator registry username (optional).
+    --operator-password string   EDB Postgres AI Operator registry password (optional).
+    --operator-registry string   EDB Postgres AI Operator container registry (optional).
+    --force                      Force update of existing secrets.
+-I, --interactive                Execute command interactively.
+-y, --yes                        Auto-confirm all confirmations.
+-h, --help                       Help for create.
+```
+
+These examples show how to create Kubernetes namespaces and ImagePullSecrets:
+
+```
+edbctl image-pull-secret create --username <username> --password <password> --registry <registry>
+
+edbctl image-pull-secret create --username <username> --password <password> --registry <registry> --operator-username <operator-username> --operator-password <operator-password> --operator-registry <operator-registry>
+
+edbctl image-pull-secret create --username <username> --password <password> --registry <registry> --operator-username <operator-username> --operator-password <operator-password> --operator-registry <operator-registry> --force
+```
+
+### edbctl image-pull-secret list
+
+Retrieves and lists the Kubernetes namespaces and AssetPullSecrets used in HM bootstrapping.
+
+```
+edbctl image-pull-secret list [options]
+```
+
+Where `options` are:
+
+```
+-h, --help help for list command
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

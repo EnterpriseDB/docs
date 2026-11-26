@@ -1,0 +1,245 @@
+---
+title: Operations
+description: Instructions for creating and querying tasks operations on the Postgres Backup API
+product: Barman
+url: https://www.enterprisedb.com/docs/supported-open-source/barman/pg-backup-api/03-tasks/
+lastModified: 2024-01-24T12:01:54-03:00
+---
+
+# Operations
+
+### Prerequisites
+
+You can ask Barman to perform operations on upstream servers. If you plan to use that feature, the following setup is expected:
+
+- Postgres backup API (pg-backup-api) must be installed on the same server as Barman. Please check [How to install Postgres backup API](https://www.enterprisedb.com/docs/supported-open-source/barman/pg-backup-api/01-installation/) if you haven't done it already.
+- SSH passwordless login must be in place among the different hosts.
+- Ownership of destination directory or write permissions must be granted to the user Barman will be connecting as to the Postgres nodes.
+- For security reasons, the API will listen to on localhost only. You need to use some proxy to forward the traffic. The Apache http server was used during our tests. Please [read our notes about how to define a virtual host](https://www.enterprisedb.com/docs/supported-open-source/barman/pg-backup-api/02-securing-pg-backup-api/#adding-a-virtualhost-definition-for-postgres-backup-api).
+
+### Available endpoints
+
+- Instance level operations:
+  - `/operations/`
+  - `/operations/OPERATION_ID`
+- Server level operations:
+  - `/servers/NAME/operations/`
+  - `/servers/NAME/operations/OPERATION_ID`
+
+`NAME` is an available Barman server configuration. Usually in a file like `/etc/barman.d/myserver.conf`
+
+`OPERATION_ID` is a short string that represents the ID of an operation created by the API.
+
+You can find out how to fetch operations created by the API below
+
+### Available operations
+
+#### GET: /operations
+
+Returns all instance level tasks created by the API, if any.
+
+```bash
+curl http://barman-server.my.org/operations
+{
+  "operations": [
+    {
+      "id": "20240118T104231",
+      "type": "config_update"
+    },
+    {
+      "id": "20240118T103947",
+      "type": "config_update"
+    }
+  ]
+}
+```
+
+#### POST: /operations
+
+Request pg-backup-api to create instance level operations.
+
+Currently pg-backup-api supports only the `config_update` operation.
+
+> **Note**
+>
+> You need to set the `content-type` header as `application/json` when executing `POST` requests to this endpoint, otherwise you will receive a `400 Bad Request error`.
+
+##### config\_update
+
+This operation is used to request a remote execution of `barman config-update` command.
+
+The JSON payload of the request must contain the following keys:
+
+- `type`: set as `config_update` to request that operation
+- `changes`: an array of documents in JSON format to be used as an argument for `barman config-update`
+
+As an example, you could request pg-backup-api to update the configuration of a couple of Barman servers plus a Barman model with a payload like this:
+
+```json
+{
+  "type": "config_update",
+  "changes": [
+    {
+      "scope": "server",
+      "server_name": "my-server-a",
+      "archiver": "on",
+      "streaming_archiver": "off"
+    },
+    {
+      "scope": "server",
+      "server_name": "my-other-server-b",
+      "conninfo": "some_conn_info",
+      "streaming_conninfo": "some_streaming_conninfo",
+      "streaming_archiver": "on"
+    },
+    {
+      "scope": "model",
+      "model_name": "some-model",
+      "streaming_conninfo": "some_streaming_conn_info"
+    }
+  ]
+}
+```
+
+Assume the above JSON content is stored in a file named `payload-pg-backup-api.json`, you could issue a request to the API using `curl` in the following way:
+
+```bash
+curl -X POST http://barman-server.my.org/operations -H "content-type: application/json" -d @payload-pg-backup-api.json
+{
+  "operation_id": "20240118T104231"
+}
+```
+
+The `operation_id` in the response is the ID of the operation that has been created in by the API.
+
+#### GET: /operations/OPERATION\_ID
+
+This endpoint allows you to check the status of an instance level operation with ID `OPERATION_ID`, which can be either of these:
+
+- `DONE`: if the operation finished successfully
+- `FAILED`: if the operation finished with errors
+- `IN_PROGRESS`: if the operation is still ongoing
+
+  Please find an example below:
+
+  ```bash
+  curl http://barman-server.my.org/operations/20240118T104231
+  {
+   "operation_id": "20240118T104231",
+   "status": "DONE"
+  }
+  ```
+
+#### GET: /servers/NAME/operations
+
+Returns all server level tasks created by the API for Barman server `NAME`, if any.
+
+The following example shows the two tasks created on the `my-barman-server` Barman server.
+
+```bash
+curl http://barman-server.my.org/servers/my-barman-server/operations
+{
+  "operations": [
+    {
+      "id": "20240118T140951",
+      "type": "recovery"
+    },
+    {
+      "id": "20240118T141135",
+      "type": "config_switch"
+    }
+  ]
+}
+```
+
+#### POST: /servers/NAME/operations
+
+Request pg-backup-api to create server level operations.
+
+Currently pg-backup-api supports `recovery` and `config_switch` operations.
+
+> **Note**
+>
+> You need to set the `content-type` header as `application/json` when executing `POST` requests to this endpoint, otherwise you will receive a `400 Bad Request error`.
+
+##### recovery
+
+This operation is used to request a remote execution of `barman recover` command.
+
+The JSON payload of the request must contain the following keys:
+
+- `type`: set as `recovery` to request that operation;
+- `backup_id`: ID of the backup to be restored from Barman server `NAME`. You could use Barman shortcuts or anything that `barman recover` supports, including `latest` for example;
+- `remote_ssh_command`: the SSH command to be used to connect to the target Postgres server where the backup will be restored;
+- `destination_directory`: the path in the target server where the backup will be restored.
+
+As an example, you could request pg-backup-api to restore the latest backup of Barman server `db_server_two` with a payload like this:
+
+```json
+{
+  "type": "recovery",
+  "backup_id": "latest",
+  "remote_ssh_command": "ssh postgres@db_server_two.my.org",
+  "destination_directory": "/var/lib/pgdata"
+}
+```
+
+```bash
+curl -X POST http://barman-server.my.org/servers/db_server_two/operations -H "content-type: application/json" -d @payload-pg-backup-api.json
+{
+  "operation_id": "20240118T140951"
+}
+```
+
+The `operation_id` in the response is the ID of the operation that has been created in by the API.
+
+##### config\_switch
+
+This operation is used to request a remote execution of `barman config-switch` command.
+
+The JSON payload of the request must contain the following key:
+
+- `type`: set as `config_switch` to request that operation.
+
+Besides that, it may contain either of the following keys:
+
+- `model_name`: the name of a model, if you want to apply it to the Barman server `NAME`; or
+- `reset`: set with `true` if you want to unapply the currently active model of the Barman server `NAME`
+
+As an example, you could request pg-backup-api to apply the model `my-model` to the Barman server with a payload like this:
+
+```json
+{
+  "type": "config_switch",
+  "model_name": "my-model"
+}
+```
+
+```bash
+curl -X POST http://barman-server.my.org/servers/db_server_two/operations -H "content-type: application/json" -d @payload-pg-backup-api.json
+{
+  "operation_id": "20240118T141135"
+}
+```
+
+The `operation_id` in the response is the ID of the operation that has been created in by the API.
+
+#### GET: /servers/NAME/operations/OPERATION\_ID
+
+This endpoint allows you to check the status of a server level operation for server `NAME` with ID `OPERATION_ID`, which can be either of these:
+
+- `DONE`: if the operation finished successfully
+- `FAILED`: if the operation finished with errors
+- `IN_PROGRESS`: if the operation is still ongoing
+
+  Please find an example below:
+
+  ```bash
+  curl http://barman-server.my.org/servers/db_server_two/operations/20240118T140951
+  {
+   "operation_id": "20240118T140951",
+   "status": "DONE"
+  }
+  ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,440 @@
+---
+title: Using object types in .NET
+product: .NET Connector
+version: 10.0.1.1
+url: https://www.enterprisedb.com/docs/net_connector/latest/15_using_object_types/
+lastModified: 2026-03-05T17:31:34+01:00
+---
+
+# Using object types in .NET
+
+<div id="using_object_types" class="registered_link"></div>
+
+The SQL `CREATE TYPE` command creates a user-defined object type, which is stored in the EDB Postgres Advanced Server database. You can then reference these user-defined types in SPL procedures, SPL functions, and .NET programs.
+
+Create the basic object type  with the `CREATE TYPE AS OBJECT` command. Optionally, use the `CREATE TYPE BODY` command.
+
+## Using an object type
+
+To use an object type, you must first create the object type in the EDB Postgres Advanced Server database. Object type `addr_object_type` defines the attributes of an address:
+
+```sql
+CREATE OR REPLACE TYPE addr_object_type AS OBJECT
+(
+    street          VARCHAR2(30),
+    city            VARCHAR2(20),
+    state           CHAR(2),
+    zip             NUMBER(5)
+);
+```
+
+Object type `emp_obj_typ` defines the attributes of an employee. One of these attributes is object type `ADDR_OBJECT_TYPE`, as previously described. The object type body contains a method that displays the employee information:
+
+```sql
+CREATE OR REPLACE TYPE emp_obj_typ AS OBJECT
+(
+    empno           NUMBER(4),
+    ename           VARCHAR2(20),
+    addr            ADDR_OBJECT_TYPE,
+    MEMBER PROCEDURE display_emp(SELF IN OUT emp_obj_typ)
+);
+
+CREATE OR REPLACE TYPE BODY emp_obj_typ AS
+  MEMBER PROCEDURE display_emp (SELF IN OUT emp_obj_typ)
+  IS
+  BEGIN
+    DBMS_OUTPUT.PUT_LINE('Employee No   : ' || SELF.empno);
+    DBMS_OUTPUT.PUT_LINE('Name          : ' || SELF.ename);
+    DBMS_OUTPUT.PUT_LINE('Street        : ' || SELF.addr.street);
+    DBMS_OUTPUT.PUT_LINE('City/State/Zip: ' || SELF.addr.city || ', ' ||
+      SELF.addr.state || ' ' || LPAD(SELF.addr.zip,5,'0'));
+  END;
+END;
+```
+
+This example is a complete .NET program that uses these user-defined object types:
+
+### .NET
+
+```csharp
+using System.Data;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingObjectTypes;
+
+internal class Program
+{
+    // The following.NET types are defined to map to the types in EDB Postgres Advanced Server
+    // Note the PgName attribute that allows to choose any name in .NET for the type attributes
+    public class Address
+    {
+        [PgName("street")]
+        public string Street;
+        [PgName("city")]
+        public string City;
+        [PgName("state")]
+        public string State;
+        [PgName("zip")]
+        public decimal Zip;
+    }
+    public class Employee
+    {
+        [PgName("empno")]
+        public decimal Number;
+        [PgName("ename")]
+        public string Name;
+        [PgName("addr")]
+        public Address Address;
+    }
+
+    static async Task Main(string[] args)
+    {
+        // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+        var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+        var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+
+        // MapComposite maps the .NET type to the EDB Postgres Advanced Server types
+        dataSourceBuilder.MapComposite<Address>("public.addr_object_type");
+        dataSourceBuilder.MapComposite<Employee>("public.emp_obj_typ");
+
+        await using var dataSource = dataSourceBuilder.Build();
+        try
+        {
+            await using var connection = await dataSource.OpenConnectionAsync();
+            Console.WriteLine("Connection opened successfully");
+
+            Console.WriteLine("Preparing database...");
+            await SetupDatabaseAsync(connection);
+
+            var address = new Address()
+            {
+                Street = "123 MAIN STREET",
+                City = "EDISON",
+                State = "NJ",
+                Zip = 8817
+            };
+            var emp = new Employee()
+            {
+                Number = 9001,
+                Name = "JONES",
+                Address = address
+            };
+            await using var cmd = new EDBCommand("emp_obj_typ.display_emp", connection);
+
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            var empParameter = cmd.Parameters.AddWithValue("emp_obj_typ", emp);
+            empParameter.Direction = ParameterDirection.InputOutput;
+            empParameter.DataTypeName = "public.emp_obj_typ";
+
+            // Listen to server notices
+            connection.Notice += Connection_Notice;
+
+            await cmd.PrepareAsync();
+            await cmd.ExecuteNonQueryAsync();
+
+            var empOut = empParameter.Value as Employee;
+            Console.WriteLine($"Emp No: {empOut?.Number}");
+            Console.WriteLine($"Emp Name: {empOut?.Name}");
+            Console.WriteLine($"Emp Address Street: {empOut?.Address?.Street}");
+            Console.WriteLine($"Emp Address City: {empOut?.Address?.City}");
+            Console.WriteLine($"Emp Address State: {empOut?.Address?.State}");
+            Console.WriteLine($"Emp Address Zip: {empOut?.Address?.Zip}");
+
+
+            await connection.CloseAsync();
+
+            connection.Notice -= Connection_Notice;
+        }
+        catch (EDBException exp)
+        {
+            Console.Write($"Error: {exp}");
+        }
+        finally
+        {
+            Console.WriteLine("Cleaning database...");
+            await using var connection = await dataSource.OpenConnectionAsync();
+            await CleanDatabaseAsync(connection);
+        }
+
+        Console.WriteLine("Press any key to close the program...");
+        Console.ReadKey();
+    }
+
+    private static void Connection_Notice(object sender, EDBNoticeEventArgs e)
+    {
+        Console.WriteLine($"Server Notice: {e.Notice.MessageText}");
+    }
+
+    private async static Task SetupDatabaseAsync(EDBConnection connection)
+    {
+        await CleanDatabaseAsync(connection);
+
+        string createScript = """
+                            CREATE OR REPLACE TYPE addr_object_type AS OBJECT
+                            (
+                                street          VARCHAR2(30),
+                                city            VARCHAR2(20),
+                                state           CHAR(2),
+                                zip             NUMBER(5)
+                            );
+                            """;
+        using EDBCommand createCommand = new(createScript, connection);
+        await createCommand.ExecuteNonQueryAsync();
+
+
+        createScript = """
+            CREATE OR REPLACE TYPE emp_obj_typ AS OBJECT
+            (
+                empno           NUMBER(4),
+                ename           VARCHAR2(20),
+                addr            ADDR_OBJECT_TYPE,
+                MEMBER PROCEDURE display_emp(SELF IN OUT emp_obj_typ)
+            );
+            """;
+        createCommand.CommandText = createScript;
+        await createCommand.ExecuteNonQueryAsync();
+
+        createScript = """
+            CREATE OR REPLACE TYPE BODY emp_obj_typ AS            
+              MEMBER PROCEDURE display_emp (SELF IN OUT emp_obj_typ)
+              IS
+              BEGIN
+                DBMS_OUTPUT.PUT_LINE('Employee No   : ' || SELF.empno);
+                DBMS_OUTPUT.PUT_LINE('Name          : ' || SELF.ename);
+                DBMS_OUTPUT.PUT_LINE('Street        : ' || SELF.addr.street);
+                DBMS_OUTPUT.PUT_LINE('City/State/Zip: ' || SELF.addr.city || ', ' ||
+                  SELF.addr.state || ' ' || LPAD(SELF.addr.zip,5,'0'));
+              END;
+            END;
+            """;
+        createCommand.CommandText = createScript;
+        await createCommand.ExecuteNonQueryAsync();
+
+        await connection.ReloadTypesAsync();
+    }
+
+    private static async Task CleanDatabaseAsync(EDBConnection connection)
+    {
+        try
+        {
+            string dropTypeScript = "DROP TYPE IF EXISTS emp_obj_typ";
+            using EDBCommand dropCommand = new(dropTypeScript, connection);
+            await dropCommand.ExecuteNonQueryAsync();
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Couldn't clean database : {ex.Message}");
+        }
+
+    }
+}
+```
+
+### .NET Framework
+
+```csharp
+using System;
+using System.Data;
+using System.Threading.Tasks;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingObjectTypes
+{
+
+    internal class Program
+    {
+        // The following.NET types are defined to map to the types in EDB Postgres Advanced Server
+        // Note the PgName attribute that allows to choose any name in .NET for the type attributes
+        public class Address
+        {
+            [PgName("street")]
+            public string Street;
+            [PgName("city")]
+            public string City;
+            [PgName("state")]
+            public string State;
+            [PgName("zip")]
+            public decimal Zip;
+        }
+        public class Employee
+        {
+            [PgName("empno")]
+            public decimal Number;
+            [PgName("ename")]
+            public string Name;
+            [PgName("addr")]
+            public Address Address;
+        }
+
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+            var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+
+            // MapComposite maps the .NET type to the EDB Postgres Advanced Server types
+            dataSourceBuilder.MapComposite<Address>("public.addr_object_type");
+            dataSourceBuilder.MapComposite<Employee>("public.emp_obj_typ");
+
+            using (var dataSource = dataSourceBuilder.Build())
+            {
+                try
+                {
+                    using (var connection = await dataSource.OpenConnectionAsync())
+                    {
+                        Console.WriteLine("Connection opened successfully");
+
+                        Console.WriteLine("Preparing database...");
+                        await SetupDatabaseAsync(connection);
+
+                        var address = new Address()
+                        {
+                            Street = "123 MAIN STREET",
+                            City = "EDISON",
+                            State = "NJ",
+                            Zip = 8817
+                        };
+                        var emp = new Employee()
+                        {
+                            Number = 9001,
+                            Name = "JONES",
+                            Address = address
+                        };
+                        using (var cmd = new EDBCommand("emp_obj_typ.display_emp", connection))
+                        {
+
+                            cmd.CommandType = CommandType.StoredProcedure;
+
+                            var empParameter = cmd.Parameters.AddWithValue("emp_obj_typ", emp);
+                            empParameter.Direction = ParameterDirection.InputOutput;
+                            empParameter.DataTypeName = "public.emp_obj_typ";
+
+                            // Listen to server notices
+                            connection.Notice += Connection_Notice;
+
+                            await cmd.PrepareAsync();
+                            await cmd.ExecuteNonQueryAsync();
+
+                            var empOut = empParameter.Value as Employee;
+                            Console.WriteLine($"Emp No: {empOut?.Number}");
+                            Console.WriteLine($"Emp Name: {empOut?.Name}");
+                            Console.WriteLine($"Emp Address Street: {empOut?.Address?.Street}");
+                            Console.WriteLine($"Emp Address City: {empOut?.Address?.City}");
+                            Console.WriteLine($"Emp Address State: {empOut?.Address?.State}");
+                            Console.WriteLine($"Emp Address Zip: {empOut?.Address?.Zip}");
+                        }
+
+                        await connection.CloseAsync();
+
+                        connection.Notice -= Connection_Notice;
+                    }
+                }
+                catch (EDBException exp)
+                {
+                    Console.Write($"Error: {exp}");
+                }
+                finally
+                {
+                    Console.WriteLine("Cleaning database...");
+                    using (var connection = await dataSource.OpenConnectionAsync())
+                    {
+                        await CleanDatabaseAsync(connection);
+                    }
+                }
+            }
+
+            Console.WriteLine("Press any key to close the program...");
+            Console.ReadKey();
+        }
+
+        private static void Connection_Notice(object sender, EDBNoticeEventArgs e)
+        {
+            Console.WriteLine($"Server Notice: {e.Notice.MessageText}");
+        }
+
+        private async static Task SetupDatabaseAsync(EDBConnection connection)
+        {
+            await CleanDatabaseAsync(connection);
+
+            string createScript = "CREATE OR REPLACE TYPE addr_object_type AS OBJECT "
+                                    +"( "
+                                    +"    street          VARCHAR2(30), "
+                                    +"    city            VARCHAR2(20), "
+                                    +"    state           CHAR(2), "
+                                    +"    zip             NUMBER(5) "
+                                    +"); ";
+            using (var createCommand = new EDBCommand(createScript, connection))
+            {
+                await createCommand.ExecuteNonQueryAsync();
+
+                createScript =  "CREATE OR REPLACE TYPE emp_obj_typ AS OBJECT "
+                                +"( "
+                                +"    empno           NUMBER(4), "
+                                +"    ename           VARCHAR2(20), "
+                                +"    addr            ADDR_OBJECT_TYPE, "
+                                +"    MEMBER PROCEDURE display_emp(SELF IN OUT emp_obj_typ) "
+                                +"); ";
+                createCommand.CommandText = createScript;
+                await createCommand.ExecuteNonQueryAsync();
+
+                createScript = "CREATE OR REPLACE TYPE BODY emp_obj_typ AS             "
+                            +"  MEMBER PROCEDURE display_emp (SELF IN OUT emp_obj_typ) "
+                            +"  IS "
+                            +"  BEGIN "
+                            +"    DBMS_OUTPUT.PUT_LINE('Employee No   : ' || SELF.empno); "
+                            +"    DBMS_OUTPUT.PUT_LINE('Name          : ' || SELF.ename); "
+                            +"    DBMS_OUTPUT.PUT_LINE('Street        : ' || SELF.addr.street); "
+                            +"    DBMS_OUTPUT.PUT_LINE('City/State/Zip: ' || SELF.addr.city || ', ' || "
+                            +"      SELF.addr.state || ' ' || LPAD(SELF.addr.zip,5,'0')); "
+                            +"  END; "
+                            +"END; ";
+                createCommand.CommandText = createScript;
+                await createCommand.ExecuteNonQueryAsync();
+            }
+
+            await connection.ReloadTypesAsync();
+        }
+
+        private static async Task CleanDatabaseAsync(EDBConnection connection)
+        {
+            try
+            {
+                string dropTypeScript = "DROP TYPE IF EXISTS emp_obj_typ";
+                using (var dropCommand = new EDBCommand(dropTypeScript, connection))
+                {
+                    await dropCommand.ExecuteNonQueryAsync();
+                  }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Couldn't clean database : {ex.Message}");
+            }
+
+        }
+    }
+}
+```
+
+This program should display the following output in the Console:
+
+```text
+Connection opened successfully
+Preparing database...
+Server Notice: Employee No   : 9001
+Server Notice: Name          : JONES
+Server Notice: Street        : 123 MAIN STREET
+Server Notice: City/State/Zip: EDISON, NJ 08817
+Emp No: 9001
+Emp Name: JONES
+Emp Address Street: 123 MAIN STREET
+Emp Address City: EDISON
+Emp Address State: NJ
+Emp Address Zip: 8817
+Cleaning database...
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

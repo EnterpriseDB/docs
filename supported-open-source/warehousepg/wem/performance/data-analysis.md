@@ -1,0 +1,55 @@
+---
+title: Analyzing data distribution
+description: Explore database structures, monitor storage health, and optimize performance metrics.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/performance/data-analysis/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Analyzing data distribution
+
+Maintain schema health and ensure data is distributed efficiently across the cluster by auditing database structures and diagnosing storage bottlenecks. Use the **Database Objects** panel on the left sidebar to monitor table growth, identify bloat, and resolve data skew.
+
+### Optimizing storage and schema health
+
+Monitor the scale of your relational data and verify that your storage settings are optimized for analytical workloads with the **Tables** tab.
+
+- To validate compression efficiency, observe the **Compression** and **Level** columns. If the compression ratio is low for a large table, consider adjusting the algorithm (for example, switching to `zstandard`) to reclaim disk space.
+- Check metadata freshness by monitoring the **Last Analyze** timestamp. If a table hasn't been analyzed recently, the query planner might use stale statistics, leading to inefficient execution plans.
+- Manage external data services with the **External Tables** tab, which provides an overview of external tables and their sources.
+- Inspect views with the **Views** tab. For materialized views, use the **Materialized Views** tab, which also exposes **Size**, **Storage Type**, **Compress Type**, and **Compress Level** for each view.
+- Review installed extensions with the **Extensions** tab. For the `pxf` extension, view the available PXF tables and select one to jump to it on the **External Tables** tab.
+
+### Improving performance and storage efficiency
+
+Ensure your data structures support rapid query execution and simplified data lifecycles using the **Indexes**, **Partitions**, **Missing Stats**, **Bloat**, and **Data Skew** tabs.
+
+- Identify tables with stale statistics using the **Missing Stats** tab. Select **Run ANALYZE** in the **Actions** column to update statistics for a table directly from the interface.
+
+> **Tip**
+>
+> Statistics help the query planner make optimal decisions. Run `ANALYZE` after any operation that modifies more than 10% of a table's data to ensure optimal query plans.
+
+- Reclaim wasted disk space using the **Bloat** tab. The **Storage** column shows each table's storage type, so you can tell heap tables from append-optimized (AO) and append-optimized column-oriented (AOCO) tables. The **Dead (MB)** and **Bloat %** columns help you prioritize which tables to address. Use the **Actions** column to run **VACUUM** (quick, non-blocking cleanup) directly from the interface.
+- Resolve data distribution imbalance by looking at the **Data Skew** tab to find tables where data is unevenly spread across segments. A high skew percentage indicates that a single segment is doing more work than others, slowing down the entire cluster. If a large table shows significant skew, investigate the distribution key and consider using `ALTER TABLE ... SET DISTRIBUTED BY` to choose a column with higher cardinality or fewer nulls.
+
+### Managing PXF
+
+Control the [PXF](https://www.enterprisedb.com/docs/pxf/latest/) service across your cluster using the **PXF** tab. The tab is always present and shows an empty state if PXF isn't installed on the current database.
+
+> **Note**
+>
+> Managing PXF from WEM requires the host agent installed on all WHPG hosts. See [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/).
+
+- Start or restart PXF using the primary button.
+- Push the coordinator's PXF configuration out to every other host by selecting **Sync Configuration** from the **Actions** menu, which also holds **Stop PXF**.
+- Check PXF's current status, how many of the cluster's hosts are running it, whether the PXF extension is installed, and when WEM last checked, using the status panel above the actions. Select **Refresh** to check again.
+
+### Planning long-term storage and capacity
+
+Analyze the physical composition of your database and identify long-term storage trends with the **Charts** tab.
+
+- Prioritize archival candidates by reviewing the **Top 50 Tables by Size** bar chart to see which objects are candidates for partitioning or data archiving.
+- Audit storage formats by looking at the **Storage Format Distribution** pie chart. If a majority of your data is in Heap format, plan a migration to append-only storage to optimize for high-volume analytical reads.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

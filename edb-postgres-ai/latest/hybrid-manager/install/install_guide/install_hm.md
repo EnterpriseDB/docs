@@ -1,0 +1,453 @@
+---
+title: Install Hybrid Manager on Kubernetes
+description: Deploy Hybrid Manager using the operator method.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/
+lastModified: 2026-11-11T10:30:05+01:00
+---
+
+# Install Hybrid Manager on Kubernetes
+
+## Overview
+
+> **Role focus:** Site reliability engineer (SRE) / Infrastructure Engineer
+
+### Prerequisites
+
+- [Phase 1: Planning your architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/) (Completed)
+- [Phase 2: Gathering your system requirements](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/sys_reqs/) (Completed)
+- [Phase 3: Deploying your Kubernetes Cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/k8s_install/) (Running and validated)
+- [Phase 4: Preparing your environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/) (Completed and validated)
+
+### Outcomes
+
+- _A fully deployed Hybrid Manager (HM) platform, accessible via the web portal._
+
+> **Note**
+>
+> **Deployment responsibility:** Installation of Hybrid Manager (HM) is optimally executed by the **customer's SRE team**, and the customer owns its life cycle operation.
+> If you have a [Sovereign System](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/system/), the EDB CX team executes the HM install. **Professional Services** and **Sales Engineering** can also be engaged for assistance, and **Support** has knowledge base articles available.
+
+**Next phase:** Phase 6: [Exploring post-installation options](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/post_install/)
+
+## Install Hybrid Manager
+
+With your environment prepared and your configuration validated, you are ready to deploy HM.
+
+This phase involves applying your configuration artifact to your Kubernetes cluster and monitoring the deployment.
+
+Hybrid Manager is installed using the **EDB Postgres AI Operator** helm chart and a **HybridControlPlane Custom Resource**. This approach provides version flexibility, Kubernetes-native resource management, and GitOps support.
+
+### Understanding the HybridControlPlane Custom Resource
+
+The `HybridControlPlane` is a Kubernetes Custom Resource that defines the desired state of your Hybrid Manager installation.
+
+#### Key benefits of the operator approach
+
+1. **Kubernetes-native:** Follows standard Kubernetes patterns with Custom Resources
+2. **Version flexibility:** Can install different HM versions independently from the operator version
+3. **GitOps friendly:** CR manifests work seamlessly with GitOps tools (ArgoCD, Flux)
+4. **Declarative:** The operator reconciles the actual state to match your desired state
+
+### Verify final configuration
+
+Before installing, prepare your `HybridControlPlane` manifest using the example below as a template.
+
+#### Example HybridControlPlane manifest
+
+Here's a complete example showing the structure:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+  annotations:
+    biganimal.enterprisedb.io/deletion-protect: enabled
+spec:
+  # Basic configuration
+  flavour: eks  # or aks, gke, rhos, rke
+  version: "v2026.5.1"
+
+  # Source configuration
+  source:
+    remote: true  # Use remote bootstrap image
+    # OR
+    # useLocalKustomizations: true  # Use operator embedded manifests
+
+  # Container registry configuration
+  registry:
+    url: docker.enterprisedb.com/pgai-platform
+    imagePullSecrets:
+      - name: edb-cred
+        namespace: edbpgai-bootstrap
+    discovery:
+      enabled: true
+      authenticationType: "basic"
+      # url defaults to registry.url above; set it only if discovery
+      # targets a different registry
+
+  # Global parameters
+  globalParameters:
+    CONTAINER_REGISTRY_URL: docker.enterprisedb.com/pgai-platform
+    internal_backup_folder: "abc123xyz789"
+    portal_domain_name: "portal.my-company.com"
+    trust_domain: "portal.my-company.com"
+    storage_class: "gp3"
+    portal_certificate_issuer_kind: "ClusterIssuer"
+    portal_certificate_issuer_name: "letsencrypt-prod"
+    load_balancer_mode: "public"  # or "private" or "disabled"
+    load_balancer_provider: "aws"  # or "gcp", "azure". Leave empty for self-managed LB
+    # node_port_domain: "pg.my-company.com"  # Required only if load_balancer_mode is "disabled"
+
+  # Component-specific parameters
+  componentsParameters:
+    upm-beacon:
+      beacon_location_id: "us-east-1"
+      server_host: "beacon.my-company.com"
+    upm-istio-gateway:
+      cookie_aeskey: "your-16-or-32-byte-key"
+
+  # Beacon server configuration
+  beaconServer:
+    logLevel: info
+    hybridManagerInstallation: "my-company-prod"
+    additionalTrustDomains:
+      - "secondary-location.my-company.com"
+
+  # Beacon agent configuration
+  beaconAgent:
+    accessKey: "your-access-key"
+    logLevel: info
+    providers:
+      - appliance
+    provisioning:
+      openshift: false
+      operandSetVersions:
+        - "1\\.3\\.[0-9]+"
+      nodeSelector:
+        kubernetes.io/os: linux
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: "topology.kubernetes.io/zone"
+          whenUnsatisfiable: "DoNotSchedule"
+          podSelector: "MatchDatabasePods"
+    transparentDataEncryptionMethods:
+      - passphrase
+      - hashicorp_vault
+
+  # Cluster groups (for multi-DC deployments)
+  clusterGroups:
+    role: standalone  # or primary/secondary
+    # For multi-DC primary:
+    # primary:
+    #   domainName: "primary.my-company.com"
+    # secondaries:
+    #   - domainName: "secondary.my-company.com"
+
+  # Installation scenarios
+  scenarios:
+    - core
+    - ai
+    - chatbot
+    - analytics
+    - dbaas
+    - pgd
+    - marketplace
+
+  # Optional: Disable specific components
+  # disabledComponents:
+  #   - component-name
+
+  # Optional: provision an internal container registry (not for use except on fully air-gapped clusters!)
+  # hmRegistryRef:
+  #   name: hm-registry
+
+  # Optional: Resource annotations
+  resourceAnnotations:
+    - name: istio-ingressgateway
+      kind: Service
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+        service.beta.kubernetes.io/load-balancer-source-ranges: "10.0.0.0/8"
+```
+
+> **Note: Registry configuration**
+>
+> `spec.registry` gathers every container registry setting in one place and requires HM operator 2.2.0 or later:
+>
+> - Where images are pulled from
+> - The secrets used to pull them
+> - The TLS trust used to reach the registry
+> - Image discovery
+>
+> The fields it replaces, including `spec.imageRegistry`, `spec.imagePullSecrets`, and the `spec.beaconAgent.provisioning` image discovery fields, are deprecated. They still apply where the corresponding `spec.registry` value is unset, but a future API version removes them. See [Configuring image discovery](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/image_discovery/#deprecated-registry-fields).
+
+### Install the EDB Postgres AI Operator
+
+#### Add the EDB Helm repository
+
+Register the EDB Helm chart repository and update your local cache.
+Replace `<EDB_SUBSCRIPTION_TOKEN>` with your EDB Repos 2.0 token.
+
+```bash
+helm repo add enterprisedb-edbpgai \
+  "https://downloads.enterprisedb.com/${EDB_SUBSCRIPTION_TOKEN}/pgai-platform/helm/charts/"
+helm repo update
+```
+
+#### Create namespace
+
+Create a dedicated namespace for the operator:
+
+```bash
+kubectl create namespace edbpgai-bootstrap --dry-run=client -o yaml | kubectl apply -f -
+```
+
+```output title="Output"
+namespace/edbpgai-bootstrap created
+```
+
+#### Install the operator helm chart
+
+Install the operator with [`edbctl`](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/edbctl/), the Hybrid Manager CLI, using `hm upgrade-operator`. The command lists the operator image tags available in the target registry, selects the latest one, and installs (or upgrades) the chart. No operator version needs to be picked by hand — starting with HM 1.4, the operator is decoupled from the HM release cadence and a single operator version supports multiple HM lines.
+
+> **Note: Use the latest supported versions**
+>
+> Always use the latest supported `edbctl` release together with the latest supported operator: `edbctl hm upgrade-operator` installs the latest operator version available in your registry. See the [operator compatibility matrix](https://www.enterprisedb.com/docs/hm-operator/latest/compatibility_matrix/) and the [edbctl compatibility matrix](https://www.enterprisedb.com/docs/edbctl/latest/compatibility_matrix/).
+
+The recommended path is to mirror the HM artifacts (operator images + chart included) to your private registry first — see [Syncing images to a local private registry](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/sync_images/) — and then install the operator from that private registry. Re-using the same variables defined in the sync step (`LOCAL_REGISTRY_URI`, `LOCAL_REGISTRY_USER`, `LOCAL_REGISTRY_PWD`):
+
+```bash
+edbctl hm upgrade-operator \
+  --registry-uri "${LOCAL_REGISTRY_URI}" \
+  --registry-username "${LOCAL_REGISTRY_USER}" \
+  --registry-password "${LOCAL_REGISTRY_PWD}"
+```
+
+```output title="Output"
+Latest HM Operator version found in "${LOCAL_REGISTRY_URI}": 2.0.0
+Namespace "edb-hcp-operator-system" does not exist, creating it...
+namespaces/edb-hcp-operator-system created
+Creating image pull secret "edb-hcp-operator-pull-secret" in namespace "edb-hcp-operator-system"...
+secrets/edb-hcp-operator-pull-secret created
+Installing HM Operator chart "edb-hcp-operator" (version 2.0.0) into namespace "edb-hcp-operator-system"...
+HM Operator chart "edb-hcp-operator" is now at version 2.0.0 in namespace "edb-hcp-operator-system".
+```
+
+If your private registry uses a self-signed certificate, add `--registry-insecure`. To pass extra Helm values (for example to enable the in-cluster HM Registry component), use `--set`:
+
+```bash
+edbctl hm upgrade-operator \
+  --registry-uri "${LOCAL_REGISTRY_URI}" \
+  --registry-username "${LOCAL_REGISTRY_USER}" \
+  --registry-password "${LOCAL_REGISTRY_PWD}" \
+  --set hmRegistry.enabled=true
+```
+
+If you don't operate a private registry, you can also pull directly from EDB Repos 2.0 by pointing `--registry-uri` at `docker.enterprisedb.com/pgai-platform` and passing your EDB Repos 2.0 token as `--registry-password` (with `--registry-username pgai-platform`).
+
+#### Verify operator installation
+
+`edbctl hm upgrade-operator` waits for the operator pod to be ready before returning. If you want to double-check:
+
+```bash
+kubectl get pods -n edb-hcp-operator-system
+```
+
+You should see output similar to:
+
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+edb-hcp-operator-xxxxxxxxxx-xxxxx   1/1     Running   0          30s
+```
+
+### Create the HybridControlPlane resource
+
+#### Prepare your HM manifest
+
+Create a file named `hybridmanager.yaml` with your configuration. Use the [example above](#example-hybridcontrolplane-manifest) as a template, customizing the values based on your environment preparation.
+
+**Critical fields to verify:**
+
+1. **`spec.flavour`**: Your Kubernetes distribution
+2. **`spec.registry.url`**: Your container registry URL
+3. **`spec.version`**: The HM version you want to install
+4. **`spec.globalParameters.portal_domain_name`**: Your portal FQDN
+5. **`spec.beaconAgent.provisioning`**: Your provisioning configuration
+
+If a component conflicts with an existing service in your cluster, or if your deployment doesn't require a particular optional component, you can suspend or permanently disable it. See [Managing HM components](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/manage_components/) for guidance on when and how to use `edbctl hm suspend-component` and the `disabledComponents` CR field.
+
+#### Apply the HM resource
+
+Deploy the HybridControlPlane:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+```output title="Output"
+hybridcontrolplane.edbpgai.edb.com/edbpgai created
+```
+
+### Monitor installation progress
+
+Once the HM resource is created, the operator begins reconciling and deploying HM components.
+
+#### Check HM status
+
+Monitor the HybridControlPlane resource status:
+
+```bash
+kubectl get hybridcontrolplane edbpgai -o yaml
+```
+
+Look for the `status` section:
+
+```yaml
+status:
+  phase: deployed  # Can be: "", "deploying", "deployed", "failed", "deleting"
+  components:
+    - name: component-name
+      state: success  # Can be: pending, success, failed, deleted
+      version: "2026.1.0"
+      timestamp: "2026-03-09T10:30:00Z"
+  preflightChecks:
+    phase: passed
+    totalChecks: 10
+    failedChecks: 0
+  postflightChecks:
+    phase: passed
+    totalChecks: 8
+    failedChecks: 0
+```
+
+#### Use kubectl to monitor
+
+Get a quick status view:
+
+```bash
+kubectl get hcp
+```
+
+Expected output:
+
+```
+NAME      PHASE      PREFLIGHT   POSTFLIGHT
+edbpgai   deployed   passed      passed
+```
+
+#### Check component deployment
+
+View all components and their status:
+
+```bash
+kubectl get hcp edbpgai -o jsonpath='{.status.components[*].name}' | tr ' ' '\n'
+```
+
+```output title="Output"
+upm-beacon
+upm-istio-gateway
+```
+
+Check for failed components:
+
+```bash
+kubectl get hcp edbpgai -o jsonpath='{.status.components[?(@.state=="failed")]}'
+```
+
+If no output is returned, all components deployed successfully.
+
+#### Check postflight
+
+Verify postflight status of the HM:
+
+```bash
+kubectl get postflights.edbpgai.edb.com edbpgai -o yaml
+```
+
+```output title="Output"
+...
+status:
+  checkResults:
+  - description: Check whether all pods belonging to the Hybrid Manager are ready.
+    name: PodsChecker
+    state: Passed
+  - description: Check whether all internal databases belonging to the Hybrid Manager
+      are ready.
+    name: DBsChecker
+    state: Passed
+  - description: Check whether the latest Velero Backup has been completed.
+    name: VeleroChecker
+    state: Passed
+  - description: Check whether all nodes are ready.
+    name: NodesChecker
+    state: Passed
+  - description: Check whether all certificates belonging to the Hybrid Manager are
+      valid.
+    name: CertificatesChecker
+    state: Passed
+  lastTransitionTime: "2026-01-27T08:50:25Z"
+  phase: Healthy
+```
+
+**What to look for:**
+
+- Postflight should transition from \``→`Healthy\`
+- All `.status.checkResults` should have a `Passed` state
+
+> **Note**
+>
+> If the HM phase shows `failed`, check component status for error messages.
+> If postflight checks fail, review the `checkResults` for specific failure reasons.
+
+### Managing the HybridControlPlane
+
+#### Updating configuration
+
+To update your HM configuration:
+
+1. Edit your `hybridmanager.yaml` manifest
+
+2. Apply the changes:
+
+   ```bash
+   kubectl apply -f hybridmanager.yaml
+   ```
+
+   ```output title="Output"
+   hybridcontrolplane.edbpgai.edb.com/edbpgai configured
+   ```
+
+3. The operator will reconcile and apply the changes
+
+#### Checking operator logs
+
+If you encounter issues, check the operator logs:
+
+```bash
+kubectl logs -n edb-hcp-operator-system deployment/edb-hcp-operator-controller-manager -f
+```
+
+#### Upgrading HM version
+
+Run `edbctl hm upgrade-operator` (it picks up the latest operator version available in your registry — no version needs to be set by hand), then update the `spec.version` field in your `HybridControlPlane` manifest to the target HM version and `kubectl apply` it. The operator is decoupled from the HM release cadence, so the same `2.x` operator covers a range of HM versions — see the [operator compatibility matrix](https://www.enterprisedb.com/docs/hm-operator/latest/compatibility_matrix/) for the operator version supported on the HM release you're upgrading to, and the [operator release notes](https://www.enterprisedb.com/docs/hm-operator/latest/rel_notes/) for what changed in each operator release.
+
+## Verify portal access
+
+Once your installation is healthy, verify that you can access the HM console.
+
+1. **Open your browser** and navigate to the portal domain you defined during [Phase 4: Preparing your environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/) (e.g., `https://portal.my-company.com`).
+2. **Accept the certificate:** If you used a self-signed certificate (or haven't trusted your custom CA yet), you may see a browser warning. Proceed past it for now.
+3. **Log In:** Use the **User-0** credentials you configured during environment preparation.
+
+**Success:** You should see the HM console landing page.
+
+## Next phase
+
+The platform is installed and running. You are now ready to perform the initial post-installation configuration, such as connecting your first self-managed cluster or adding team members.
+
+**[Proceed to Phase 6: Exploring your post-installation options](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/post_install/) →**
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

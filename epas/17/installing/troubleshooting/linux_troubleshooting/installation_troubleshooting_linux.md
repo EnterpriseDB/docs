@@ -1,0 +1,48 @@
+---
+title: Installation troubleshooting
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/installing/troubleshooting/linux_troubleshooting/installation_troubleshooting_linux/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# Installation troubleshooting
+
+### Difficulty displaying Java-based applications
+
+If you have difficulty displaying Java-based server features (controls or text not displaying correctly or blank windows), upgrading to the latest `libxcb-xlib` libraries corrects the problem on most distributions. See the [Java bug database](http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6532373) for other possible workarounds.
+
+### The installation fails to complete due to existing data directory contents
+
+If an installation fails to complete due to existing content in the data directory, the server writes an error message to the server logs:
+
+`A data directory is neither empty, or a recognisable data directory.`
+
+If you encounter a similar message, confirm that the data directory is empty. The presence of files, including the system-generated `lost+found` folder, prevents the installation from completing. Either remove the files from the data directory, or specify a different location for the data directory before invoking the installer again to complete the installation.
+
+### Difficulty installing the EPEL release package
+
+If you have difficulty installing the EPEL release package, you can use one of the following commands to install the `epel-release` package on RHEL/Rocky Linux/AlmaLinux 8.x | 9.x:
+
+```text
+dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+
+dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+```
+
+You might need to enable the `[extras]` repository definition in the `CentOS-Base.repo` file, located in `/etc/yum.repos.d`. If yum can't access a repository that contains `epel-release`, an error message appears:
+
+```text
+No package epel available.
+Error: Nothing to do
+```
+
+If you receive this error, you can download the EPEL rpm package and install it manually. To manually install EPEL, download the rpm package, assume superuser privileges, navigate into the directory that contains the package, and use this command:
+
+```text
+yum -y install epel-release
+
+dnf -y install epel-release
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

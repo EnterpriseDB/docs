@@ -1,0 +1,113 @@
+---
+title: Quickstart — Use an Inference Endpoint with Python
+description: Call your InferenceService endpoint to chat with a model.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/quickstart-python-using-inference-endpoint/
+lastModified: 2026-09-24T16:34:13Z
+---
+
+# Quickstart — Use an Inference Endpoint with Python
+
+Use this quickstart to chat with a model deployed behind your private InferenceService (KServe). You pass the endpoint URL and access key, plus the model name. The example uses a production‑ready, single‑file Python script.
+
+Time to complete: 5–10 minutes
+
+## Goals
+
+- Call a private, governed model endpoint (OpenAI‑compatible) over HTTP(s)
+- Understand required headers and payload shape for chat completions
+- Run a minimal demo script you can reuse in apps and CI/CD
+
+## Prerequisites
+
+- An InferenceService is deployed and ready. See:
+  - [Model Serving](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/serving/)
+  - [Create an InferenceService](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/create-inferenceservice/)
+- External access path and access key, or an internal cluster‑local path. See:
+  - [Access KServe endpoints](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/access-kserve-endpoints/)
+- Python 3.9+ and `httpx` installed: `pip install httpx`
+
+## Environment
+
+Set these environment variables before running the script:
+
+```bash
+export EDB_API_URL="https://<portal>/inferenceservices/<inferenceservice-id>"
+export EDB_API_TOKEN="<hm-user-access-key>"
+export MODEL_NAME="meta/llama-3.1-8b-instruct"  # or the model you serve
+```
+
+Notes:
+
+- For internal callers, set `EDB_BASE_URL` to your cluster‑local path (proxy or direct KServe URL).
+- The endpoint path for chat is `/v1/chat/completions` appended to `EDB_BASE_URL`.
+
+## Run the demo script
+
+Download and run the production‑ready single file:
+
+- Script: [hm\_kserve\_quickstart.py](https://raw.githubusercontent.com/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/edb-postgres-ai/1.3/ai-factory/model/samples/hm_kserve_quickstart.py)
+
+Example (custom prompt):
+
+```bash
+python hm_kserve_quickstart.py chat --prompt "Write a haiku about Postgres and GPUs."
+```
+
+Optional (use Hybrid Manager to list clusters and summarize):
+
+```bash
+pip install httpx typer
+export EDB_API_URL="https://<hm-host>"; export EDB_API_TOKEN="<hm-access-token>"; export PROJECT_ID="<uuid>"
+python hm_kserve_quickstart.py summarize-clusters --project-id "$PROJECT_ID"
+```
+
+## Request and headers (reference)
+
+- Endpoint: `POST ${EDB_BASE_URL}/v1/chat/completions`
+- Headers: `Authorization: Bearer ${EDB_API_KEY}`, `Accept: application/json`, `Content-Type: application/json`
+- Body (simplified):
+
+```json
+{
+  "model": "${MODEL_NAME}",
+  "messages": [
+    {"role": "user", "content": "Hello"}
+  ],
+  "max_tokens": 256
+}
+```
+
+Embeddings and rerank models use different paths:
+
+- Embeddings: `${EDB_BASE_URL}/v1/embeddings`
+- Rerank: `${EDB_BASE_URL}/v1/ranking`
+
+If you see HTTP 404 Not Found, verify the operation‑specific path.
+
+## Best practices
+
+- Keep inference sovereign: prefer internal paths when the caller runs in‑cluster.
+- Rotate access keys regularly; never commit them to source control.
+- Enforce TLS and limit egress from clients.
+- Monitor latency and error rates; scale resources or tune concurrency as needed.
+
+## Troubleshooting
+
+- 401/403: Verify `EDB_API_KEY` and user permissions to the InferenceService.
+- 404: Confirm the InferenceService ID and that the service is ready.
+- Timeouts/5xx: Check KServe pod status, health probes, and logs; validate endpoint path.
+
+## Next steps
+
+- Build an app using the same headers and payloads; see the [Python client quickstart](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/quickstart-python-using-inference-endpoint/).
+- Integrate with Gen AI Assistants and Knowledge Bases for RAG; see [Gen AI](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/) and [Pipelines](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/).
+- Add observability and SLOs; see [Model observability](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/observability/) and [Update GPU resources](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/update-gpu-resources/).
+
+## Known issues in 1.3
+
+- Some internal model URLs shown in listings may omit the operation suffix (for example, embeddings require `/v1/embeddings`). If a call returns 404, append the appropriate suffix. This will be addressed in a future release.
+- External access requires a valid Hybrid Manager user access key with the right role (for example, Gen AI Builder User). A malformed key or insufficient permissions return HTTP 401.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,484 @@
+---
+title: Correction strategies
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/03_overview_correction_strategies_log_based/
+lastModified: 2024-02-23T16:16:14Z
+---
+
+# Correction strategies
+
+<div id="overview_correction_strategies_log_based" class="registered_link"></div>
+
+Before you begin manual resolution correction, it's important to determine the extent of the inconsistencies that occurred in the publication tables across the primary nodes of the replication system.
+
+The **Conflict History** tab and the SQL query described in [Finding conflicts](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/09_manual_conflict_resolution_trigger_based_method/01_find_conflict/#find_conflict) can help determine the source of an initial conflict.
+
+However, once this conflict occurs, your replication system might have processed and replicated more transactions during that synchronization operation. Some of these later replications might have succeeded, but others might have failed or produced unexpected results because of the prior conflict. With a replication schedule in effect, more synchronization operations can occur, which can create more conflicts.
+
+Therefore, when you discovered that a conflict occurred, we recommended that you stop the publication server. Use the stop option of the Linux scripts or Windows services described in Step 1 of [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server).
+
+In this way, you can carefully analyze the content of the publication tables in question as well as any pending transactions in the shadow tables. This approach helps you to determine the best course of action without continued updates by the running replication system.
+
+When analyzing your tables, you must determine which publication tables contain inconsistent rows across primary nodes (that is, missing rows on some primary nodes or rows with different column values for the same primary key on different primary nodes).
+
+The general steps to resolving the problem following this analysis are:
+
+1. Make the needed manual corrections to the rows in the publication tables across all primary nodes to get them into an initial, consistent state so each publication table has the same set of identical rows across primary nodes. This might be to a state before the conflicting transactions occurred, depending on what you determine is the easiest course of action for fully resolving the conflict.
+
+2. Apply transactions (either from your application or from transaction blocks as defined in [Conflict resolution concept for the log-based method](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/02_conflict_resolution_for_log_based/#conflict_resolution_for_log_based)) so that all publication tables across all primary nodes are updated consistently according to the desired, expected result.
+
+3. In the control schema, update certain indicators for the conflicting entries to show that these conflicts are resolved. This update changes the Resolution Status of these entries to Resolved in the **Conflict History** tab. These entries no longer appear in the SQL query described in [Finding conflicts](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/01_finding_conflict/#finding_conflict).
+
+   Perform these updates to the control schema of the controller database. You can determine the currently designated controller database from the content of the Replication Server configuration file (see [xDB replication configuration rile](https://www.enterprisedb.com/docs/eprs/latest/02_overview/03_replication_server_components_and_architecture/01_physical_components/#xdb_replication_conf_file)). The publication server ensures that the control schema changes made on the controller database are replicated to the control schemas of all publication databases to maintain metadata consistency across all publication databases.
+
+4. Resume operating your replication system. Start the publication server and re-create the replication schedule if you were using one.
+
+For accomplishing steps 1 and 2, use some combination of the following methods. The methods you use depends upon the state of your publication tables.
+
+- **Manual publication table correction.** Use a utility such as `PSQL` or `pgAdmin` (Postgres Enterprise Manager Client in Advanced Server) to manually correct the rows in the publication tables across all primary nodes without replicating these changes. Apply these manual corrections in the transaction block described in [Conflict resolution concept for the log-based method](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/02_conflict_resolution_for_log_based/#conflict_resolution_for_log_based).
+- **Correction using new transactions.** To create new transactions that you allow to replicate to all other primary nodes, rerun your application on one primary node. Use this method after you ensure that all publication tables are in a consistent state across all primary nodes.
+
+In the description of these methods, the following replication environment is used.
+
+- A three-node multi-master replication system is established. The primary node names are `MMRnode_a` (the primary definition node and the controller database), `MMRnode_b`, and `MMRnode_c`.
+- The publication is named `emp_pub` and uses the dept and emp tables.
+- The conflict used to show the conflict resolution methods is a uniqueness conflict occurring on the dept table on primary key column `deptno` on value 50. This conflict is a result of the `INSERT` statements shown by the following:
+
+On `MMRnode_a`, the following statement is run:
+
+```sql
+INSERT INTO dept VALUES (50, 'FINANCE', 'CHICAGO');
+On MMRnode_b, the following statement is run:
+INSERT INTO dept VALUES (50, 'MARKETING', 'LOS ANGELES');
+```
+
+A synchronization replication is then performed.
+
+The following is the content of table dept on `MMRnode_a`:
+
+```sql
+MMRnode_a=# SELECT * FROM dept;
+```
+
+```output title="Output"
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | FINANCE    | CHICAGO
+(5 rows)
+```
+
+The following is the content of table dept on `MMRnode_b`:
+
+```sql
+MMRnode_b=# SELECT * FROM dept;
+```
+
+```output title="Output"
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+The following is the content of table dept on `MMRnode_c`:
+
+```sql
+MMRnode_c=# SELECT * FROM dept;
+```
+
+```output title="Output"
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+The **Conflict History** tab shows the following entry:
+
+![Conflict History tab with a uniqueness conflict](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/eprs/7/images/image160.png)
+
+The following is the output from the SQL query described in [Finding conflicts](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/09_manual_conflict_resolution_trigger_based_method/01_find_conflict/#find_conflict).
+
+```text
+-[ RECORD 1 ]-------+----------------------------------------------------------------
+conflict_type       | II
+table_name          | dept
+pk_value            | deptno=50
+src_db_host         | 192.168.2.22
+src_db_port         | 5444
+src_db_name         | MMRnode_a
+src_rrep_sync_id    | 2
+target_db_host      | 192.168.2.22
+target_db_port      | 5444
+target_db_name      | MMRnode_b
+target_rrep_sync_id | 0
+notes               | ERROR: duplicate key value violates unique constraint "dept_pk"
+                  |   Detail: Key (deptno)=(50) already exists.
+-[ RECORD 2 ]-------+----------------------------------------------------------------
+conflict_type       | II
+table_name          | dept
+pk_value            | deptno=50
+src_db_host         | 192.168.2.22
+src_db_port         | 5444
+src_db_name         | MMRnode_b
+src_rrep_sync_id    | 1
+target_db_host      | 192.168.2.22
+target_db_port      | 5444
+target_db_name      | MMRnode_a
+target_rrep_sync_id | 0
+notes               | ERROR: duplicate key value violates unique constraint "dept_pk"
+                  |   Detail: Key (deptno)=(50) already exists.
+```
+
+## Manual publication table correction
+
+The first step required in all manual conflict resolutions is to ensure all publication tables are consistent across all primary nodes. All corresponding tables must have the same rows with the same column values.
+
+Once this state is achieved, you can then reapply transactions that failed to replicate successfully.
+
+In the example shown in [Correction strategies](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/03_overview_correction_strategies_log_based/#overview_correction_strategies_log_based), the inconsistencies are the following:
+
+- Primary nodes `MMRnode_a` and `MMRnode_b` each contain a row with primary key value `50`, but the other column values in the row are different.
+- Primary node `MMRnode_c` doesn't have a row with primary key value `50`.
+
+Assuming that the correct state of the dept table is the one in `MMRnode_b`, you can use one of the following options to correct the state of all primary nodes:
+
+- Manually correct the dept table in `MMRnode_a` and `MMRnode_c`. That is, update the row in `MMRnode_a` so it has the correct values, and insert the missing row in `MMRnode_c`. The dept table on all nodes is then consistent and up to date.
+- Manually delete the row with primary key value `50` from the table on both `MMRnode_a` and `MMRnode_b`. This brings the dept table on all primary nodes back to a prior, consistent state. Then, with the multi-master replication system running, perform the insert transaction again using the correct column values on any one of the primary nodes.
+
+After the publication table rows are corrected, update the appropriate control schema table in the publication database currently designated as the controller database to indicate that the conflict was resolved.
+
+The method outlined by the first bullet point is accomplished as follows.
+
+### Step 1
+
+Manually correct the rows in the publication tables with SQL statements incorporated in a transaction block as described in [Conflict resolution concept for the log-based method](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/02_conflict_resolution_for_log_based/#conflict_resolution_for_log_based).
+
+On `MMRnode_a`, correct the erroneous row by running the following transaction block:
+
+```sql
+BEGIN;
+UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+  WHERE key = 'last_mcr_timestamp';
+UPDATE edb.dept SET dname = 'MARKETING', loc = 'LOS ANGELES'
+  WHERE deptno = 50;
+COMMIT;
+```
+
+This is shown by the following:
+
+```sql
+MMRnode_a=# BEGIN;
+BEGIN
+MMRnode_a=# UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+MMRnode_a-#   WHERE key = 'last_mcr_timestamp';
+UPDATE 1
+MMRnode_a=# UPDATE edb.dept SET dname = 'MARKETING', loc = 'LOS ANGELES'
+MMRnode_a-#   WHERE deptno = 50;
+UPDATE 1
+MMRnode_a=# COMMIT;
+COMMIT
+MMRnode_a=# SELECT * FROM edb.dept;
+```
+
+```output title="Output"
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+On `MMRnode_c`, insert the missing row with the following transaction block:
+
+```sql
+BEGIN;
+UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+  WHERE key = 'last_mcr_timestamp';
+INSERT INTO edb.dept VALUES (50,'MARKETING','LOS ANGELES');
+COMMIT;
+```
+
+This is shown by the following:
+
+```sql
+MMRnode_c=# BEGIN;
+BEGIN
+MMRnode_c=# UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+MMRnode_c-#   WHERE key = 'last_mcr_timestamp';
+UPDATE 1
+MMRnode_c=# INSERT INTO edb.dept VALUES (50,'MARKETING','LOS ANGELES');
+INSERT 0 1
+MMRnode_c=# COMMIT;
+COMMIT
+MMRnode_c=# SELECT * FROM edb.dept;
+```
+
+```output title="Output"
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+The dept table on `MMRnode_a` and `MMRnode_c` now match the content of the table on `MMRnode_b`:
+
+### Step 2
+
+In the control schema of the publication database currently designated as the controller database, modify the entry in the xdb\_conflicts table to indicate the conflict was resolved. Table xdb\_conflicts is located in schema `_edb_replicator_pub`.
+
+> **Note**
+>
+> The entries in table xdb\_conflicts affect only the data that appears in the **Conflict History** tab and the SQL query described in [Finding conflicts](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/09_manual_conflict_resolution_trigger_based_method/01_find_conflict/#find_conflict). Changing entries in xdb\_conflicts doesn't affect future replication operations but provides a way to keep a record of how past conflicts were resolved.
+
+Note the following regarding the xdb\_conflicts table:
+
+- A row in the xdb\_conflicts table appears as an entry in the **Conflict History** tab.
+
+- The primary key of the xdb\_conflicts table is made up of columns `src_db_id`, `target_db_id`, `src_rrep_sync_id`, and `target_rrep_sync_id`. `Column src_db_id` contains a unique identifier for the primary node in which a transaction occurred that results in a conflict when replicated to the primary node identified by `target_db_id`. `src_rrep_sync_id` is the identifier of the transaction on the source primary node involved in the conflict. `target_rrep_sync_id` is the identifier of the transaction on the target primary node involved in the conflict.
+
+  > **Note**
+  >
+  > The `src_rrep_sync_id` and `target_rrep_sync_id` values are used internally by Replication Server. You don't need them for the manual conflict resolution process.
+
+- Table xdb\_pub\_database in the control schema associates the database identifiers `src_db_id` and `target_db_id` with the primary node attributes such as the database name, IP address, and port.
+
+- Column `table_id` is the identifier of the publication table where the conflict occurred. Association of the `table_id` value with the publication table attributes, such as its name and schema, is found in each primary node in `_edb_replicator_pub.rrep_tables`.
+
+- Column `pk_value` contains text indicating the primary key value that resulted in the conflict. The text is formatted as `column_name=value`. If the primary key is composed of two or more columns, each column and value pair is separated by the keyword AND, such as `column_1=value_1 AND column_2=value_2`. This syntax provides the primary key of the row in the publication table designated by `table_id` that resulted in the conflict.
+
+- Column `resolution_status` indicates the status of the conflict. Possible values are `P` (pending) or `C` (completed: the conflict was resolved). This status appears in the Resolution Status column of the **Conflict History** tab.
+
+- You can use column `win_db_id` to record the database identifier of the primary node that contains the winning (accepted) transaction. This information appears in the Winning DB column of the **Conflict History** tab.
+
+### Pending uniqueness conflict
+
+For this example, you can find the entry for the pending insert/insert conflict on the `deptno` primary key value of `50` in xdb\_conflicts with the following query:
+
+```sql
+MMRnode_a=# SELECT * FROM _edb_replicator_pub.xdb_conflicts
+MMRnode_a-#   WHERE pk_value = 'deptno=50'
+MMRnode_a-#     AND conflict_type = 'II'
+MMRnode_a-#     AND resolution_status = 'P';
+```
+
+```output title="Output"
+-[ RECORD 1 ]-------+--------------------------
+src_db_id           | 1
+target_db_id        | 22
+src_rrep_sync_id    | 44713808
+target_rrep_sync_id | 44718040
+table_id            | 31
+conflict_time       | 21-AUG-15 15:34:55.134171
+resolution_status   | P
+resolution_strategy |
+resolution_time     |
+alert_status        |
+conflict_type       | II
+win_db_id           | 0
+win_rrep_sync_id    | 0
+notes               |
+pk_value            | deptno=50
+```
+
+This entry appears in the Postgres Enterprise Manager Client.
+
+### Pending conflict in xdb\_conflicts
+
+Change the value in column `resolution_status` from `P` (pending) to `C` (completed) to indicate this conflict was resolved. Change the value in `winning_db_id` to `22` to indicate primary node `MMRnode_b` contains the winning transaction.
+
+The SQL statement to perform this update for the `MMRnode_a` to the `MMRnode_b` synchronization conflict is:
+
+```sql
+UPDATE _edb_replicator_pub.xdb_conflicts SET
+  resolution_status = 'C',
+  win_db_id = 22
+WHERE pk_value = 'deptno=50'
+    AND conflict_type = 'II'
+    AND resolution_status = 'P';
+```
+
+When viewed in the **Conflict History** tab, the entry now shows `Resolved` instead of `Pending` in the Resolution Status column, and the Winning DB column shows the address of primary node `MMRnode_b`.
+
+## Correction using new transactions
+
+Another method for bringing all the publication tables to a consistent state is by removing any changes caused by the conflicting transactions and then issuing new, corrected transactions at one primary node. You allow the multi-master replication system to synchronize this node to all other primary nodes.
+
+Referring back to the uniqueness conflict on the dept table, instead of correcting the erroneous row and inserting the row into the primary node where it's missing, as described in [Manual publication table correction](#manual-publication-table-correction), you can delete the conflicting rows from all primary nodes and then insert the correct row in one primary node. Then let the multi-master replication system synchronize the correct row to all primary nodes.
+
+1. Manually delete the inserted row from the publication tables in all primary nodes using the transaction block described in [Conflict resolution concept for the log-based method](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/02_conflict_resolution_for_log_based/#conflict_resolution_for_log_based).
+
+   On `MMRnode_a`, delete the erroneous row with the following transaction block:
+
+   ```sql
+   BEGIN;
+   UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+     WHERE key = 'last_mcr_timestamp';
+   DELETE FROM edb.dept WHERE deptno = 50;
+   COMMIT;
+   This is shown by the following:
+   MMRnode_a=# BEGIN;
+   BEGIN
+   MMRnode_a=# UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+   MMRnode_a-#   WHERE key = 'last_mcr_timestamp';
+   UPDATE 1
+   MMRnode_a=# DELETE FROM edb.dept WHERE deptno = 50;
+   DELETE 1
+   MMRnode_a=# COMMIT;
+   COMMIT
+   MMRnode_a=# SELECT * FROM dept;
+   ```
+
+   ```output title="Output"
+    deptno |   dname    |   loc
+   --------+------------+----------
+        10 | ACCOUNTING | NEW YORK
+        20 | RESEARCH   | DALLAS
+        30 | SALES      | CHICAGO
+        40 | OPERATIONS | BOSTON
+   (4 rows)
+   ```
+
+   On `MMRnode_b`, delete the row even though the transaction created the correct result:
+
+   ```sql
+   MMRnode_b=# BEGIN;
+   BEGIN
+   MMRnode_b=# UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+   MMRnode_b-#   WHERE key = 'last_mcr_timestamp';
+   UPDATE 1
+   MMRnode_b=# DELETE FROM edb.dept WHERE deptno = 50;
+   DELETE 1
+   MMRnode_b=# COMMIT;
+   COMMIT
+   MMRnode_b=# SELECT * FROM dept;
+   ```
+
+   ```output title="Output"
+    deptno |   dname    |   loc
+   --------+------------+----------
+        10 | ACCOUNTING | NEW YORK
+        20 | RESEARCH   | DALLAS
+        30 | SALES      | CHICAGO
+        40 | OPERATIONS | BOSTON
+   (4 rows)
+   ```
+
+   On `MMRnode_c`, no changes are required, as the conflicting transaction didn't insert a new row into the table on this node:
+
+   ```sql
+   MMRnode_c=# SET search_path TO edb;
+   SET
+   MMRnode_c=# SELECT * FROM dept;
+   ```
+
+   ```output title="Output"
+    deptno |   dname    |   loc
+   --------+------------+----------
+        10 | ACCOUNTING | NEW YORK
+        20 | RESEARCH   | DALLAS
+        30 | SALES      | CHICAGO
+        40 | OPERATIONS | BOSTON
+   (4 rows)
+   ```
+
+2. Rerun the correct transaction on one primary node with the multi-master replication system running. Don't run this in the transaction block described in [Conflict resolution concept for the log-based method](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/02_conflict_resolution_for_log_based/#conflict_resolution_for_log_based), as the objective is to synchronize it to all primary nodes.
+
+   For this example, execute the correct INSERT statement on `MMRnode_a`:
+
+   On `MMRnode_a`:
+
+   ```sql
+   MMRnode_a=# INSERT INTO dept VALUES (50, 'MARKETING', 'LOS ANGELES');
+   INSERT 0 1
+   MMRnode_a=# SELECT * FROM dept;
+   ```
+
+   ```output title="Output"
+    deptno |   dname    |     loc
+   --------+------------+-------------
+        10 | ACCOUNTING | NEW YORK
+        20 | RESEARCH   | DALLAS
+        30 | SALES      | CHICAGO
+        40 | OPERATIONS | BOSTON
+        50 | MARKETING  | LOS ANGELES
+   (5 rows)
+   ```
+
+3. Perform synchronization replication.
+
+   The same rows now appear in the publication table on all primary nodes.
+
+   On `MMRnode_a`;
+
+   ```sql
+   MMRnode_a=# SELECT * FROM dept;
+   ```
+
+   ```output title="Output"
+    deptno |   dname    |     loc
+   --------+------------+-------------
+        10 | ACCOUNTING | NEW YORK
+        20 | RESEARCH   | DALLAS
+        30 | SALES      | CHICAGO
+        40 | OPERATIONS | BOSTON
+        50 | MARKETING  | LOS ANGELES
+   (5 rows)
+   ```
+
+   On `MMRnode_b`;
+
+   ```sql
+   MMRnode_b=# SELECT * FROM dept;
+   ```
+
+   ```output title="Output"
+    deptno |   dname    |     loc
+   --------+------------+-------------
+        10 | ACCOUNTING | NEW YORK
+        20 | RESEARCH   | DALLAS
+        30 | SALES      | CHICAGO
+        40 | OPERATIONS | BOSTON
+        50 | MARKETING  | LOS ANGELES
+   (5 rows)
+   ```
+
+   On `MMRnode_c`;
+
+   ```sql
+   MMRnode_c=# SELECT * FROM dept;
+   ```
+
+   ```output title="Output"
+    deptno |   dname    |     loc
+   --------+------------+-------------
+        10 | ACCOUNTING | NEW YORK
+        20 | RESEARCH   | DALLAS
+        30 | SALES      | CHICAGO
+        40 | OPERATIONS | BOSTON
+        50 | MARKETING  | LOS ANGELES
+   (5 rows)
+   ```
+
+4. In the control schema of the publication database currently designated as the controller database, modify the entry in the xdb\_conflicts table to indicate the conflict was resolved as in Step 2 of [Conflict resolution concept for the log-based method](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/10_manual_conflict_resolution_log_based_method/02_conflict_resolution_for_log_based/#conflict_resolution_for_log_based).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

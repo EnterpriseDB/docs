@@ -1,0 +1,153 @@
+---
+title: Upgrading WarehousePG Enterprise Manager
+description: Learn how to upgrade WEM and its supporting components to a new version.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/upgrading/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Upgrading WarehousePG Enterprise Manager
+
+Upgrade to WEM 1.6 from 1.4 or 1.5 by upgrading the WEM package, and then upgrading the host agent on every cluster node. WEM 1.6 is released with [host agent 1.2.0](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/release_notes/1.6_rel_notes/#host-agent-120), which you install separately from WEM. You don't need to install or change ClickHouse.
+
+If you're upgrading from 1.4, also review the [1.5 release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/release_notes/1.5_rel_notes/) for the changes that version made, such as renamed parameters and the new file locations. See the [release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/release_notes/) for the full list of changes in each version.
+
+## Upgrading WEM
+
+Run the following on the host where WEM is installed:
+
+1. Configure the EDB repository:
+
+   ### RHEL
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   ```
+
+   ### Debian 13
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.deb.sh" | sudo -E bash
+   ```
+
+2. Upgrade the WEM package:
+
+   ### RHEL
+
+   ```bash
+   sudo dnf upgrade whpg-enterprise-manager
+   ```
+
+   ### Debian 13
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install --only-upgrade whpg-enterprise-manager
+   ```
+
+3. Verify the installed version:
+
+   ### RHEL
+
+   ```bash
+   rpm -q whpg-enterprise-manager
+   ```
+
+   ### Debian 13
+
+   ```bash
+   dpkg -s whpg-enterprise-manager | grep Version
+   ```
+
+4. Check the upgrade output for `[WARN]` lines. WEM 1.6 removes the compatibility links that WEM 1.5 kept, and prints one warning for each link it removes. It also lists every systemd unit override, cron file, and `wem.conf` that still uses an old path. WEM only reads these files, so you must update them yourself.
+
+   If your scripts, cron jobs, monitoring, or log tools use an old path, switch to the new one:
+
+   | Old path                                                | New path                   |
+   | ------------------------------------------------------- | -------------------------- |
+   | `/usr/local/greenplum-db/wem/wem` or `/usr/edb/wem/wem` | `/usr/edb/wem/bin/wem`     |
+   | `/var/log/wem/wem.log`                                  | `/var/log/edb/wem/wem.log` |
+   | `/etc/wem/wem.conf`                                     | `/etc/edb/wem/wem.conf`    |
+
+   - The upgrade removes only links that WEM created. It doesn't change anything in your WarehousePG installation.
+   - If you're upgrading from 1.4, the upgrade updates any `/etc/wem/` paths in your copied `wem.conf` to `/etc/edb/wem/`.
+
+5. Confirm that WEM is running. If it isn't, start it:
+
+   ```bash
+   sudo systemctl status wem
+   sudo systemctl restart wem
+   ```
+
+6. Open the WEM console in your browser and sign in with your WEM credentials.
+
+7. Review your runtime settings in **Management** > **Settings** > **Runtime Settings**. WEM 1.6 manages these settings in the console and no longer reads them from `wem.conf`.
+
+   - On upgrade, WEM imports the values it finds in `wem.conf` or the environment once.
+   - If you saved a value for a setting in the 1.5 console, WEM keeps that value and ignores the one in `wem.conf`, even when they differ. Check each value and correct any that are wrong.
+   - From now on, change these settings in the console. Changing the following parameters in `wem.conf` or the environment has no effect: `LONG_RUNNING_THRESHOLD`, `LOG_MIN_DURATION_STATEMENT`, `OTEL_COLLECTION_INTERVAL`, `WEM_CLUSTER_NAME`, `WEM_CLUSTER_ENVIRONMENT`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `FLOWSERVER_ADDRESS`, and `FLOWSERVER_ACTIVITY_RETENTION_HOURS`.
+
+   See [Configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/configuring/).
+
+## Upgrading the host agents
+
+Upgrade `acp-host-agent` and its `edb-otelcol` dependency on every host in the cluster. Run the following on the coordinator as `gpadmin`:
+
+1. Configure the EDB repository and download the host agent package and its `edb-otelcol` dependency:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo dnf download edb-acp-host-agent edb-otelcol
+   ```
+
+2. Transfer both packages to every host in the cluster:
+
+   ### WHPG 7
+
+   ```bash
+   gpsync -f all_hosts edb-acp-host-agent-*.rpm edb-otelcol-*.rpm =:/tmp
+   ```
+
+   ### WHPG 6
+
+   ```bash
+   gpscp -f all_hosts edb-acp-host-agent-*.rpm edb-otelcol-*.rpm =:/tmp
+   ```
+
+3. Install both packages on every host. Installing the local `.rpm` files upgrades the existing installation:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo dnf install -y /tmp/edb-acp-host-agent-*.rpm /tmp/edb-otelcol-*.rpm"
+   ```
+
+4. Restart the service on every host so it runs the new version:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo systemctl restart acp-host-agent"
+   ```
+
+5. Verify every host is running 1.2.0 or later:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "rpm -q edb-acp-host-agent edb-otelcol"
+   ```
+
+6. In WEM, go to **Management** > **Host Agents** and confirm that every agent is approved and active.
+
+The upgrade moves `WEM_CONNECT_ADDRESS`, `WEM_TASK_QUEUES`, and `WEM_DATABASE` from `/etc/edb/acp-host-agent/acp-host-agent.conf` to a new `wem.conf` in the same directory, and keeps your values. If you edit these settings with scripts, update them to use `wem.conf`. See [Host agent configuration](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/host-agent-config/).
+
+## Installing the live query plan extension
+
+WEM 1.6 adds the live query plan, which needs the optional `whpg_live_query_plan` extension on your WHPG cluster. To use it, see [Installing the live query plan extension](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/live-query-plan/).
+
+## Next steps
+
+Your upgrade is complete. See [Getting started with WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/get-started/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

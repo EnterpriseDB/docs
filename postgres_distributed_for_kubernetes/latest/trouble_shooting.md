@@ -1,0 +1,609 @@
+---
+title: Troubleshooting
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 2.2.0
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/trouble_shooting/
+lastModified: 2026-10-16T11:56:27-07:00
+---
+
+# Troubleshooting
+
+In this page, you can find some basic information on how to troubleshoot
+EDB Postgres® AI for CloudNativePG™ Global Cluster in your Kubernetes cluster deployment.
+
+> **Tip: Hint**
+>
+> As a Kubernetes administrator, you should have the
+> [`kubectl` Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/) page
+> bookmarked!
+
+## Before you start
+
+### Kubernetes environment
+
+What can make a difference in a troubleshooting activity is to provide
+clear information about the underlying Kubernetes system.
+
+Make sure you know:
+
+- the Kubernetes distribution and version you are using
+- the specifications of the nodes where PostgreSQL is running
+
+### Useful utilities
+
+On top of the mandatory `kubectl` utility, for troubleshooting, we recommend the
+following plugins/utilities to be available in your system:
+
+- [`cnp` plugin](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/kubectl-plugin/) for `kubectl`, which
+  could be used to talk with each individual node (PG4K cluster)
+- [`jq`](https://stedolan.github.io/jq/), a lightweight and flexible command-line JSON processor
+- [`grep`](https://www.gnu.org/software/grep/), searches one or more input files
+  for lines containing a match to a specified pattern. It is already available in most \*nix distros.
+  If you are on Windows OS, you can use [`findstr`](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/findstr) as an alternative to `grep` or directly use [`wsl`](https://docs.microsoft.com/en-us/windows/wsl/)
+  and install your preferred \*nix distro and use the tools mentioned above.
+
+## Logs
+
+All resources created and managed by EDB CloudNativePG Global Cluster log to standard output in
+accordance with Kubernetes conventions, using [JSON format](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/logging/).
+
+While logs are typically processed at the infrastructure level and include
+those from EDB CloudNativePG Global Cluster and PG4K,
+accessing logs directly from the command line interface is critical during troubleshooting.
+You have three primary options for doing so:
+
+- Use the `kubectl logs` command to retrieve logs from a specific resource, and
+  apply `jq` for better readability.
+- Use the [`kubectl cnp logs` command](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/kubectl-plugin/#logs) for
+  PG4K-specific logging, this is useful for collecting logs node by node.
+- Leverage specialized open-source tools like
+  [stern](https://github.com/stern/stern), which can aggregate logs from
+  multiple resources (e.g., all pods in a PGDGroup by selecting the
+  `k8s.pgd.enterprisedb.io/group` label), filter log entries, customize output formats,
+  and more.
+
+> **Note**
+>
+> The following sections provide examples of how to retrieve logs for various
+> resources when troubleshooting EDB CloudNativePG Global Cluster.
+
+## Operator information
+
+There are two operators for managing resources within a PGDGroup:
+
+- EDB CloudNativePG Global Cluster (PGD4K operator)
+  Manages the PGDGroup and resources directly created by it.
+- PG4K (PG4K operator)
+  Manages PG4K clusters, which are used as nodes within a PGDGroup.
+
+By default, the PGD4K operator is installed in the `pgd-operator-system`
+namespace as a `Deployment`. (Refer to the ["Details about the deployment" section](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/installation_upgrade/#details-about-the-deployment) for more information.)
+
+To list the operator pods, run:
+
+```shell
+kubectl get pods -n pgd-operator-system
+```
+
+> **Note**
+>
+> Under normal circumstances, you should have one pod where the operator is
+> running, identified by a name starting with `pgd-operator-controller-manager-`.
+> In case you have set up your operator for high availability, you should have more entries.
+> Those pods are managed by a deployment named `pgd-operator-controller-manager`.
+
+Collect the relevant information about the operator that is running in pod
+`<POD>` with:
+
+```shell
+kubectl describe pod -n pgd-operator-system <POD>
+```
+
+Then get the logs from the same pod by running:
+
+```shell
+kubectl logs -n pgd-operator-system <POD>
+```
+
+### Gather more information about the PGD4K operator
+
+Get logs from all pods in EDB CloudNativePG Global Cluster operator deployment
+(in case you have a multi operator deployment) by running:
+
+```shell
+kubectl logs -n pgd-operator-system \
+  deployment/pgd-operator-controller-manager --all-containers=true
+```
+
+> **Tip**
+>
+> You can add the `-f` flag to the above command to follow logs in real time.
+
+Save logs to a JSON file by running:
+
+```shell
+kubectl logs -n pgd-operator-system \
+  deployment/pgd-operator-controller-manager --all-containers=true | \
+  jq -r . > pgd_logs.json
+```
+
+### Gather more information about the PG4K operator
+
+As the PGD4K operator leverages the PG4K operator to manage each node, we also need
+to collect the PG4K operator logs. Please visit [Operator Information](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/troubleshooting/#operator-information)
+to collect logs for the PG4K operator.
+
+## PGDGroup information
+
+You can check the status of the `pgd-sample` PGDGroup in the `NAMESPACE`
+namespace with:
+
+```shell
+kubectl get pgdgroup -n <NAMESPACE> pgd-sample
+```
+
+Output:
+
+```shell
+NAME         DATA INSTANCES   WITNESS INSTANCES   PHASE                AGE
+pgd-sample   2                1                   PGDGroup - Healthy   3h1m
+```
+
+The above example describes a healthy PGDGroup cluster consisting of 2 data nodes
+and 1 witness node.
+
+A PGDGroup is composed of multiple nodes, where each node is a single-instance PG4K cluster.
+To view all nodes, you can retrieve the cluster information and filter by the label
+`k8s.pgd.enterprisedb.io/group`. Each node is named following the format: `<group name>-<number>`.
+
+```shell
+kubectl -n pgd get cluster -l k8s.pgd.enterprisedb.io/group=pgd-sample -A
+```
+
+Output:
+
+```shell
+NAME           AGE    INSTANCES   READY   STATUS                     PRIMARY
+pgd-sample-1   3h2m   1           1       Cluster in healthy state   pgd-sample-1-1
+pgd-sample-2   179m   1           1       Cluster in healthy state   pgd-sample-2-1
+pgd-sample-3   176m   1           1       Cluster in healthy state   pgd-sample-3-1
+```
+
+## PGD Node pod information
+
+Each PGD node is a single-instance PG4K cluster running on Kubernetes.
+To retrieve the list of instances belonging to a specific PGDGroup, use the following command:
+
+```shell
+kubectl get pod -l k8s.pgd.enterprisedb.io/group=pgd-sample -A
+```
+
+Output:
+
+```shell
+NAMESPACE   NAME                 READY   STATUS    RESTARTS   AGE    ROLE
+pgd         pgd-sample-1-1       1/1     Running   0          57m    primary
+pgd         pgd-sample-2-1       1/1     Running   0          61m    primary
+pgd         pgd-sample-3-1       1/1     Running   0          65m    primary
+```
+
+You can check if/how a pod is failing by running:
+
+```shell
+kubectl get pod -n <NAMESPACE> -o yaml <GROUP>-<N>-1
+```
+
+You can get all the logs for a given PGD node with:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1
+```
+
+If you want to limit the search to the PostgreSQL process only, you can run:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq 'select(.logger=="postgres") | .record.message'
+```
+
+The following example also adds the timestamp:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r 'select(.logger=="postgres") | [.ts, .record.message] | @csv'
+```
+
+If the timestamp is displayed in Unix Epoch time, you can convert it to a user-friendly format:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r 'select(.logger=="postgres") | [(.ts|strflocaltime("%Y-%m-%dT%H:%M:%S %Z")), .record.message] | @csv'
+```
+
+### Gather and filter extra information about PostgreSQL pods
+
+Check logs from a specific pod that has crashed:
+
+```shell
+kubectl logs -n <NAMESPACE> --previous <GROUP>-<N>-1
+```
+
+Get FATAL errors from a specific PostgreSQL pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r '.record | select(.error_severity == "FATAL")'
+```
+
+Output:
+
+```json
+{
+  "log_time": "2021-11-08 14:07:44.520 UTC",
+  "user_name": "streaming_replica",
+  "process_id": "68",
+  "connection_from": "10.244.0.10:60616",
+  "session_id": "61892f30.44",
+  "session_line_num": "1",
+  "command_tag": "startup",
+  "session_start_time": "2021-11-08 14:07:44 UTC",
+  "virtual_transaction_id": "3/75",
+  "transaction_id": "0",
+  "error_severity": "FATAL",
+  "sql_state_code": "28000",
+  "message": "role \"streaming_replica\" does not exist",
+  "backend_type": "walsender"
+}
+```
+
+Filter PostgreSQL DB error messages in logs for a specific pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | jq -r '.err | select(. != null)'
+```
+
+Output:
+
+```shell
+dial unix /controller/run/.s.PGSQL.5432: connect: no such file or directory
+```
+
+Get messages matching `err` word from a specific pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | jq -r '.msg' | grep "err"
+```
+
+Output:
+
+```shell
+2021-11-08 14:07:39.610 UTC [15] LOG:  ending log output to stderr
+```
+
+Get all logs from PostgreSQL process from a specific pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1| \
+  jq -r '. | select(.logger == "postgres") | select(.msg != "record") | .msg'
+```
+
+Output:
+
+```shell
+2021-11-08 14:07:52.591 UTC [16] LOG:  redirecting log output to logging collector process
+2021-11-08 14:07:52.591 UTC [16] HINT:  Future log output will appear in directory "/controller/log".
+2021-11-08 14:07:52.591 UTC [16] LOG:  ending log output to stderr
+2021-11-08 14:07:52.591 UTC [16] HINT:  Future log output will go to log destination "csvlog".
+```
+
+Get pod logs filtered by fields with values and join them, separated by `|`, by running:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r '[.level, .ts, .logger, .msg] | join(" | ")'
+```
+
+Output:
+
+```shell
+info | 1636380469.5728037 | wal-archive | Backup not configured, skip WAL archiving
+info | 1636383566.0664876 | postgres | record
+```
+
+## ScheduledBackup and Backup information
+
+You can list the scheduled backups for the pgdgroup-backup label filter using the following command:
+
+```shell
+kubectl get scheduledbackup -l k8s.pgd.enterprisedb.io/group=pgdgroup-backup -A
+```
+
+Output:
+
+```shell
+NAME                           AGE     CLUSTER             LAST BACKUP
+pgdgroup-backup-1-pgd-barman   9m27s   pgdgroup-backup-1   9m27s
+pgdgroup-backup-1-pgd-vol      9m26s   pgdgroup-backup-1   9m26s
+```
+
+The scheduled backup is named with the format `<cluster>-pgd-<backup method>`.
+The `<cluster>` is the node name chosen as the backup target.
+If the backup is properly configured, WAL archiving occurs on all nodes, but backup is only taken on
+the selected node.
+
+You can also list the backups that have been created with:
+
+```shell
+kubectl get backup -l k8s.pgd.enterprisedb.io/group=pgdgroup-backup -A
+```
+
+Output:
+
+```
+NAMESPACE   NAME                                          AGE   CLUSTER             METHOD              PHASE       ERROR
+pgd         pgdgroup-backup-1-pgd-barman-20250731094444   18m   pgdgroup-backup-1   barmanObjectStore   completed
+pgd         pgdgroup-backup-1-pgd-vol-20250731094445      18m   pgdgroup-backup-1   volumeSnapshot      completed
+```
+
+## More troubleshooting knowledge
+
+You can refer to [Before you start in CloudNativePG cluster](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/troubleshooting/#before-you-start)
+for more information about Kubernetes troubleshooting.
+
+## Some known issues
+
+These known issues and limitations are in the current release of EDB CloudNativePG Global Cluster.
+
+### Connection Manager
+
+The PGD4K operator ensures the Connection Manager is ready in all data nodes before the PGDGroup is marked as healthy.
+However, there may be cases where the Connection Manager fails to start in some nodes, which can lead to a PGDGroup
+being stuck in the "PGD - Waiting for Connection Manager to be ready" phase.
+
+If you encounter this issue, you can check the `.status.connMgr` of the PGDGroup to see which nodes are affected.
+You can refresh or restart the Connection Manager using the following SQL commands:
+
+To reload the Connection Manager, execute the following SQL command on the affected node by connecting to the PGD database:
+
+```sql
+SELECT bdr.connection_manager_refresh_pools();
+```
+
+To restart the Connection Manager, execute the following SQL command on the affected node by connecting to the PGD database:
+
+```sql
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE backend_type = 'pgd connection_manager';
+```
+
+### Restart held, raft has no spare member
+
+The operator does not restart a data node while the Raft consensus has no spare
+member, because restarting one would lose consensus. When every node that needs a
+pod change is held, the PGDGroup reports the
+"PGD - Restart held, raft has no spare member" phase and no node is patched.
+
+To confirm, check the reported phase and the Raft conditions of the PGDGroup:
+
+```shell
+kubectl get pgdgroup <NAME> -n <NAMESPACE>
+kubectl get pgdgroup <NAME> -n <NAMESPACE> \
+  -o jsonpath='{range .status.conditions[?(@.type=="GlobalRaftHealthy")]}{.type}{"="}{.status}{" "}{.message}{"\n"}{end}'
+```
+
+The `GlobalRaftHealthy` and `LocalRaftHealthy` conditions report which Raft is
+short of a member.
+
+Prefer the following options, in order:
+
+1. Bring the unreachable nodes back. Any one of them rejoining restores the spare,
+   and the held change rolls out by itself. This is the only option that changes nothing about the group.
+
+2. Add a node. Raising `spec.instances` or `spec.witnessInstances` gives the Raft
+   the spare it is missing, and a witness is the cheapest node to add:
+
+   ```shell
+   kubectl patch pgdgroup <NAME> -n <NAMESPACE> --type merge \
+     -p '{"spec":{"witnessInstances":1}}'
+   ```
+
+3. Remove the nodes that are never coming back. Lower the spec to the number of
+   nodes to keep first, then delete the `Cluster` of each node to drop:
+
+   ```shell
+   kubectl patch pgdgroup <NAME> -n <NAMESPACE> --type merge \
+     -p '{"spec":{"instances":2}}'
+   kubectl delete cluster <CLUSTER_NAME> -n <NAMESPACE>
+   ```
+
+   The operator parts a node only once its `Cluster` object is actually gone, which
+   finalizers may hold for a while: until then the group keeps reporting the hold.
+   Lowering the spec alone parts nothing, since the operator never picks which node
+   to remove.
+
+   !!! Warning
+   Deleting a `Cluster` deletes its PVCs and the data on them, and a parted
+   node cannot rejoin the group. Lower the spec before deleting the `Cluster`,
+   otherwise the operator recreates it. Delete only nodes that are unreachable
+   and whose data you do not need, and make sure you have a current backup.
+
+4. Only then set the `k8s.pgd.enterprisedb.io/unsafeIgnoreRaftCheck` annotation, and only
+   when the restart is itself the fix, such as rolling back a bad image or
+   restarting a stuck pod. It permits a restart with no quorum margin: if the
+   restarted node doesn't come back, the group loses Raft consensus and stops
+   accepting writes. Remove the annotation as soon as the group is healthy.
+
+### Eviction held, drain retrying
+
+Before a PGD node pod is evicted, for example by `kubectl drain`, the operator hands
+the write and Raft leaderships of the node off to other nodes. It rejects the
+eviction with `429 Too Many Requests`, which the drain retries, while:
+
+- The eviction of another pod of the PGD group is in progress: its hand-off runs, or
+  its eviction is admitted and the pod is still terminating. The message reads
+  `eviction of pod <pod> of PGD group <group> in progress, retry shortly`.
+- Another pod of the PGD group is unavailable. The `PodDisruptionBudget` of the
+  group lets one of its pods be unavailable at a time. The message reads
+  `another pod of PGD group <group> is unavailable, retry shortly`.
+- The hand-off is running. The message reads
+  `transferring PGD leaderships off this node, retry shortly`. Every eviction takes at
+  least one retry: the first request starts the hand-off, a retry gets its result.
+- Another node of the PGD group is restarting or about to restart.
+  `CLUSTERS_ROLLOUT_DELAY` stretches this to minutes. The message reads
+  `PGD node <node> of group <group> has a restart pending, retry shortly`.
+
+Other 429 messages, such as a failed read of the `PodDisruptionBudget` or the
+Clusters, are transient.
+
+Each retry prints the reason, for example:
+
+```text
+error when evicting pods/"region-a-1-1" -n "pgd" (will retry after 5s): admission webhook "vpodeviction.kb.io" denied the request: another pod of PGD group region-a is unavailable, retry shortly
+```
+
+A few retries per PGD node are normal. A drain that keeps retrying has a pod of the
+group that stays unavailable: look at that pod, not at the one being evicted.
+
+The operator admits the eviction with a warning in the drain output when:
+
+- The operator can't reach the node for 60 seconds: the pod is down, crash-looping,
+  starting up or shutting down. The warning starts with
+  `PGD leaderships not transferred: node unreachable for <time>`. The eviction of such a pod
+  takes up to about a minute and a half.
+- The node is not joined to the PGD cluster, so it has no leadership to hand off.
+  The eviction is admitted with no warning, or with a warning that starts with
+  `PGD leaderships not transferred, expected: node not joined`.
+- The hand-off didn't finish, for example because it ran out of time: it's bounded
+  by the Raft election timeouts of the node, 160 seconds with the defaults. With the
+  retries of an unreachable node, the operator holds the eviction of one pod
+  under 4 and a half minutes with the defaults, longer with larger election timeouts;
+  see [Draining nodes](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/node_configuration/#draining-nodes). The warning starts
+  with `PGD leaderships partly transferred` and names each leadership left on the
+  node and why, for example
+  `write lead of <group> not transferred: switchover timed out`. When the
+  leaderships moved but the new write leads didn't confirm the node's last writes
+  in time, the warning starts with `PGD leaderships transferred, LSN catch-up`.
+  Another failure starts with `PGD leaderships not transferred`. In a group with
+  one data node and no witness, no other node can take the Raft leadership of
+  the group: the eviction is admitted at once with
+  `Raft lead of <group> not transferred, expected: the node is its only member`.
+  With a witness, the witness takes it.
+
+The `<group>-eviction` Lease in the namespace of the group records the eviction in
+progress. Its `holderIdentity` is the evicted pod; its annotations are described in
+[Labels and annotations](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/labels_annotations/). The Lease holds the other pods of
+the group until the evicted pod is gone; the `PodDisruptionBudget` then holds them
+until the replacement pod is Ready.
+
+```shell
+kubectl get lease -n <namespace> <group>-eviction -o yaml
+```
+
+A Lease that expired, or whose pod is gone, no longer holds the group: the next
+eviction in the group takes it over. If an operator replica stops during a hand-off,
+the Lease expires within 175 seconds with the defaults. Once the hand-off ends,
+the Lease waits 20 seconds for a retry of the eviction, for example when the drain
+was canceled. The retry that admits the eviction keeps the Lease for the termination
+grace period it gives the pod plus 20 seconds: the `--grace-period` of
+`kubectl drain`, else the one of the pod, 200 seconds with the default
+`maxStopDelay`. To release it at once, delete it; the next eviction creates it
+again:
+
+```shell
+kubectl delete lease -n <namespace> <group>-eviction
+```
+
+The operator replicas compare the expiry of the Lease with their own clocks, so the
+clocks of the Kubernetes nodes must be in sync, for example with NTP.
+
+Pods removed without the Eviction API, for example with `kubectl delete pod`, aren't
+checked: the node stops without handing its leadership off, and PGD elects new
+leaders once it's gone.
+
+### Physical join
+
+Physical join needs the global Raft consensus. The PGD4K operator waits for the global Raft consensus and then
+starts the physical join, but there is probably still a chance that a physical join fails.
+
+The physical join job retries transient failures automatically (its `BackoffLimit` is `3`), so a job that's still
+retrying doesn't require any action. The job is reported as `Failed` only once those retries are exhausted:
+
+```shell
+kubectl get job -n <NAMESPACE>
+NAME                                     STATUS   COMPLETIONS   DURATION   AGE
+pgdgroup-backup-barman-2-physical-join   Failed   0/1           10m        10m
+```
+
+If the `BackoffLimit` is reached and the physical join job is failed before non-retriable step, you can delete the
+job to trigger the physical join again:
+
+```shell
+kubectl delete job pgdgroup-backup-barman-2-physical-join -n <NAMESPACE>
+```
+
+If the `BackoffLimit` is reached and the physical join job is failed in non-retriable step, the node data may be
+left in an inconsistent state, we need to delete the node to recreate the node again:
+
+```shell
+kubectl delete cluster pgdgroup-backup-barman-2 -n <NAMESPACE>
+```
+
+Physical join failed before the non-retriable step
+
+> **Note**
+>
+> We can check the logs of the physical join job to determine whether the failure happened before or in the
+> non-retriable step. If the failure happened in the non-retriable step, the physical join may already started
+> the data copying, simply recreating the job alone is not enough, because the retry is intentionally blocked to
+> avoid re-running the non-idempotent join step on partially initialized data. In that case recreate the data node
+> so it starts from a fresh volume.
+
+One key pre-condition for a physical join is the establishment of a global Raft consensus.
+If a physical join job is pending, you can use the PGD function `bdr.monitor_group_raft` to verify whether this
+pre-condition has been satisfied.
+
+### Data migration
+
+This version of EDB CloudNativePG Global Cluster doesn't support declarative import of data from other Postgres databases.
+To migrate schemas and data, you can use traditional Postgres migration tools such as [EDB\*Loader](https://www.enterprisedb.com/docs/epas/latest/database_administration/02_edb_loader/) or [Migration Toolkit](https://www.enterprisedb.com/docs/migration_toolkit/latest/)/[Replication Server](https://www.enterprisedb.com/docs/eprs/latest/).
+You can also use `pg_dump ...` on the source database and pipe the command's output to your target database with `psql -c`.
+
+### Backup operations
+
+To configure an EDB CloudNativePG Global Cluster environment, you must apply a `PGDGroup` YAML object to each Kubernetes cluster. Applying this object creates all necessary services for implementing a distributed architecture.
+
+If you added a `spec.backup` section to this `PGDGroup` object with the goal of setting up a backup configuration,
+the backup will fail unless you also set the `spec.backup.schedulers` value.
+
+Error output example:
+
+```
+The PGDGroup "region-a" is invalid: spec.backup.schedulers: Invalid value: "": Empty spec string
+```
+
+To work around this issue, add a `spec.backup.schedulers` section with a schedule that meets your requirements, for example:
+
+```yaml
+spec:
+  instances: 3
+  pgd:
+    parentGroup:
+      create: true
+      name: world
+  backup:
+    configuration:
+      barmanObjectStore:
+        ...
+    schedulers:
+      - method: barmanObjectStore
+        immediate: true
+        schedule: "0 */5 * * * *"
+```
+
+## Known issues and limitations in EDB Postgres Distributed
+
+All issues and limitations known for the EDB Postgres Distributed version that you include in your deployment also affect
+your EDB CloudNativePG Global Cluster instance.
+
+For example, your EDB CloudNativePG Global Cluster instance will be affected by these [known issues and limitations](https://www.enterprisedb.com/docs/pgd/latest/overview/known_issues/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

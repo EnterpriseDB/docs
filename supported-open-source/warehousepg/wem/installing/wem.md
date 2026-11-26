@@ -1,0 +1,249 @@
+---
+title: Installing WEM
+description: Learn how to install the WarehousePG Enterprise Manager service.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Installing WEM
+
+Install the WarehousePG Enterprise Manager (WEM) package on your designated host. See [Choosing a deployment topology](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/#choosing-a-deployment-topology) for the different placement options.
+
+## Downloading and installing WEM
+
+1. Configure the EDB repository on your host:
+
+   ### RHEL
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   ```
+
+   ### Debian 13
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.deb.sh" | sudo -E bash
+   ```
+
+2. Install the WEM package:
+
+   ### RHEL
+
+   ```bash
+   sudo dnf install -y whpg-enterprise-manager
+   ```
+
+   ### Debian 13
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y whpg-enterprise-manager
+   ```
+
+   The package doesn't start the service. Configure WEM as described in the following sections, and then start it. On Debian 13 (amd64), install WEM on a dedicated host.
+
+3. To run WEM management commands (such as `setup`, `doctor`, or `setup --verify`) from any location in your terminal, add the WEM binary directory to your system `PATH`. Update your current session:
+
+   ```bash
+   export PATH=/usr/edb/wem/bin:$PATH
+   ```
+
+   To make this change persistent, add this `export` line to your `~/.bashrc` or `~/.bash_profile` file.
+
+> **Note**
+>
+> Before WEM 1.5, WEM installed to `/usr/local/greenplum-db/wem`. Starting from 1.5, WEM installs to `/usr/edb/wem`, independent of any WarehousePG installation. WEM 1.5 kept a compatibility link at the previous location, and WEM 1.6 removes it. See [Upgrading WarehousePG Enterprise Manager](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/upgrading/).
+
+## Configuring WEM
+
+Configure the WEM service by editing `/etc/edb/wem/wem.conf`. These sections cover the parameters required to get WEM running. Configure everything else, such as the AI Assistant or alert evaluation tuning, after installation through the WEM console. See [Configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/configuring/) and the [Configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/) for the complete list of supported parameters. If you change `wem.conf` after you start the service, run `sudo systemctl restart wem` to apply the change.
+
+> **Note: Runtime settings aren't set in wem.conf**
+>
+> WEM 1.6 stores the runtime settings, such as the cluster name, query thresholds, AI Assistant key, and FlowServer address, in WEM and not in `wem.conf`. Set them in the console under **Management** > **Settings** after installation. If you upgraded from an earlier version, WEM imported the values in `wem.conf` once, and kept any value that you had already saved in the 1.5 console, so check these settings in the console. See [Configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/configuring/).
+
+### Target cluster
+
+Set the values of `WHPG_HOST`, `WHPG_PORT`, `WHPG_DATABASE`, `WHPG_USER`, and `WHPG_PASSWORD` as per your WHPG cluster. For example:
+
+```ini
+WHPG_HOST=whpg-coordinator-host
+WHPG_PORT=5432
+WHPG_DATABASE=postgres
+WHPG_USER=gpadmin
+WHPG_PASSWORD=postgres
+```
+
+> **Note**
+>
+> You can specify any database on your WHPG cluster. However, `WHPG_USER` must be a superuser. To use a non-default SSL mode for this connection, set `WHPG_SSLMODE`. See [Configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#target-cluster) for valid values.
+>
+> During setup, WEM automatically creates a dedicated `WHPG_WEM_USER` role and uses it for its runtime connection instead of reusing `WHPG_USER` for every query. `WHPG_USER` remains required as the superuser for setup tasks. See [Configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#target-cluster).
+
+### ClickHouse
+
+Set the ClickHouse connection URL for the instance you're using, whether that's one you installed in [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/) or an existing instance you already manage. Use `localhost` only if ClickHouse instance runs inside your WHPG cluster.
+
+```ini
+CLICKHOUSE_URL=clickhouse://username:password@<clickhouse-host>:9000
+```
+
+> **Warning**
+>
+> Don't set `CLICKHOUSE_URL` to `localhost`, even when ClickHouse runs on the same host as WEM. By default, WEM runs the gateway collector on the standby coordinator, with the coordinator as failover, and those hosts write to this address directly. `localhost` resolves on those hosts rather than on the ClickHouse host. Use the ClickHouse host's actual hostname or IP address, reachable from the standby coordinator and the coordinator.
+
+Set `OTEL_GATEWAY_ENDPOINT` only if your deployment needs a dedicated gateway collector, that is, when multiple systems or clusters send observability data to the same ClickHouse instance. Point it at that gateway host's own hostname or IP address, as it's reachable from every WHPG cluster node, and install the [gateway collector](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/collector/) on it. For example, if this host is reachable as `wem-host`:
+
+```ini
+OTEL_GATEWAY_ENDPOINT=<wem-host>:4317
+```
+
+> **Warning**
+>
+> Don't set `OTEL_GATEWAY_ENDPOINT` to `localhost`, even when the gateway collector runs on the same host as WEM. Every WHPG cluster node connects to this address directly, so `localhost` resolves on each node itself rather than the gateway host, and metrics and logs never leave the node. Use the gateway host's actual hostname or IP address, reachable from the WHPG cluster.
+
+For a single WHPG cluster sending data directly to ClickHouse, leave `OTEL_GATEWAY_ENDPOINT` unset, regardless of whether ClickHouse runs on the standby coordinator or on a dedicated host outside the cluster. See the [Configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/) for the complete list of [ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#clickhouse) and [OTel Collector](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#otel-collector) parameters.
+
+### Application state
+
+WEM stores its internal state, dashboards, alert rules, and user accounts, in the database you configure as `WEM_DATABASE`. Point WEM at this database and its owning role with `WEM_HOST`, `WEM_PORT`, `WEM_DATABASE`, `WEM_USER`, and `WEM_PASSWORD`. Choose one of two setups:
+
+- **A dedicated Postgres instance**, separate from the WHPG cluster you're monitoring. This setup keeps WEM's own state available even if that cluster goes down. See [Installing PostgreSQL](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/#installing-postgresql-optional) to set one up, including the role to create.
+- **Your WHPG cluster's own Postgres server.** Set `WEM_USER` and `WEM_PASSWORD` to the same values as `WHPG_USER` and `WHPG_PASSWORD`, already a superuser on that cluster (see [Target cluster](#target-cluster)). This choice hides the [Cluster Management panel](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/monitoring/cluster-overview/) (**Start**, **Stop**, **Restart**, and **Recover Segments**), since stopping that cluster would take WEM's own database down with it mid-operation.
+
+```ini
+WEM_HOST=wem-db-hostname
+WEM_PORT=5432
+WEM_DATABASE=wem
+WEM_USER=wem_admin
+WEM_PASSWORD=<your-password>
+```
+
+Leaving `WEM_HOST` unset doesn't fall back to `WHPG_HOST`. It defaults to `localhost`, so leave it unset only when a Postgres instance for this database is reachable at `localhost` from the WEM host.
+
+WEM creates the `WEM_DATABASE` database on first start if it doesn't already exist, but it doesn't create the role, `WEM_USER` must already exist.
+
+Avoid pointing `WEM_DATABASE` at the monitored database, `WHPG_DATABASE`, even when reusing the WHPG cluster's server. That choice still leaves WEM dependent on the same cluster's availability, and hides the **Cluster Management** panel for the same reason.
+
+### WEM portal access
+
+By default, the WEM web portal listens on port 8080. To use a different port, set the `PORT` parameter. For example:
+
+```ini
+PORT=8082
+```
+
+### Session security
+
+To start, WEM requires `WEM_COOKIE_SECRET` to be set. It returns an error with setup instructions if it's missing.
+
+- Generate a unique 32-byte key using `openssl rand -base64 32` and set it as the `WEM_COOKIE_SECRET`.
+- If you aren't using HTTPS, you must also set `WEM_INSECURE_COOKIES` to `1`.
+
+```ini
+WEM_COOKIE_SECRET=your-generated-secret-key
+WEM_INSECURE_COOKIES=1
+```
+
+### Setting the administrator password
+
+Before initializing WEM, you must establish the initial administrative credentials. The initial administrator username is always `admin`, it isn't configurable. Choose one of the following methods to set its password:
+
+- **Interactive setup:** Skip editing the configuration file and provide the password directly when running `wem setup` in the following section.
+
+- **Static configuration:** Define the password in the WEM configuration file. This parameter is auto-generated if empty at install.
+
+  ```ini
+  WEM_ADMIN_PASSWORD=your-secure-password
+  ```
+
+- **File-based configuration:** For enhanced security in automated deployments, point WEM to an external password file.
+
+  1. Create a file containing your password:
+
+     ```bash
+     echo "your-secure-password" > /etc/edb/wem/admin.pw
+     ```
+
+  2. Manually add the following parameter to the WEM configuration file:
+
+     ```ini
+     WEM_ADMIN_PASSWORD_FILE=/etc/edb/wem/admin.pw
+     ```
+
+> **Note**
+>
+> After you initialize the WEM portal and log in for the first time, perform all user management, such as adding users and modifying roles, through the WEM interface.
+
+## Initializing WEM
+
+Enable and start the WEM service. On first start, WEM automatically initializes the monitoring schema in your WHPG database:
+
+```bash
+sudo systemctl enable --now wem
+```
+
+If setup fails, the service stays in `activating (auto-restart)`. The most common causes are WHPG being unreachable or an incorrect `WHPG_PASSWORD`. Tail the log to diagnose:
+
+```bash
+sudo tail -f /var/log/edb/wem/wem.log
+```
+
+For manual troubleshooting, run `wem setup` with your connection details passed as flags. The command doesn't read `wem.conf`. Run it as the `wem` service user, and add `--check --debug` to test the connection and print verbose SQL and connection output without making changes. For example:
+
+```bash
+sudo -u wem /usr/edb/wem/bin/wem setup --host whpg-coordinator-host --port 5432 --user gpadmin --password postgres --database postgres --check --debug
+```
+
+See [wem setup](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/#wem-setup) for available flags.
+
+## Verifying the installation
+
+Verify that the service is active:
+
+```bash
+sudo systemctl status wem
+```
+
+Use the following diagnostic tools to ensure all components are communicating correctly and the environment is healthy.
+
+- Validate your configuration settings:
+
+  ```bash
+  wem setup --verify
+  ```
+
+  See [wem setup command reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/#wem-setup) for details.
+
+- Perform a comprehensive check for configuration errors, missing dependencies, or connectivity issues:
+
+  ```bash
+  wem doctor
+  ```
+
+  See [wem doctor command reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/#wem-doctor) for details.
+
+> **Note: Post-installation changes:**
+>
+> To modify your environment after the initial setup, see [Configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/configuring/).
+
+## Logging in to WEM
+
+Open WEM in your browser at your server's address and port, for example `http://your-wem-host:8080`, and log in as `admin`, using the password from whichever method you chose in [Setting the administrator password](#setting-the-administrator-password):
+
+- **Interactive setup:** the password you entered when prompted by `wem setup`.
+- **Static configuration:** the value you set for `WEM_ADMIN_PASSWORD`. If you left it empty, WEM generates one and writes it back into `wem.conf`, open the file to retrieve it.
+- **File-based configuration:** the password stored in the file `WEM_ADMIN_PASSWORD_FILE` points to.
+
+See [Getting started with WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/get-started/) for a tour of the interface.
+
+## Next steps
+
+Continue to [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

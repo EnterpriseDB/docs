@@ -1,0 +1,265 @@
+---
+title: Deploy Agent Factory with Hybrid Manager UI
+description: Step-by-step instructions for deploying NVIDIA NIM model clusters through the Hybrid Manager web interface.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/deploy-with-hm-ui/
+lastModified: 2026-11-20T19:53:06+05:30
+---
+
+# Deploy Agent Factory with Hybrid Manager UI
+
+## Overview
+
+This guide provides deployment procedures for Agent Factory components through the Hybrid Manager (HM) web interface.
+The deployment process covers GPU infrastructure setup, and NVIDIA NIM model deployment.
+
+## Prerequisites
+
+### Infrastructure Requirements
+
+Before deploying Agent Factory components:
+
+- Kubernetes cluster with GPU nodes configured
+- NVIDIA GPU operator installed
+- Access to NVIDIA NGC registry or private registry
+- Object storage for model profiles (air-gapped deployments)
+
+### GPU Node Configuration
+
+Verify GPU nodes meet NIM requirements — see [GPU recommendations](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/gpu-recommended/).
+
+## Step 1: Configure Registry Authentication
+
+### Internet-Connected Deployments
+
+For clusters with internet access, configure NVIDIA NGC authentication:
+
+1. Obtain NGC API key from [NVIDIA NGC Portal](https://docs.nvidia.com/ngc/gpu-cloud/ngc-user-guide/index.html#ngc-api-keys)
+
+2. Create authentication secrets via HM UI:
+
+   - Navigate to **Project Settings** > **Secrets**.
+
+   - Create `nvidia-nim-secrets` with NGC\_API\_KEY.
+
+   - Create `ngc-cred` Docker registry secret.
+
+Alternatively, use kubectl:
+
+```bash
+NGC_API_KEY=<your-ngc-api-key>
+
+# Create runtime secret
+kubectl -n edb-system create secret generic nvidia-nim-secrets \
+    --from-literal=NGC_API_KEY=${NGC_API_KEY}
+
+kubectl -n edb-system annotate secret nvidia-nim-secrets \
+    replicator.v1.mittwald.de/replicate-to='m-.*'
+
+# Create image pull secret
+kubectl -n edb-system create secret docker-registry ngc-cred \
+    --docker-server=nvcr.io \
+    --docker-username='$oauthtoken' \
+    --docker-password=${NGC_API_KEY}
+
+kubectl -n edb-system annotate secret ngc-cred \
+    replicator.v1.mittwald.de/replicate-to='m-.*'
+```
+
+### Air-Gapped Deployments
+
+For environments without internet access:
+
+1. **Mirror NIM Images**: Copy required images to private registry using skopeo.
+2. **Update Model URLs**: Configure HM to reference private registry locations.
+3. **Cache Profiles**: Download and store model profiles in object storage.
+4. **Configure Storage Path**: Reference cached profiles during model deployment.
+
+See [Air-Gapped Configuration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/prerequisites/#air-gapped-deployments) for detailed procedures.
+
+## Step 2: Access Model Library
+
+Navigate to the Model Library interface:
+
+1. Log into Hybrid Manager console.
+2. Select your project from the project selector.
+3. Navigate to **Agent Factory** → **Model Library**.
+
+The Model Library displays available NVIDIA NIM models:
+
+- **llama-3.3-nemotron-super-49b-v1**: Advanced reasoning and chat capabilities (128K context)
+- **llama-3.2-nemoretriever-300m-embed-v1**: High-quality text embeddings
+- **llama-3.2-nv-rerankqa-1b-v2**: Multilingual query-document reranking
+- **paddleocr**: Ultra-lightweight OCR system
+- **nvclip**: Multimodal embeddings for image and text
+
+## Step 3: Deploy Model Server Cluster
+
+### Select Model for Deployment
+
+1. Click **Deploy Model** in Model Library.
+2. Select target model from available options.
+3. Review model requirements and documentation links.
+
+### Configuring Deployment Parameters
+
+Configure the model server cluster settings:
+
+**Instance Configuration**
+
+- **Server Instances**: Default 1 (increase for high availability)
+- **Minimum Instances**: 1 (0 for scale-to-zero when supported)
+- **Maximum Instances**: Based on load requirements
+
+**Resource Allocation**
+
+- **Memory**: Configure based on model requirements
+- Text completion models: 64-128 GB
+- Embedding models: 32-64 GB
+- **CPU**: Default values typically sufficient
+- **GPU**: Match documented requirements
+- llama-3.3-nemotron: 4 GPUs
+- Other models: 1 GPU typical
+
+**Scaling Configuration**
+
+- **Concurrent Request Threshold**: Configure autoscaling trigger
+- **Scale to Zero**: Enable when supported (may be unavailable in initial release)
+
+### Deploy Model
+
+1. Review configuration summary.
+2. Click **Deploy** to initiate deployment.
+3. Monitor deployment status in Model Server Clusters view.
+
+Deployment creates:
+
+- KServe InferenceService resource.
+- Predictor pods with configured resources.
+- Service endpoints for model access.
+
+## Step 4: Monitor Deployment Status
+
+### View Model Server Clusters
+
+Navigate to **Agent Factory** → **Model Server Clusters** to view:
+
+- Cluster display name
+- Load balancer ingress URI
+- Deployment status (Active/Healthy, Pending, Failed)
+- Model details and tags
+- Resource utilization metrics
+
+### Access Cluster Details
+
+Click on a cluster name to view:
+
+- Detailed configuration parameters
+- Real-time health metrics
+- Grafana dashboard integration
+- Inference latency charts
+- System health indicators
+
+## Step 5: Configure API Access
+
+### Generate API Tokens
+
+For external access to deployed models:
+
+1. Navigate to **Agent Factory** → **API Token Management**
+2. Click **Create Token**
+3. Provide token reference name
+4. Store generated token securely
+
+API tokens enable:
+
+- RAG application authentication
+- External service integration
+- Programmatic model access
+
+### Access Endpoints
+
+Models expose OpenAI-compatible endpoints:
+
+**Internal Access** (within cluster):
+
+```
+http://<service-name>.<namespace>.svc.cluster.local/v1/chat/completions
+```
+
+**External Access** (with ingress):
+
+```
+https://<ingress-url>/v1/chat/completions
+```
+
+## Step 6: Update and Manage Models
+
+### Edit Model Server Cluster
+
+To modify running clusters:
+
+1. Navigate to **Model Server Clusters**
+2. Select cluster to edit
+3. Adjust parameters:
+
+- Instance counts
+- Resource allocations
+- Scaling thresholds
+
+1. Apply changes (triggers rolling update)
+
+### Rolling Updates
+
+Updates maintain availability through:
+
+- Connection draining before restart
+- Health verification between instances
+- Automatic rollback on failure
+
+## High availability for model server clusters
+
+To change the number of running instances for a model server cluster, go to **Estate** → **InferenceServices** → select the inference service → **Edit** → **Inference Service Instances**.
+
+## Troubleshooting
+
+### Common Deployment Issues
+
+**Model Fails to Start**
+
+- Verify GPU availability matches requirements
+- Check registry authentication secrets
+- Review pod events and logs
+
+**High Inference Latency**
+
+- Adjust batch size parameters
+- Increase GPU allocation
+- Scale replicas for load distribution
+
+**API Token Issues**
+
+- Verify token hasn't expired
+- Check network policies
+- Confirm ingress configuration
+
+For detailed diagnostics, see [Troubleshooting Guide](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/troubleshooting/).
+
+## Additional Resources
+
+**Reference Documentation**
+
+- [GPU Setup Guide](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/setup-gpu/)
+- [Create InferenceService](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/create-inferenceservice/)
+- [Model Serving Concepts](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/model-serving-concepts/)
+
+**NVIDIA Model Documentation**
+
+- [Llama 3.3 Nemotron](https://build.nvidia.com/nvidia/llama-3_3-nemotron-super-49b-v1/modelcard)
+- [Arctic Embed](https://build.nvidia.com/snowflake/arctic-embed-l/modelcard)
+- [NV-ReRankQA](https://build.nvidia.com/nvidia/llama-3_2-nv-rerankqa-1b-v2/modelcard)
+- [PaddleOCR](https://build.nvidia.com/baidu/paddleocr/modelcard)
+- [NV-CLIP](https://build.nvidia.com/nvidia/nvclip/modelcard)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

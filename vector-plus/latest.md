@@ -1,0 +1,56 @@
+---
+title: EDB Vector Plus
+description: EDB Vector Plus (edb_vectorplus) is a Postgres extension that adds the ivfplus vector index type, using hierarchical IVF clustering and RaBitQ quantization for faster, lower-footprint vector search at scale.
+product: EDB Vector Plus
+version: "0"
+url: https://www.enterprisedb.com/docs/vector-plus/latest/
+lastModified: 2026-11-04T13:59:00+05:30
+---
+
+# EDB Vector Plus
+
+EDB Vector Plus (`edb_vectorplus`) is a Postgres extension that provides a new vector index type, `ivfplus`. It implements hierarchical Inverted File (IVF) clustering and RaBitQ quantization for vector search, the same general approach used by leading standalone vector databases (for example, Turbopuffer's ANN v3).
+
+Vector Plus coexists with [pgvector](https://www.enterprisedb.com/docs/pg_extensions/pgvector/) — it uses the same `vector` type and requires pgvector 0.7.0 or newer as a dependency — but delivers higher query throughput and lower latency with a reduced CPU and memory footprint, particularly at large row counts where pgvector's `ivfflat` index becomes prohibitively slow.
+
+It's packaged and distributed through EDB's own repositories, the same distribution model as other proprietary EDB extensions like [AIDB](https://www.enterprisedb.com/docs/aidb/latest/).
+
+## Names at a glance
+
+| Description         | Name                        |
+| ------------------- | --------------------------- |
+| SQL extension       | `edb_vectorplus`            |
+| Index access method | `ivfplus`                   |
+| Required extension  | `vector` (pgvector) ≥ 0.7.0 |
+
+## Requirements
+
+EDB Vector Plus is supported on Postgres 14 through 18 and requires pgvector (`vector`) 0.7.0 or newer. EDB packages are available for this range. See [Supported versions and platforms](https://www.enterprisedb.com/docs/vector-plus/latest/overview/supported-platforms/).
+
+## Where to start
+
+1. [Overview](https://www.enterprisedb.com/docs/vector-plus/latest/overview/) — What Vector Plus is, how the index works, and known limitations.
+2. [Install](https://www.enterprisedb.com/docs/vector-plus/latest/install/) — Set up the EDB repository and install the `edb_vectorplus` package.
+3. [Quickstart](https://www.enterprisedb.com/docs/vector-plus/latest/overview/quickstart/) — Build your first `ivfplus` index and run a query end to end.
+4. [Using](https://www.enterprisedb.com/docs/vector-plus/latest/using/) — Storing and querying vectors, tuning `lists` and `probes`, filtering and hybrid search, and measuring recall.
+5. [Troubleshooting](https://www.enterprisedb.com/docs/vector-plus/latest/troubleshooting/) — Common questions and problems.
+6. [Reference](https://www.enterprisedb.com/docs/vector-plus/latest/reference/) — The full interface reference: operator classes, index options, session parameters, functions, and fixed limits.
+
+- [Release notes](https://www.enterprisedb.com/docs/vector-plus/latest/release-notes/): EDB Vector Plus (edb\_vectorplus) is EDB's Postgres extension that adds the ivfplus vector index type, using hierarchical IVF clustering and RaBitQ quantization for faster, lower-footprint vector search at scale. These release notes provide information on what is new in each release.
+  - [Version 0.0.4](https://www.enterprisedb.com/docs/vector-plus/latest/release-notes/vectorplus_0.0.4_rel_notes/)
+- [Overview](https://www.enterprisedb.com/docs/vector-plus/latest/overview/): Supported versions and platforms, how the ivfplus index type works, a quickstart to build your first index, and its currently known limitations.
+  - [Supported versions and platforms](https://www.enterprisedb.com/docs/vector-plus/latest/overview/supported-platforms/)
+  - [Quickstart](https://www.enterprisedb.com/docs/vector-plus/latest/overview/quickstart/)
+  - [Architecture](https://www.enterprisedb.com/docs/vector-plus/latest/overview/architecture/)
+- [Installing](https://www.enterprisedb.com/docs/vector-plus/latest/install/): Learn how to install EDB Vector Plus from an EDB repository.
+  - [Installing](https://www.enterprisedb.com/docs/vector-plus/latest/install/installing/)
+  - [Configuring](https://www.enterprisedb.com/docs/vector-plus/latest/install/configuring/)
+- [Using](https://www.enterprisedb.com/docs/vector-plus/latest/using/): How to store and query vector data with ivfplus, decide when to build an index, and where to go for tuning, filtering, and recall guidance.
+  - [Storing and querying](https://www.enterprisedb.com/docs/vector-plus/latest/using/storing-and-querying/)
+  - [Filtering and hybrid search](https://www.enterprisedb.com/docs/vector-plus/latest/using/filtering/)
+  - [Tuning and sizing](https://www.enterprisedb.com/docs/vector-plus/latest/using/tuning/)
+  - [Measuring recall](https://www.enterprisedb.com/docs/vector-plus/latest/using/measuring-recall/)
+- [Troubleshooting](https://www.enterprisedb.com/docs/vector-plus/latest/troubleshooting/): Diagnose common ivfplus problems, including dimension limits, index scans, recall, performance, and write behavior.
+- [Reference](https://www.enterprisedb.com/docs/vector-plus/latest/reference/): Full interface reference for the ivfplus access method, operator classes, index options, session parameters, functions, and fixed limits.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

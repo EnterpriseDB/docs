@@ -1,0 +1,104 @@
+---
+title: Controlling logging
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/09_controlling_logging/
+lastModified: 2025-09-30T15:16:18+05:30
+---
+
+# Controlling logging
+
+<div id="controlling_logging" class="registered_link"></div>
+
+Failover Manager writes and stores one log file per agent in `/var/log/efm-<version>/`.
+
+You can control the level of detail written to the agent log by modifying the `jgroups.loglevel`, `efm.loglevel`, and `jdbc.loglevel` parameters in the [cluster properties file](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#loglevel):
+
+```ini
+# Logging levels for JGroups and EFM.
+# Valid values are: TRACE, DEBUG, INFO, WARN, ERROR
+# Default value: INFO
+# It is not necessary to increase these values unless debugging a specific
+# issue. If nodes are not discovering each other at startup, increasing
+# the jgroups level to DEBUG will show information about the TCP connection
+# attempts that may help diagnose the connection failures.
+# If there are issues with creating database connections, increasing
+# the jdbc.loglevel level will show more information.
+# TRACE level logging should be used for diagnosing problems only.
+# It is not supported for production use.
+jgroups.loglevel=INFO
+efm.loglevel=INFO
+jdbc.loglevel=INFO
+```
+
+The logging facilities use the Java logging library and logging levels. The log levels, in order from most logging output to least, are:
+
+- `TRACE`
+- `DEBUG`
+- `INFO`
+- `WARN`
+- `ERROR`
+
+For example, if you set the `efm.loglevel` parameter to `WARN`, Failover Manager only logs messages at the `WARN` level and above, that is, `WARN` and `ERROR`.
+
+> **Important**
+>
+> TRACE level logging should only be used when diagnosing specific problems. It causes more work for the Failover Manager agent and the behavior with this level of logging is not defined. It is not supported for production use.
+
+By default, Failover Manager log files are rotated daily, compressed, and stored for a week. You can modify the file rotation schedule by changing settings in the log rotation file (`/etc/logrotate.d/efm-5.<x>`). For more information about modifying the log rotation schedule, consult the logrotate man page:
+
+```shell
+$ man logrotate
+```
+
+<div id="enabling_syslog" class="registered_link"></div>
+
+## Enabling syslog log file entries
+
+Failover Manager supports syslog logging. To implement syslog logging, you must configure syslog to allow UDP or TCP connections.
+
+To allow a connection to syslog, edit the `/etc/rsyslog.conf` file and uncomment the protocol you want to use. Also make sure that the `UDPServerRun` or `TCPServerRun` entry associated with the protocol includes the port number to which log entries are sent. For example, the following configuration file entries enable UDP connections to port 514:
+
+```shell
+# Provides UDP syslog reception
+$ModLoad imudp
+$UDPServerRun 514
+```
+
+The following configuration file entries enable TCP connections to port 514:
+
+```shell
+# Provides TCP syslog reception
+$ModLoad imtcp
+$InputTCPServerRun 514
+```
+
+After modifying the syslog configuration file, restart the `rsyslog` service to enable the connections:
+
+> `systemctl restart rsyslog.service`
+
+After modifying the `rsyslog.conf` file on the Failover Manager host, modify the Failover Manager properties to enable logging. Use your choice of editor to [modify the properties file](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#logtype_enabled) `/etc/edb/efm-5.<x>/efm.properties.in`, specifying the type of logging that you want to implement:
+
+```ini
+# Which logging is enabled.
+file.log.enabled=true
+syslog.enabled=false
+```
+
+You must also [specify syslog details](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#syslog_logging) for your system. Use the `syslog.protocol` parameter to specify the protocol type (UDP or TCP) and the `syslog.port` parameter to specify the listener port of the syslog host. You can use the `syslog.facility` value as an identifier for the process that created the entry. Use a value between `LOCAL0` and `LOCAL7`.
+
+```ini
+# Syslog information. The syslog service must be listening # on the
+ port for the given protocol, which can be UDP or
+# TCP. The facilities supported are LOCAL0 through LOCAL7.
+# syslog.host=localhost
+syslog.port=514
+syslog.protocol=UDP
+syslog.facility=LOCAL1
+```
+
+For more information about syslog, see the syslog man page:
+
+`man syslog`
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

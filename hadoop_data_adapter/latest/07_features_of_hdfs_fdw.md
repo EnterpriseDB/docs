@@ -1,0 +1,55 @@
+---
+title: Key features
+product: Hadoop Data Adapter
+version: "2"
+url: https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/07_features_of_hdfs_fdw/
+lastModified: 2023-01-06T06:31:42-05:00
+---
+
+# Key features
+
+These are the key features of the Hadoop Foreign Data Wrapper.
+
+## WHERE clause pushdown
+
+Hadoop Foreign Data Wrappper allows the pushdown of `WHERE` clauses to the foreign server for execution. This feature optimizes remote queries to reduce the number of rows transferred from foreign servers.
+
+## Column pushdown
+
+Hadoop Foreign Data Wrapper supports column pushdown. As a result, the query brings back only those columns that are a part of the select target list.
+
+## Join pushdown
+
+Hadoop Foreign Data Wrapper supports join pushdown. It pushes the joins between the foreign tables of the same remote Hive or Spark server to the remote Hive or Spark server, enhancing the performance.
+
+From version 2.3.0 and later, you can enable the join pushdown at session and query level using the `enable_join_pushdown` GUC variable.
+
+For more information, see [Example: Join pushdown](https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/10a_example_join_pushdown/).
+
+## Aggregate pushdown
+
+Hadoop Foreign Data Wrapper supports aggregate pushdown. It pushes the aggregates to the remote Hive or Spark server instead of fetching all of the rows and aggregating them locally. This gives a very good performance boost for the cases where aggregates can be pushed down. The pushdown is currently limited to aggregate functions min, max, sum, avg, and count, to avoid pushing down the functions that are not present on the Hadoop server. Also, aggregate filters and orders are not pushed down.
+
+For more information, see [Example: Aggregate pushdown](https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/10b_example_aggregate_pushdown/).
+
+## ORDER BY pushdown
+
+Hadoop Foreign Data Wrapper supports order by pushdown. If possible, push the `ORDER BY` clause to the remote server. This approach provides the ordered result set from the foreign server, which can help to enable an efficient merge join.
+
+For more information, see [Example: ORDER BY pushdown](https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/10c_example_order_by_pushdown/)
+
+## LIMIT OFFSET pushdown
+
+Hadoop Foreign Data Wrapper supports limit offset pushdown. Wherever possible, perform LIMIT and OFFSET operations on the remote server. This reduces network traffic between local Postgres and remote HDFS/Hive servers. ALL/NULL options aren't supported on the Hive server, which means they are not pushed down. Also, OFFSET without LIMIT isn't supported on the remote server. Queries having that construct are not pushed.
+
+For more information, see [Example: LIMIT OFFSET pushdown](https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/10d_example_limit_offset_pushdown/)
+
+## Automated cleanup
+
+Hadoop Foreign Data Wrappper allows the cleanup of foreign tables in a single operation using the `DROP EXTENSION` command. This feature is specifically useful when a foreign table is set for a temporary purpose. The syntax is:
+
+`DROP EXTENSION hdfs_fdw CASCADE;`
+
+For more information, see [DROP EXTENSION](https://www.postgresql.org/docs/current/sql-dropextension.html).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

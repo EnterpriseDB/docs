@@ -1,0 +1,123 @@
+---
+title: PostgreSQL Application Compatibility
+product: WarehousePG
+version: 6.27.6
+url: https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/managing/access_db/jdbc-and-odbc-differences/
+lastModified: 2026-11-25T18:58:49Z
+---
+
+# PostgreSQL Application Compatibility
+
+Account for the distributed nature of WarehousePG when you connect PostgreSQL clients and drivers, such as pgJDBC and psqlODBC, to it. As a massively parallel processing (MPP) system, WarehousePG changes the behavior of some PostgreSQL features and doesn't support others. Each difference has a workaround. For complete SQL support, see [Summary of WarehousePG Features](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/misc/feature_summary/). For connection details, see [Using JDBC and ODBC Drivers](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/managing/access_db/using-jdbc-and-odbc-drivers/).
+
+These differences also apply to the EDB JDBC and ODBC connectors, specifically EDB JDBC 42.7.3.5 and EDB ODBC 18.00.0001.01.
+
+## Queries and Results
+
+### Row Order
+
+Each segment returns its rows independently, so a query without an `ORDER BY` clause returns rows in no fixed order, and the order can change between runs. Add `ORDER BY` wherever the order matters. See [Ordering Results](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/managing/access_db/using-jdbc-and-odbc-drivers/#ordering-results).
+
+### Writable CTEs
+
+A data-modifying statement whose `WITH` clause is also data-modifying, such as `WITH x AS (INSERT ... RETURNING ...) INSERT ...`, fails with `writable CTE queries cannot be themselves writable`. Use a data-modifying `WITH` clause only under a `SELECT`, or run the statements separately. See [WITH Queries (Common Table Expressions)](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/query/CTE-query/).
+
+### Sequence Functions
+
+The `currval()` function fails with `currval() not supported`, and `lastval()` isn't supported either. A driver or application that reads a generated key with them fails. Use `INSERT ... RETURNING` instead. In JDBC, `getGeneratedKeys` works with it.
+
+### Error Details
+
+In releases earlier than WarehousePG 6.27.8, errors raised on a segment, which includes most constraint violations on `INSERT` and `UPDATE`, reach the driver without the schema, table, column, data type, and constraint name fields. For example, `getConstraint` on the JDBC `ServerErrorMessage` returns `null`. Upgrade to WarehousePG 6.27.8 or later, or read the error message text instead of the detail fields.
+
+### LIKE Patterns That End with the Escape Character
+
+A catalog lookup with a `LIKE` pattern that ends with the escape character, such as `getTables` with the pattern `a\` in JDBC, fails with `LIKE pattern must not end with escape character`. Don't end a pattern with the escape character.
+
+## Tables and Constraints
+
+### Multiple Unique Keys
+
+Creating a table fails when its `UNIQUE` or `PRIMARY KEY` constraints don't fit the distribution key. WarehousePG reports one of two errors:
+
+- `UNIQUE or PRIMARY KEY definitions are incompatible with each other` appears when the table has no `DISTRIBUTED BY` clause and has several constraints that have no column in common.
+- `UNIQUE constraint and DISTRIBUTED BY definitions are incompatible` appears when the table has a `DISTRIBUTED BY` clause and a constraint doesn't include all the distribution key columns.
+
+To avoid both errors, include all the distribution key columns in every `UNIQUE` and `PRIMARY KEY` constraint. For a table without a `DISTRIBUTED BY` clause, also give the constraints a column in common. See [Creating and Managing Tables](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/ddl/ddl-table/).
+
+### Foreign Keys
+
+WarehousePG accepts foreign key constraints but doesn't enforce them, so a row that violates the constraint is accepted. Enforce referential integrity in the application or in the load process.
+
+### Large Objects
+
+The large object APIs, such as `LargeObjectManager` in JDBC, fail with `large objects are not supported`. In ODBC, creating a large object fails with an error such as `Couldn't create (in-line) large object`. Store binary data in `bytea` columns and text in `text` columns instead.
+
+### Exclusion Constraints
+
+Creating a table with an exclusion constraint fails with `GPDB does not support exclusion constraints`. Use another constraint type, or use WarehousePG 7, which supports them.
+
+## Transactions
+
+### Isolation Level
+
+A transaction that requests `SERIALIZABLE` runs as `REPEATABLE READ`, and drivers report `REPEATABLE READ`. Don't rely on serializable behavior. See [Inserting, Updating, and Deleting Data](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/dml/).
+
+### Prepared Transactions and XA
+
+`PREPARE TRANSACTION` fails with `PREPARE TRANSACTION is not yet supported in Greenplum Database`, so `XADataSource` and other XA transaction managers can't use WarehousePG. Use local transactions instead.
+
+### Statement-Level Rollback
+
+Like PostgreSQL, WarehousePG doesn't support statement-level rollback. When a statement in a JDBC batch fails, WarehousePG rolls back the whole transaction. The `batchExecuteUpdateCounts` behavior of the EDB JDBC Connector needs the `edb_stmt_level_tx` configuration parameter, which exists only in [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/), so applications that come from EDB Postgres Advanced Server can't rely on it. Retry the whole transaction when a statement in a batch fails.
+
+## Cursors
+
+### Backward Cursor Scans
+
+Moving backward on a server-side cursor fails with `backward scan is not supported`. Read cursors forward only.
+
+### ODBC Keyset Cursors
+
+Some keyset-cursor operations fail with `function currtid2 is not supported by GPDB`. Avoid keyset-cursor operations.
+
+### Positioned and Bulk Updates and Deletes in ODBC
+
+ODBC positioned and bulk operations, which are `SQLSetPos` and `SQLBulkOperations` with the update or delete options, identify rows by their `ctid`. A `ctid` identifies a row only within one segment, so WarehousePG requires the `gp_segment_id` column alongside it.
+
+- Updates fail because WarehousePG rejects the statement with an error that says the `ctid` column is used without the necessary companion column `gp_segment_id`.
+- Deletes can remove more rows than requested because, when the ORCA optimizer plans the statement, WarehousePG doesn't reject it and the statement deletes the row with that `ctid` on every segment.
+
+A plain `UPDATE` statement that an application writes itself behaves like the delete. For example, when the ORCA optimizer plans `UPDATE t SET v = 0 WHERE ctid = '(0,1)'`, WarehousePG updates the row with that `ctid` on every segment. Identify rows by primary key instead of `ctid`.
+
+> **Tip: Important**
+>
+> Don't use `SQLSetPos` or `SQLBulkOperations` to delete rows in WarehousePG. In autocommit mode, which is the ODBC default, the extra rows are already deleted when the call reports an error.
+
+If an application can't avoid these calls, turn off ORCA for its sessions by adding `SET optimizer=off` to the connection settings, for example with the `ConnSettings` DSN option in psqlODBC. The Postgres-based planner then rejects the delete with an error and no rows are removed. Otherwise, run explicit `UPDATE` and `DELETE` statements with a `WHERE` clause on the primary key.
+
+### Refcursors and Resource Queues
+
+In releases earlier than WarehousePG 6.27.8, fetching from a refcursor that a `STABLE` function opens through a named portal, for example in JDBC with a fetch size, can fail with `duplicate portal id` and a resource queue error. The failed statements don't release their resource queue slots. When the role holds all the slots of its queue, every later statement by that role waits indefinitely.
+
+> **Tip: Important**
+>
+> On a release earlier than 6.27.8, declare such functions `VOLATILE`, or call them without a fetch size.
+
+## Server Features
+
+### System Catalog Updates
+
+`INSERT`, `UPDATE`, and `DELETE` statements on system catalog tables are rejected unless the `allow_system_table_mods` configuration parameter is set. Use DDL commands to change database objects instead.
+
+### Replication
+
+The replication API of the driver doesn't work. Logical replication, which includes publications, subscriptions, and logical decoding, isn't supported, and replication slots are reserved for the management tools. A slot that a client creates covers only the coordinator. Don't use the replication API of the driver.
+
+### Password Authentication
+
+WarehousePG 6 is based on PostgreSQL 9.4 and doesn't support SCRAM password authentication. Use the `md5` method in the `pg_hba.conf` entries for roles that connect through drivers. See [Allowing the Connection](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/managing/access_db/using-jdbc-and-odbc-drivers/#allowing-the-connection).
+
+**Parent topic:** [Accessing the Database](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/managing/access_db/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,172 @@
+---
+title: base_message
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/common/prompt_stack/messages/base_message/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# base\_message
+
+<span id="griptape.common.prompt_stack.messages.base_message.BaseMessage"></span>
+
+Bases:
+
+<span title="abc.ABC">ABC</span>,  [`SerializableMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/mixins/serializable_mixin/#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/prompt\_stack/messages/base\_message.py</code>
+
+</summary>
+
+```python
+@define
+class BaseMessage(ABC, SerializableMixin):
+    @define
+    class Usage(SerializableMixin):
+        input_tokens: Optional[float] = field(kw_only=True, default=None, metadata={"serializable": True})
+        output_tokens: Optional[float] = field(kw_only=True, default=None, metadata={"serializable": True})
+
+        @property
+        def total_tokens(self) -> float:
+            return (self.input_tokens or 0) + (self.output_tokens or 0)
+
+        def __add__(self, other: BaseMessage.Usage) -> BaseMessage.Usage:
+            return BaseMessage.Usage(
+                input_tokens=(self.input_tokens or 0) + (other.input_tokens or 0),
+                output_tokens=(self.output_tokens or 0) + (other.output_tokens or 0),
+            )
+
+    USER_ROLE = "user"
+    ASSISTANT_ROLE = "assistant"
+    SYSTEM_ROLE = "system"
+
+    content: list[Union[BaseMessageContent, BaseDeltaMessageContent]] = field(metadata={"serializable": True})
+    role: str = field(kw_only=True, metadata={"serializable": True})
+    usage: Usage = field(kw_only=True, default=Factory(lambda: BaseMessage.Usage()), metadata={"serializable": True})
+
+    def is_system(self) -> bool:
+        return self.role == self.SYSTEM_ROLE
+
+    def is_user(self) -> bool:
+        return self.role == self.USER_ROLE
+
+    def is_assistant(self) -> bool:
+        return self.role == self.ASSISTANT_ROLE
+```
+
+</details>
+
+- `ASSISTANT_ROLE = 'assistant'` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.ASSISTANT_ROLE"></span>
+
+- `SYSTEM_ROLE = 'system'` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.SYSTEM_ROLE"></span>
+
+- `USER_ROLE = 'user'` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.USER_ROLE"></span>
+
+- `content = field(metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.content"></span>
+
+- `role = field(kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.role"></span>
+
+- `usage = field(kw_only=True, default=Factory(lambda: BaseMessage.Usage()), metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.usage"></span>
+
+<span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.Usage"></span>
+
+### Usage
+
+Bases:
+[`SerializableMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/mixins/serializable_mixin/#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/prompt\_stack/messages/base\_message.py</code>
+
+</summary>
+
+```python
+@define
+class Usage(SerializableMixin):
+    input_tokens: Optional[float] = field(kw_only=True, default=None, metadata={"serializable": True})
+    output_tokens: Optional[float] = field(kw_only=True, default=None, metadata={"serializable": True})
+
+    @property
+    def total_tokens(self) -> float:
+        return (self.input_tokens or 0) + (self.output_tokens or 0)
+
+    def __add__(self, other: BaseMessage.Usage) -> BaseMessage.Usage:
+        return BaseMessage.Usage(
+            input_tokens=(self.input_tokens or 0) + (other.input_tokens or 0),
+            output_tokens=(self.output_tokens or 0) + (other.output_tokens or 0),
+        )
+```
+
+</details>
+
+- `input_tokens = field(kw_only=True, default=None, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.Usage.input_tokens"></span>
+
+- `output_tokens = field(kw_only=True, default=None, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.Usage.output_tokens"></span>
+
+- `total_tokens` <small>property</small>  <span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.Usage.total_tokens"></span>
+
+<span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.is_assistant"></span>
+
+### is\_assistant()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/prompt\_stack/messages/base\_message.py</code>
+
+</summary>
+
+```python
+def is_assistant(self) -> bool:
+    return self.role == self.ASSISTANT_ROLE
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.is_system"></span>
+
+### is\_system()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/prompt\_stack/messages/base\_message.py</code>
+
+</summary>
+
+```python
+def is_system(self) -> bool:
+    return self.role == self.SYSTEM_ROLE
+```
+
+</details>
+
+<span id="griptape.common.prompt_stack.messages.base_message.BaseMessage.is_user"></span>
+
+### is\_user()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/prompt\_stack/messages/base\_message.py</code>
+
+</summary>
+
+```python
+def is_user(self) -> bool:
+    return self.role == self.USER_ROLE
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

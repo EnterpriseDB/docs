@@ -1,0 +1,78 @@
+---
+title: Disabling filters on a subscription or non-MDN node (disablefilter)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/39_disable_filters_on_subscription_or_non_pdn_node/
+lastModified: 2023-05-15T12:05:20-04:00
+---
+
+# Disabling filters on a subscription or non-MDN node (disablefilter)
+
+<div id="disable_filters_on_subscription_or_non_pdn_node" class="registered_link"></div>
+
+The `disablefilter` command disables one or more filter rules on a single-master replication system subscription or on a multi-master replication system primary node other than the primary definition node.
+
+## Synopsis
+
+```shell
+-disablefilter
+  -repsvrfile pubsvrfile
+{ -subname subname | -dbid dbid }
+  -filterids filterid_1 [ filterid_2 ] ...
+```
+
+Disabling a filter rule prevents it from being applied to the specified target subscription or non-MDN node and thus doesn't filter the data during replication from the source table to the target table.
+
+See [Table filters](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/13_table_filters/#table_filters) for more information.
+
+Disable the filter rule as follows:
+
+**For SMR:** Use the `disablefilter` command or the Replication Server console (see [Enabling and disabling table filters on a subscription](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/05_managing_subscription/#enabling-and-disabling-table-filters-on-a-subscription)).
+
+**For MMR:** Use the `disablefilter` command or the Replication Server console (see [Enabling and disabling table filters on a primary node](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/07_enable_disable_table_filters/)).
+
+Disabling a filter rule doesn't remove its definition from the publication. The filter rule still exists and you can still enable it on target subscriptions or non-MDN nodes.
+
+To remove a filter rule so that it no longer exists, use the `removefilter` command (see [Removing a table filter from a publication](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/22_removing_tablefilters_to_publication/#removing_tablefilters_to_publication)) or the Replication Server console (see [Updating the set of available table filters in a publication](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/06_managing_publication/04_updating_table_filters_in_pub/#updating_table_filters_in_pub)).
+
+## Parameters
+
+`pubsvrfile`
+
+The file containing the publication server login information.
+
+`subname`
+
+**For SMR only:** The name of the subscription containing the tables on which to disable the filter rules.
+
+`dbid`
+
+**For MMR only:** The publication database ID of the non-MDN node containing the tables on which to disable the filter rules.
+
+`filterid_n`
+
+One or more filter IDs separated by space characters. These IDs identify the currently enabled table filters to disable in the SMR subscription specified by `subname` or in the MMR non-MDN node specified by `dbid`.
+
+## Examples
+
+This example disables a filter rule on a subscription of a single-master replication system.
+
+```shell
+$ java -jar edb-repcli.jar -disablefilter -repsvrfile ~/pubsvrfile.prop \
+>   -subname analysts_managers_sub \
+>   -filterids 47
+Disabling filters...
+Filter rule(s) updated successfully.
+```
+
+This example disables multiple filter rules on a primary node that isn't the primary definition node of a multi-master replication system.
+
+```shell
+$ java -jar edb-repcli.jar -disablefilter -repsvrfile ~/pubsvrfile.prop \
+>   -dbid 139 \
+>   -filterids 8 16
+Disabling filters...
+Filter rule(s) updated successfully.
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

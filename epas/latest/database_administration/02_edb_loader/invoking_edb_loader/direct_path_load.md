@@ -1,0 +1,59 @@
+---
+title: Running a direct path load
+description: Describes how to use EDB*Loader to write data directly to the database pages
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/database_administration/02_edb_loader/invoking_edb_loader/direct_path_load/
+lastModified: 2026-08-21T16:05:07+05:30
+---
+
+# Running a direct path load
+
+<div id="direct_path_load" class="registered_link"></div>
+
+During a direct path load, EDB\*Loader writes the data directly to the database pages, which is then synchronized to disk. The insert processing associated with a conventional path load is bypassed, resulting in performance improvement. Bypassing insert processing reduces the types of constraints on the target table. The types of constraints permitted on the target table of a direct path load are:
+
+- Primary key
+- Not null constraints
+- Indexes (unique or non-unique)
+
+## Restrictions
+
+The restrictions on the target table of a direct path load are:
+
+- Triggers aren't permitted.
+- Check constraints aren't permitted.
+- Foreign key constraints on the target table referencing another table aren't permitted.
+- Foreign key constraints on other tables referencing the target table aren't permitted.
+- You must not partition the table.
+- Rules can exist on the target table, but they aren't executed.
+
+> **Note**
+>
+> Currently, a direct path load in EDB\*Loader is more restrictive than in Oracle SQL\*Loader. The preceding restrictions don't apply to Oracle SQL\*Loader in most cases. The following restrictions apply to a control file used in a direct path load:
+>
+> - Multiple table loads aren't supported. You can specify only one `INTO TABLE` clause in the control file.
+> - You can't use SQL expressions in the data field definitions of the `INTO TABLE` clause.
+> - The `FREEZE` option isn't supported for direct path loading.
+
+> **Note**
+>
+> If transparent data encryption (TDE) is enabled, a direct path load isn't supported. Using the `DIRECT=TRUE` option returns the following error:
+>
+> ```
+> ERROR: direct load is not possible with data encryption enabled
+> ```
+
+## Running the direct path load
+
+To run a direct path load, add the `DIRECT=TRUE` option:
+
+```shell
+$ /usr/edb/as18/bin/edbldr -d edb USERID=enterprisedb/password
+CONTROL=emp.ctl DIRECT=TRUE
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
+
+Successfully loaded (4) records
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

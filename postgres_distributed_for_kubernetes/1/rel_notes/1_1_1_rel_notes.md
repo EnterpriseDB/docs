@@ -1,0 +1,46 @@
+---
+title: EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.1 release notes
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/rel_notes/1_1_1_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.1 release notes
+
+Released: 18 March 2025
+
+## Highlights
+
+- _New PGD Version Support:_ PGD version 5.7 is now supported
+- _New PG4K operator Version Support:_ PG4K operator v1.25.1 is now supported
+
+## Supported versions
+
+- Kubernetes: 1.32, 1.31, 1.30, and 1.29
+- PostgreSQL: 17, 16, 15, 14, and 13
+- PG4K: v1.22.8, v1.22.8, v1.25.0, v1.25.1
+
+  Default PGD image: postgresql-pgd 17.4-5.7.0-1
+
+  Default PGD proxy image: edb-pgd-proxy 5.7.0-1
+
+This release of EDB Postgres® AI for CloudNativePG™ Global Cluster includes the following:
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Support PGD node physical join to local group</td><td>#745</td></tr>
+<tr><td>Support PGD node physical join to remote group</td><td>#805</td></tr>
+<tr><td>ImageCatalog support for PGD operators</td><td>#1026</td></tr>
+<tr><td>Improved detection to decide whether <code>writeLead</code> transfer is needed before patching the <code>writelead</code> node</td><td>#1040</td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Ensure 'bdr' can be added only once into PG additional libraries</td><td>#1085</td></tr>
+<tr><td>Share configuration file for pgd-proxy and pgd-cli in proxy pod</td><td>#1084</td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

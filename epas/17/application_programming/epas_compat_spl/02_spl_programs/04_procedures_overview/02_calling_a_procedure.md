@@ -1,0 +1,45 @@
+---
+title: Calling a procedure
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/application_programming/epas_compat_spl/02_spl_programs/04_procedures_overview/02_calling_a_procedure/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# Calling a procedure
+
+<div id="calling_a_procedure" class="registered_link"></div>
+
+You can invoke a procedure from another SPL program by specifying the procedure name followed by any parameters and a semicolon:
+
+```text
+<name> [ ([ <parameters> ]) ];
+```
+
+Where:
+
+`name` is the identifier of the procedure.
+
+`parameters` is a list of parameters.
+
+> **Note**
+>
+> - If there are no parameters to pass, you can call the procedure with an empty parameter list, or you can omit the parentheses.
+>
+> - The syntax for calling a procedure is the same as in the preceding syntax diagram when executing it with the `EXEC` command in PSQL or EDB\*Plus. See [SQL reference](https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_sql/63_exec/) for information about the `EXEC` command.
+
+This example calls the procedure from an anonymous block:
+
+```sql
+BEGIN
+   simple_procedure;
+END;
+
+That's all folks!
+```
+
+> **Note**
+>
+> Each application has its own way of calling a procedure. For example, a Java application uses the application programming interface JDBC.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

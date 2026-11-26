@@ -1,0 +1,283 @@
+---
+title: "EDB Postgres Enterprise Manager REST APIs v15.0: Include/Exclude Database Monitoring"
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v15/include-exclude-database-monitoring/
+lastModified: 2026-03-26T11:49:42+05:30
+---
+
+# EDB Postgres Enterprise Manager REST APIs v15.0: Include/Exclude Database Monitoring
+
+## `get__server_exclude_database_{sid}`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X GET https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid} \
+  -H 'Accept: application/json' \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json',
+  'X-Auth-Token': 'string'
+}
+
+r = requests.get('https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid}', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+
+const headers = {
+  'Accept':'application/json',
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid}',
+{
+  method: 'GET',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`GET /server/exclude_database/{sid}`
+
+_Retrieve information for the excluded databases, identified by the server id._
+
+<span id="get__server_exclude_database_{sid}-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type   | Required | Description            |
+| ------------ | ------ | ------ | -------- | ---------------------- |
+| sid          | path   | string | true     | Server ID              |
+| X-Auth-Token | header | string | true     | Token of authorization |
+
+**Example responses**
+
+<details>
+<summary>200 Response</summary>
+
+```json
+{
+  "server_id": 0,
+  "name": "string",
+  "exclude_databases": [
+    "string"
+  ]
+}
+```
+
+</details>
+
+<span id="get__server_exclude_database_{sid}-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description | Schema                                                                                                           |
+| ------ | ------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Status 200  | [ExcludeDatabases](https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v15/schemas/#tocs_excludedatabases) |
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+## `put__server_exclude_database_{sid}`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X PUT https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid} \
+  -H 'Content-Type: application/json' \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'X-Auth-Token': 'string'
+}
+
+r = requests.put('https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid}', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+const inputBody = '{
+  "exclude_databases": [
+    "string"
+  ]
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid}',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`PUT /server/exclude_database/{sid}`
+
+_Update the excluded database information._
+
+**Body parameter**
+
+```json
+{
+  "exclude_databases": [
+    "string"
+  ]
+}
+```
+
+<span id="put__server_exclude_database_{sid}-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type                                                                                                                           | Required | Description            |
+| ------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------ | -------- | ---------------------- |
+| sid          | path   | string                                                                                                                         | true     | Server ID              |
+| X-Auth-Token | header | string                                                                                                                         | true     | Token of authorization |
+| body         | body   | [ExcludeDatabasesPutData](https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v15/schemas/#tocs_excludedatabasesputdata) | true     | none                   |
+
+**Example responses**
+
+<span id="put__server_exclude_database_{sid}-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description                      | Schema |
+| ------ | ------------------------------------------------------- | -------------------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Email group updated successfully | None   |
+
+<span id="put__server_exclude_database_{sid}-responseschema"></span>
+
+### Response Schema
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+## `delete__server_exclude_database_{sid}`
+
+**Code samples**
+
+### cURL
+
+```shell
+# You can also use wget
+curl -X DELETE https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid} \
+  -H 'X-Auth-Token: string'
+
+```
+
+### Python
+
+```python
+import requests
+headers = {
+  'X-Auth-Token': 'string'
+}
+
+r = requests.delete('https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid}', headers = headers)
+
+print(r.json())
+
+```
+
+### JavaScript
+
+```javascript
+
+const headers = {
+  'X-Auth-Token':'string'
+};
+
+fetch('https://PEM-SERVER-IP/pem/api/v15/server/exclude_database/{sid}',
+{
+  method: 'DELETE',
+
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+`DELETE /server/exclude_database/{sid}`
+
+_Delete the excluded databases._
+
+<span id="delete__server_exclude_database_{sid}-parameters"></span>
+
+### Parameters
+
+| Name         | In     | Type   | Required | Description            |
+| ------------ | ------ | ------ | -------- | ---------------------- |
+| sid          | path   | string | true     | Server ID              |
+| X-Auth-Token | header | string | true     | Token of authorization |
+
+**Example responses**
+
+<span id="delete__server_exclude_database_{sid}-responses"></span>
+
+### Responses
+
+| Status | Meaning                                                 | Description                             | Schema |
+| ------ | ------------------------------------------------------- | --------------------------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Excluded databases deleted successfully | None   |
+
+<span id="delete__server_exclude_database_{sid}-responseschema"></span>
+
+### Response Schema
+
+> **Note: Info**
+>
+> This operation does not require authentication
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

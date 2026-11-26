@@ -1,0 +1,40 @@
+---
+title: EDB Advanced Storage Pack
+product: EDB Advanced Storage Pack
+url: https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/
+lastModified: 2025-04-22T14:39:17Z
+---
+
+# EDB Advanced Storage Pack
+
+EDB Advanced Storage Pack provides advanced storage options for Postgres databases in the form of table access method (TAM) extensions. These storage options can enhance the performance and reliability of databases without requiring application changes.
+
+For tables whose access patterns you know, you might prefer a targeted TAM that makes different tradeoffs. For instance, if a table has a specific usage pattern, you might consider using a specialized TAM that is designed to enhance that usage pattern.
+
+EnterpriseDB offers three TAMs in the Advanced Storage Pack.
+
+## Bluefin
+
+Bluefin is designed to provide data compaction and delta compression, which makes it particularly useful for storing time-series data, common in IoT and monitoring use cases. Delta compression is a way of storing data in the form of differences (deltas) between datasets between consecutive tuples. This reduces the amount of data that needs to be stored or transmitted, especially when there are small or constant changes between data tuples.
+
+In its design, UPDATE and DELETE operations aren't permitted. This design allows for a much smaller tuple header. It also allows for tuples to be stored as compressed deltas of other tuples and eagerly freezing of pages as soon as the page is full. The result is that Bluefin tables accept only INSERTs, but they are able to reach a much higher density of tuples per page. This ability leads to faster reads on such append-only tables.
+
+Due to the lack of DELETE operations, Bluefin is best used together with table partitioning features. This combination allows older data to be pruned by dropping older, time-range-based, partitions.
+
+Bluefin is available only for database versions 15 and later, since it depends on features introduced in PostgreSQL 15.
+
+See [Bluefin example](https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/using/#bluefin-example) for an example use case.
+
+## Autocluster
+
+The Autocluster TAM provides faster access to clustered data by keeping track of the last inserted row for any value in a side table. You can then add new rows to the same data blocks as previous rows, keeping the data clustered. This approach reduces access time to related data. Autocluster keeps rows with the same key values clustered together so that an index scan for a specific key can find all the rows close together. The scan doesn't need to retrieve as many table pages to satisfy the query.
+
+See [Autocluster example](https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/using/#autocluster-example) for an example use case.
+
+## Refdata
+
+The Refdata TAM is optimized for mostly static data, which contains an occasional INSERT and very few DELETE and UPDATE commands. For database schemas that use foreign keys to reference data, this TAM can provide performance gains of 5-10% and increased scalability. Whenever anyone modifies a Refdata table, the modifying transaction takes a table-level ExclusiveLock, blocking out concurrent modifications by any other session as well as modifications to tables that reference the table.
+
+See [Refdata example](https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/using/#refdata-example) for an example use case.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

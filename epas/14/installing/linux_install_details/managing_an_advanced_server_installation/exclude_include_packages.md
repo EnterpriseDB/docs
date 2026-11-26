@@ -1,0 +1,108 @@
+---
+title: Excluding/Including the packages
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/installing/linux_install_details/managing_an_advanced_server_installation/exclude_include_packages/
+lastModified: 2025-05-02T21:40:38+05:30
+---
+
+# Excluding/Including the packages
+
+Different Linux distributions handle recommended or weak dependencies uniquely. This provides instructions on how to include or exclude these dependencies during package installation.
+
+Adjusting these settings allows for more control over package installations, which can be particularly useful for creating minimal environments or reducing unnecessary package bloat.
+
+## RHEL/Rocky Linux/AlmaLinux
+
+**Exclude Weak Dependencies Temporarily:**
+
+To prevent DNF from installing weak dependencies during a single operation:
+
+```bash
+dnf --setopt=install_weak_deps=False install <package-name>
+```
+
+**Exclude Weak Dependencies Permanently:**
+
+To disable the installation of weak dependencies system-wide:
+
+1. Open the DNF configuration file:
+
+   ```bash
+   sudo nano /etc/dnf/dnf.conf
+   ```
+
+2. Add the following line:
+
+   ```ini
+   install_weak_deps=False
+   ```
+
+This setting ensures that weak dependencies are not installed by default.
+
+## SLES
+
+**Exclude Recommended Packages Temporarily:**
+
+To install only the required packages without recommended ones:
+
+```bash
+zypper install --no-recommends <package-name>
+```
+
+**Include Recommended Packages Explicitly:**
+
+To ensure both required and recommended packages are installed:
+
+```bash
+zypper install --recommends <package-name>
+```
+
+**Configure Default Behavior:**
+
+To change the default behavior of Zypper regarding recommended packages:
+
+1. Edit the Zypper configuration file:
+
+   ```bash
+   sudo nano /etc/zypp/zypp.conf
+   ```
+
+2. Set the following option:
+
+   ```ini
+   solver.onlyRequires = true
+   ```
+
+This configuration ensures that only required packages are installed by default.
+
+## Debian/Ubuntu
+
+**Exclude Recommended Packages Temporarily:**
+
+To install a package without its recommended dependencies:
+
+```bash
+apt-get install --no-install-recommends <package-name>
+```
+
+**Set Default Behavior:**
+
+To prevent APT from installing recommended packages by default:
+
+1. Create a new configuration file:
+
+   ```bash
+   sudo nano /etc/apt/apt.conf.d/99norecommends
+   ```
+
+2. Add the following lines:
+
+   ```ini
+   APT::Install-Recommends "false";
+   APT::Install-Suggests "false";
+   ```
+
+This configuration disables the automatic installation of recommended and suggested packages.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

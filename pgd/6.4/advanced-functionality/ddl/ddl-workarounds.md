@@ -1,0 +1,43 @@
+---
+title: Workarounds for DDL restrictions
+product: EDB Postgres Distributed (PGD)
+version: 6.4.0
+url: https://www.enterprisedb.com/docs/pgd/6.4/advanced-functionality/ddl/ddl-workarounds/
+lastModified: 2026-08-21T09:22:11+02:00
+---
+
+# Workarounds for DDL restrictions
+
+You can work around some of the limitations of PGD DDL operation handling.
+Often splitting the operation into smaller changes can produce the desired
+result that either isn't allowed as a single statement or requires excessive
+locking.
+
+## Adding a CONSTRAINT
+
+You can add `CHECK` and `FOREIGN KEY` constraints without requiring a DML lock.
+This involves a two-step process:
+
+- `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID`
+- `ALTER TABLE ... VALIDATE CONSTRAINT`
+
+Execute these steps in two different transactions. Both of these
+steps take DDL lock only on the table and hence can be run even when one
+or more nodes are down. But to validate a constraint, PGD must
+ensure that:
+
+- All nodes in the cluster see the `ADD CONSTRAINT` command.
+- The node validating the constraint applied replication changes from all other nodes prior to
+  creating the NOT VALID constraint on those nodes.
+
+So even though the new mechanism doesn't need all nodes
+to be up while validating the constraint, it still requires that all
+nodes applied the `ALTER TABLE .. ADD CONSTRAINT ... NOT VALID`
+command and made enough progress. PGD waits for a consistent
+state to be reached before validating the constraint.
+
+The new facility requires the cluster to run with Raft protocol
+version 24 and later. If the Raft protocol isn't yet upgraded, the old
+mechanism is used, resulting in a DML lock request.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

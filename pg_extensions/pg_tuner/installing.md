@@ -1,0 +1,85 @@
+---
+title: Installing EDB Postgres Tuner
+product: EDB Postgres Tuner
+url: https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/installing/
+lastModified: 2026-02-06T16:21:57+05:30
+---
+
+# Installing EDB Postgres Tuner
+
+EDB Postgres Tuner is supported on the same platforms as the Postgres distribution you're using. Support for EDB Postgres Tuner starts with Postgres 11. For details, see:
+
+- [EDB Postgres Advanced Server Product Compatibility](https://www.enterprisedb.com/platform-compatibility#epas)
+
+- [PostgreSQL Product Compatibility](https://www.enterprisedb.com/resources/platform-compatibility#pg)
+
+- [EDB Postgres Extended Server Product Compatibility](https://www.enterprisedb.com/resources/platform-compatibility#epas_extended)
+
+## Prerequisites
+
+Before you begin the installation process:
+
+- Install Postgres. See:
+
+  - [Installing EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/installing/)
+
+  - [Installing PostgreSQL](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/)
+
+  - [Installing EDB Postgres Extended Server](https://www.enterprisedb.com/docs/pge/latest/installing/)
+
+- Set up the repository.
+
+  Setting up the repository is a one-time task. If you have already set up your repository, you don't need to perform this step.
+
+  To set up the repository, go to [EDB repositories](https://www.enterprisedb.com/repos-downloads) and follow the instructions provided there.
+
+## Install the package
+
+The syntax for the RPM package install command is:
+
+```shell
+sudo <package-manager> -y install edb-<postgres><postgres_version>-postgres-tuner<major_version>
+```
+
+The syntax for the Debian package install command is:
+
+```shell
+sudo <package-manager> -y install edb-<postgres><postgres_version>-postgres-tuner-<major_version>
+```
+
+Where:
+
+- `<package-manager>`is the package manager used with your operating system:
+
+  | Package manager | Operating system                 |
+  | --------------- | -------------------------------- |
+  | dnf             | RHEL 8/9 and derivatives         |
+  | yum             | RHEL 7 and derivatives, CentOS 7 |
+  | zypper          | SLES                             |
+  | apt-get         | Debian and derivatives           |
+
+- `<postgres>` is the distribution of Postgres you're using:
+
+  | Postgres distribution        | Value            |
+  | ---------------------------- | ---------------- |
+  | PostgreSQL                   | pg               |
+  | EDB Postgres Advanced Server | as               |
+  | EDB Postgres Extended        | postgresextended |
+
+- `<postgres_version>` is the version of Postgres you're using.
+
+- `<major_version>` is the major version of EDB Postgres Tuner you're installing.
+
+For example, to install EDB Postgres Tuner 1.0.0 for EDB Postgres Advanced Server 14 on a RHEL 8 platform:
+
+```shell
+sudo dnf -y install edb-as14-postgres-tuner1
+```
+
+To install EDB Postgres Tuner 1.0.0 for EDB Postgres Advanced Server 14 on a Debian 11 platform:
+
+```shell
+sudo apt-get -y install edb-as14-postgres-tuner-1
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,177 @@
+---
+title: Installing and upgrading whpg-cjk
+description: Install, register, preload, and upgrade the whpg-cjk extension for WarehousePG.
+product: Supported Open Source
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/additional/whpg-cjk/installing/
+lastModified: 2026-11-18T10:08:44Z
+---
+
+# Installing and upgrading whpg-cjk
+
+Install the whpg-cjk package on each host in your WarehousePG cluster, as it doesn't ship as part of the WarehousePG server package.
+
+## Supported platforms
+
+whpg-cjk is available for WarehousePG 7:
+
+| WarehousePG version | Architecture     | Operating systems |
+| ------------------- | ---------------- | ----------------- |
+| 7                   | x86\_64, ppc64le | RHEL 8, 9         |
+
+## Prerequisites
+
+The database where you register whpg-cjk must use UTF8 encoding.
+
+To check the encoding of your databases, run:
+
+```sql
+SELECT datname, pg_encoding_to_char(encoding) AS encoding FROM pg_database;
+```
+
+You can't change the encoding of an existing database. If your data is in a database that uses a different encoding, create a database with UTF8 encoding, and load the data into it:
+
+```sql
+CREATE DATABASE <database_name> ENCODING 'UTF8' TEMPLATE template0;
+```
+
+Where `<database_name>` is a name for the new database.
+
+## Installing the package
+
+Refer to [Downloading and installing an extension](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/additional/#downloading-and-installing-an-extension) for instructions on downloading the package and installing it on every host. The package name is `edb-whpg7-cjk`.
+
+## Registering whpg-cjk
+
+Create the extension in each database where you want to use it:
+
+```sql
+CREATE EXTENSION whpg_cjk;
+```
+
+The command adds the `korean`, `japanese`, and `chinese` text search configurations. See [Using whpg-cjk](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/additional/whpg-cjk/using/).
+
+## Verifying the installation
+
+Confirm that whpg-cjk is registered in the database:
+
+```sql
+\dx whpg_cjk
+```
+
+Confirm that the text search configurations exist. The query returns three rows:
+
+```sql
+SELECT cfgname FROM pg_ts_config WHERE cfgname IN ('korean', 'japanese', 'chinese');
+```
+
+```output title="Output"
+ cfgname
+----------
+ korean
+ japanese
+ chinese
+```
+
+## Preloading whpg-cjk
+
+Optionally, preload whpg-cjk to build the analyzers once at server start, instead of in each session. Without preloading, the first use of the Korean or Japanese analyzer in a session takes a few milliseconds, and the first use of the Chinese analyzer takes about 120 ms and uses about 50 MB of private memory per backend. To preload, load `whpg_cjk` as a shared library:
+
+1. Check for existing shared libraries:
+
+   ```bash
+   gpconfig -s shared_preload_libraries
+   ```
+
+2. Use the output of the previous command to enable the extension, along with any other shared libraries:
+
+   ```bash
+   gpconfig -c shared_preload_libraries -v '<other_libraries>, whpg_cjk'
+   ```
+
+   Where `<other_libraries>` is the list of libraries from the previous step.
+
+3. Restart WarehousePG:
+
+   ```bash
+   gpstop -ar
+   ```
+
+On restart, the server builds the analyzers for the languages listed in the `whpg_cjk.preload_languages` configuration parameter, which defaults to `korean, japanese, chinese`. Every backend on every segment inherits them, so the first-use delay and the per-backend memory copy disappear.
+
+## Upgrading whpg-cjk
+
+Upgrade whpg-cjk by installing the new package on every host, restarting the cluster, updating the extension in each database, and rebuilding the objects that depend on it. Don't drop and re-create the extension to upgrade, because dropping it cascades to the text search configurations and to every index built on them. Check the [release notes](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/additional/whpg-cjk/release_notes/) to find out whether a release changes how text is analyzed. If it does, rebuild those objects, as described in step 4, so that indexed text and queries are analyzed the same way.
+
+> **Note**
+>
+> Plan a maintenance window. From the restart until you finish rebuilding the dependent objects, new documents and queries are analyzed by the new version, while existing indexes still hold the old analysis.
+
+1. Upgrade the whpg-cjk package on every host in the cluster, including the coordinator and every segment host. Refer to [Upgrading an extension](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/additional/#upgrading-an-extension) for downloading and distributing the new package. The package name is `edb-whpg7-cjk`.
+
+2. Restart WarehousePG to load the new library:
+
+   ```bash
+   gpstop -ar
+   ```
+
+   The restart makes every process load the new library. A process that still runs the old library analyzes text with the old version, and `ALTER EXTENSION` fails if you run it from that process, with the error `could not find function "ts_cjk_headline"`.
+
+   If you didn't [preload whpg-cjk](#preloading-whpg-cjk), you can close every existing session instead, including the connections in connection pools.
+
+3. From a new session, update the extension in every database where you registered it:
+
+   ```sql
+   ALTER EXTENSION whpg_cjk UPDATE;
+   ```
+
+   > **Note**
+   >
+   > In whpg-cjk 1.1.0, the update switches the parsers to the new headline function, `ts_cjk_headline`, on the coordinator and on all segments. It also raises a `WARNING` that names the objects built with whpg-cjk:
+   >
+   > - Indexes
+   > - Generated columns
+   > - Column defaults
+   > - `CHECK` constraints
+   > - Materialized views
+   >
+   > The objects include those that use `cjk_normalize()`. The warning appears only if the database has such objects. A database with none completes the update without a warning.
+   >
+   > The warning doesn't list `tsvector` columns that triggers or your application fill. In a database that doesn't use UTF8, a second `WARNING` names the objects that depend on `cjk_normalize()`. Writes and `REINDEX` on those objects now fail. Move the data to a UTF8 database, or drop those objects.
+
+4. Rebuild the indexes, stored `tsvector` columns, and materialized views that are built with `to_tsvector` and a whpg-cjk configuration, and the objects that are built on `cjk_normalize()`. Configurations that you created with `PARSER = cjk_ko`, `cjk_ja`, or `cjk_zh`, and configurations that map a token type to a `cjk_template` dictionary, such as `cjk_japanese_stem` under the default parser, count as whpg-cjk configurations. For more information about stored `tsvector` columns, see [Indexing large tables](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/additional/whpg-cjk/using/#indexing-large-tables).
+
+   ```sql
+   REINDEX TABLE <table_name>;
+   UPDATE <table_name> SET <text_column> = <text_column>;
+   REFRESH MATERIALIZED VIEW <view_name>;
+   ```
+
+   Where:
+
+   - `<table_name>` is a table with an index, a generated column, or a trigger-filled `tsvector` column that depends on whpg-cjk. Run `REINDEX INDEX <index_name>` instead to rebuild only the indexes that the warning names.
+   - `<text_column>` is a text column that a `tsvector` column is built from. The `UPDATE` recomputes generated columns and runs `UPDATE` triggers. Your application must rewrite any column that it fills itself.
+   - `<view_name>` is a materialized view that the warning names.
+
+5. Revalidate the `CHECK` constraints that the warning names. WarehousePG doesn't check a valid `CHECK` constraint again, so the constraint keeps its old result. Look for rows that fail the constraint against the new analysis, then re-add the constraint and validate it in a transaction:
+
+   ```sql
+   SELECT count(*) FROM <table_name> WHERE NOT (<check_expression>);
+
+   BEGIN;
+   ALTER TABLE <table_name> DROP CONSTRAINT <constraint_name>,
+     ADD CONSTRAINT <constraint_name> CHECK (<check_expression>) NOT VALID;
+   ALTER TABLE <table_name> VALIDATE CONSTRAINT <constraint_name>;
+   COMMIT;
+   ```
+
+   Where:
+
+   - `<table_name>` is the table that has the constraint.
+   - `<check_expression>` is the expression of the constraint, for example `cjk_normalize(body) <> ''`.
+   - `<constraint_name>` is the name of the constraint.
+
+   If a row fails, `VALIDATE` raises an error and the transaction rolls back to the old constraint.
+
+   To re-add the constraint of a domain, use `ALTER DOMAIN ... DROP CONSTRAINT`, `ADD CONSTRAINT ... NOT VALID`, and `VALIDATE CONSTRAINT` the same way.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

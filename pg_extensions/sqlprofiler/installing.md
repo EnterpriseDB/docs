@@ -1,0 +1,109 @@
+---
+title: Installing SQL Profiler
+product: SQL Profiler
+url: https://www.enterprisedb.com/docs/pg_extensions/sqlprofiler/installing/
+lastModified: 2026-02-06T16:21:57+05:30
+---
+
+# Installing SQL Profiler
+
+You must install and enable the SQL Profiler extension on each server on which you want to use it. For example, if you have a host running PostgreSQL 14 and PostgreSQL 15, you must enable the extension on each server.
+
+SQL Profiler is supported on the same platforms as the Postgres distribution you're using. Support for the SQL Profiler extension starts with version 11 for PostgreSQL and EDB Postgres Advanced Server and version 13 for EDB Postgres Extended. See:
+
+- [EDB Postgres Advanced Server Product Compatibility](https://www.enterprisedb.com/platform-compatibility#epas)
+
+- [PostgreSQL Product Compatibility](https://www.enterprisedb.com/resources/platform-compatibility#pg)
+
+- [EDB Postgres Extended Server Product Compatibility](https://www.enterprisedb.com/resources/platform-compatibility#epas_extended)
+
+## Installing the package
+
+### Prerequisites
+
+Before you begin the installation process:
+
+- Install Postgres. See:
+
+  - [Installing EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/installing/)
+
+  - [Installing PostgreSQL](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/)
+
+  - [Installing EDB Postgres Extended Server](https://www.enterprisedb.com/docs/pge/latest/installing/)
+
+- Set up the repository.
+
+  Setting up the repository is a one-time task. If you have already set up your repository, you don't need to perform this step.
+
+  To set up the repository, go to [EDB repositories](https://www.enterprisedb.com/repos-downloads) and follow the instructions provided there.
+
+### Install the package
+
+The syntax to install SQL Profiler on EDB Postgres Advanced Server and EDB Postgres Extended is:
+
+```shell
+# For EDB Postgres Advanced Server:
+sudo <package-manager> -y install edb-as<postgres_version>-server-sqlprofiler
+
+# For EDB Postgres Extended:
+sudo <package-maanger> -y install edb-postgresextended<postgres_version>-sqlprofiler
+```
+
+Where:
+
+- `<package-manager>` is the package manager used with your operating system:
+
+  | Package manager | Operating system       |
+  | --------------- | ---------------------- |
+  | dnf             | RHEL 8 and derivatives |
+  | zypper          | SLES                   |
+  | apt-get         | Debian and derivatives |
+
+- `<postgres_version>` is the version of Postgres you're using.
+
+For example, to install the latest version of SQL Profiler for EDB Postgres Advanced Server 15 on a RHEL 8 platform:
+
+```shell
+sudo dnf -y install edb-as15-server-sqlprofiler
+```
+
+The syntax to install SQL Profiler on PostgreSQL is:
+
+```shell
+# For RHEL 8 and its derivatives:
+sudo dnf -y install sqlprofiler_<postgres_version>
+
+# For Debian/Ubuntu:
+sudo apt-get -y install postgresql-<postres_version>-sqlprofiler
+```
+
+Where `<postgres_version>` is the version of PostgreSQL you're using.
+
+## Enabling the extension
+
+To enable the extension:
+
+1. Edit the `postgresql.conf` file on the server you want to profile, modifying the `shared_preload_libraries` parameter:
+
+   ```ini
+   shared_preload_libraries = '$libdir/sql-profiler'
+   ```
+
+2. Restart the Postgres server.
+
+3. Create the SQL Profiler extension in your maintenance database with the following command:
+
+   ```sql
+   # Connect to your maintenance database using psql
+   psql -d postgres -U enterprisedb
+   # Create the extension
+   CREATE EXTENSION sql_profiler;
+   ```
+
+> **Note**
+>
+> If you are connected to the PEM server with the PEM client before configuring SQL Profiler, you must disconnect and reconnect with the server to enable SQL Profiler functionality.
+
+After enabling the extension, SQL Profiler is ready to use with all databases that reside on the server.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

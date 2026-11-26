@@ -1,0 +1,77 @@
+---
+title: Installing pgvector
+description: How to install the pgvector package on EDB Postgres Advanced Server, EDB Postgres Extended Server, and community PostgreSQL, including hardware considerations for vector workloads.
+product: pgvector
+url: https://www.enterprisedb.com/docs/pg_extensions/pgvector/installing/
+lastModified: 2026-07-24T10:16:30+05:30
+---
+
+# Installing pgvector
+
+## Prerequisites
+
+Before you begin the installation process:
+
+1. Install your flavor of Postgres if not already installed. See:
+
+   - [Installing PostgreSQL](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/)
+
+   - [Installing EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/installing/)
+
+   - [Installing EDB Postgres Extended Server](https://www.enterprisedb.com/docs/pge/latest/installing/)
+
+2. Set up the repository:
+
+   Setting up the repository is a one-time task. If you've already set up your repository, you don't need to perform this step.
+
+   To set up the repository, go to [EDB repositories](https://www.enterprisedb.com/repos-downloads) and follow the instructions provided there.
+
+## Hardware considerations for vector workloads
+
+`pgvector` stores and operates on floating-point vectors in memory during index builds and queries. For production vector workloads:
+
+- **Memory**: HNSW index builds are memory-intensive. Set `maintenance_work_mem` to at least 1 GB before building indexes on large datasets (for example, `SET maintenance_work_mem = '4GB'`). Ensure `shared_buffers` is sized appropriately for your workload. To halve memory usage, consider using the `halfvec` type instead of `vector` — half-precision vectors store each dimension in 2 bytes instead of 4 and are supported by both HNSW and IVFFlat indexes. See the [pgvector documentation](https://github.com/pgvector/pgvector/#half-precision-indexing) for details.
+
+- **Storage**: Vector columns consume significant disk space. A single 1536-dimension `vector` column (as used by OpenAI embeddings) requires approximately 6 KB per row, so a table with 1 million rows requires roughly 6 GB for the vector column alone.
+
+- **CPU**: Both HNSW and IVFFlat index scans are CPU-bound. CPUs with AVX-512 or AVX2 support benefit from hardware-accelerated distance calculations.
+
+## Installing the package
+
+### RHEL/Rocky Linux/AlmaLinux
+
+```bash
+sudo dnf -y install edb-<postgres><postgres_version>-pgvector0
+```
+
+### SLES
+
+```bash
+sudo zypper -y install edb-<postgres><postgres_version>-pgvector0
+```
+
+### Debian/Ubuntu
+
+```bash
+sudo apt-get -y install edb-<postgres><postgres_version>-pgvector-0
+```
+
+- `<postgres>` is the distribution of Postgres you're using:
+
+  | Postgres distribution        | Value            |
+  | ---------------------------- | ---------------- |
+  | PostgreSQL                   | pg               |
+  | EDB Postgres Advanced Server | as               |
+  | EDB Postgres Extended Server | postgresextended |
+
+- `<postgres_version>` is the version of Postgres you're using.
+
+For example, to install pgvector for EDB Postgres Advanced Server 16 on a RHEL 9 platform:
+
+```shell
+sudo dnf -y install edb-as16-pgvector0
+```
+
+After installing, see [Configuring pgvector](https://www.enterprisedb.com/docs/pg_extensions/pgvector/configure/) to enable the extension in your database.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

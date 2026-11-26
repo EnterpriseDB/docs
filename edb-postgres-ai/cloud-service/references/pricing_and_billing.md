@@ -1,0 +1,127 @@
+---
+title: Pricing and billing
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/references/pricing_and_billing/
+lastModified: 2025-07-18T15:54:31+02:00
+---
+
+# Pricing and billing
+
+The costs include database pricing for EDB Postgres AI Cloud Service and the associated costs from other providers. You can also view usage and metering information.
+
+Cloud Service calculates the estimated monthly price for your cluster and displays it at the bottom of the page while you're [creating a cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/getting_started/creating_cluster/creating_a_cluster/). This estimate includes database costs. If you're using Cloud Service's cloud account, it also includes infrastructure costs.
+
+## Database pricing
+
+Pricing is based on the number of virtual central processing units (vCPUs) provisioned for the database software offering. Consumption of vCPUs is metered hourly.
+
+### Single-node and primary/standby high-availability pricing
+
+When primary/standby high-availability configurations are enabled, to calculate the full price for all resources used, multiply the number of vCPUs per instance by the number of replicas configured.
+
+This table shows the cost breakdown.
+
+| Database type                | Hourly price   | Monthly price\* |
+| ---------------------------- | -------------- | --------------- |
+| PostgreSQL                   | $0.0856 / vCPU | $62.49 / vCPU   |
+| EDB Postgres Extended Server | $0.1655 / vCPU | $120.82 / vCPU  |
+| EDB Postgres Advanced Server | $0.2568 / vCPU | $187.46 / vCPU  |
+
+\* The monthly cost is approximate and assumes 730 hours in a month.
+
+### Distributed high-availability pricing
+
+When distributed high-availability configurations are enabled, to calculate the full price for all resources used, multiply the number of vCPUs per instance by the number of data nodes configured. You aren't charged for the database price for witness nodes or groups in distributed high-availability configurations, just the infrastructure resources, such as compute. Distributed high-availability clusters are powered by [EDB Postgres Distributed](https://www.enterprisedb.com/docs/pgd/latest/).
+
+This table shows the cost breakdown.
+
+| Database type                | Hourly price   | Monthly price\* |
+| ---------------------------- | -------------- | --------------- |
+| EDB Postgres Extended Server | $0.2511 / vCPU | $183.30 / vCPU  |
+| EDB Postgres Advanced Server | $0.3424 / vCPU | $249.95 / vCPU  |
+
+\* The monthly cost is approximate and assumes 730 hours in a month.
+
+## Cloud infrastructure costs
+
+If you're connecting directly to Cloud Service through your Microsoft Azure AWS, or Google Cloud account, EDB doesn't bill you for cloud infrastructure, such as compute, storage, data transfer, monitoring, and logging.
+
+Your cloud provider bills you directly for the cloud infrastructure provisioned according to the terms of your account agreement.
+
+- Microsoft Azure provides invoice and usage information on the Microsoft Azure Portal billing page. [Learn more](https://docs.microsoft.com/en-us/azure/cost-management-billing/).
+- AWS provides invoice information on the AWS Billing and Cost Management console. [Learn more](https://docs.aws.amazon.com/account-billing/index.html).
+- Google Cloud provides invoice information on your Cloud Billing account. [Learn more](https://cloud.google.com/billing/docs).
+
+## Management costs
+
+If you deploy a large number of clusters in a single region, for example, more than 30, EDB might deploy additional management infrastructure to support your workloads. In addition, EDB provisions a number of other free resources in your account to help with management.
+
+If you want to remove management resources provisioned from your cloud provider, contact [Support](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/support_services/).
+
+### Microsoft Azure management costs
+
+The table shows a breakdown of management costs for Microsoft Azure:
+
+| Type                           | Details                                                                                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Azure Kubernetes Service (AKS) | Cloud Service uses AKS to orchestrate and manage the database service Managed Kubernetes Virtual Machines provisioned on Windows and Linux.                         |
+| Azure Monitor                  | Cloud Service feeds all [logs and metrics](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/monitoring_and_logging/) to Azure Monitor. |
+| Azure blob storage             | Cloud Service uses blob storage to store metadata about your account.                                                                                               |
+| Key vault                      | Cloud Service uses key vault to securely store credentials for managing your infrastructure.                                                                        |
+
+At list price, estimated overall monthly management costs are $400–$700 for a single region. Check with your Microsoft Azure account manager for specifics that apply to your account.
+
+To get a better sense of your Microsoft Azure costs, check out the Microsoft Azure pricing [calculator](https://azure.microsoft.com/en-us/pricing/calculator/) and reach out to [Support](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/support_services/).
+
+### AWS management costs
+
+The table shows a breakdown of management costs for AWS:
+
+| Type                             | Details                                                                                                                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Elastic Kubernetes Service (EKS) | Cloud Service uses EKS to orchestrate and manage the database service Managed Kubernetes Virtual Machines provisioned on Windows and Linux.                          |
+| AWS CloudWatch                   | Cloud Service feeds all [logs and metrics](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/monitoring_and_logging/) to AWS CloudWatch. |
+| Simple Storage Service (S3)      | Cloud Service uses S3 to store metadata about your account.                                                                                                          |
+| Key Management Service           | Cloud Service uses the key management service to securely store credentials for managing your infrastructure.                                                        |
+
+At list price, estimated overall monthly management costs are $400–$600 for a single region. Check with your AWS account manager for specifics that apply to your account.
+
+To get a better sense of your AWS costs, check out the AWS pricing [calculator](https://calculator.aws/#/) and reach out to [Support](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/support_services/).
+
+### Google Cloud management costs
+
+The table shows a breakdown of management costs for Google Cloud:
+
+| Type                           | Details                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google Kubernetes Engine (GKE) | Cloud Service uses GKE to orchestrate and manage the database service Managed Kubernetes Virtual Machines provisioned on Windows and Linux. |
+| Cloud Storage                  | Cloud Service uses Google Cloud Storage to store metadata about your account.                                                               |
+| Cloud Key Management           | Cloud Service uses the key management service to securely store credentials for managing your infrastructure.                               |
+
+At list price, estimated overall monthly management costs are $600–$800 for a single region. Check with your Google Cloud account manager for specifics that apply to your account.
+
+## PgBouncer costs
+
+Enabling [PgBouncer](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/getting_started/creating_cluster/creating_a_cluster/#pgbouncer) to pool your connections incurs additional costs that depend on your cloud provider. In addition to the cloud provider costs, PgBouncer connects to your primary server and requires an IP address. Cloud Service provisions up to three instances per PgBouncer-enabled cluster to ensure that performance is unaffected, so each availability zone receives its own instance of PgBouncer. The extra VM costs are the 2vcpu SKU times the number of PgBouncer instances. For AWS, the instance type is c5.large. For Azure, the instance type is F2s\_v2.
+
+## Payments and billing
+
+Your payment and billing options include:
+
+- Digital self-service using a credit card
+- Direct purchase using the Sales Order form
+- Azure Marketplace
+
+### Digital self-service
+
+EDB charges the credit card for your [EDB account](https://www.enterprisedb.com/accounts/register) month to month and sends invoices to your email. This invoice includes database costs.
+
+> **Note**
+>
+> If you want to take advantage of discounts, contact [Sales](https://info.enterprisedb.com/EDB-Contact-Us.html).
+
+### Direct purchase
+
+If you're using your Microsoft Azure or AWS account, usage details are included in your invoice. Account owners can download a usage report in CSV format from the Cloud Service Usage page. You can set the time frame, database type, and cloud provider prior to downloading the report. The information on the page refreshes hourly.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

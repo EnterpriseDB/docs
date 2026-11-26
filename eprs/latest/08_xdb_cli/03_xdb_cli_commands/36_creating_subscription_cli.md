@@ -1,0 +1,132 @@
+---
+title: Creating a subscription (createsub)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/36_creating_subscription_cli/
+lastModified: 2026-11-18T17:58:53+01:00
+---
+
+# Creating a subscription (createsub)
+
+<div id="creating_subscription_cli" class="registered_link"></div>
+
+**For SMR only:** The `createsub` command creates a new subscription.
+
+## Synopsis
+
+```shell
+-createsub subname
+  -subsvrfile subsvrfile
+  -subdbid dbid
+  -pubsvrfile pubsvrfile
+  -pubname pubname
+[ -filterrule filterid_1[,filterid_2 ] ...]
+[-customcolmap <user provided column mappings separated by a semicolon> | -customcolmapfile <path of file containing user provided column mappings>]
+```
+
+The `createsub` command adds a subscription subordinate to the subscription database definition with the subscription database ID given by parameter `subdbid.`
+
+See [Adding a subscription](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/03_creating_subscription/03_adding_subscription/#adding_subscription) for more information.
+
+## Parameters
+
+`subname`
+
+The subscription name for the new subscription.
+
+`subsvrfile`
+
+The file containing the subscription server login information of the subscription server under which the new subscription is subordinate.
+
+`dbid`
+
+The subscription database ID of the subscription database definition to which to add the subscription subordinate to.
+
+`pubsvrfile`
+
+The file containing the publication server login information of the publication server under which the publication is subordinate. This is the publication the new subscription is associated with.
+
+`pubname`
+The publication to which to associate the new subscription.
+
+`filterid_n`
+
+Comma-separated list of filter IDs identifying the filter rules from the set of available table filters to enable on the corresponding tables in the new subscription. Use the `printpubfilterslist` command to obtain the filter IDs for the available filter rules in the publication (see [Printing a list of filters in a Publication](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/17_print_publications_filters_list/#print_publications_filters_list)). Don't use white space between the comma and filter IDs.
+
+`customcolmap`
+
+The column mappings between different but compatible columns in the source and target database. Table-qualified column names can be used in mappings, or a regular expression can be used to implement a mapping rule on multiple columns.
+
+> **Note**
+>
+> Column mapping can be added only with the Replication Server CLI; this feature isn't supported by Replication Console. Column mappings are supported only for single-master replication clusters.
+>
+> Column data type mapping supports snapshots and synchronization between two databases having different but compatible column data types. For example, the data types of a column may be different but data can be populated without any loss. Ensure that there is no possibility of data loss while providing the column data type mapping. This is very important when adding column mapping for columns that act as primary or unique keys as data or precision loss may create inconsistent data across the source and target database.
+>
+> For Oracle `CLOB`, `NCLOB`, and `BLOB` source columns, column mapping is supported only when the target type is `JSON`, `JSONB`, `XML`, `CHAR`, `VARCHAR`, `TEXT`, or `NAME`. If the target is EDB Postgres Advanced Server in Oracle-compatible mode, `NVARCHAR` is also supported. Use this mapping only for columns that store small, structured content, such as JSON or XML documents. See [Sizing LOB columns that use custom type mappings](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/08_optimizing_performance/02_optimize_sync_replication/using_bacth_lob/#sizing-lob-columns-that-use-custom-type-mappings).
+
+To enter multiple mappings, use a semicolon to separate the column mappings.
+
+Enter mappings in the following format, where `dataType` represents the data type of the column in the target database.
+
+```shell
+tableName\.columName=dataType
+```
+
+> **Note**
+>
+> If the table-qualified `columnName` on which the mapping is applied is also present in another schema, then the provided column mapping is applied on both the table-qualified columns.
+
+The following is an example of custom column mapping:
+
+```shell
+emp\.emp_id=integer
+```
+
+The `\` characters act as an escape string, while `.` is a reserved character in regular expressions. Use `\.` to represent the `.` character.
+
+The following is an example of regular expression for a column mapping entery:
+
+```shell
+.*id=integer
+```
+
+Where you map any column whose name ends in `id` to type `integer`.
+
+`customcolmapfile`
+
+The file containing the column mappings. Multiple custom type mappings can also be provided in the file. You can use either the fully qualify column name or regression expression. Enter each mapping on a new line.
+
+For example, create the file `/usr/edb/xdb/replicator/bin/columnMapping.txt` with the following contents:
+
+```shell
+uuidasprimarykey\\.id=char
+mapjson1\\..*=clob
+.*no=numeric
+```
+
+> **Note**
+>
+> Often, a single `\` acts as an escape character for the `.` operator. However, this file requires a `\\` for the `.` operator in order to read and write its contents. The `\.` acts as a separator and the single `.` operator acts as regular expression in this case.
+
+And enter the complete path for the file in the `customcolmapfile` option:
+
+```shell
+-customcolmapfile /usr/edb/xdb/replicator/bin/columnMapping.txt
+```
+
+## Examples
+
+This example creates a subscription named `dept_emp_sub` in the EDB Postgres Advanced Server subscription database identified by subscription database ID 2. The subscription is associated with a publication named `dept_emp`.
+
+```shell
+$ java -jar edb-repcli.jar -createsub dept_emp_sub \
+>   -subsvrfile ~/subsvrfile.prop \
+>   -subdbid 2 \
+>   -pubsvrfile ~/pubsvrfile.prop \
+>   -pubname dept_emp
+Creating subscription...
+Subscription created successfully
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

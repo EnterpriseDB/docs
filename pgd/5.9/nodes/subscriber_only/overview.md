@@ -1,0 +1,49 @@
+---
+title: An overview of Subscriber-only nodes
+product: EDB Postgres Distributed (PGD)
+version: 5.9.5
+url: https://www.enterprisedb.com/docs/pgd/5.9/nodes/subscriber_only/overview/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# An overview of Subscriber-only nodes
+
+## Overview
+
+While many use cases rely on accessing a database node which can handle queries and updates, there are also use cases which only require access to a node that can handle read-only database queries.
+Read scaling like this, by moving the read-only traffic away from active database nodes in the cluster, can improve the performance of the core cluster, whilst making database access more widely available.
+
+## Subscriber-only nodes
+
+The basic idea of subscriber-only nodes is to provide a read-only node that you can use to offload read-only queries from the main cluster.
+The default topology of a PGD cluster is what's called a full mesh topology, where every node connects to every other node.
+This is the most robust and fault-tolerant way to connect nodes, but it can be inefficient for some use cases.
+
+Each subscriber-only node has to be member of a subscriber-only group, which is a group of nodes that only replicate changes from the rest of the cluster. You can't have a subscriber-only node that's not part of a subscriber-only group.
+
+> **Note**
+>
+> A subscriber-only node isn't considered a source when the cluster picks a node to catch up the peers of a parting node, even if the subscriber-only node is the most caught-up node available. If a subscriber-only node moves ahead of the regular data nodes and a data node then parts under load, the remaining nodes can miss transactions that only the subscriber-only node received, causing them to diverge.
+>
+> To prevent this divergence, set `bdr.standby_slot_names` on each data node to include the logical replication slots of your subscriber-only nodes, and set `bdr.standby_slots_min_confirmed` to at least 1. See [`bdr.standby_slot_names`](https://www.enterprisedb.com/docs/pgd/5.9/reference/pgd-settings/#bdrstandby_slot_names) for details.
+
+## Subscriber-only groups
+
+Subscriber-only groups in PGD gather together subscriber-only nodes. Each group can address different regions or different application demands.
+
+Unlike data groups, a subscriber-only group has no raft consensus mechanism of its own and no proxies. This also means that a subscriber-only group can have as many subscriber-only nodes as your need.
+
+Previous to PGD 5.6, the existence of a subscriber-only group didn't change the replication topology. All nodes in the subscriber-only group independently received replicated changes from all other nodes in the cluster.
+
+## Optimizing subscriber-only groups
+
+In PGD 5.6 and later, you can optionally optimize the topology of subscriber-only groups.
+For clusters using proxies and raft-enabled groups for their data nodes, subscriber-only groups can use a more efficient model for receiving replicated changes.
+
+The optimized topology option creates a group leader in each subscriber-only group, similar to a write leader in PGD Proxies. The group leader receives all the changes from the cluster and then replicates them to the other nodes in its group. See [Optimizing subscriber-only groups](https://www.enterprisedb.com/docs/pgd/5.9/nodes/subscriber_only/optimizing-so/) for more information on this feature.
+
+## Subscriber-only nodes and DDL
+
+Subscriber-only nodes can execute locally issued DDL commands but they don't replicate those changes to other nodes in the cluster and will not attempt to acquire locks on the cluster.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

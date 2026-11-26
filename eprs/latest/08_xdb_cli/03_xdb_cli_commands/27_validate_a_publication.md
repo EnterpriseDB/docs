@@ -1,0 +1,58 @@
+---
+title: Validating a publication (validatepub)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/27_validate_a_publication/
+lastModified: 2025-04-03T18:05:51+02:00
+---
+
+# Validating a publication (validatepub)
+
+<div id="validate_a_publication" class="registered_link"></div>
+
+The `validatepub` command checks whether any of the definitions of the tables in the given publication changed since the publication was created.
+
+## Synopsis
+
+```shell
+-validatepub pubname
+  -repsvrfile pubsvrfile
+  -repgrouptype { m | s }
+```
+
+> **Note**
+>
+> The `-repgrouptype` option is not needed with Replication Server 7.1.0 and later.
+
+See [Validating a publication](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/06_managing_publication/05_validating_publication/#validating_publication) for more information.
+
+## Parameters
+
+`pubname`
+
+The name of the publication whose tables to validate.
+
+`pubsvrfile`
+
+The file containing the publication server login information.
+
+`-repgrouptype`
+
+Specify `s` if this command applies to a single-master replication system. Specify `m` if this command applies to a multi-master replication system.
+
+> **Note**
+>
+> The `-repgrouptype` option only applies to Replication Server 7.0.0 and earlier.
+
+## Examples
+
+This example validates the publication `dept_emp`.
+
+```shell
+$ java -jar edb-repcli.jar -validatepub dept_emp \
+>   -repsvrfile ~/pubsvrfile.prop 
+Validating publication dept_emp ...
+All schema of published tables in Publication {0} are up-to-date
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

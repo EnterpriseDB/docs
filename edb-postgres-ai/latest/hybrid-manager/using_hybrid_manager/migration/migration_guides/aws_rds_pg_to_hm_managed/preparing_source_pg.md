@@ -1,0 +1,286 @@
+---
+title: Preparing your AWS RDS/Aurora PostgreSQL source database
+description: Configure your AWS RDS or Aurora PostgreSQL source database and create the required users for schema assessment with the EDB Postgres AI agent and data migration with the DMS agent.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/aws_rds_pg_to_hm_managed/preparing_source_pg/
+lastModified: 2026-09-10T07:38:14-07:00
+---
+
+# Preparing your AWS RDS/Aurora PostgreSQL source database
+
+Configure your AWS RDS or Aurora PostgreSQL source database and create the required users before starting your migration. What you need to configure depends on your goal:
+
+- **Schema ingestion only** with the EDB Postgres AI agent: Create a machine user in Hybrid Manager (HM) and a migration user with schema extraction permissions. No WAL-level database changes are required.
+
+- **Data migration** with the Data Migration Service (DMS) agent: Enable logical replication via an AWS DB cluster parameter group and grant the required replication privileges.
+
+If you plan to run both schema ingestion and data migration, complete all sections. If you only plan to do schema or data migration, each section explains whether it's applicable for your use case.
+
+> **Note**
+>
+> Because AWS RDS and Aurora PostgreSQL are managed services, you can't modify database configuration directly with `psql` or by editing `postgresql.conf`. WAL-level settings must be applied through AWS DB cluster parameter groups.
+
+## Creating the migration user
+
+> **Tip**
+>
+> Required for both schema ingestion with the EDB Postgres AI agent and data migration with the DMS agent.
+
+Create a single migration user that serves both the EDB Postgres AI agent and the DMS agent. Using one user simplifies credential management across agents.
+
+Using a database admin account, connect to your RDS or Aurora PostgreSQL source database and create the migration user:
+
+```sql
+CREATE USER <migration_user> WITH LOGIN PASSWORD '<migration_user_password>';
+```
+
+### Granting schema ingestion permissions
+
+> **Tip**
+>
+> Required for schema ingestion with the EDB Postgres AI agent.
+
+1. Grant the EDB Postgres AI agent connect access to the source database:
+
+   ```sql
+   GRANT CONNECT ON DATABASE <source_database> TO <migration_user>;
+   ```
+
+   Where `<source_database>` is the name of the database you want to assess. If you plan to connect the agent to additional databases on the same server, grant `CONNECT` on each one.
+
+2. Grant the roles needed for a complete schema extraction:
+
+   #### Postgres 14 and later
+
+   ```sql
+   GRANT pg_monitor TO <migration_user>;
+   GRANT pg_read_all_data TO <migration_user>;
+   GRANT pg_read_all_settings TO <migration_user>;
+   ```
+
+   Together, these three roles enable a full schema extraction, including ownership and privilege information. With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
+
+   #### Postgres 10 to 13
+
+   `pg_read_all_data` isn't available in Postgres 10 to 13:
+
+   ```sql
+   GRANT pg_monitor TO <migration_user>;
+   GRANT pg_read_all_settings TO <migration_user>;
+   ```
+
+### Granting data migration permissions
+
+> **Tip**
+>
+> Required for data migration with the DMS agent.
+
+1. Grant the `rds_replication` role, which provides replication privileges on RDS and Aurora:
+
+   ```sql
+   GRANT rds_replication TO <migration_user>;
+   ```
+
+2. Grant the migration user usage on each schema containing tables to migrate:
+
+   ```sql
+   GRANT USAGE ON SCHEMA <db_schema> TO <migration_user>;
+   ```
+
+3. Grant `SELECT` on source tables. For an entire schema:
+
+   ```sql
+   GRANT SELECT ON ALL TABLES IN SCHEMA <db_schema> TO <migration_user>;
+   ```
+
+   For individual tables:
+
+   ```sql
+   GRANT SELECT ON <table_name> TO <migration_user>;
+   ```
+
+4. Grant `CREATE` on the source database so the DMS agent can create publications:
+
+   ```sql
+   GRANT CREATE ON DATABASE <pg_db_name> TO <migration_user>;
+   ```
+
+   > **Note: Required for large object (LO) migration**
+   >
+   > If you're migrating Postgres large objects (`LO_SNAPSHOT_ENABLED=true`), also grant `SELECT` on the `pg_largeobject` system catalog:
+   >
+   > ```sql
+   > GRANT SELECT ON pg_largeobject TO <migration_user>;
+   > ```
+   >
+   > Without this grant, the DMS agent can't read large object content from the source, and the large object snapshot fails.
+   >
+   > You also need a role on the _destination_ matching each role that owns a large object on the source — see [Large object (LO) migration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/terminology/#large-object-lo-migration) for details.
+
+## OS-level requirements for the agent
+
+Schema ingestion connects to your RDS or Aurora instance entirely over the network, using the migration user's credentials — it doesn't require a dedicated OS user account or any special OS-level access. The agent runs on your auxiliary machine; not on the RDS or Aurora instance itself, so there's no local peer-authentication scenario to consider.
+
+However, `beacon-agent` must be able to find a `pg_dump`/`pg_dumpall` binary matching your source database's version. See [Configuring the environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/aws_rds_pg_to_hm_managed/auxiliary_machine/#configuring-the-environment) for the version rules and how to point the agent at the right binaries with `pg_bin_path`.
+
+## Preparing for extension migration (EDB Postgres AI agent)
+
+> **Tip**
+>
+> Required for schema migration with the EDB Postgres AI agent when your source database has extensions installed.
+
+As part of schema migration, the EDB Postgres AI agent automatically extracts all extensions installed on the source database and applies them to the destination before any other schema DDL runs. If any extension fails to install, the entire schema migration aborts.
+
+Before running schema migration, check which extensions are installed on the source and confirm they're available on the destination at the same version. If an extension isn't available at the matching version, schema migration fails. When migrating across different major Postgres versions, the extension versions available on the destination may not match those on the source, which can cause migration failures.
+
+> **Note**
+>
+> On managed Postgres services (such as Amazon RDS or Aurora), extensions that require superuser to install fail silently at apply time. Review your source extensions for superuser requirements before migration.
+
+```sql
+SELECT name, installed_version
+FROM pg_available_extensions
+WHERE installed_version IS NOT NULL;
+```
+
+Run the same query on the destination to compare versions.
+
+After migration completes, if your source uses foreign data wrapper (FDW) extensions, the agent installs the FDW extension itself but doesn't migrate FDW objects. Recreate foreign servers, user mappings, and foreign tables on the destination manually.
+
+For a full list of extension migration limitations, see [Extension migration limitations](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/limitations/#extension-migration-limitations).
+
+## Preparing for data migration (DMS agent)
+
+> **Tip**
+>
+> Required for data migration with the DMS agent.
+
+### Enabling logical replication
+
+The DMS agent requires logical replication to be enabled on your source instance. Because RDS and Aurora are managed services, you enable this feature through an AWS DB cluster parameter group rather than by editing `postgresql.conf` directly.
+
+1. [Create a DB cluster parameter group](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Creating.html) using the AWS Management Console, AWS CLI, or RDS API. Ensure the parameter group family matches the Postgres version your instance is running.
+
+2. [Associate the parameter group with your source RDS or Aurora instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Associating.html).
+
+3. [Modify the parameters](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Modifying.html) in the parameter group:
+
+   - Set `rds.logical_replication` to `1`. This automatically sets `wal_level` to `logical`.
+
+   - Set `max_wal_size` to at least 8 GB for adequate WAL LSN lifetime.
+
+   > **Note**
+   >
+   > Aurora PostgreSQL doesn't allow modifying `max_wal_size` — it's managed by AWS. This parameter is only configurable on RDS PostgreSQL instances.
+
+   Setting `max_wal_size` too small can allow Postgres to drop WAL entries before the DMS agent can stream them, interfering with or slowing down the migration.
+
+4. [Reboot your RDS instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_RebootInstance.html#USER_RebootInstance.steps) to apply the changes.
+
+5. Verify the settings took effect by connecting to the database and running:
+
+   ```sql
+   SHOW wal_level;
+   SHOW max_wal_size;
+   ```
+
+   `wal_level` should return `logical`.
+
+### Creating the replication group role
+
+The migration user must own the source tables to auto-create Postgres publications. Because those tables are already owned by another role, create a replication group role that both the current table owner and the migration user belong to:
+
+```sql
+CREATE ROLE <replication_group>;
+GRANT <replication_group> TO <migration_user>;
+GRANT <replication_group> TO <original_owner>;
+ALTER TABLE <table_name> OWNER TO <replication_group>;
+```
+
+Where:
+
+- `<migration_user>` is the Postgres user you created for migration.
+- `<original_owner>` is the original owner of the tables.
+- `<replication_group>` is the shared role that owns the source tables for publication auto-creation.
+- `<table_name>` is the name of a table to migrate (case-sensitive).
+
+You must run `ALTER TABLE ... OWNER TO <replication_group>` for every table you plan to migrate, across all schemas. To transfer ownership of all tables in the database at once:
+
+```sql
+DO $$
+DECLARE
+  s text;
+  t text;
+BEGIN
+  FOR s, t IN
+    SELECT <schemaname>, <tablename> FROM pg_tables
+    WHERE <schemaname> NOT IN ('pg_catalog', 'information_schema')
+  LOOP
+    EXECUTE 'ALTER TABLE ' || quote_ident(s) || '.' || quote_ident(t) || ' OWNER TO <replication_group>';
+  END LOOP;
+END;
+$$;
+```
+
+### Validating your configuration
+
+The DMS agent includes a validation script that checks whether your source database meets all requirements for CDC migration.
+
+1. Navigate to the DMS agent folder:
+
+   ```shell
+   cd /opt/cdcagent/reader/
+   ```
+
+2. Create an array of all tables to migrate in `<schema_name>.<table_name>` format:
+
+   ```shell
+   arr=(schema1.table1 schema1.table2 schema2.table1)
+   ```
+
+3. Run the validation script:
+
+   ```shell
+   PG_USERNAME=postgres PG_PASSWORD=<password> PG_HOST=<rds-endpoint> PG_PORT=5432 DB_NAME=<db_name> DBZ_USERNAME=<migration_user> DBZ_PASSWORD=<migration_user_password> ./postgresConfigValidation.sh "${arr[@]}"
+   ```
+
+   A passing result looks like this:
+
+   ```shell
+    *** [Transporter] - Get PostgreSQL Major Version
+   PostgreSQL major version: 17
+    *** [Transporter] - Validate WAL Level
+   wal_level:  logical
+   [Pass] wal_level is 'logical'.
+    *** [Transporter] - Validate max WAL senders
+   max_wal_senders: 10
+   [Pass] max_wal_senders is at least 1.
+    *** [Transporter] - Validate max replication slots
+   max_replication_slots: 10
+   [Pass] max_replication_slots is at least 1.
+    *** [Transporter] - Validate max WAL size
+   max_wal_size: 8 GB
+   [Pass] max_wal_size is set to the recommended value of 8GB or higher.
+    *** [Transporter] - Validate checkpoints
+   checkpoints_timed: 100
+   checkpoints_req: 5
+   [Pass] Timed checkpoints are more frequent than requested checkpoints.
+    *** [Transporter] - Check <migration_user> user role
+   [Pass] User '<migration_user>' is present
+   [Pass] User '<migration_user>' has replication permission
+    *** [Transporter] - Check SELECT privilege on the tables to be migrated
+   [Pass] User <migration_user> has select privilege on all tables to be migrated.
+    *** [Transporter] - Check CREATE privilege on database
+   [Pass] Role '<migration_user>' has CREATE privilege on database '<db_name>'.
+   ```
+
+> **Note**
+>
+> Address any `[Failed]` or `[Suggestion]` statuses before proceeding. `[Failed]` checks are blocking issues you must resolve before the DMS agent can execute the data migration. `[Suggestion]` checks allow migration but can negatively affect performance if left unaddressed.
+
+## Next step
+
+[Configure the EDB Postgres AI agent to assess your database](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/aws_rds_pg_to_hm_managed/agent_postgres/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

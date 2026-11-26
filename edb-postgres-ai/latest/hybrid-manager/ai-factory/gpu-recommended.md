@@ -1,0 +1,80 @@
+---
+title: GPU Recommendations for Default NIM Models
+description: Recommended GPUs and node sizes for the default NIM models used by Agent Factory.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/ai-factory/gpu-recommended/
+lastModified: 2026-11-20T19:53:06+05:30
+---
+
+# GPU Recommendations for Default NIM Models
+
+## Overview
+
+From Hybrid Manager, the primary consumer of AI models is the PG.AI Knowledge Base (AIDB Postgres extension), which creates and maintains AI Knowledge Bases.
+
+## Default NIM Models
+
+| Model type       | NIM model                                    | NVIDIA NIM documented resource requirements |
+| ---------------- | -------------------------------------------- | ------------------------------------------- |
+| Text completion  | nvidia/llama-3.3-nemotron-super-49b-v1       | 4 × L40S                                    |
+| Text embeddings  | nvidia/llama-3.2-nemoretriever-300m-embed-v1 | 1 × L40S                                    |
+| Image embeddings | nvclip                                       | 1 × L40S                                    |
+| OCR              | paddleocr                                    | 1 × L40S                                    |
+| Text reranking   | llama-3.2-nv-rerankqa-1b-v2                  | 1 × L40S                                    |
+
+## Minimum GPU Requirement
+
+Based on the default models above, the minimum to run them concurrently is 8 × L40S GPUs.
+
+## Cloud Mappings
+
+- AWS EKS: recommend a node group with 2 × `g6e.12xlarge` nodes.
+- GCP GKE: recommend a node pool with 2 × `a2-highgpu-4g` nodes.
+
+Note: GCP does not offer L40S GPUs. The recommended A2 nodes with A100 GPUs are supported and documented for the NIM models listed above.
+
+## Additional Supported NIM Models
+
+Beyond the defaults above, AIDB supports the following additional NIM model variants, tested and confirmed to work with Agent Factory. Models marked **Default on HM** are the same ones already covered by the GPU sizing above; all others can be self-hosted with KServe and registered the same way, but aren't included in the minimum GPU requirement or cloud mappings on this page — consult the model's page on [build.nvidia.com](https://build.nvidia.com) for its own resource requirements before deploying it.
+
+### Text Completion (`nim_completions`)
+
+| NIM model                                  | Default on HM | Description                                                                                       |
+| ------------------------------------------ | ------------- | ------------------------------------------------------------------------------------------------- |
+| `meta/llama-3.1-8b-instruct`               | —             | General-purpose instruction-following chat model; solid default choice for most completion tasks. |
+| `nvidia/llama-3.3-nemotron-super-49b-v1`   | ✓             | Large reasoning/chat model for complex tasks needing higher-quality output.                       |
+| `nvidia/llama-3.3-nemotron-super-49b-v1.5` | —             | Refined revision of `llama-3.3-nemotron-super-49b-v1` with improved response quality.             |
+| `nvidia/nemotron-3-nano`                   | ✓             | Compact, fast completion model — good for latency-sensitive workloads.                            |
+| `nvidia/nvidia-nemotron-nano-9b-v2`        | —             | Mid-size reasoning-capable model, balancing speed and capability.                                 |
+| `openai/gpt-oss-120b`                      | —             | Large open-weight model for high-quality completions and agentic tasks.                           |
+| `openai/gpt-oss-20b`                       | —             | Smaller open-weight model — faster, lighter-weight completions.                                   |
+
+### Text Embeddings (`nim_embeddings`)
+
+| NIM model                                      | Default on HM | Description                                                      |
+| ---------------------------------------------- | ------------- | ---------------------------------------------------------------- |
+| `nvidia/llama-3.2-nemoretriever-300m-embed-v1` | ✓             | General-purpose text embeddings for retrieval and RAG.           |
+| `nvidia/llama-3.2-nv-embedqa-1b-v2`            | —             | Larger embedding model tuned for question-answering retrieval.   |
+| `nvidia/nv-embedqa-e5-v5`                      | —             | Embedding model tuned specifically for QA-style retrieval tasks. |
+
+### Image Embeddings (`nim_clip`)
+
+| NIM model       | Default on HM | Description                                        |
+| --------------- | ------------- | -------------------------------------------------- |
+| `nvidia/nvclip` | ✓             | Joint text/image embeddings for multimodal search. |
+
+### OCR (`nim_paddle_ocr`)
+
+| NIM model                     | Default on HM | Description                                       |
+| ----------------------------- | ------------- | ------------------------------------------------- |
+| `baidu/paddleocr`             | ✓             | General-purpose OCR text extraction from images.  |
+| `nvidia/nemoretriever-ocr-v1` | —             | NVIDIA's OCR model — an alternative to PaddleOCR. |
+
+### Text Reranking (`nim_reranking`)
+
+| NIM model                            | Default on HM | Description                                                                                                         |
+| ------------------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `nvidia/llama-3.2-nv-rerankqa-1b-v2` | ✓             | Reranks retrieved passages by relevance to a query — use after an initial vector search to improve top-k precision. |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

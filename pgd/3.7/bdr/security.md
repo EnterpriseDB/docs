@@ -1,0 +1,332 @@
+---
+title: Security and Roles
+product: EDB Postgres Distributed (PGD)
+version: 3.7.26
+url: https://www.enterprisedb.com/docs/pgd/3.7/bdr/security/
+lastModified: 2024-02-09T09:25:51Z
+---
+
+# Security and Roles
+
+The BDR3 extension can be created only by superusers, although if desired, it is possible to set up the `pgextwlist` extension and configure it to allow BDR3 to be created by a non-superuser.
+
+Configuring and managing BDR3 does not require superuser access, nor is that recommended.
+The privileges required by BDR3 are split across the following default/predefined roles, named
+similarly to the PostgreSQL default/predefined roles:
+
+- _bdr\_superuser_ - the highest-privileged role, having access to all BDR tables and functions.
+- _bdr\_read\_all\_stats_ - the role having read-only access to the tables, views and functions, sufficient to understand the state of BDR.
+- _bdr\_monitor_ - at the moment the same as `bdr_read_all_stats`, to be extended later.
+- _bdr\_application_ - the minimal privileges required by applications running BDR.
+- _bdr\_read\_all\_conflicts_ - can view _all_ conflicts in `bdr.conflict_history`.
+
+These BDR roles are created when the BDR3 extension is
+installed.  See \[BDR Default Roles] below for more details.
+
+Managing BDR does not require that administrators have access to user data.
+
+Arrangements for securing conflicts are discussed here
+[Logging Conflicts to a Table](https://www.enterprisedb.com/docs/pgd/3.7/bdr/conflicts/).
+
+Conflicts may be monitored using the BDR.conflict\_history\_summary view.
+
+## Catalog Tables
+
+System catalog and Information Schema tables are always excluded from replication by BDR.
+
+In addition, tables owned by extensions are excluded from replication.
+
+## BDR Functions & Operators
+
+All BDR functions are exposed in the `bdr` schema. Any calls to these
+functions should be schema qualified, rather than putting `bdr` in the
+`search_path`.
+
+All BDR operators are available via `pg_catalog` schema to allow users
+to exclude the `public` schema from the search\_path without problems.
+
+## Granting privileges on catalog objects
+
+Administrators should not grant explicit privileges on catalog
+objects such as tables, views and functions; manage access to those objects
+by granting one of the roles documented in \[BDR
+Default Roles].
+
+This requirement is a consequence of the flexibility that allows
+joining a node group even if the nodes on either side of the join do
+not have the exact same version of BDR (and therefore of the BDR
+catalog).
+
+More precisely, if privileges on individual catalog objects have been
+explicitly granted, then the `bdr.join_node_group()` procedure could
+fail because the corresponding GRANT statements extracted from the
+node being joined might not apply to the node that is joining.
+
+## Role Management
+
+Users are global objects in a PostgreSQL instance.
+`CREATE USER` and `CREATE ROLE` commands are replicated automatically if they
+are executed in the database where BDR is running and the
+`bdr.role_replication` is turned on. However, if these commands are executed
+in other databases in the same PostgreSQL instance then they will not be replicated,
+even if those users have rights on the BDR database.
+
+When a new BDR node joins the BDR group, existing users are not automatically
+copied unless the node is added using `bdr_init_physical`. This is intentional
+and is an important security feature. PostgreSQL allows users to access multiple
+databases, with the default being to access any database. BDR does not know
+which users access which database and so cannot safely decide
+which users to copy across to the new node.
+
+PostgreSQL allows you to dump all users with the command:
+
+```shell
+pg_dumpall --roles-only > roles.sql
+```
+
+The file `roles.sql` can then be edited to remove unwanted users before
+re-executing that on the newly created node.
+Other mechanisms are possible, depending on your identity and access
+management solution (IAM), but are not automated at this time.
+
+## Roles and Replication
+
+DDL changes executed by a user are applied as that same user on each node.
+
+DML changes to tables are replicated as the table-owning user on the target node.
+It is recommended - but not enforced - that a table is owned by the same user on each node.
+
+If table A is owned by user X on node1 and owned by user Y on node2, then if user Y
+has higher privileges than user X, this could be viewed as a privilege escalation.
+Since some nodes have different use cases, we allow this but warn against it
+to allow the security administrator to plan and audit this situation.
+
+On tables with row level security policies enabled, changes
+will be replicated without re-enforcing policies on apply.
+This is equivalent to the changes being applied as
+`NO FORCE ROW LEVEL SECURITY`, even if
+`FORCE ROW LEVEL SECURITY` is specified.
+If this is not desirable, specify a row\_filter that avoids
+replicating all rows. It is recommended - but not enforced -
+that the row security policies on all nodes be identical or
+at least compatible.
+
+Note that bdr\_superuser controls replication for BDR and may
+add/remove any table from any replication set. bdr\_superuser
+does not need, nor is it recommended to have, any privileges
+over individual tables. If the need exists to restrict access
+to replication set functions, restricted versions of these
+functions can be implemented as `SECURITY DEFINER` functions
+and `GRANT`ed to the appropriate users.
+
+## Connection Role
+
+When allocating a new BDR node, the user supplied in the DSN for the
+`local_dsn` argument of `bdr.create_node` and the `join_target_dsn` of
+`bdr.join_node_group` are used frequently to refer to, create, and
+manage database objects. This is especially relevant during the
+initial bootstrapping process, where the specified accounts may invoke
+operations on database objects directly or through the pglogical
+module rather than BDR.
+
+BDR is carefully written to prevent privilege escalation attacks even
+when using a role with `SUPERUSER` rights in these DSNs.
+
+To further reduce the attack surface, a more restricted user may be
+specified in the above DSNs.  At a minimum, such a user must be
+granted permissions on all nodes, such that following stipulations are
+satisfied:
+
+- the user has the `REPLICATION` attribute
+- it is granted the `CREATE` permission on the database
+- it inherits the `pglogical_superuser` and `bdr_superuser` roles
+- it owns all database objects to replicate, either directly or via
+  permissions from the owner role(s).
+
+Once all nodes are joined, the permissions may be further reduced to
+just the following to still allow DML and DDL replication:
+
+- The user has the `REPLICATION` attribute.
+- It inherits the `pglogical_superuser` and `bdr_superuser` roles.
+
+## Privilege Restrictions
+
+BDR enforces additional restrictions, effectively preventing the
+use of DDL that relies solely on TRIGGER or REFERENCES privileges.
+The following sub-sections explain these.
+
+`GRANT ALL` will still grant both TRIGGER and REFERENCES privileges,
+so it is recommended that you state privileges explicitly, e.g.
+`GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE` instead of `ALL`.
+
+### Foreign Key Privileges
+
+`ALTER TABLE ... ADD FOREIGN KEY` is only supported if the user has
+SELECT privilege on the referenced table, or if the referenced table
+has RLS restrictions enabled which the current user cannot bypass.
+
+Thus, the REFERENCES privilege is not sufficient to allow creation
+of a Foreign Key with BDR. Relying solely on the REFERENCES privilege
+is not typically useful since it makes the validation check execute
+using triggers rather than a table scan, so is typically too expensive
+to used successfully.
+
+### Triggers
+
+In PostgreSQL, triggers may be created by both the owner of a table and anyone who
+has been granted the TRIGGER privilege. Triggers granted by the non-table owner
+would execute as the table owner in BDR, which could cause a security issue.
+The TRIGGER privilege is seldom used and PostgreSQL Core Team has said
+"The separate TRIGGER permission is something we consider obsolescent."
+
+BDR mitigates this problem by using stricter rules on who can create a trigger
+on a table:
+
+- superuser
+- bdr\_superuser
+- Owner of the table can create triggers according to same rules as in PostgreSQL
+  (must have EXECUTE privilege on function used by the trigger).
+- Users who have TRIGGER privilege on the table can only create a trigger if
+  they create the trigger using a function that is owned by the same owner as the
+  table and they satisfy standard PostgreSQL rules (again must have EXECUTE
+  privilege on the function). So if both table and function have same owner and the
+  owner decided to give a user both TRIGGER privilege on the table and EXECUTE
+  privilege on the function, it is assumed that it is okay for that user to create
+  a trigger on that table using this function.
+- Users who have TRIGGER privilege on the table can create triggers using
+  functions that are defined with the SECURITY DEFINER clause if they have EXECUTE
+  privilege on them. This clause makes the function always execute in the context
+  of the owner of the function itself both in standard PostgreSQL and BDR.
+
+The above logic is built on the fact that in PostgreSQL, the owner of the trigger
+is not the user who created it but the owner of the function used by that trigger.
+
+The same rules apply to existing tables, and if the existing table has triggers which
+are not owned by the owner of the table and do not use SECURITY DEFINER functions,
+it will not be possible to add it to a replication set.
+
+These checks were added with BDR 3.6.19.  An application that
+relies on the behavior of previous versions can set
+`bdr.backwards_compatibility` to 30618 (or lower) to behave like
+earlier versions.
+
+BDR replication apply uses the system-level default search\_path only.
+Replica triggers, stream triggers
+and index expression functions may assume other search\_path settings which will then fail when they
+execute on apply. To ensure this does not occur, resolve object references clearly using either the default
+search\_path only (always use fully qualified references to objects, e.g. schema.objectname), or set the search
+path for a function using ALTER FUNCTION ... SET search\_path = ... for the functions affected.
+
+## BDR Default/Predefined Roles
+
+BDR predefined roles are created when the BDR3 extension is installed.
+Note that after BDR3 extension is dropped from a database, the roles continue to exist
+and need to be dropped manually if required. This allows BDR to be used in multiple
+databases on the same PostgreSQL instance without problem.
+
+Remember that the `GRANT ROLE` DDL statement does not participate in BDR replication,
+thus you should execute this on each node of a cluster.
+
+### bdr\_superuser
+
+- ALL PRIVILEGES ON ALL TABLES IN SCHEMA BDR
+- ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA BDR
+
+### bdr\_read\_all\_stats
+
+SELECT privilege on
+
+- `bdr.conflict_history_summary`
+- `bdr.ddl_epoch`
+- `bdr.ddl_replication`
+- `bdr.global_consensus_journal_details`
+- `bdr.global_lock`
+- `bdr.global_locks`
+- `bdr.local_consensus_state`
+- `bdr.local_node_summary`
+- `bdr.node`
+- `bdr.node_catchup_info`
+- `bdr.node_conflict_resolvers`
+- `bdr.node_group`
+- `bdr.node_local_info`
+- `bdr.node_peer_progress`
+- `bdr.node_slots`
+- `bdr.node_summary`
+- `bdr.replication_sets`
+- `bdr.sequences`
+- `bdr.state_journal_details`
+- `bdr.stat_relation`
+- `bdr.stat_subscription`
+- `bdr.subscription`
+- `bdr.subscription_summary`
+- `bdr.tables`
+- `bdr.worker_errors`
+
+EXECUTE privilege on
+
+- `bdr.bdr_edition`
+- `bdr.bdr_version`
+- `bdr.bdr_version_num`
+- `bdr.decode_message_payload`
+- `bdr.get_global_locks`
+- `bdr.get_raft_status`
+- `bdr.get_relation_stats`
+- `bdr.get_slot_flush_timestamp`
+- `bdr.get_sub_progress_timestamp`
+- `bdr.get_subscription_stats`
+- `bdr.peer_state_name`
+- `bdr.show_subscription_status`
+
+### bdr\_monitor
+
+All privileges from `bdr_read_all_stats`, plus
+
+EXECUTE privilege on
+
+- `bdr.monitor_group_versions`
+- `bdr.monitor_group_raft`
+- `bdr.monitor_local_replslots`
+
+### bdr\_application
+
+EXECUTE privilege on
+
+- All functions for column\_timestamps datatypes
+- All functions for CRDT datatypes
+- `bdr.alter_sequence_set_kind`
+- `bdr.create_conflict_trigger`
+- `bdr.create_transform_trigger`
+- `bdr.drop_trigger`
+- `bdr.get_configured_camo_partner_of`
+- `bdr.get_configured_camo_origin_for`
+- `bdr.global_lock_table`
+- `bdr.is_camo_partner_connected`
+- `bdr.is_camo_partner_ready`
+- `bdr.logical_transaction_status`
+- `bdr.ri_fkey_trigger`
+- `bdr.seq_nextval`
+- `bdr.seq_currval`
+- `bdr.seq_lastval`
+- `bdr.trigger_get_committs`
+- `bdr.trigger_get_conflict_type`
+- `bdr.trigger_get_origin_node_id`
+- `bdr.trigger_get_row`
+- `bdr.trigger_get_type`
+- `bdr.trigger_get_xid`
+- `bdr.wait_for_camo_partner_queue`
+- `bdr.wait_slot_confirm_lsn`
+
+Note that many of the above functions have additional privileges
+required before they can be used, for example, you must be
+the table owner to successfully execute `bdr.alter_sequence_set_kind`.
+These additional rules are documented with each specific function.
+
+### bdr\_read\_all\_conflicts
+
+BDR logs conflicts into the `bdr.conflict_history` table. Conflicts are
+visible to table owners (only), so no extra privileges are required
+to read the conflict history. If it is useful to have a user that can
+see conflicts for _all_ tables, you may optionally grant the role
+_bdr\_read\_all\_conflicts_ to that user.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,95 @@
+---
+title: Background workers
+description: Background workers in EDB Postgres AI Pipelines enable asynchronous processing of AI tasks, allowing for high-volume data transformation without blocking standard database operations, and providing features like batching, parallelism, and continuous polling for efficient workflow execution.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/background-workers/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Background workers
+
+Background worker is the execution engine for asynchronous AI pipelines in EDB Postgres AI. It allows for high-volume data processing without blocking standard database transactions.
+
+A background worker is activated automatically when a pipeline is created or updated with `auto_processing => 'Background'`. Before enabling Background mode, confirm that the required Postgres server settings are in place.
+
+## Postgres prerequisites
+
+Two `postgresql.conf` settings must be in place before background pipelines can run.
+
+### shared\_preload\_libraries
+
+`shared_preload_libraries = 'aidb'` must be set in `postgresql.conf` before background workers can start. This is configured during AIDB installation — see [Configuring AIDB](https://www.enterprisedb.com/docs/aidb/latest/install/configure/). Confirm it is in place before enabling Background mode on any pipeline.
+
+### max\_worker\_processes
+
+Each pipeline in Background mode uses one Postgres background worker. AIDB also runs other background workers by default. Set `max_worker_processes` high enough for all of them. See [Sizing max\_worker\_processes](https://www.enterprisedb.com/docs/aidb/latest/install/default-footprint/#sizing-max_worker_processes). Changing `max_worker_processes` requires a Postgres restart.
+
+If `max_worker_processes` is exhausted, newly created background pipelines will not start a worker and will skip processing until capacity is freed. The dispatcher logs a warning every 30 seconds when it can't start a pipeline worker.
+
+## Core functionality
+
+- **Asynchronous execution**: When a pipeline is set to Background mode, processing occurs independently of the user session. This method ensures that queries or data modifications on the source table are not delayed by embedding generation or OCR tasks.
+
+- **Batch processing**: Background workers group records into configurable batch sizes. This optimizes throughput, especially when interacting with GPU-based models or remote AI service APIs.
+
+- **Parallel operations**: Within each batch, the worker runs pipeline steps (data retrieval, embedding computation, and storage) as parallel operations to maximize performance.
+
+- **Continuous polling**: The worker continuously monitors the source for changes based on a defined `background_sync_interval`.
+
+## Change detection
+
+The background worker handles different source types using specific detection logic:
+
+- **Table sources**: Lightweight triggers capture change events like inserts, updates, and deletes and place them in a backlog. The background worker then processes this backlog at the next interval.
+
+- **Volume sources:** The background worker performs a scan of the external storage. It compares the `last_modified` timestamps of files against a state table to identify new or changed documents.
+
+## Configuration & constraints
+
+### Required
+
+- **Postgres prerequisites**: Background workers require `shared_preload_libraries = 'aidb'` and a sufficient `max_worker_processes` value in `postgresql.conf`. See [Postgres prerequisites](#postgres-prerequisites) on this page.
+
+- **Owner role**: A background worker runs as the pipeline's owner role. If you rename or drop that role, the worker stops. To restart, disable, or delete the pipeline, see [Recovering a pipeline with a renamed or dropped owner role](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/troubleshooting/#recovering-a-pipeline-with-a-renamed-or-dropped-owner-role) for the steps and the privileges you need.
+
+### Optional tuning
+
+**`background_sync_interval`** controls how often the worker polls for new or changed data. This is configured per pipeline via `aidb.create_pipeline()` or `aidb.update_pipeline()`, not in `postgresql.conf`.
+
+```sql
+SELECT aidb.create_pipeline(
+    name                     => 'my_pipeline',
+    source                   => 'my_table',
+    auto_processing          => 'Background',
+    background_sync_interval => '30 seconds',
+    ...
+);
+```
+
+The default interval is suitable for most table sources. For volume sources backed by cloud object stores like AWS S3, each scan incurs a list operation which may have cost or rate-limit implications. In those cases, consider a longer interval:
+
+```sql
+SELECT aidb.update_pipeline(
+    'my_s3_pipeline',
+    background_sync_interval => '1 day'
+);
+```
+
+`background_sync_interval` accepts any Postgres interval value (`'5 minutes'`, `'1 hour'`, `'1 day'`, etc.).
+
+## Monitoring and observability
+
+You can track the status and health of background workers using the `aidb.pipeline_metrics` view (also accessible as `aidb.pipem`). Key metrics include:
+
+- **Table- unprocessed rows**: For table sources, the number of rows not yet processed.
+
+- **Volume- scans completed**: For volume sources, the number of full scans completed.
+
+- **Count (source records)**: Total number of records in the source.
+
+- **Count (destination records)**: Total number of records in the destination.
+
+- **Status**: Current pipeline status.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

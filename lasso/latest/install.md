@@ -1,0 +1,154 @@
+---
+title: Installing Lasso
+product: Lasso
+version: "4"
+url: https://www.enterprisedb.com/docs/lasso/latest/install/
+lastModified: 2026-01-21T13:58:00+01:00
+---
+
+# Installing Lasso
+
+EDB distributes the application through the
+[EDB website](https://www.enterprisedb.com/software-downloads-postgres)
+and grants usage to customers using a _company ID_.
+
+## Linux
+
+You can install Lasso on any major supported Linux distribution by following
+the corresponding Linux installation option for your system from the
+[EDB Downloads page](https://www.enterprisedb.com/software-downloads-postgres).
+Or, you can install it directly from the
+[EDB repositories for Linux page](https://www.enterprisedb.com/repos).
+Choose Lasso and follow the installation instructions.
+
+After installing the EDB repository for your subscription on your system,
+you can install Lasso on Linux using the package manager tool
+for your Linux distribution. Examples include (but aren't limited to):
+
+- Debian / Ubuntu:
+
+```
+    apt install edb-lasso
+```
+
+- RHEL / CentOS / Oracle Linux 7:
+
+```
+    yum install edb-lasso
+```
+
+- RHEL / Rocky / AlmaLinux / Oracle Linux 8+:
+
+```
+    dnf install edb-lasso
+```
+
+- SLES:
+
+```
+    zypper install edb-lasso
+```
+
+If your system has internet access, then installing the `edb-lasso`
+package using your package manager installs EDB Python (package
+name `python312`) as the only dependency.
+
+If your system doesn't have internet access, then you need to download
+EDB Python and install it manually before installing Lasso.
+
+The `python312` package depends on the following packages:
+
+- `ncurses`
+- `openssl`
+- `readline`
+- `xz`
+
+These packages are already installed by default on most Linux distributions.
+
+If you have any issues installing Lasso or EDB Python, contact
+EDB Support.
+
+## Windows
+
+Lasso for Windows is a single-file binary executable called
+`lasso-windows-X.Y.Z.exe`, where `X.Y.Z` is the current Lasso version. You
+can download it from the
+[EDB Downloads page](https://www.enterprisedb.com/software-downloads-postgres).
+
+On Windows, Lasso doesn't require installing any dependencies, but Lasso
+can run only on Windows Server 2019 or later.
+
+## Configuration file
+
+If you try to run Lasso without a configuration file, this error occurs:
+
+```
+    ERROR: no configuration file for Lasso could be found. Please create a configuration file and try again.
+```
+
+Lasso requires a configuration file, which can be one of the following, and a pem file used to verify SSL connection
+to the insights enterpriseDB server.
+(It uses the first match.)
+
+- `./edb-lasso.cfg` in the same directory where Lasso is running
+- `./edb-lasso.conf` in the same directory where Lasso is running
+- `$HOME/.edb-lasso.conf`
+- `/etc/edb-lasso.conf`
+- `/etc/edb_lasso_ca.pem`
+
+To specify a configuration file not in this list,
+run Lasso with the `--config-file` option. For example:
+
+```
+lasso --config-file /path/to/file.conf
+```
+
+The minimum configuration file looks like this:
+
+```
+[customer]
+id=XXXXX
+```
+
+Replace the `id` value with the information found in your
+company page in the Support Portal. (In the left menu bar, select
+**Company info > Company**.) Enter the **Company code** value from this page
+in the `id` field in the configuration file.
+
+> **Important**
+>
+> A configuration file for Lasso is mandatory and must contain at least
+> the customer id.
+
+For more details about the Lasso configuration, see
+[Configuration](https://www.enterprisedb.com/docs/lasso/latest/configuration/).
+
+## Executing Lasso
+
+After installing Lasso and creating an appropriate configuration file,
+a standard Lasso execution on Linux is:
+
+```
+    lasso
+```
+
+On Windows, to run Lasso, you need to do the following:
+
+1. In the **Start** menu search field, enter `cmd`.
+2. On the **Start** menu, right-click **Command Prompt** and select **Run as administrator**.
+3. If Windows prompts you to allow Command Prompt to make changes in the system, select **Yes**.
+4. At the Command Prompt, `cd` to the directory where the Lasso `.exe` file is located.
+5. Execute the command `lasso-windows-X.Y.Z.exe`, where `X.Y.Z` is the Lasso version.
+
+```
+    lasso-windows-X.Y.Z.exe -H IP_ADDRESS -p PORT --password PASSWORD DATABASE_NAME USER_NAME
+```
+
+Alternatively, if you fill in the settings under the `postgresql` section
+in the configuration file telling Lasso how to connect to Postgres, then
+you can execute Lasso from the Windows Explorer. Right-click the
+`.exe` file, and then select **Run as administrator**.
+
+For more details on the many Lasso options, see [Usage](https://www.enterprisedb.com/docs/lasso/latest/usage/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

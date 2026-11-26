@@ -1,0 +1,552 @@
+---
+title: Using SPL stored procedures in your .NET application
+product: .NET Connector
+version: 10.0.1.1
+url: https://www.enterprisedb.com/docs/net_connector/latest/11_using_spl_stored_procedures_in_your_net_application/
+lastModified: 2026-02-16T12:16:04+01:00
+---
+
+# Using SPL stored procedures in your .NET application
+
+<div id="using_spl_stored_procedures_in_your_net_application" class="registered_link"></div>
+
+You can include SQL statements in an application in two ways:
+
+- By adding the SQL statements directly in the .NET application code
+- By packaging the SQL statements in a stored procedure and executing the stored procedure from the .NET application
+
+In some cases, a stored procedure can provide advantages over embedded SQL statements. Stored procedures support complex conditional and looping constructs that are difficult to duplicate with SQL statements embedded directly in an application.
+
+You can also see an improvement in performance by using stored procedures. A stored procedure needs to be parsed, compiled, and optimized only once on the server side. A SQL statement that's included in an application might be parsed, compiled, and optimized each time it's executed from a .NET application.
+
+To use a stored procedure in your .NET application you must:
+
+1. Create an SPL stored procedure on the EDB Postgres Advanced Server host.
+2. Import the `EnterpriseDB.EDBClient` namespace.
+3. Pass the name of the stored procedure to the instance of the `EDBCommand`.
+4. Change the `EDBCommand.CommandType` to `CommandType.StoredProcedure`.
+5. `Prepare()` the command.
+6. Execute the command.
+
+## Example: Executing a stored procedure without parameters
+
+This sample procedure prints the name of department 10. The procedure takes no parameters and returns no parameters. To create the sample procedure, invoke EDB-PSQL and connect to the EDB Postgres Advanced Server host database. Enter the following SPL code at the command line:
+
+```sql
+CREATE OR REPLACE PROCEDURE list_dept10
+IS
+  v_deptname VARCHAR2(30);
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Dept No: 10');
+  SELECT dname INTO v_deptname FROM dept WHERE deptno = 10;
+  DBMS_OUTPUT.PUT_LINE('Dept Name: ' || v_deptname);
+END;
+```
+
+When EDB Postgres Advanced Server validates the stored procedure, it echoes `CREATE PROCEDURE`.
+
+### Using the EDBCommand object to execute a stored procedure
+
+The `CommandType` property of the `EDBCommand` object indicates the type of command being executed. The `CommandType` property is set to one of three possible `CommandType` enumeration values:
+
+- Use the default `Text` value when passing a SQL string for execution.
+- Use the `StoredProcedure` value, passing the name of a stored procedure for execution.
+- Use the `TableDirect` value when passing a table name. This value passes back all records in the specified table.
+
+The `CommandText` property must contain a SQL string, stored procedure name, or table name, depending on the value of the `CommandType` property.
+
+This example :
+
+- Creates an `EDBDataSource` and issues an opened `EDBConnection`.
+- Registers a handler (a local function) to connection’s `Notice` event, thus listening to server side notices, raised by `DBMS_OUTPUT.PUT_LINE`. The handler will display the notice text to the Console.
+- Unregisters the handler to free up the connection.
+
+#### .NET
+
+```csharp
+using System.Data;
+using EnterpriseDB.EDBClient;
+
+namespace UsingSPLStoredProcedures_Basics;
+
+internal static class Program
+{
+    static async Task Main(string[] args)
+    {
+        // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+        var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+		await using var dataSource = EDBDataSource.Create(connectionString);
+		await using var conn = await dataSource.OpenConnectionAsync();
+
+		// register event handler
+		conn.Notice += Connection_Notice;
+
+		await using var storedProcCommand = new EDBCommand("list_dept10", conn);
+		storedProcCommand.CommandType = CommandType.StoredProcedure;
+		await storedProcCommand.PrepareAsync();
+		await storedProcCommand.ExecuteNonQueryAsync();
+
+		Console.WriteLine("Stored Procedure executed successfully.");
+
+		// unregister event handler
+		conn.Notice -= Connection_Notice;
+
+		await conn.CloseAsync();
+
+        // Handles notices from server (eg: output messages, errors and warnings)
+        void Connection_Notice(object sender, EDBNoticeEventArgs e) 
+            => Console.WriteLine($"Notice received: {e.Notice.MessageText}");
+    }
+}
+```
+
+#### .NET Framework
+
+```csharp
+using System;
+using System.Data;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+
+namespace UsingSPLStoredProcedures_Basics
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+			using (var dataSource = EDBDataSource.Create(connectionString))
+			using (var conn = await dataSource.OpenConnectionAsync())
+			{
+				// register event handler
+				conn.Notice += Connection_Notice;
+				using (var storedProcCommand = new EDBCommand("list_dept10", conn))
+				{
+					storedProcCommand.CommandType = CommandType.StoredProcedure;
+
+					await storedProcCommand.PrepareAsync();
+					await storedProcCommand.ExecuteNonQueryAsync();
+
+					Console.WriteLine("Stored Procedure executed successfully.");
+				}
+
+				// unregister event handler
+				conn.Notice -= Connection_Notice;
+
+				await conn.CloseAsync();
+			}
+
+            // Handles notices from server (eg: output messages, errors and warnings)
+            void Connection_Notice(object sender, EDBNoticeEventArgs e) 
+                => Console.WriteLine($"Notice received: {e.Notice.MessageText}");
+        }
+    }
+}
+```
+
+This program should display the following result in the Console:
+
+```text
+Notice received: Dept No: 10
+Notice received: Dept Name: ACCOUNTING
+Stored Procedure executed successfully.
+```
+
+## Example: Executing a stored procedure with IN parameters
+
+This example calls a stored procedure that includes `IN` parameters. To create the sample procedure, invoke EDB-PSQL and connect to the EDB Postgres Advanced Server host database. Enter the following SPL code at the command line:
+
+```sql
+CREATE OR REPLACE PROCEDURE
+  EMP_INSERT
+  (
+     pENAME IN VARCHAR,
+     pJOB IN VARCHAR,
+     pSAL IN FLOAT4,
+     pCOMM IN FLOAT4,
+     pDEPTNO IN INTEGER,
+     pMgr IN INTEGER
+   )
+AS
+DECLARE
+  CURSOR TESTCUR IS SELECT MAX(EMPNO) FROM EMP;
+  MAX_EMPNO INTEGER := 10;
+BEGIN
+
+  OPEN TESTCUR;
+  FETCH TESTCUR INTO MAX_EMPNO;
+  INSERT INTO EMP(EMPNO,ENAME,JOB,SAL,COMM,DEPTNO,MGR)
+    VALUES(MAX_EMPNO+1,pENAME,pJOB,pSAL,pCOMM,pDEPTNO,pMgr);
+  CLOSE testcur;
+END;
+
+```
+
+When EDB Postgres Advanced Server validates the stored procedure, it echoes `CREATE PROCEDURE`.
+
+### Passing input values to a stored procedure
+
+In the example below, the body of the `Main` method declares and instantiates an `EDBConnection` object. The sample then creates an `EDBCommand` object with the properties needed to execute the stored procedure.
+
+The example then uses the `AddWithValue` method of the `EDBCommand`'s parameter collection to add six input parameters. It assigns a value to each parameter before passing them to the `EMP_INSERT` stored procedure.
+
+The `Prepare()` method prepares the statement before calling the `ExecuteNonQuery()` method. Note that the `Prepare()` method is mandatory for SPL procedures.
+
+The `ExecuteNonQuery()` method of the `EDBCommand` object executes the stored procedure.
+
+#### .NET
+
+```csharp
+using System.Data;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingSPLStoredProcedures_INParameters;
+
+internal static class Program
+{
+    static async Task Main(string[] args)
+    {
+        // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+        var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+        
+        var empName = "EDB";
+        var empJob = "Manager";
+        var salary = 1000.0;
+        var commission = 0.0;
+        var deptno = 20;
+        var manager = 7839;
+        
+        try
+        {
+            await using var dataSource = EDBDataSource.Create(connectionString);
+            await using var conn = await dataSource.OpenConnectionAsync();
+            await using var cmdStoredProc = new EDBCommand("EMP_INSERT(:EmpName,:Job,:Salary,:Commission,:DeptNo,:Manager)", conn);
+            cmdStoredProc.CommandType = CommandType.StoredProcedure;
+
+            // AddWithValue allows to create parameter, specify its type and value, 
+            // and add it to the command's parameter collection at once
+            cmdStoredProc.Parameters.AddWithValue("EmpName", EDBDbType.Varchar, empName);
+            cmdStoredProc.Parameters.AddWithValue("Job", EDBDbType.Varchar, empJob);
+            cmdStoredProc.Parameters.AddWithValue("Salary", EDBDbType.Real, salary);
+            cmdStoredProc.Parameters.AddWithValue("Commission", EDBDbType.Real, commission);
+            cmdStoredProc.Parameters.AddWithValue("DeptNo", EDBDbType.Integer, deptno);
+            cmdStoredProc.Parameters.AddWithValue("Manager", EDBDbType.Integer, manager);
+
+            await cmdStoredProc.PrepareAsync();
+            await cmdStoredProc.ExecuteNonQueryAsync();
+
+            Console.WriteLine($"""
+                Following information inserted successfully:
+                Employee Name: {empName}
+                Job: {empJob}
+                Salary: {salary}
+                Commission: {commission}
+                Manager: {manager}
+                """);
+
+            await conn.CloseAsync();
+
+        }
+        catch (Exception exp)
+        {
+            Console.WriteLine($"An error occured: {exp}");
+        }
+	}
+}
+```
+
+#### .NET Framework
+
+```csharp
+using System;
+using System.Data;
+using System.Threading.Tasks;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingSPLStoredProcedures_INParameters
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+            
+            var empName = "EDB";
+            var empJob = "Manager";
+            var salary = 1000.0;
+            var commission = 0.0;
+            var deptno = 20;
+            var manager = 7839;
+            
+            try
+            {
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                using (var conn = await dataSource.OpenConnectionAsync())
+                {
+                    using (var cmdStoredProc = new EDBCommand("EMP_INSERT(:EmpName,:Job,:Salary,:Commission,:DeptNo,:Manager)", conn))
+                    {
+
+                        cmdStoredProc.CommandType = CommandType.StoredProcedure;
+
+                        // AddWithValue allows to create parameter, specify its type and value, 
+                        // and add it to the command's parameter collection at once
+                        cmdStoredProc.Parameters.AddWithValue("EmpName", EDBDbType.Varchar, empName);
+                        cmdStoredProc.Parameters.AddWithValue("Job", EDBDbType.Varchar, empJob);
+                        cmdStoredProc.Parameters.AddWithValue("Salary", EDBDbType.Real, salary);
+                        cmdStoredProc.Parameters.AddWithValue("Commission", EDBDbType.Real, commission);
+                        cmdStoredProc.Parameters.AddWithValue("DeptNo", EDBDbType.Integer, deptno);
+                        cmdStoredProc.Parameters.AddWithValue("Manager", EDBDbType.Integer, manager);
+
+                        await cmdStoredProc.PrepareAsync();
+                        await cmdStoredProc.ExecuteNonQueryAsync();
+
+                        Console.WriteLine("Following information inserted successfully:");
+                        Console.WriteLine($"Employee Name: {empName}");
+                        Console.WriteLine($"Job: {empJob}");
+                        Console.WriteLine($"Salary: {salary}");
+                        Console.WriteLine($"Commission: {commission}");
+                        Console.WriteLine($"Manager: {manager}");
+
+                    }
+                    await conn.CloseAsync();
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+        }
+    }
+}
+```
+
+After the stored procedure executes, a test record is inserted into the `emp` table, and the values inserted are displayed in the Console:
+
+```text
+Following information inserted successfully:
+Employee Name: EDB
+Job: Manager
+Salary: 1000
+Commission: 0
+Manager: 7839
+```
+
+## Example: Executing a stored procedure with IN, OUT, and INOUT parameters
+
+The previous example showed how to pass `IN` parameters to a stored procedure. The following examples show how to pass `IN` values and return `OUT` values from a stored procedure.
+
+### Creating the stored procedure
+
+The following stored procedure passes the department number and returns the corresponding location and department name. To create the sample procedure, invoke EDB-PSQL and connect to the EDB Postgres Advanced Server host database. Enter the following SPL code at the command line:
+
+```sql
+CREATE OR REPLACE PROCEDURE
+  DEPT_SELECT
+  (
+    pDEPTNO IN  INTEGER,
+    pDNAME  OUT VARCHAR,
+    pLOC    OUT VARCHAR
+  )
+AS
+DECLARE
+  CURSOR TESTCUR IS SELECT DNAME,LOC FROM DEPT;
+  REC RECORD;
+BEGIN
+
+  OPEN TESTCUR;
+  FETCH TESTCUR INTO REC;
+
+  pDNAME  := REC.DNAME;
+  pLOC    := REC.LOC;
+
+  CLOSE testcur;
+END;
+```
+
+When EDB Postgres Advanced Server validates the stored procedure, it echoes `CREATE PROCEDURE`.
+
+### Receiving output values from a stored procedure
+
+When retrieving values from `INOUT` or `OUT` parameters, you must explicitly specify the direction of those parameters respectively as `ParameterDirection.InputOutput` and `ParameterDirection.Output`. You can retrieve the values from these parameters in two ways:
+
+Call the `ExecuteReader` method of the `EDBCommand` and explicitly loop through the returned `EDBDataReader`. The reader will contain one row where columns reflect `INOUT` or `OUT` parameters returned. Note that this behavior is legacy and should no longer be used.
+
+Call the `ExecuteNonQuery` method of `EDBCommand` and explicitly get the value of a declared `INOUT` or `OUT` parameter by calling EDBParameter.Value property.
+
+In each method, you must declare each parameter, indicating the direction of the parameter (`ParameterDirection.Input`, `ParameterDirection.Output`, or `ParameterDirection.InputOutput`). Values are mandatory for `IN` and `INOUT` parameters, and does not need to be provided for `OUT` parameters.
+
+After the procedure returns, you can retrieve the `OUT` and `INOUT` parameter values from the `command.Parameters[]` array, or from the `EDBParameter` itself if you have backed its instance.
+
+This code shows using the `ExecuteReader` method to retrieve a result set:
+
+#### .NET
+
+```csharp
+using System.Data;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingSPLStoredProcedures_INOUTParameters;
+
+internal static class Program
+{
+    static async Task Main(string[] args)
+    {
+        // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+        var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+        try
+        {
+            await using var dataSource = EDBDataSource.Create(connectionString);
+            await using var conn = await dataSource.OpenConnectionAsync();
+            await using var command = new EDBCommand("DEPT_SELECT (:pDEPTNO,:pDNAME,:pLOC)", conn);
+
+            command.CommandType = CommandType.StoredProcedure;
+
+            var depNoParam = command.Parameters.Add(new EDBParameter("pDEPTNO", EDBDbType.Integer) { Direction = ParameterDirection.Input });
+
+            var nameParam = command.Parameters.Add(new EDBParameter("pDNAME", EDBDbType.Varchar) { Direction = ParameterDirection.Output });
+            var locParam = command.Parameters.Add(new EDBParameter("pLOC", EDBDbType.Varchar) { Direction = ParameterDirection.Output });
+
+            await command.PrepareAsync();
+
+            // set input parameter value before executing
+            // out parameters don't need a value to be set
+            depNoParam.Value = 10;
+
+            await using var reader = await command.ExecuteReaderAsync();
+
+            // Getting OUT parameters values in the first row
+            Console.WriteLine("Retrieve OUT parameters values in the first returned row.");
+            // only one row is returned, no need for a while loop
+            if (await reader.ReadAsync())
+            {
+                for (var i = 0; i < reader.FieldCount; i++)
+                {
+                    Console.WriteLine($"reader[{i}]={Convert.ToString(reader[i])}");
+                }
+            }
+            await reader.CloseAsync();
+            
+            // Getting OUT parameters values directly
+            // EDBCommand.ExecuteNonQuery() would also work here
+            Console.WriteLine("Retrieve OUT parameters values directly.");
+            Console.WriteLine($"{nameof(nameParam)}={nameParam.Value}");
+            Console.WriteLine($"{nameof(locParam)}={locParam.Value}");
+            
+            await conn.CloseAsync();
+        }
+        catch (Exception exp)
+        {
+            Console.WriteLine($"An error occured: {exp}");
+        }
+    }
+}
+```
+
+#### .NET Framework
+
+```csharp
+using System;
+using System.Data;
+using System.Threading.Tasks;
+using EDBTypes;
+using EnterpriseDB.EDBClient;
+
+namespace UsingSPLStoredProcedures_INOUTParameters
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+
+            try
+            {
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                using (var conn = await dataSource.OpenConnectionAsync())
+                {
+                    using (var command = new EDBCommand("DEPT_SELECT (:pDEPTNO,:pDNAME,:pLOC)", conn))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+
+                        var depNoParam = command.Parameters.Add(new EDBParameter("pDEPTNO", EDBDbType.Integer) { Direction = ParameterDirection.Input });
+
+                        var nameParam = command.Parameters.Add(new EDBParameter("pDNAME", EDBDbType.Varchar) { Direction = ParameterDirection.Output });
+                        var locParam = command.Parameters.Add(new EDBParameter("pLOC", EDBDbType.Varchar) { Direction = ParameterDirection.Output });
+
+                        await command.PrepareAsync();
+
+                        // set input parameter value before executing
+                        // out parameters don't need a value to be set
+                        depNoParam.Value = 10;
+
+                        // Getting OUT parameters values in the first row
+                        Console.WriteLine("Retrieve OUT parameters values in the first returned row.");
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            // only one row is returned, no need for a while loop
+                            if (await reader.ReadAsync())
+                            {
+                                for (var i = 0; i < reader.FieldCount; i++)
+                                {
+                                    Console.WriteLine($"reader[{i}]={Convert.ToString(reader[i])}");
+                                }
+                            }
+                            await reader.CloseAsync();
+                        }
+
+                        // Getting OUT parameters values directly
+                        // EDBCommand.ExecuteNonQuery() would also work here
+                        Console.WriteLine("Retrieve OUT parameters values directly.");
+                        Console.WriteLine($"{nameof(nameParam)}={nameParam.Value}");
+                        Console.WriteLine($"{nameof(locParam)}={locParam.Value}");
+
+                    }
+                    await conn.CloseAsync();
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+        }
+    }
+}
+```
+
+This program should display the following result in the Console:
+
+```text
+Retrieve OUT parameters values in the first returned row.
+reader[0]=ACCOUNTING
+reader[1]=NEW YORK
+Retrieve OUT parameters values directly.
+pDNAME=ACCOUNTING
+pLOC=NEW YORK
+```
+
+> **Note**
+>
+> The preferred method (less error-prone) to retrieve `OUT` parameter values is by using `EDBCommand.ExecuteNonQuery()`. In that case, `EDBParameter.Value` will hold the output value and can be accessed directly without going through a data row. This is the preferred method, less error-prone, as the value is held by the parameter itself.
+>
+> ```csharp
+> // Assign OUT parameters to local variables
+> var deptNameParam = command.Parameters.Add(new EDBParameter("pDNAME", EDBDbType.Varchar) { Direction = ParameterDirection.Output });
+> var locParam = command.Parameters.Add(new EDBParameter("pLOC", EDBDbType.Varchar) { Direction = ParameterDirection.Output });
+>
+> // Prepare, ExecuteNonQuery                        
+> await command.PrepareAsync();
+> await command.ExecuteNonQueryAsync();
+>
+> // Parameter values are fed!                        
+> Console.WriteLine($"pDNAME={deptNameParam.Value}");
+> Console.WriteLine($"pLOC={locParam.Value}");
+> ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

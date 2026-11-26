@@ -1,0 +1,26 @@
+---
+title: edbctl 1.4.0 release notes
+product: edbctl
+version: "1"
+url: https://www.enterprisedb.com/docs/edbctl/latest/rel_notes/edbctl_1_4_0_rel_notes/
+lastModified: 2026-04-23T14:50:10+05:30
+---
+
+# edbctl 1.4.0 release notes
+
+Released: 16 Apr 2026
+
+The edbctl 1.4.0 release includes new features, improvements, and bug fixes to enhance the functionality and performance of the Hybrid Manager CLI tool.
+
+| Type        | Description                                                                                                                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Feature     | Added the `edbctl hybrid-manager` command group for managing Hybrid Manager (HM) instances. Commands cover lifecycle operations, setup, monitoring access, PostgreSQL diagnostics, and troubleshooting. These commands interact directly with the Kubernetes cluster via `kubectl` context and do not require API credentials. |
+| Improvement | The `--version latest` flag is now supported with setup secrets commands, allowing users to automatically target the newest available Hybrid Manager version without specifying an explicit version string.                                                                                                                    |
+| Improvement | Credential handling during setup is now more reliable, reducing the risk of partial or inconsistent state across runs.                                                                                                                                                                                                         |
+| Improvement | Improved consistency in automated and non-interactive environments, providing more predictable behavior in CI/CD pipelines.                                                                                                                                                                                                    |
+| Improvement | Extended support for access-token based authentication flows.                                                                                                                                                                                                                                                                  |
+| Bug fix     | Improved handling of version format parsing and validation to prevent errors when non-standard version strings are provided.                                                                                                                                                                                                   |
+| Bug fix     | Resolved issues in interactive setup mode, including improved prompting, confirmation handling, and earlier, clearer validation errors.                                                                                                                                                                                        |
+| Deprecated  | The `edbctl setup` command is deprecated. Use `edbctl hybrid-manager` for all Hybrid Manager bootstrapping tasks.                                                                                                                                                                                                              |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

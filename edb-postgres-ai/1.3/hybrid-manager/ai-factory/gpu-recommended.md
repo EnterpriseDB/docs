@@ -1,0 +1,40 @@
+---
+title: GPU Recommendations for Default NIM Models
+description: Recommended GPUs and node sizes for the default NIM models used by AI Factory.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gpu-recommended/
+lastModified: 2025-11-07T18:06:05Z
+---
+
+# GPU Recommendations for Default NIM Models
+
+## Overview
+
+From Hybrid Manager, there are two primary consumers of AI models:
+
+- PG.AI Knowledge Base (AIDB Postgres extension) for creating and maintaining AI Knowledge Bases.
+- PG.AI GenAI Builder (containerized Griptape) for building agentic AI assistants.
+
+## Default NIM Models
+
+| Model type       | NIM model                   | NVIDIA NIM documented resource requirements |
+| ---------------- | --------------------------- | ------------------------------------------- |
+| Text completion  | llama-3.3-70b-instruct      | 4 × L40S                                    |
+| Text embeddings  | arctic-embed-l              | 1 × L40S                                    |
+| Image embeddings | nvclip                      | 1 × L40S                                    |
+| OCR              | paddleocr                   | 1 × L40S                                    |
+| Text reranking   | llama-3.2-nv-rerankqa-1b-v2 | 1 × L40S                                    |
+
+## Minimum GPU Requirement
+
+Based on the default models above, the minimum to run them concurrently is 8 × L40S GPUs.
+
+## Cloud Mappings
+
+- AWS EKS: recommend a node group with 2 × `g6e.12xlarge` nodes.
+- GCP GKE: recommend a node pool with 2 × `a2-highgpu-4g` nodes.
+
+Note: GCP does not offer L40S GPUs. The recommended A2 nodes with A100 GPUs are supported and documented for the NIM models listed above.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

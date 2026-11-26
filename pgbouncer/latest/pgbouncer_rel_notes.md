@@ -1,0 +1,49 @@
+---
+title: Release notes
+product: PgBouncer
+version: "1"
+url: https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/
+lastModified: 2026-10-28T22:01:47+05:30
+---
+
+# Release notes
+
+The EDB PgBouncer documentation describes the latest version of EDB PgBouncer 1, including minor releases and patches. The release notes provide information on what was new in each release. For new functionality introduced in a minor or patch release, the content also indicates the release that introduced the feature.
+
+| Version                                                                                                | Release date | Upstream merges                                                              |
+| ------------------------------------------------------------------------------------------------------ | ------------ | ---------------------------------------------------------------------------- |
+| [1.26.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12610_rel_notes/)    | 21 Oct 2026  | Upstream [1.26.1.0](https://www.pgbouncer.org/changelog.html#pgbouncer-126x) |
+| [1.25.2.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12520_rel_notes/)    | 22 May 2026  | Upstream [1.25.2.0](https://www.pgbouncer.org/changelog.html#pgbouncer-125x) |
+| [1.25.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12510_rel_notes/)    | 10 Dec 2025  | Upstream [1.25.1.0](https://www.pgbouncer.org/changelog.html#pgbouncer-125x) |
+| [1.24.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12410_rel_notes/)    | 30 Apr 2025  | Upstream [1.24.1.0](https://www.pgbouncer.org/changelog.html#pgbouncer-124x) |
+| [1.24.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12400_rel_notes/)    | 11 Mar 2025  | Upstream [1.24.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-124x) |
+| [1.23.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12310_rel_notes/)    | 22 Aug 2024  | Upstream [1.23.1.0](https://www.pgbouncer.org/changelog.html#pgbouncer-123x) |
+| [1.23.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12300_rel_notes/)    | 01 Aug 2024  | Upstream [1.23.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-123x) |
+| [1.22.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/02_12210_rel_notes/) | 16 Apr 2024  | Upstream [1.22.1.0](https://www.pgbouncer.org/changelog.html#pgbouncer-122x) |
+| [1.22.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/03_12200_rel_notes/) | 29 Feb 2024  | Upstream [1.22.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-122x) |
+| [1.21.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/04_12100_rel_notes/) | 16 Oct 2023  | Upstream [1.21.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-121x) |
+| [1.20.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/05_12000_rel_notes/) | 09 Aug 2023  | Upstream [1.20.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-120x) |
+| [1.19.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/06_11900_rel_notes/) | 07 Jun 2023  | Upstream [1.19.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-119x) |
+| [1.18.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/07_11800_rel_notes/) | 14 Feb 2023  | Upstream [1.18.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-118x) |
+| [1.17.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/08_11700_rel_notes/) | 04 Aug 2022  | Upstream [1.17.0.0](https://www.pgbouncer.org/changelog.html#pgbouncer-117x) |
+| [1.16.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/09_11610_rel_notes/) | 11 Dec 2021  | Upstream [1.16.1.0](https://www.pgbouncer.org/changelog.html#pgbouncer-116x) |
+| [1.16.0.1](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/10_11601_rel_notes/) | 10 Jun 2021  | Upstream [1.16.0.1](https://www.pgbouncer.org/changelog.html#pgbouncer-116x) |
+
+- [Version 1.26.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12610_rel_notes/): Released: 21 Oct 2026
+- [Version 1.25.2.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12520_rel_notes/): Released: 22 May 2026
+- [Version 1.25.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12510_rel_notes/): Released: 10 Dec 2025
+- [Version 1.24.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12410_rel_notes/): Released: 30 Apr 2025
+- [Version 1.24.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12400_rel_notes/): Released: 11 Mar 2025
+- [Version 1.23.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12310_rel_notes/): Released: 22 Aug 2024
+- [Version 1.23.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/12300_rel_notes/): Released: 1 Aug 2024
+- [Version 1.22.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/02_12210_rel_notes/): Released: 16 Apr 2024
+- [Version 1.22.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/03_12200_rel_notes/): Released: 29 Feb 2024
+- [Version 1.21.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/04_12100_rel_notes/): Released: 16 October 2023
+- [Version 1.20.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/05_12000_rel_notes/): Released: 09 August 2023
+- [Version 1.19.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/06_11900_rel_notes/): Released: 07 Jun 2023
+- [Version 1.18.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/07_11800_rel_notes/): Released: 14 Feb 2023
+- [Version 1.17.0.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/08_11700_rel_notes/): Released: 04 Aug 2022
+- [Version 1.16.1.0](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/09_11610_rel_notes/): Released: 11 Dec 2021
+- [Version 1.16.0.1](https://www.enterprisedb.com/docs/pgbouncer/latest/pgbouncer_rel_notes/10_11601_rel_notes/): Released: 10 Jun 2021
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

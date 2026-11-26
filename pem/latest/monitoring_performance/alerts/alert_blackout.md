@@ -1,0 +1,317 @@
+---
+title: Alert blackout
+description: Use alert blackout to temporarily suppress alert notifications for servers and agents during planned maintenance or infrastructure migrations.
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/monitoring_performance/alerts/alert_blackout/
+lastModified: 2026-09-29T22:22:51+05:30
+---
+
+# Alert blackout
+
+Alert blackout temporarily suppresses alert evaluation and notifications for specific servers or agents. During a blackout, PEM continues to collect monitoring data normally and only alerts and notifications are suppressed. Blackouts are useful during planned maintenance windows or infrastructure migrations where temporary disruptions would otherwise trigger false-positive alerts.
+
+## Blackout sources
+
+Every blackout has a source that indicates how it was created:
+
+| Source      | Description                                                  | Created by                                                            |
+| ----------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `manual`    | Immediate, on-demand blackout with no defined end time       | Alert Blackout checkbox on the Global Overview dashboard, or REST API |
+| `scheduled` | Time-bounded blackout with a defined start time and duration | Schedule Alert Blackout dialog, or REST API                           |
+| `auto`      | System-initiated blackout for unreachable servers or agents  | Hourly system job (`pem.auto_blackout`)                               |
+
+An object (server or agent) is considered in blackout if any active blackout record exists for it. Multiple blackouts of different sources can overlap — the object remains in blackout until the last active record ends.
+
+## Manual blackout
+
+Manual blackouts are immediate and indefinite. Create and clear them using the **Alert Blackout** checkbox on the Global Overview dashboard.
+
+### Enabling a manual blackout
+
+1. Open the Global Overview dashboard.
+
+2. Locate the **Alert Blackout** column in the server or agent table.
+
+3. Select the checkbox for the server or agent you want to black out.
+
+PEM immediately creates a manual blackout record. The `alert_blackout` flag syncs within seconds and alert notifications stop for that object. Selecting the checkbox multiple times has no effect — PEM creates only one manual blackout record per object.
+
+By default, manual blackouts are indefinite. If `max_manual_blackout` is configured, the system automatically expires manual blackouts that exceed the limit. See [Configuration](#configuring-blackout-behavior) for details.
+
+### Disabling a manual blackout
+
+Uncheck the **Alert Blackout** checkbox for the server or agent.
+
+This ends **all** currently active blackouts on that object — manual, scheduled, and auto. Alert notifications resume immediately. Future-scheduled blackouts that have not yet started are not affected, they will still activate at their scheduled start time.
+
+PEM archives ended blackouts to `pem.blackout_history` with their original scheduled end time preserved for audit purposes.
+
+## Scheduled blackout
+
+Scheduled blackouts define a maintenance window in advance. PEM suppresses alerts only during the window and automatically resumes them when it ends. No manual action is needed to clear them.
+
+### Creating a scheduled blackout
+
+1. Select **Management > Schedule Alert Blackout**.
+
+2. In the dialog, select the **Servers** or **Agents** tab depending on the objects you want to black out.
+
+3. Select the plus sign (**+**) at the top-right corner to add a new row.
+
+4. Fill in the fields:
+   - **Start time** — Date and time for the blackout to begin.
+   - **Duration** — How long the blackout lasts (1–24 hours).
+   - **Servers** or **Agents** — Select one or more objects to include. All selected objects share the same blackout window.
+
+5. Select **Save**.
+
+PEM creates one blackout record per selected object. All records in the same save operation share a common batch ID and appear as a single row in the dialog.
+
+If the start time is in the future, alerts continue normally until that time. If the start time is now or in the past, PEM suppresses alerts immediately.
+
+> **Note**
+>
+> Saved blackout records are immutable. To change a window's start time or duration, delete the record and create a new one.
+
+### Viewing scheduled blackouts
+
+Open **Management > Schedule Alert Blackout** to see all active and pending scheduled blackouts. Only `scheduled` blackouts appear in this dialog. Manual and auto blackouts are managed separately.
+
+### Deleting a scheduled blackout
+
+1. Open **Management > Schedule Alert Blackout**.
+
+2. Select the blackout row to remove.
+
+3. Select **Delete**, then **Save**.
+
+This deletes all records in the batch. The behavior depends on whether the blackout has started:
+
+- **Not yet started** — PEM cancels the blackout. No history record is created.
+- **Already active** — The blackout ends immediately and PEM archives it to `pem.blackout_history`.
+
+## Auto blackout
+
+PEM automatically blacks out servers and agents that become unreachable, preventing alert storms when infrastructure goes down.
+
+The **Blackout unreachable servers/agents** system job runs hourly. It checks each server's and agent's last heartbeat timestamp. If the last heartbeat is older than the `server_contact_timeout` threshold (default: 48 hours), PEM creates an auto blackout record. When the object recovers and heartbeats resume within the timeout window, PEM automatically ends the auto blackout.
+
+Key behaviors:
+
+- Auto blackout skips objects that already have any active blackout (manual, scheduled, or auto). It does not create duplicate records.
+- When a server recovers, only the auto blackout is ended. Any active manual or scheduled blackouts remain in effect.
+- Auto blackouts are not visible in the Schedule Alert Blackout dialog. They are visible via `pem.blackout` or the REST API (`GET /api/v17/blackout/?source=auto`).
+- Set `server_contact_timeout` to `0` to disable auto blackout entirely. See [Configuration](#configuring-blackout-behavior).
+
+## Overlapping blackouts
+
+Different types of blackouts can be active on the same object simultaneously. There is no overlap guard when creating scheduled blackouts — multiple blackouts of the same or different source can coexist on the same object. The object remains in blackout until the last active record ends.
+
+- **Example — manual + scheduled coexisting**
+
+  A user enables a manual blackout while a scheduled maintenance window is already active. Both records coexist. The object stays in blackout until the last one ends.
+
+- **Example — auto blackout with manual override**
+
+  A server goes unreachable and PEM creates an auto blackout. An admin then manually enables a blackout too. When the server recovers, only the auto blackout is cleared — the manual one persists until the admin unchecks the checkbox.
+
+- **Example — unchecking with a future-scheduled window**
+
+  A server has an active manual blackout and a future-scheduled maintenance window that has not yet started. The admin unchecks the checkbox — only the active manual blackout is ended. The future schedule remains and activates at its start time.
+
+## Configuring blackout behavior
+
+The following parameters in the `pem.config` table control alert blackout behavior:
+
+### `max_manual_blackout`
+
+| Setting | Value             |
+| ------- | ----------------- |
+| Default | `NULL` (no limit) |
+| Unit    | hours             |
+
+Controls the maximum duration of manual blackouts. Enforced at runtime by the **Process alert blackouts** system job — changing this setting retroactively affects all existing manual blackouts.
+
+| Value         | Behavior                                      |
+| ------------- | --------------------------------------------- |
+| `NULL` or `0` | No limit — manual blackouts are indefinite    |
+| `> 0`         | Manual blackouts expire after this many hours |
+
+To set a 24-hour cap:
+
+```sql
+UPDATE pem.config SET value = '24' WHERE param = 'max_manual_blackout';
+```
+
+To remove the cap:
+
+```sql
+UPDATE pem.config SET value = NULL WHERE param = 'max_manual_blackout';
+```
+
+### `server_contact_timeout`
+
+| Setting | Value |
+| ------- | ----- |
+| Default | `48`  |
+| Unit    | hours |
+
+Controls the auto blackout feature. Servers and agents whose last heartbeat is older than this threshold are automatically blacked out.
+
+To change the timeout to 24 hours:
+
+```sql
+UPDATE pem.config SET value = '24' WHERE param = 'server_contact_timeout';
+```
+
+To disable auto blackout entirely:
+
+```sql
+UPDATE pem.config SET value = '0' WHERE param = 'server_contact_timeout';
+```
+
+### `blackout_history_retention`
+
+| Setting | Value |
+| ------- | ----- |
+| Default | `30`  |
+| Unit    | days  |
+
+Controls how long completed blackout records are kept in `pem.blackout_history`. The **Process alert blackouts** system job automatically purges records older than this limit.
+
+| Value         | Behavior                                        |
+| ------------- | ----------------------------------------------- |
+| `NULL` or `0` | Keep forever — no automatic purge               |
+| `> 0`         | Purge history records older than this many days |
+
+To keep history for 90 days:
+
+```sql
+UPDATE pem.config SET value = '90' WHERE param = 'blackout_history_retention';
+```
+
+## Blackout history
+
+PEM automatically archives completed blackouts to the `pem.blackout_history` table. Each archived record includes:
+
+- `actual_end_time` — When the blackout actually ended.
+- `scheduled_end_time` — The originally planned end time (may differ from `actual_end_time` for blackouts that were ended early).
+
+To query completed blackouts directly:
+
+```sql
+-- All completed blackouts
+SELECT * FROM pem.blackout_history ORDER BY actual_end_time DESC;
+
+-- Completed blackouts for a specific server (object_id = 5)
+SELECT id, start_time, actual_end_time, source
+FROM pem.blackout_history
+WHERE object_type = 200 AND object_id = 5
+ORDER BY actual_end_time DESC;
+```
+
+You can also retrieve history via the REST API by appending `?include_history=true` to the list endpoint. Archived records are returned alongside active records and include an `archived: true` field to distinguish them.
+
+## Blackout changes when upgrading from PEM 10.4 or earlier
+
+Before PEM 10.5.0, the `alert_blackout` column was the value PEM read to decide whether to suppress alerts for a server or agent. From 10.5.0 onward, `pem.blackout` is the source of truth, and the **Process alert blackouts** system job maintains `alert_blackout` from those records. Upgrading from a pre-10.5.0 server requires attention to two things: existing blackouts, and agent compatibility. A direct 10.5.0-to-10.5.1 upgrade doesn't run this migration again, so this section applies only when you're crossing the 10.5.0 boundary itself.
+
+### Active blackouts become indefinite pem.blackout records
+
+When the migration runs, PEM converts any server or agent that's currently blacked out into a `pem.blackout` record with no automatic end time. If a blackout is active for planned maintenance at the moment you run the upgrade, that blackout stays active after the upgrade until you explicitly end it — it doesn't expire on its own.
+
+Recommended procedure:
+
+1. Before starting the upgrade, note which objects are currently blacked out and need to stay muted through the maintenance window.
+
+2. Run the upgrade with the maintenance blackout in place, as usual.
+
+3. Immediately after the upgrade, check for migration-created records:
+
+   ```sql
+   SELECT source, count(*),
+          count(*) FILTER (WHERE end_time IS NULL) AS indefinite
+     FROM pem.blackout
+    WHERE created_by = 'pem_migration'
+    GROUP BY source;
+   ```
+
+4. For any migration-created record that was covering a maintenance window, set its end time to when that window actually ends, rather than leaving it indefinite:
+
+   ```sql
+   UPDATE pem.blackout
+      SET end_time = '<maintenance-end-time>'::timestamptz
+    WHERE created_by = 'pem_migration'
+      AND end_time IS NULL;
+   ```
+
+5. After the maintenance work is complete, confirm no unintended migration-created blackouts remain active:
+
+   ```sql
+   SELECT count(*)
+     FROM pem.blackout
+    WHERE created_by = 'pem_migration'
+      AND end_time IS NULL;
+   ```
+
+   This should return `0`.
+
+> **Note**
+>
+> Don't clear or manage these blackouts by directly updating `pem.agent.alert_blackout` or `pem.server.alert_blackout`. Those columns are a status view, not the source of truth — the **Process alert blackouts** system job re-syncs them from `pem.blackout` on its next run, which undoes a direct flag edit as long as the underlying record is still there. Always end a blackout through the checkbox, the Schedule Alert Blackout dialog, the REST API, or by updating `pem.blackout` directly as shown above.
+
+### Agent compatibility and auto blackout
+
+Upgrade remote PEM agents as part of the same maintenance plan, and don't run `SELECT pem.auto_blackout();` until those agent upgrades are complete and heartbeats are verified current.
+
+The risk is specific: PEM 10.2.0 renamed the `pem.agent.heartbeat_interval` column to `heartbeat_tolerance` (server versions from 10.2.0 on use the new name). A pre-10.2 agent still queries the old column name, so once the server is upgraded, that agent can't complete `pem.do_heartbeat()` — its last heartbeat goes stale, and it becomes a candidate for auto blackout even though it's otherwise healthy. Running `pem.auto_blackout()` before those agents catch up would blacklist them for a compatibility gap, not a real outage, and make it look like the upgrade itself caused the problem.
+
+Once agent upgrades are complete and heartbeats are current, `pem.auto_blackout()` is safe to run and blacks out only objects that have genuinely missed heartbeats for longer than `server_contact_timeout` (48 hours by default):
+
+```sql
+SELECT pem.auto_blackout();
+```
+
+The upgrade isn't complete until all of the following are true:
+
+- The PEM server and all remote agents are on compatible versions.
+- Agent heartbeats are current.
+- No unintended `pem_migration` blackouts remain indefinite.
+- Alerting has been verified on representative agents and servers.
+
+## Frequently asked questions
+
+- **I unchecked the Alert Blackout checkbox but alerts haven't resumed.**
+
+  The `alert_blackout` flag clears immediately when you uncheck the box. If alerts haven't resumed after a few seconds, verify that the **Process alert blackouts** system job is enabled and that the PEM agent is running.
+
+- **Does unchecking the checkbox cancel scheduled blackouts?**
+
+  It ends all _currently active_ blackouts on that object (manual, scheduled, and auto). Future-scheduled blackouts that have not yet started are not affected — they will still activate at their scheduled start time. To cancel a future-scheduled blackout, use the Schedule Alert Blackout dialog or the REST API.
+
+- **Can I black out specific alerts only?**
+
+  No. Blackouts apply to all alerts on the selected server or agent. There is no per-alert blackout granularity.
+
+- **What happens to monitoring data during a blackout?**
+
+  Probes continue to collect data normally. Only alert evaluation and notification are suppressed. Historical data collected during the blackout is available for review once the blackout ends.
+
+- **Can I create a recurring blackout (for example, every Sunday 2–6 AM)?**
+
+  Not directly from the UI. Each blackout is a one-time window. For recurring maintenance windows, automate blackout creation using the REST API with a cron job or external scheduler.
+
+- **How do I see which objects are currently in blackout?**
+
+  From the UI, the Alert Blackout checkbox on the Global Overview dashboard reflects the current state for each server and agent. Via SQL:
+
+  ```sql
+  SELECT object_type, object_id, source, start_time, end_time
+  FROM pem.blackout
+  WHERE start_time <= now()
+  AND (end_time IS NULL OR end_time > now())
+  ORDER BY start_time;
+  ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,45 @@
+---
+title: Working with Raft subgroups and PGD CLI
+product: EDB Postgres Distributed (PGD)
+version: 5.6.1
+url: https://www.enterprisedb.com/docs/pgd/5.6/routing/raft/02_raft_subgroups_and_pgd_cli/
+lastModified: 2025-02-26T18:09:18Z
+---
+
+# Working with Raft subgroups and PGD CLI
+
+You can view the status of your nodes and subgroups with the [pgd](https://www.enterprisedb.com/docs/pgd/5.6/cli/) CLI command. The examples here assume a cluster as configured in [Creating Raft subgroups with TPA](https://www.enterprisedb.com/docs/pgd/5.6/routing/raft/01_raft_subgroups_and_tpa/).
+
+## Viewing nodes with pgd
+
+The pgd command is `show-nodes`.
+
+```shell
+$pgd show-nodes
+```
+
+```output title="Output"
+Node     Node ID    Node Group Type Current State Target State Status Seq ID 
+----     -------    ---------- ---- ------------- ------------ ------ ------ 
+east1    916860695  us_east    data ACTIVE        ACTIVE       Up     1      
+east2    2241077170 us_east    data ACTIVE        ACTIVE       Up     2      
+east3    1093023575 us_east    data ACTIVE        ACTIVE       Up     3      
+west1    1668243030 us_west    data ACTIVE        ACTIVE       Up     4      
+west2    2311995928 us_west    data ACTIVE        ACTIVE       Up     5      
+west3    4162758468 us_west    data ACTIVE        ACTIVE       Up     6      
+```
+
+## Viewing groups (and subgroups) with pgd
+
+To show the groups in a PGD deployment, along with their names and attributes, use the PGD CLI command `show-groups.`
+
+```
+$pgd show-groups
+Group    Group ID   Type   Parent Group Location Raft Routing Write Leader 
+-----    --------   ----   ------------ -------- ---- ------- ------------ 
+pgdgroup 1360502012 global                       true false                 
+us_east  1806884964 data   pgdgroup     us_east  true true    east2     
+us_west  3098768667 data   pgdgroup     us_west  true true    west1     
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

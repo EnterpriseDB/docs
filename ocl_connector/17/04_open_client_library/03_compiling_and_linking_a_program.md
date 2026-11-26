@@ -1,0 +1,87 @@
+---
+title: Compiling and linking a program
+product: OCL Connector
+version: "17"
+url: https://www.enterprisedb.com/docs/ocl_connector/17/04_open_client_library/03_compiling_and_linking_a_program/
+lastModified: 2025-04-07T14:16:22-04:00
+---
+
+# Compiling and linking a program
+
+<div id="compiling_and_linking_a_program" class="registered_link"></div>
+
+The EDB Open Client Library allows applications written using the Oracle Call Interface API to connect to and access an EDB database with minimal changes to the C source code. The EDB Open Client Library files are named:
+
+- On Linux: `libedboci.so`
+
+- On Windows: `edboci.dll`
+
+The files are installed in the `oci/lib` subdirectory.
+
+## Compiling and linking a sample program in Linux
+
+This example compiles and links the sample program `edb_demo.c` in a Linux environment.
+The `edb_demo.c` file is located in the `oci/samples` subdirectory.
+
+1. Set `ORACLE_HOME` to the complete pathname of the Oracle home directory, for example:
+
+   ```bash
+   export ORACLE_HOME=/usr/lib/oracle/xe/app/oracle/product/10.2.0/server
+   ```
+
+2. Set `EDB_HOME` to the complete pathname of the home directory, for example:
+
+   ```bash
+   export EDB_HOME=/usr/edb
+   ```
+
+3. Set `LD_LIBRARY_PATH` to the complete path of `libpthread.so`. By default, `libpthread.so` is located in `/lib64`.
+
+   ```bash
+   export LD_LIBRARY_PATH=/lib64/lib:$LD_LIBRARY_PATH
+   ```
+
+4. Set `LD_LIBRARY_PATH` to include the EDB Postgres Advanced Server Open Client library. By default, `libedboci.so` is located in `$EDB_HOME/oci/lib`.
+
+   ```bash
+   export LD_LIBRARY_PATH=$EDB_HOME/oci:$EDB_HOME/oci/lib:$LD_LIBRARY_PATH
+   ```
+
+5. Compile and link the OCL API program:
+
+   ```bash
+   cd $EDB_HOME/oci/samples
+   make
+   ```
+
+## Compiling and linking a sample program in Windows
+
+This example compiles and links the sample program `edb_demo.c` in a Windows 64-bit environment.
+
+1. In Visual Studio Code 64-bit for Windows, open a terminal.
+
+2. Change to the `samples` directory in the `edb-oci` installation directory:
+
+   ```powershell
+   cd "c:\Program Files\edb\oci\samples"
+   ```
+
+3. Compile the sample assuming Oracle headers are in `c:\oracle_client\include\`:
+
+   ```powershell
+   cl edb_demo.c /I c:\oracle_client\include\ -D WIN32 /link /libpath:"c:\Program Files\edb\oci\lib\" edboci.lib
+   ```
+
+4. Set the path to include the path to `edb-oci` dlls:
+
+   ```powershell
+   set path=%path%;C:\Program Files\edb\oci\;C:\Program Files\edb\oci\lib
+   ```
+
+5. Run the sample:
+
+   ```powershell
+   edb_demo.exe
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

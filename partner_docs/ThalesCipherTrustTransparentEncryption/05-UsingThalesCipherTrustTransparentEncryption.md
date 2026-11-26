@@ -1,0 +1,71 @@
+---
+title: Using
+description: Walkthrough of example usage scenarios
+product: Partner Docs
+url: https://www.enterprisedb.com/docs/partner_docs/ThalesCipherTrustTransparentEncryption/05-UsingThalesCipherTrustTransparentEncryption/
+lastModified: 2023-08-24T12:40:28-04:00
+---
+
+# Using
+
+CTE protects data either at the file level or at the storage device level. A CTE agent running on the Postgres host manages the files behind a GuardPoint by enforcing the policy associated with it and communicates data access events to the CipherTrust Manager for logging. A GuardPoint is usually associated with a Linux mount point or a Windows volume but can also be associated with a directory subtree.
+
+The following diagram shows the CTE architecture.
+
+![CTE Architecture](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/UsingCTE.png)
+
+## Sample user scenarios
+
+These sample user scenarios show deploying CTE solutions on EDB Postgres Advanced Server and EDB Postgres Extended Server with BDR hosts.
+
+### EDB Postgres Advanced Server (single instance)
+
+1. Install CTE agent on the Postgres host.
+2. Log in to the Postgres host and stop the Postgres server.
+3. Create the GuardPoints with the CM web UI using the epas-policy policy on the Postgres host. Set the following directories as the protected path on the EDB Postgres Advanced Server host, assuming PGDATA is set to `/var/lib/edb/as13/data` on the host:
+
+![Single Instance Use Case](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/SampleUserScenarios1.png)
+
+4. Restart the Postgres server on the Postgres host as the user enterprisedb. Make sure you're logged in using ssh, not sudo.
+
+### EDB Postgres Extended Server with BDR-Always-ON
+
+The following diagram shows the BDR-Always-ON architecture. For more details, refer to the [BDR-Always-ON Architecture](https://documentation.2ndquadrant.com/tpa/release/21.1-1/architecture-BDR-Always-ON/) documentation.
+
+> **Note**
+>
+> The documentation requires EDB access credentials.
+
+![Extended Server Configuration](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/EDBPostgresExtendedwithBDRAlwaysOn.png)
+
+1. Install CTE agents on all the postgres and barman nodes.
+
+2. Create a GuardPoint with the CM web UI using the barman-policy policy on the directory `/var/lib/barman/<server-name>`  on the barman node in data center A (DC A). The following screenshot shows a GuardPoint created for the barman node.
+
+![Extended Server User Scenario](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/SampleUserScenarios3.png)
+
+3. Log in to the standby node in data center A and stop the Postgres server.
+
+4. Create a GuardPoint on the standby node with the CM web UI using the postgres-policy policy on the PGDATA directory `/opt/postgres/data`.
+
+5. Restart the Postgres server on the standby node as the user postgres.  Make sure you're logged in using ssh, not sudo.
+
+6. Log in to the Shadow Master node in data center A and stop the Postgres server.
+
+7. Create a GuardPoint on the Shadow Master node with the CM web UI using the postgres-policy policy on the PGDATA directory `/opt/postgres/data`.
+
+8. Restart the Postgres server on the Shadow Master node as the user postgres. Make sure you're logged in using ssh, not sudo.
+
+9. Log in to the Lead Master node in data center A and stop the Postgres server.
+
+10. Create a GuardPoint on the Lead Master node with the CM web UI using the postgres-policy policy on the PGDATA directory `/opt/postgres/data`.
+
+11. Restart the Postgres server on the Lead Master node as the user postgres. Make sure you're logged in using ssh, not sudo.
+
+The following screenshot shows a GuardPoint created for Lead Master in data center A.
+
+![Guardpoint Created for Lead Master](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/SampleUserScenarios4.png)
+
+12. Repeat steps 2 through 11 for postgres and barman nodes in data center B (DC B).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

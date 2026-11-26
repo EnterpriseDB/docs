@@ -1,0 +1,253 @@
+---
+title: "Backup and Recovery: Single-Server Streaming - Recovery"
+description: Recovering from data loss by using Barman to restore a full backup remotely
+product: Barman
+url: https://www.enterprisedb.com/docs/supported-open-source/barman/single-server-streaming/step04-restore/
+lastModified: 2022-01-28T20:07:15Z
+---
+
+# Backup and Recovery: Single-Server Streaming - Recovery
+
+In the previous step, [we created a full backup of the example database](https://www.enterprisedb.com/docs/supported-open-source/barman/single-server-streaming/step03-backup/). But it's not a real backup until we've successfully restored it - so let's end with that.
+
+> **Info: This demo is interactive**
+>
+> You can follow along right in your browser. When you click "Start Now," Katacoda will load a Docker Compose
+> environment with two container images representing a PostgreSQL 13 server with
+> [the Pagila database](https://github.com/devrimgunduz/pagila) loaded (named `pg`)
+> and a backup server for Barman (named `backup`).
+>
+> Once you see a `barman@backup` prompt, you can follow the steps below.
+
+Something terrible has happened to our example database! This should list all the tables:
+
+```shell
+psql -h pg -d pagila -U barman -c '\dt'
+```
+
+```output title="Output"
+Did not find any relations.
+```
+
+All the data is gone!
+
+Ok, I just didn't populate the data for this step, in order to demonstrate a total loss. Fortunately, we still have a backup!
+
+```shell
+barman list-backup pg
+```
+
+Let's instruct Barman to ssh into the database server and restore the backup.
+
+1. Connect to pg and shut down the database cluster:
+
+   ```shell
+   ssh postgres@pg /usr/lib/postgresql/13/bin/pg_ctl \
+       --pgdata=/var/lib/postgresql/data stop
+   ```
+
+   ```output title="Output"
+   waiting for server to shut down.... done
+   server stopped
+   ```
+
+2. Back up the corrupt data directory, just in case something goes wrong. Then delete the corrupt data.
+
+   ```shell
+   ssh postgres@pg "cp -a /var/lib/postgresql/data \
+       /var/lib/postgresql/old_data \
+       && rm -rf /var/lib/postgresql/data/*"
+   ```
+
+3. Use [Barman's recover command](http://docs.pgbarman.org/release/2.12/#recover) to connect to pg and restore the latest backup
+
+   ```shell
+   barman recover --remote-ssh-command 'ssh postgres@pg' \
+           pg latest \
+           /var/lib/postgresql/data
+   ```
+
+   ```output title="Output"
+   Starting remote restore for server pg using backup 20210330T040549
+   Destination directory: /var/lib/postgresql/data
+   Remote command: ssh postgres@pg
+   Using safe horizon time for smart rsync copy: 2021-03-30 04:05:58+00:00
+   Copying the base backup.
+   Copying required WAL segments.
+   Generating archive status files
+   Identify dangerous settings in destination directory.
+
+   Recovery completed (start time: 2021-03-31 02:29:23.555186, elapsed time: 1 second)
+
+   Your PostgreSQL server has been successfully prepared for recovery!
+   ```
+
+   Barman handles connecting to the destination server, but we do have to provide a valid path _on_ that server. In this example, the PostgreSQL cluster lives in /var/lib/postgresql/data and we're asking Barman to overwrite it with the backup.
+
+4. Restart the server:
+
+   ```shell
+   ssh postgres@pg "/usr/lib/postgresql/13/bin/pg_ctl \
+       --pgdata=/var/lib/postgresql/data \
+       -l /var/log/postgresql/pg.log \
+       start \
+       ; tail /var/log/postgresql/pg.log"
+   ```
+
+   ```output title="Output"
+   waiting for server to start.... done
+   server started
+   2021-03-31 02:29:12.761 UTC [2201] LOG:  database system is shut down
+   2021-03-31 02:30:13.156 UTC [2515] LOG:  starting PostgreSQL 13.2 (Debian 13.2-1.pgdg100+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 8.3.0-6) 8.3.0, 64-bit
+   2021-03-31 02:30:13.157 UTC [2515] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+   2021-03-31 02:30:13.157 UTC [2515] LOG:  listening on IPv6 address "::", port 5432
+   2021-03-31 02:30:13.160 UTC [2515] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+   2021-03-31 02:30:13.164 UTC [2516] LOG:  database system was interrupted; last known up at 2021-03-30 04:05:58 UTC
+   2021-03-31 02:30:13.337 UTC [2516] LOG:  redo starts at 0/4000028
+   2021-03-31 02:30:13.337 UTC [2516] LOG:  consistent recovery state reached at 0/4000138
+   2021-03-31 02:30:13.337 UTC [2516] LOG:  redo done at 0/4000138
+   2021-03-31 02:30:13.363 UTC [2515] LOG:  database system is ready to accept connections
+   ```
+
+Now we should be able to reconnect to the database:
+
+```shell
+psql -h pg -d pagila -U barman
+```
+
+```output title="Output"
+psql (13.2 (Ubuntu 13.2-1.pgdg20.04+1))
+Type "help" for help.
+
+pagila=#
+```
+
+...And re-run the query we started out with:
+
+```sql
+select * from actor where last_name='KILMER';
+\q
+```
+
+```output title="Output"
+ actor_id | first_name | last_name |      last_update       
+----------+------------+-----------+------------------------
+       23 | SANDRA     | KILMER    | 2020-02-15 09:34:33+00
+       45 | REESE      | KILMER    | 2020-02-15 09:34:33+00
+       55 | FAY        | KILMER    | 2020-02-15 09:34:33+00
+      153 | MINNIE     | KILMER    | 2020-02-15 09:34:33+00
+      162 | OPRAH      | KILMER    | 2020-02-15 09:34:33+00
+(5 rows)
+```
+
+Ok, so far so good - but, we're missing the update we wrote to this data! Remember, that wasn't in the base backup, it was in a partial WAL file... Fortunately, Barman still has it and knows how to use it.
+
+Let's try this recovery process again:
+
+1. Connect to pg and shut down the database cluster:
+
+   ```shell
+   ssh postgres@pg /usr/lib/postgresql/13/bin/pg_ctl \
+       --pgdata=/var/lib/postgresql/data stop
+   ```
+
+2. Back up the corrupt data directory, just in case something goes wrong. Then delete the corrupt data.
+
+   ```shell
+   ssh postgres@pg "cp -a /var/lib/postgresql/data \
+       /var/lib/postgresql/old_data \
+       && rm -rf /var/lib/postgresql/data/*"
+   ```
+
+   ```output title="Output"
+   waiting for server to shut down.... done
+   server stopped
+   ```
+
+3. Instruct Barman to connect to pg and restore the latest backup _with the `--get-wal` option_ - this triggers WAL fetching, including partial WAL files, during the recovery process.
+
+   ```shell
+   barman recover --remote-ssh-command 'ssh postgres@pg' \
+           --get-wal \
+           pg latest \
+           /var/lib/postgresql/data
+   ```
+
+   ```output title="Output"
+   Starting remote restore for server pg using backup 20210330T040549
+   Destination directory: /var/lib/postgresql/data
+   Remote command: ssh postgres@pg
+   Copying the base backup.
+   Generating recovery configuration
+   Identify dangerous settings in destination directory.
+
+   WARNING: 'get-wal' is in the specified 'recovery_options'.
+   Before you start up the PostgreSQL server, please review the postgresql.auto.conf file
+   inside the target directory. Make sure that 'restore_command' can be executed by the PostgreSQL user.
+
+   Recovery completed (start time: 2021-03-31 00:47:46.722740, elapsed time: 1 second)
+
+   Your PostgreSQL server has been successfully prepared for recovery!
+   ```
+
+4. Restart the server:
+
+   ```shell
+   ssh postgres@pg "/usr/lib/postgresql/13/bin/pg_ctl \
+       --pgdata=/var/lib/postgresql/data \
+       -l /var/log/postgresql/pg.log \
+       start \
+       ; tail /var/log/postgresql/pg.log"
+   ```
+
+   ```output title="Output"
+   waiting for server to start..... done
+   server started
+   2021-03-31 00:47:52.278 UTC [250] LOG:  listening on IPv6 address "::", port 5432
+   2021-03-31 00:47:52.282 UTC [250] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+   2021-03-31 00:47:52.286 UTC [251] LOG:  database system was interrupted; last known up at 2021-03-30 04:05:58 UTC
+   ERROR: WAL file '00000002.history' not found in server 'pg' (SSH host: 192.168.80.2)
+   ERROR: Remote 'barman get-wal' command has failed!
+   2021-03-31 00:47:52.863 UTC [251] LOG:  starting archive recovery
+   2021-03-31 00:47:53.350 UTC [251] LOG:  restored log file "000000010000000000000004" from archive
+   2021-03-31 00:47:53.362 UTC [251] LOG:  redo starts at 0/4000028
+   2021-03-31 00:47:53.362 UTC [251] LOG:  consistent recovery state reached at 0/4000138
+   2021-03-31 00:47:53.363 UTC [250] LOG:  database system is ready to accept read only connections    
+   ```
+
+> **Note: about those errors...**
+>
+> You may notice two lines starting with "ERROR:" mid-way through the recovery log. They're fine - that's just PostgreSQL scanning to make sure it has the most recent timeline.
+> By going through this recovery, we've actually created a _new_ timeline - in fact, if you were to run through the four steps above again, you'd see that now `00000002.history` is found and PostgreSQL goes looking for `00000003.history`... Try it!
+>
+> For more on PostgreSQL backup timelines, see [Continuous Archiving in the PostgreSQL documentation](https://www.postgresql.org/docs/current/continuous-archiving.html#BACKUP-TIMELINES).
+
+Now check the data again:
+
+```shell
+psql -h pg -d pagila -U barman -c \
+    "select * from actor where last_name='KILMER'"
+```
+
+```output title="Output"
+ actor_id | first_name | last_name |          last_update          
+----------+------------+-----------+-------------------------------
+       45 | REESE      | KILMER    | 2020-02-15 09:34:33+00
+       55 | FAY        | KILMER    | 2020-02-15 09:34:33+00
+      153 | MINNIE     | KILMER    | 2020-02-15 09:34:33+00
+      162 | OPRAH      | KILMER    | 2020-02-15 09:34:33+00
+       23 | ALOYSIUS   | KILMER    | 2021-03-30 04:06:55.101099+00
+(5 rows)
+```
+
+Good ol' Aloysius is back!
+
+> **Tip: Further Reading**
+>
+> For more details on recovery of partial WAL files, see: [Limitations of partial WAL files with recovery in the Barman guide](http://docs.pgbarman.org/release/2.12/index.html#limitations-of-partial-wal-files-with-recovery).
+
+## Conclusion
+
+This demonstration barely scratches the surface of what is possible with Barman, but hopefully it has provided you with a taste of its capabilities! For more details, visit <https://pgbarman.org/>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

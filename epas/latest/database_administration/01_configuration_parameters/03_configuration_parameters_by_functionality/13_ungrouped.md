@@ -1,0 +1,87 @@
+---
+title: Ungrouped configuration parameters
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/database_administration/01_configuration_parameters/03_configuration_parameters_by_functionality/13_ungrouped/
+lastModified: 2026-03-12T09:39:16-07:00
+---
+
+# Ungrouped configuration parameters
+
+<div id="ungrouped" class="registered_link"></div>
+
+These configuration parameters apply only to EDB Postgres Advanced Server and are for a specific, limited purpose.
+
+## nls\_length\_semantics
+
+**Parameter type:** Enum
+
+**Default value:** `byte`
+
+**Range:** `{byte | char}`
+
+**Minimum scope of effect:** Per session
+
+**When value changes take effect:** Immediate
+
+**Required authorization to activate:** Superuser
+
+This parameter has no effect in EDB Postgres Advanced Server. For example, this form of the `ALTER SESSION` command is accepted in EDB Postgres Advanced Server without throwing a syntax error. However, it doesn't alter the session environment.
+
+```sql
+ALTER SESSION SET nls_length_semantics = char;
+```
+
+> **Note**
+>
+> Since setting this parameter has no effect on the server environment, it doesn't appear in the system view `pg_settings`.
+
+## query\_rewrite\_enabled
+
+**Parameter type:** Enum
+
+**Default value:** `false`
+
+**Range:** `{true | false | force}`
+
+**Minimum scope of effect:** Per session
+
+**When value changes take effect:** Immediate
+
+**Required authorization to activate:** Session user
+
+This parameter has no effect in EDB Postgres Advanced Server. For example, this form of the `ALTER SESSION` command is accepted in EDB Postgres Advanced Server without throwing a syntax error. However, it doesn't alter the session environment.
+
+```sql
+ALTER SESSION SET query_rewrite_enabled = force;
+```
+
+> **Note**
+>
+> Since setting this parameter has no effect on the server environment, it doesn't appear in the system view `pg_settings`.
+
+## query\_rewrite\_integrity
+
+**Parameter type:** Enum
+
+**Default value:** `enforced`
+
+**Range:** `{enforced | trusted | stale_tolerated}`
+
+**Minimum scope of effect:** Per session
+
+**When value changes take effect:** Immediate
+
+**Required authorization to activate:** Superuser
+
+This parameter has no effect in EDB Postgres Advanced Server. For example, this form of the `ALTER SESSION` command is accepted in EDB Postgres Advanced Server without throwing a syntax error. However, it doesn't alter the session environment.
+
+```sql
+ALTER SESSION SET query_rewrite_integrity = stale_tolerated;
+```
+
+> **Note**
+>
+> Since setting this parameter has no effect on the server environment, it doesn't appear in the system view `pg_settings`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

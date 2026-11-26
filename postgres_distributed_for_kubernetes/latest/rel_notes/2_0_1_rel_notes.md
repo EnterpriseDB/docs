@@ -1,0 +1,59 @@
+---
+title: EDB Postgres® AI for CloudNativePG™ Global Cluster 2.0.1 release notes
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 2.2.0
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/rel_notes/2_0_1_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB Postgres® AI for CloudNativePG™ Global Cluster 2.0.1 release notes
+
+Released: 9 June 2026
+
+## Highlights
+
+With the fix of [CVE-2026-44477 /
+GHSA-423p-g724-fr39](https://github.com/cloudnative-pg/cloudnative-pg/security/advisories/GHSA-423p-g724-fr39)
+in PG4K operator `1.28.3` or later, the metrics exporter no longer
+authenticates as the `postgres` superuser. It now uses a dedicated
+`cnp_metrics_exporter` role with `pg_monitor` and `bdr_monitor` privileges
+only, closing a chain that let a low-privilege database user gain PostgreSQL
+superuser. Custom monitoring queries that read user-owned tables, or use
+target\_databases: '\*' against databases where `PUBLIC CONNECT` has been
+revoked, need explicit `GRANT` statements to `cnp_metrics_exporter`.
+
+## Supported versions
+
+- Kubernetes: 1.33, 1.34, and 1.35
+- PostgreSQL: 18, 17, 16, 15, and 14
+- The tested PG4K version is v1.28.3
+- Update the default PGD image to PostgreSQL 18.4 and PGD 6.4.0 expanded (image `postgresql-pgd:18.4-pgd640-expanded-ubi9`)
+
+This release of EDB Postgres® AI for CloudNativePG™ Global Cluster includes the following:
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Track pgdgroup phases updates in logs</td><td>#2172</td></tr>
+<tr><td>Add retry support for restore from volume snapshots</td><td>#2198</td></tr>
+<tr><td>Use updateStrategy for node and group services</td><td>#2221</td></tr>
+<tr><td>Disable WAL archive and remove EDB audit log in physical join job</td><td>#2245</td></tr>
+</tbody></table>
+
+## Security Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Updated operator base image to ubi-micro v9.8</td><td>#1514</td></tr>
+<tr><td>Bump the go version to v1.26.4</td><td></td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Recognize the connection refused message as a PostgreSQL restarting signal</td><td>#2182</td></tr>
+<tr><td>Enhance the pgdgroupcleanup phase to ensure the <code>NoExecutorFound</code> is a final phase</td><td>#2177</td></tr>
+<tr><td>Update operator UBI base image to ubi 9.8</td><td>#2251</td></tr>
+<tr><td>Propagate PgIdent from PGDGroup to CNP Cluster</td><td>#2277</td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

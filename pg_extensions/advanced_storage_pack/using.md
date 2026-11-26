@@ -1,0 +1,379 @@
+---
+title: Using EDB Advanced Storage Pack
+product: EDB Advanced Storage Pack
+url: https://www.enterprisedb.com/docs/pg_extensions/advanced_storage_pack/using/
+lastModified: 2026-04-01T15:13:16+01:00
+---
+
+# Using EDB Advanced Storage Pack
+
+The following are scenarios where the EDB Advanced Storage Pack TAMs are useful.
+
+## Bluefin example
+
+Bluefin is best when used with time-range partitioning. This example shows a table containing logs of trucks that get inserted periodically when each truck provides updates of its status.
+
+```sql
+CREATE TABLE truck_logs (
+    ts TIMESTAMP WITH TIME ZONE,
+    truck_id INTEGER,
+    latitude FLOAT,
+    longitude FLOAT,
+    elevation INTEGER,
+    velocity FLOAT,
+    characteristics JSON,
+    data JSON
+) PARTITION BY RANGE (ts);
+```
+
+Each partition contains one month of data:
+
+```sql
+CREATE TABLE "truck_logs_2023-09"
+  PARTITION OF truck_logs FOR VALUES FROM ('2023-09-01') TO ('2023-10-01')
+  USING bluefin;
+```
+
+One single index is created on each partition:
+
+```sql
+CREATE INDEX "i_truck_logs_2023-09_truck_id_ts" ON "truck_logs_2023-09"(truck_id, ts);
+```
+
+## Bluefin compression estimation
+
+Introduced in version 1.5.0, Bluefin provides specialized functions to estimate the potential compression ratio achieved when migrating an existing Postgresql heap table to the Bluefin table access method (TAM).
+
+These functions analyze a sample of the source table pages and simulate Bluefin’s compression algorithms to predict storage savings without performing the actual data movement.
+
+**bluefin.estimate\_compression(relation, sampling)**
+
+Estimates compression by analyzing a specific percentage of the total table pages.
+
+| Parameter  | Type       | Description                                                        |
+| ---------- | ---------- | ------------------------------------------------------------------ |
+| `relation` | `regclass` | The OID or name of the heap table to analyze.                      |
+| `sampling` | `float4`   | The percentage of heap pages to sample (ranges from 0.0 to 100.0). |
+
+**bluefin.estimate\_compression\_blocks(relation, blocks)**
+
+Estimates compression by analyzing a fixed number of heap pages.
+
+| Parameter  | Type       | Description                                   |
+| ---------- | ---------- | --------------------------------------------- |
+| `relation` | `regclass` | The OID or name of the heap table to analyze. |
+| `blocks`   | `integer`  | The specific number of heap pages to analyze. |
+
+Both functions return a single row containing the following columns:
+
+| Column               | Type     | Description                                                                |
+| -------------------- | -------- | -------------------------------------------------------------------------- |
+| `heap_tuple_size`    | `bigint` | Total raw size of tuples in the analyzed heap pages (bytes).               |
+| `heap_pages`         | `bigint` | The number of heap pages analyzed.                                         |
+| `bluefin_tuple_size` | `bigint` | Estimated total size of the same tuples after Bluefin compression (bytes). |
+| `bluefin_pages`      | `bigint` | Estimated number of Bluefin-format pages required for the sampled data.    |
+| `tuples`             | `bigint` | Total number of tuples analyzed.                                           |
+| `compression_rate`   | `float4` | Estimated efficiency, expressed as the percentage of space saved.          |
+
+**Usage Examples**
+
+Analyze 10% of a table's pages:
+
+```sql
+SELECT * FROM bluefin.estimate_compression('my_heap_table', 10.0);
+```
+
+Analyze 100 specific pages:
+
+```sql
+SELECT * FROM bluefin.estimate_compression_blocks('my_heap_table', 100);
+```
+
+## Refdata example
+
+A scenario where Refdata is useful is creating a reference table of all
+the New York Stock Exchange (NYSE) stock symbols and their corporate names.
+This data is expected to change very rarely and be referenced frequently from a
+table tracking all stock trades for the entire market.
+
+Consider the following two tables:
+
+```sql
+CREATE TABLE nyse_symbol (
+    nyse_symbol_id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    symbol TEXT NOT NULL,
+    name TEXT NOT NULL
+);
+
+CREATE TABLE nyse_trade (
+    nyse_symbol_id INTEGER NOT NULL REFERENCES nyse_symbol(nyse_symbol_id),
+    trade_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    trade_price FLOAT8 NOT NULL CHECK(trade_price >= 0.0),
+    trade_volume BIGINT NOT NULL CHECK(trade_volume >= 1)
+);
+
+CREATE INDEX ON nyse_trade USING BTREE(nyse_symbol_id);
+```
+
+When `heap` is used for `nyse_symbol`, manipulating rows in `nyse_trade` causes
+row locks to be created in `nyse_symbol`. But only row locks are used in
+`nyse_symbol`:
+
+```sql
+=# BEGIN;
+BEGIN
+=*#
+=*# INSERT INTO nyse_symbol (symbol, name)
+-*#     VALUES ('A', 'A');
+INSERT 0 1
+=*#
+=*# SELECT locktype, mode FROM pg_locks
+-*#     WHERE relation = 'nyse_symbol'::regclass;
+ locktype |       mode
+----------+------------------
+ relation | RowExclusiveLock
+(1 row)
+=*#
+=*# COMMIT;
+COMMIT
+=#
+=# BEGIN;
+BEGIN
+=*#    -- insert data into a table that has a foreign key to nyse_symbol
+=*#    INSERT INTO nyse_trade (nyse_symbol_id, trade_price, trade_volume)
+-*#        VALUES (1, 1, 1);
+INSERT 0 1
+=*#
+=*#    -- display the row locks in nyse_symbol
+=*#    SELECT * FROM pgrowlocks('nyse_symbol');
+-[ RECORD 1 ]-----------------
+locked_row | (0,1)
+locker     | 778
+multi      | f
+xids       | {778}
+modes      | {"For Key Share"}
+pids       | {21480}
+=*#
+```
+
+However, when `refdata` is used for `nyse_symbol`, the locking pattern changes. The table is created with the `USING refdata` clause:
+
+```sql
+CREATE TABLE nyse_symbol (
+    nyse_symbol_id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    symbol TEXT NOT NULL,
+    name TEXT NOT NULL
+) USING refdata;
+```
+
+In this case, manipulating data in `nyse_trade` doesn't generate row locks in `nyse_symbol`. But manipulating `nyse_symbol` directly causes an `EXCLUSIVE` lock to be acquired on the entire relation:
+
+```sql
+=# BEGIN;
+BEGIN
+=*#
+=*# INSERT INTO nyse_symbol (symbol, name)
+-*#     VALUES ('A', 'A');
+INSERT 0 1
+=*#
+=*# SELECT locktype, mode FROM pg_locks
+-*#     WHERE relation = 'nyse_symbol'::regclass;
+ locktype |       mode
+----------+------------------
+ relation | RowExclusiveLock
+ relation | ExclusiveLock
+(2 rows)
+=*#
+=*# COMMIT;
+COMMIT
+=#
+=# BEGIN;
+BEGIN
+=*#    -- insert data into a table that has a foreign key to nyse_symbol
+=*#    INSERT INTO nyse_trade (nyse_symbol_id, trade_price, trade_volume)
+-*#        VALUES (1, 1, 1);
+INSERT 0 1
+=*#
+=*#    -- display the row locks in nyse_symbol
+=*#    SELECT * FROM refdata.pgrowlocks('nyse_symbol');
+(0 rows)
+=*#
+```
+
+## Autocluster example
+
+A scenario where Autocluster is useful is with Internet of Things (IoT) data, which are usually inserted with many rows that relate to each other and often use append-only data. When using heap instead of Autocluster, Postgres can't cluster together these related rows, so access to the set of rows touches many data blocks, can be very slow, and is input/output heavy.
+
+This example is for an IoT thermostat that reports house temperatures and temperature settings every 60 seconds:
+
+```sql
+CREATE TABLE iot (
+    thermostat_id         BIGINT NOT NULL,
+    recordtime            TIME NOT NULL,
+    measured_temperature  FLOAT4,
+    temperature_setting   FLOAT4
+) USING autocluster;
+```
+
+Using Autocluster, rows with the same `thermostat_id` are clustered together and are easier to access:
+
+```sql
+CREATE INDEX ON iot USING btree(thermostat_id);
+SELECT autocluster.autocluster(
+    rel := 'iot'::regclass,
+    cols := '{1}',
+    max_objects := 10000
+);
+```
+
+> **Note**
+>
+> The `cols` parameter specifies the table that's clustered. In this case, `{1}` corresponds to the first column of the table, `thermostat_id`, which is the most common access pattern.
+
+Populate the table with the `thermostat_id` and `recordtime` data:
+
+```sql
+INSERT INTO iot (thermostat_id, recordtime) VALUES (456, '12:01');
+INSERT INTO iot (thermostat_id, recordtime) VALUES (8945, '04:55');
+INSERT INTO iot (thermostat_id, recordtime) VALUES (456, '15:32');
+INSERT INTO iot (thermostat_id, recordtime) VALUES (6785, '01:36');
+INSERT INTO iot (thermostat_id, recordtime) VALUES (456, '19:25');
+INSERT INTO iot (thermostat_id, recordtime) VALUES (5678, '03:44');
+```
+
+When you select the data from the IoT table, you can see from the ctid location that the data with the same `thermostat_id` was clustered together:
+
+```sql
+SELECT ctid, thermostat_id, recordtime FROM iot ORDER BY CTID;
+```
+
+```output title="Output"
+ctid   | thermostat_id | recordtime
+-------+---------------+------------
+ (0,1) |           456 |      12:01
+ (0,2) |           456 |      15:32
+ (0,3) |           456 |      19:25
+ (2,2) |          8945 |      04:55
+ (2,5) |          5678 |      03:44
+ (3,2) |          6785 |      01:36
+(6 rows)
+```
+
+## Advanced example
+
+This is an advanced example where Refdata and Autocluster are used together. It involves referencing the NYSE table from the [Refdata example](#refdata-example) and clustering together the rows in the trade table based on the stock symbol. This approach makes it easier to find the latest number of trades.
+
+Start with the NYSE table from the Refdata example:
+
+```sql
+CREATE TABLE nyse_symbol (
+    nyse_symbol_id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    symbol TEXT NOT NULL,
+    name TEXT NOT NULL
+) USING refdata;
+```
+
+Create a highly updated table containing NYSE trades, referencing the mostly
+static stock symbols in the Refdata table. Cluster the rows on the stock symbol
+to make it easier to look up the last x trades for a given stock:
+
+```sql
+CREATE TABLE nyse_trade (
+    nyse_symbol_id INTEGER NOT NULL REFERENCES nyse_symbol(nyse_symbol_id),
+    trade_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    trade_price FLOAT8 NOT NULL CHECK(trade_price >= 0.0),
+    trade_volume BIGINT NOT NULL CHECK(trade_volume >= 1)
+) USING autocluster;
+
+CREATE INDEX ON nyse_trade USING BTREE(nyse_symbol_id);
+SELECT autocluster.autocluster(
+    rel := 'nyse_trade'::regclass,
+    cols := '{1}',
+    max_objects := 3000
+);
+ autocluster
+-------------
+
+(1 row)
+```
+
+Prepopulate the static data (shortened for brevity):
+
+```sql
+INSERT INTO nyse_symbol (symbol, name) VALUES
+    ('A', 'Agilent Technologies'),
+    ('AA', 'Alcoa Corp'),
+    ('AAC', 'Ares Acquisition Corp Cl A'),
+    ('AAIC', 'Arlington Asset Investment Corp'),
+    ('AAIN', 'Arlington Asset Investment Corp 6.000%'),
+    ('AAN', 'Aarons Holdings Company'),
+    ('AAP', 'Advance Auto Parts Inc'),
+    ('AAQC', 'Accelerate Acquisition Corp Cl A'),
+    ('ZTR', 'Virtus Total Return Fund Inc'),
+    ('ZTS', 'Zoetis Inc Cl A'),
+    ('ZUO', 'Zuora Inc'),
+    ('ZVIA', 'Zevia Pbc Cl A'),
+    ('ZWS', 'Zurn Elkay Water Solutions Corp'),
+    ('ZYME', 'Zymeworks Inc');
+ANALYZE nyse_symbol;
+```
+
+Insert artificial stock trades, one trade per stock symbol, repeating the
+pattern multiple times:
+
+```sql
+INSERT INTO nyse_trade
+    SELECT nyse_symbol_id, now(), i, i
+    FROM nyse_symbol, generate_series(1,1000000) AS i;
+ANALYZE nyse_trade;
+```
+
+Given that the inserts intercalated `nyse_symbol_id`, a query that consults one
+stock touches most pages if the table uses heap, but touches far
+fewer pages using Autocluster.
+
+The following query operates on attributes that must be fetched from the table
+after an index scan and shows the number of buffers touched:
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS, TIMING OFF, SUMMARY OFF, COSTS OFF)
+    SELECT AVG(trade_volume * trade_price)
+    FROM nyse_trade WHERE nyse_symbol_id = 10;
+```
+
+This is the query plan using Autocluster:
+
+```
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+ **Buffers: shared read=59609**
+   ->  Bitmap Heap Scan on nyse_trade (actual rows=1000000 loops=1)
+         Recheck Cond: (nyse_symbol_id = 10)
+         Heap Blocks: exact=58824
+         Buffers: shared read=59609
+         ->  Bitmap Index Scan on nyse_trade_nyse_symbol_id_idx (actual rows=1000000 loops=1)
+               Index Cond: (nyse_symbol_id = 10)
+               Buffers: shared read=785
+(9 rows)
+```
+
+For contrast, this is the query plan using heap:
+
+```
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+ **Buffers: shared read=103727**
+   ->  Bitmap Heap Scan on nyse_trade (actual rows=1000000 loops=1)
+         Recheck Cond: (nyse_symbol_id = 10)
+         Rows Removed by Index Recheck: 8325053
+         Heap Blocks: exact=37020 lossy=65922
+         Buffers: shared read=103727
+         ->  Bitmap Index Scan on nyse_trade_nyse_symbol_id_idx (actual rows=1000000 loops=1)
+               Index Cond: (nyse_symbol_id = 10)
+               Buffers: shared read=785
+(10 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

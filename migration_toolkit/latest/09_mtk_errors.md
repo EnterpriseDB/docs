@@ -1,0 +1,415 @@
+---
+title: Migration errors
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/09_mtk_errors/
+lastModified: 2025-07-01T14:24:44+02:00
+---
+
+# Migration errors
+
+During the migration process, the migration summary displays the progress of the migration. If an error occurs, the summary displays information about the error. The migration summary is also written to a log file.
+
+On Linux, the default location for the log files is:
+
+`$HOME/.enterprisedb/migration-toolkit/logs`
+
+On Windows, the log files are saved to:
+
+`%HOMEDRIVE%%HOMEPATH%\.enterprisedb\migration-toolkit\logs`
+
+You can specify an alternative log file location with the `-logdir <log_path>` option in Migration Toolkit.
+
+<div id="connection_errors" class="registered_link"></div>
+
+## Connection errors
+
+Migration Toolkit uses information from the [toolkit.properties file](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/) to connect to the source and target databases. Most of the connection errors that occur when using Migration Toolkit are related to the information specified in the `toolkit.properties` file.
+
+### Invalid username/password
+
+_When I try to perform a migration from an Oracle database with Migration Toolkit, I get the following error:_
+
+```text
+MTK-11009: Error Connecting Database "Oracle"
+DB-1017: java.sql.SQLException: ORA-01017: invalid username/password;
+logon denied
+The user name or password specified in the `toolkit.properties` file is
+not valid to use to connect to the Oracle source database.
+```
+
+To resolve this error, edit the `toolkit.properties` file, specifying the name and password of a valid user with privileges to perform the migration in the `SRC_DB_USER` and `SRC_DB_PASSWORD` properties.
+
+### Invalid file permissions
+
+_When I try to perform a migration with Migration Toolkit, I get the following error:_
+
+```text
+MTK-11015: The connection credentials file ../etc/toolkit.properties is
+not secure and accessible to group/others users. This file contains
+plain passwords and should be restricted to Migration Toolkit owner user
+only.
+```
+
+To resolve this error, ensure the operating system user account running the Migration Toolkit is the owner of the `toolkit.properties` file with a minimum of read permission on the file. In addition, there must be no permissions of any kind for group and other users.
+
+The following is an example of the recommended file permissions, where user enterprisedb is running the Migration Toolkit.
+
+`-rw------- 1 enterprisedb enterprisedb 191 Aug 1 09:59 toolkit.properties`
+
+### Connection rejected: FATAL: password
+
+_When I try to perform a migration with Migration Toolkit, I get the following error:_
+
+```text
+MTK-11009: Error Connecting Database "EDB Postgres EDB Postgres Advanced Server"
+DB-28P01: com.edb.util.PSQLException: FATAL: password authentication
+failed for user "name"
+```
+
+The user name or password specified in the `toolkit.properties` file is not valid to use to connect to the Postgres database.
+
+To resolve this error, edit the `toolkit.properties` file, specifying the name and password of a valid user with privileges to perform the migration in the `TARGET_DB_USER` and `TARGET_DB_PASSWORD` properties.
+
+### Exception: ORA-28000: the account is locked
+
+_When I try to perform a migration from an Oracle database with Migration Toolkit, I get the following error message:_
+
+```text
+MTK-11009: Error Connecting Database "Oracle"
+DB-28000: java.sql.SQLException: ORA-28000: the account is locked
+The Oracle account associated with the user name specified in the
+toolkit.properties file is locked.
+```
+
+To resolve this error, you can either unlock the user account on the Oracle server or edit the `toolkit.properties` file, specifying the name and password of a valid user with privileges to perform the migration in the `SRC_DB_USER` and `SRC_DB_PASSWORD` parameters.
+
+### Exception: oracle.jdbc.driver.OracleDriver
+
+_When I try to perform a migration with Migration Toolkit, the migration fails and I get the error message:_
+
+```text
+MTK-11009: Error Connecting Database "Oracle"
+java.lang.ClassNotFoundException: oracle.jdbc.driver.OracleDriver
+```
+
+Before using Migration Toolkit, you must download and install the appropriate JDBC driver for the database that you are migrating from. See [Installing a JDBC driver](https://www.enterprisedb.com/docs/migration_toolkit/latest/installing/installing_jdbc_driver/) for complete instructions.
+
+### I/O exception: The Network Adapter could not establish the connection
+
+_When I try to perform a migration with Migration Toolkit, I get the following error:_
+
+```text
+MTK-11009: Error Connecting Database "Oracle"
+DB-17002: java.sql.SQLException: Io exception: The
+Network Adapter could not establish the connection
+```
+
+The JDBC URL for the source database specified in the `toolkit.properties` file contains invalid connection properties.
+
+To resolve this error, edit the [toolkit.properties file](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/), specifying valid connection information for the source database in the `SRC_DB_URL` property. The `SRC_DB_URL` value is database specific. See [Building the toolkit-properties file](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/) for detailed information for your source database type.
+
+### Exception: The URL specified for the “target” database is invalid
+
+_When I try to perform a migration with Migration Toolkit, I get the following error:_
+
+```text
+MTK-10045: The URL specified for the "target" database is invalid.
+Check the connectivity credentials.
+```
+
+The JDBC URL for the target database (EDB Postgres Advanced Server) specified in the `toolkit.properties` file contains invalid connection properties.
+
+To resolve this error, edit the `toolkit.properties` file, specifying valid connection information for the target database in the `TARGET_DB_URL` property. For information about forming a JDBC URL for EDB Postgres Advanced Server, see [Defining an EDB Postgres Advanced Server URL](https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/#url-and-parameters-for-an-advanced-server).
+
+### Error with time zone region
+
+_When I try to perform a migration from an Oracle database with Migration Toolkit, I get the following error:_
+
+```text
+MTK-11009: Error Connecting Database "Oracle"
+DB-604: java.sql.SQLException: ORA-00604: error occurred at recursive SQL level 1
+ORA-01882: timezone region not found
+```
+
+To resolve this issue you must align the time zone Migration Toolkit is using for the migration with the time zone of the Oracle database. You can do this by specifying the time zone of the Oracle database in the Migration Toolkit script.
+
+1. Find out which time zone your Oracle database is using.
+
+   For example, you can run `SELECT sessiontimezone FROM dual;` to get the time zone value (for example +08:00), or run `SELECT * FROM v$timezone_file;` to understand which time zone file is being used by your Oracle instance.
+
+2. Update the Migration Toolkit script adding the option `-Duser.timezone=<GMT>`.
+
+   **Linux**
+
+   For example, if this was the original line in `runMTK.sh`:
+
+   ```shell
+   runJREApplication $JAVA_HEAP_SIZE  -Dprop=$base/etc/toolkit.properties -cp $base/bin/edb-migrationtoolkit.jar:$base/lib/* com.edb.MigrationToolkit "$@"
+   ```
+
+   Add the `-Duser.timezone=GMT+08:00` option while ensuring it is placed before the `-Dprop` option.
+
+   ```shell
+   runJREApplication $JAVA_HEAP_SIZE -Duser.timezone=GMT+08:00 -Dprop=$base/etc/toolkit.properties -cp $base/bin/edb-migrationtoolkit.jar:$base/lib/* com.edb.MigrationToolkit "$@"
+   ```
+
+   **Windows**
+
+   For example, if this was the original line in `runMTK.bat`:
+
+   ```cmd
+   %WINDIR%\System32\cscript //nologo "%base%\etc\sysconfig\runJavaApplication.vbs" "%base%\etc\sysconfig\edbmtk-55.config" "%JAVA_HEAP_SIZE% -Dprop=%base%\etc\toolkit.properties -cp %base%\bin\edb-migrationtoolkit.jar;%base%/lib/* com.edb.MigrationToolkit %command%"
+   ```
+
+   Add the `-Duser.timezone=GMT+08:00` option while ensuring it is placed before the `-Dprop` option.
+
+   ```cmd
+   %WINDIR%\System32\cscript //nologo "%base%\etc\sysconfig\runJavaApplication.vbs" "%base%\etc\sysconfig\edbmtk-55.config" "%JAVA_HEAP_SIZE% -Duser.timezone=GMT+08:00 -Dprop=%base%\etc\toolkit.properties -cp %base%\bin\edb-migrationtoolkit.jar;%base%/lib/* com.edb.MigrationToolkit %command%"
+   ```
+
+### Error with unsupported character set
+
+_When I try to perform a migration from an Oracle database with Migration Toolkit, I get the following error:_
+
+```text
+MTK-11009: Error Connecting Database "Oracle"
+DB-17056: java.sql.SQLException: Non supported character set (add orai18n.jar in your classpath): ZHS16GBK
+```
+
+To resolve this issue you must ensure the Migration Toolkit can access the internationalization file.
+
+To enable Migration Toolkit to access the internationalization file, copy `orai18n.jar` from `$ORACLE_HOME/jlib/` to Migration Toolkit's library:
+
+**Linux**
+
+```shell
+/usr/edb/migrationtoolkit/lib
+```
+
+**Windows**
+
+```cmd
+C:\Program Files\edb\mtk\lib
+```
+
+Alternatively, download the required file from [Oracle's JAR downloads](https://www.oracle.com/database/technologies/appdev/jdbc-downloads.html) and place it in the Migration Toolkit's library.
+
+<div id="migration_errors" class="registered_link"></div>
+
+## Migration errors
+
+The following errors can occur after Migration Toolkit has successfully connected to the target and source database servers.
+
+### ERROR: Extra data after last expected column
+
+_When migrating a table online, I get the error message:_
+
+```text
+MTK-17001: Error Loading Data into Table: table_name
+DB-22P04: com.edb.util.PSQLException: ERROR: extra data after last
+expected column
+Where: COPY table_name, line 5: "50|HR|LOS|ANGELES"
+```
+
+This error occurs when the data in a column in `table_name` includes the delimiter character. To correct this error, change the delimiter character to a character not found in the table contents.
+
+> **Note**
+>
+> In this example, the pipe character (|) occurs in the text,`LOS|ANGELES`, intended for insertion into the last column, and the Migration Toolkit is run using the `-copyDelimiter '|'` option, which results in the error.
+
+### Error loading data into table: _TABLE\_NAME_
+
+_When performing a data-only migration, I get the following error:_
+
+```text
+MTK-17001: Error Loading Data into Table: TABLE_NAME
+DB-42P01: com.edb.util.PSQLException: ERROR: relation
+"schema.\ table_name" does not exist
+*I also get the error:*
+Trying to reload table: TABLE_NAME through bulk inserts with a batch
+size of 100
+MTK-17001: Error Loading Data into Table: TABLE_NAME
+DB-42P01: com.edb.util.PSQLException: ERROR: relation
+"schema.\ table_name" does not exist
+```
+
+You must create a table to receive the data in the target database before you can migrate the data. Verify that a table with a name of TABLE\_NAME exists in the target database. Create the table if necessary, and retry the data migration.
+
+### Error creating constraint CONS\_NAME\_FK
+
+_When I perform a table migration that includes indexes and constraints, I get the following error message:_
+
+```text
+MTK-15001: Error Creating Constraint EMP_DEPT_FK
+DB-42P01: com.edb.util.PSQLException: ERROR: relation "hr.departments"
+does not exist
+Creating Constraint: EMP_JOB_FK
+MTK-15001: Error Creating Constraint EMP_JOB_FK
+DB-42P01: com.edb.util.PSQLException: ERROR: relation "hr.jobs" does not exist
+Creating Constraint: EMP_MANAGER_FK
+Schema HR imported with errors.
+One or more schema objects could not be imported during the migration
+process. Please review the migration output for more details.
+Migration logs have been saved to
+/home/user/.enterprisedb/migration-toolkit/logs
+******************** Migration Summary ********************
+Tables: 1 out of 1
+Constraints: 4 out of 6
+Total objects: 7
+Successful count: 5
+Failed count: 2
+Invalid count: 0
+List of failed objects
+======================
+Constraints
+--------------------
+1. HR.EMPLOYEES.EMP_DEPT_FK
+2. HR.EMPLOYEES.EMP_JOB_FK
+```
+
+The table you're migrating includes a foreign key constraint on a table that doesn't exist in the target database. Migration Toolkit creates the table, omitting the foreign key constraint.
+
+You can avoid generating the error message by including the `-skipFKConst` option in the Migration Toolkit command.
+
+### Error Loading Data into Table
+
+_I've already migrated the table definition; when I try to migrate the data into the table, I get an error:_
+
+```text
+MTK-17001: Error Loading Data into Table: DEPARTMENTS
+DB-22P04: com.edb.util.PSQLException: ERROR: extra data after last
+expected column
+Where: COPY departments, line 1: "10 Administration 200 1700"
+Trying to reload table: DEPARTMENTS through bulk inserts with a batch
+size of 100
+MTK-17000: Batch entry 0 INSERT INTO hr.DEPARTMENTS VALUES (10,
+'Administration', 200, 1700); was aborted. Call getNextException to see
+the cause.
+DB-42601: java.sql.BatchUpdateException: Batch entry 0 INSERT INTO
+hr.DEPARTMENTS VALUES (10, 'Administration', 200, 1700); was aborted.
+Call getNextException to see the cause., Skipping Batch
+MTK-17000:ERROR: INSERT has more expressions than target columns
+Position: 48
+[DEPARTMENTS] Table Data Load Summary: Total Time(s): 0.037 Total Rows:0
+Data Load Summary: Total Time (sec): 0.168 Total Rows: 0 Total Size(MB):0.0
+Schema HR imported with errors.
+```
+
+The table definition in the target database doesn't match the migrated data. If you altered the target or source table, confirm that the table definition and the data are compatible.
+
+### ERROR: value too long for type
+
+_I've already migrated the table definition. When I try to migrate the data into the table, I get the following error:_
+
+```text
+MTK-17001: Error Loading Data into Table: DEPARTMENTS
+DB-22001: com.edb.util.PSQLException: ERROR: value too long for type
+character(1)
+Where: COPY departments, line 1, column location_id: "1700"
+Trying to reload table: DEPARTMENTS through bulk inserts with a batch
+size of 100
+MTK-17000: Batch entry 0 INSERT INTO hr.DEPARTMENTS VALUES (10,
+'Administration', 200, 1700); was aborted. Call getNextException to see
+the cause.
+DB-22001: java.sql.BatchUpdateException: Batch entry 0 INSERT INTO
+hr.DEPARTMENTS VALUES (10, 'Administration', 200, 1700); was aborted.
+Call getNextException to see the cause., Skipping Batch
+MTK-17000:ERROR: value too long for type character(1)
+```
+
+A column in the target database is not large enough to receive the migrated data. This problem can occur if the table definition is altered after migration. The column name (in this example, location\_id) is identified in the line that begins with `Where:`.
+
+Where: `COPY departments, line 1, column location_id: "1700"`
+
+To correct the problem, adjust the column size and retry the migration.
+
+### ERROR: Exception in thread:OutOfMemoryError
+
+_When migrating from a MySQL database, I encounter the following error:_
+
+```text
+Loading Table: big_range ...
+Exception in thread "dataload_job_1" java.lang.OutOfMemoryError: Java
+heap space
+at com.mysql.jdbc.MysqlIO.nextRow(MysqlIO.java:1370)
+at com.mysql.jdbc.MysqlIO.readSingleRowSet(MysqlIO.java:2369)
+at com.mysql.jdbc.MysqlIO.getResultSet(MysqlIO.java:451)
+at com.mysql.jdbc.MysqlIO.readResultsForQueryOrUpdate(MysqlIO.java:2076)
+at com.mysql.jdbc.MysqlIO.readAllResults(MysqlIO.java:1451)
+at com.mysql.jdbc.MysqlIO.sqlQueryDirect(MysqlIO.java:1787)
+at com.mysql.jdbc.Connection.execSQL(Connection.java:3277)
+at com.mysql.jdbc.Connection.execSQL(Connection.java:3206)
+at com.mysql.jdbc.Statement.executeQuery(Statement.java:1232)
+at com.edb.dbhandler.mysql.Data.getTableData(Data.java:90)
+at com.edb.DataLoader.loadDataInFastMode(DataLoader.java:594)
+at com.edb.DataLoader.run(DataLoader.java:186)
+at java.lang.Thread.run(Thread.java:722)
+```
+
+By default, the MySQL JDBC driver fetches all of the rows in a table into Migration Toolkit in a single network round trip. This behavior can easily exceed available memory for large tables.
+
+To correct the problem, specify `-fetchSize 1` as a command-line argument when you retry the migration.
+
+### Error: Read timeout during data migration
+
+_When I perform a migration to a target EDB Postgres Advanced Server or PostgreSQL server, Migration Toolkit reports a timeout error:_
+
+```
+DB-08006: com.edb.util.PSQLException: An I/O error occurred while sending to the backend.
+java.net.SocketTimeoutException: Read timed out
+```
+
+The target database server is either EDB Postgres Advanced Server or PostgreSQL and you are performing a data migration. The source tables' size ranges in the hundreds of gigabytes or the network between the database server and Migration Toolkit is slow, which causes the migration to take multiple hours.
+
+The error message is reported after a successful data copy at the stage of enabling constraints.
+
+This occurs because the server's default configuration closes idle TCP connections opened by Migration Toolkit to create constraints.
+
+To work around this issue, modify the following parameters in the `postgresql.conf` file of the target database server:
+
+```
+tcp_keepalives_idle = 60                # TCP_KEEPIDLE, in seconds;
+tcp_keepalives_interval = 10            # TCP_KEEPINTVL, in seconds;
+tcp_keepalives_count = 10               # TCP_KEEPCNT;
+```
+
+Then, reload the configuration to make the changes effective:
+
+```
+select pg_reload_conf();
+```
+
+Alter the `TARGET_DB_URL` URL in the `toolkit.properties` file to include the new setting for the connection to the database following the format:
+
+```properties
+TARGET_DB_URL=jdbc:edb://<host>:<port><database_id>?tcpKeepAlive=true
+```
+
+For example:
+
+```properties
+TARGET_DB_URL=jdbc:edb://1.2.3.4:5432/example_db?tcpKeepAlive=true
+```
+
+This way, tcp\_keepalive messages won't let the connection become idle and Migration Toolkit won't report a broken connection.
+
+### Incorrect timestamps and Daylight Saving Time
+
+When migrating from SQL Server to PostgreSQL using the MSSQL JDBC driver, an error in the migration of timestamps may occur that is not reported. Specifically, if the source database contains rows with timestamp values that are within a range of time when Daylight Savings Time was in effect, those rows will be migrated to the target database with the wrong timestamps.
+
+To resolve this issue, update the `runMTK.sh` file, and provide the option `-Duser.timezone=GMT`. This option will then be in effect when you run the toolkit.
+
+For example, suppose this is the original line:
+
+```text
+runJREApplication $JAVA_HEAP_SIZE -Dprop=$base/etc/toolkit.properties -cp $base/bin/edb-migrationtoolkit.jar:$base/lib/* com.edb.MigrationToolkit "$@"
+```
+
+Update this line by inserting `-Duser.timezone=GMT` before the `-cp` option:
+
+```text
+runJREApplication $JAVA_HEAP_SIZE -Dprop=$base/etc/toolkit.properties -Duser.timezone=GMT -cp $base/bin/edb-migrationtoolkit.jar:$base/lib/* com.edb.MigrationToolkit "$@"
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

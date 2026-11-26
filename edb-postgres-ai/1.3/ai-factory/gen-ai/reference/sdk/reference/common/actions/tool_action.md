@@ -1,0 +1,163 @@
+---
+title: tool_action
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/actions/tool_action/
+lastModified: 2025-11-07T18:06:05Z
+---
+
+# tool\_action
+
+<span id="griptape.common.actions.tool_action.ToolAction"></span>
+
+Bases:
+[`BaseAction`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/#griptape.common.BaseAction "BaseAction (griptape.common.BaseAction)")
+
+### Attributes
+
+| Name                                                                                                                                                                                                                                                                                                                                                                                                                        | Type                                                                                                                                                                                                                                                                         | Description                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/actions/tool_action/#griptape.common.actions.tool_action.ToolAction.tag" title="tag = field(metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.common.actions.tool_action.ToolAction.tag)"><code class="language-python">tag</code></a>                       | `str`                                                                                                                                                                                                                                                                        | The tag (unique identifier) of the action.<br/>   |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/actions/tool_action/#griptape.common.actions.tool_action.ToolAction.name" title="name = field(metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.common.actions.tool_action.ToolAction.name)"><code class="language-python">name</code></a>                   | `str`                                                                                                                                                                                                                                                                        | The name (Tool name) of the action.<br/>          |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/actions/tool_action/#griptape.common.actions.tool_action.ToolAction.path" title="path = field(default=None, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.common.actions.tool_action.ToolAction.path)"><code class="language-python">path</code></a>     | `Optional[str]`                                                                                                                                                                                                                                                              | The path (Tool activity name) of the action.<br/> |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/actions/tool_action/#griptape.common.actions.tool_action.ToolAction.input" title="input = field(factory=dict, metadata={'serializable': True})           class-attribute       instance-attribute    (griptape.common.actions.tool_action.ToolAction.input)"><code class="language-python">input</code></a> | `dict`                                                                                                                                                                                                                                                                       | The input (Tool params) of the action.<br/>       |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/actions/tool_action/#griptape.common.actions.tool_action.ToolAction.tool" title="tool = field(default=None)           class-attribute       instance-attribute    (griptape.common.actions.tool_action.ToolAction.tool)"><code class="language-python">tool</code></a>                                      | <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/tools/#griptape.tools.BaseTool" title="BaseTool (griptape.tools.BaseTool)"><code class="language-python">Optional\[BaseTool]</code></a>                             | The matched Tool of the action.<br/>              |
+| <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/common/actions/tool_action/#griptape.common.actions.tool_action.ToolAction.output" title="output = field(default=None)           class-attribute       instance-attribute    (griptape.common.actions.tool_action.ToolAction.output)"><code class="language-python">output</code></a>                              | <a href="https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/artifacts/#griptape.artifacts.BaseArtifact" title="BaseArtifact (griptape.artifacts.BaseArtifact)"><code class="language-python">Optional\[BaseArtifact]</code></a> | The output (Tool result) of the action.<br/>      |
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/actions/tool\_action.py</code>
+
+</summary>
+
+```python
+@define(kw_only=True)
+class ToolAction(BaseAction):
+    """Represents an instance of an LLM using a Tool.
+
+    Attributes:
+        tag: The tag (unique identifier) of the action.
+        name: The name (Tool name) of the action.
+        path: The path (Tool activity name) of the action.
+        input: The input (Tool params) of the action.
+        tool: The matched Tool of the action.
+        output: The output (Tool result) of the action.
+    """
+
+    tag: str = field(metadata={"serializable": True})
+    name: str = field(metadata={"serializable": True})
+    path: Optional[str] = field(default=None, metadata={"serializable": True})
+    input: dict = field(factory=dict, metadata={"serializable": True})
+    tool: Optional[BaseTool] = field(default=None)
+    output: Optional[BaseArtifact] = field(default=None)
+
+    def __str__(self) -> str:
+        return json.dumps(self.to_dict())
+
+    def to_native_tool_name(self) -> str:
+        parts = [self.name]
+
+        if self.path is not None:
+            parts.append(self.path)
+
+        return "_".join(parts)
+
+    @classmethod
+    def from_native_tool_name(cls, native_tool_name: str) -> tuple[str, Optional[str]]:
+        parts = native_tool_name.split("_", 1)
+
+        if len(parts) == 1:
+            name, path = parts[0], None
+        else:
+            name, path = parts
+
+        return name, path
+```
+
+</details>
+
+- `input = field(factory=dict, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.actions.tool_action.ToolAction.input"></span>
+
+- `name = field(metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.actions.tool_action.ToolAction.name"></span>
+
+- `output = field(default=None)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.actions.tool_action.ToolAction.output"></span>
+
+- `path = field(default=None, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.actions.tool_action.ToolAction.path"></span>
+
+- `tag = field(metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.actions.tool_action.ToolAction.tag"></span>
+
+- `tool = field(default=None)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.common.actions.tool_action.ToolAction.tool"></span>
+
+<span id="griptape.common.actions.tool_action.ToolAction.__str__"></span>
+
+### **str**()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/actions/tool\_action.py</code>
+
+</summary>
+
+```python
+def __str__(self) -> str:
+    return json.dumps(self.to_dict())
+```
+
+</details>
+
+<span id="griptape.common.actions.tool_action.ToolAction.from_native_tool_name"></span>
+
+### from\_native\_tool\_name(native\_tool\_name)classmethod
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/actions/tool\_action.py</code>
+
+</summary>
+
+```python
+@classmethod
+def from_native_tool_name(cls, native_tool_name: str) -> tuple[str, Optional[str]]:
+    parts = native_tool_name.split("_", 1)
+
+    if len(parts) == 1:
+        name, path = parts[0], None
+    else:
+        name, path = parts
+
+    return name, path
+```
+
+</details>
+
+<span id="griptape.common.actions.tool_action.ToolAction.to_native_tool_name"></span>
+
+### to\_native\_tool\_name()
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/common/actions/tool\_action.py</code>
+
+</summary>
+
+```python
+def to_native_tool_name(self) -> str:
+    parts = [self.name]
+
+    if self.path is not None:
+        parts.append(self.path)
+
+    return "_".join(parts)
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

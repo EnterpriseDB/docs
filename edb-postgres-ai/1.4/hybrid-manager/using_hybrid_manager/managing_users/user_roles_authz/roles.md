@@ -1,0 +1,143 @@
+---
+title: User role descriptions
+description: Descriptions of the user roles supported by Hybrid Manager.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/managing_users/user_roles_authz/roles/
+lastModified: 2026-08-20T18:08:41+02:00
+---
+
+# User role descriptions
+
+Hybrid Manager (HM) has two types of users: human users (native users or IDP users) and machine users.
+
+You can assign any of the default roles to both types of users, except that only machine users can be estate ingesters.
+
+The two main categories of roles are organization-level and project-level.
+
+## Organization-level roles
+
+You can assign these roles to human or machine-users using the **User Management** option of your user profile menu at the top-right of the navigation bar in the HM console.
+
+### Organization Administrator
+
+This role provides read access at the organization level, allowing the user to view information and settings in the organization as a whole.
+
+### Organization Owner
+
+The purpose of this role is to manage the organization at a high level.
+Organization owners can create projects and assign organization-level roles to other users.
+
+### Platform Administrator
+
+This role is for users who need to access and manage the underlying platform components of HM.
+They can access platform management and monitoring tools.
+
+[comment]: # "Open question (RBAC eng-integration, claim #6): eng doc names an org-level 'GenAI Builder Editor' role scoped to GenAI Builder launchpad access only. Docs have no such role; the closest equivalent, AI Model Manager, has broader scope (AI models, inference services, and Agent Studio UI). Rename with expanded scope, or two distinct roles? Needs product/SME decision before editing. See comparison doc: https://docs.google.com/document/d/1Zz1x5mrO27dEDcw1Klk5V1VvydC_wYOhyouipSquV-M/edit"
+
+### AI Model Manager
+
+This role is for users who work with the AI model and model service feature of HM, granting them full access to its functions.
+It also grants access to the Agent Studio flow builder UI.
+
+### Appliance Administrator
+
+This role applies only to on-premises HM deployments. It grants access to appliance-level configuration and monitoring — that is, the underlying appliance hardware and software that hosts HM, as distinct from the HM platform itself. For details, see your on-premises deployment documentation.
+
+## Project-level roles
+
+These roles can be assigned to human or machine-users (except for Estate Ingester). Select **Users** in the left navigation when viewing a project.
+
+### Project Owner
+
+In a specific project, the Project Owner role has the highest level of authority.
+They can take all actions in that project and are responsible for assigning project-level roles to other users.
+
+### Project Editor
+
+This role is for users who need to actively work with the data in a project.
+Users with the Project Editor role have read and write access to data.
+
+### Project Viewer
+
+For users who only need to observe the data in a project, the Project Viewer role provides read-only access.
+
+### Estate Ingester
+
+This role is for machine-users and provides access to perform estate ingests in a project.
+
+### Pipeline Editor
+
+This role is for users who need to create and manage AI pipelines and knowledge bases in a project.
+
+### Catalog Data Reader
+
+Users with this role can read the Iceberg namespace/table/view of project-scoped catalogs.
+
+### Catalog Data Writer
+
+This role allows users to read, write, and delete the Iceberg namespace/table/view of all project-scoped catalogs in a project.
+
+#### Accessing a catalog's data access using the Iceberg REST API
+
+Both first-party and third-party Iceberg REST clients must authenticate using an HM access key. Set one of these HTTP headers:
+
+```
+x-access-key: <access-key-value>
+Authorization: Bearer <access-key-value>
+```
+
+> **Note**
+>
+> `Bearer` is case-sensitive.
+
+> **Warning**
+>
+> HM explicitly denies Iceberg endpoint access via UI session cookies. Access keys are required.
+
+The following table maps each Iceberg REST API operation to the HM permission and minimum role it requires.
+
+| Iceberg API                   | Required HM permission                  | Minimum role        |
+| ----------------------------- | --------------------------------------- | ------------------- |
+| list\_namespace               | read:catalog-data                       | Catalog Data Reader |
+| create\_namespace             | read:catalog-data, write:catalog-data   | Catalog Data Writer |
+| load\_namespace\_metadata     | read:catalog-data                       | Catalog Data Reader |
+| namespace\_exists             | read:catalog-data                       | Catalog Data Reader |
+| drop\_namespace               | write:catalog-data                      | Catalog Data Writer |
+| update\_namespace\_properties | write:catalog-data                      | Catalog Data Writer |
+| list\_tables                  | read:catalog-data                       | Catalog Data Reader |
+| create\_table                 | write:catalog-data                      | Catalog Data Writer |
+| load\_table                   | read:catalog-data or write:catalog-data | Catalog Data Reader |
+| drop\_table                   | read:catalog-data, write:catalog-data   | Catalog Data Writer |
+| table\_exists                 | read:catalog-data                       | Catalog Data Reader |
+| rename\_table                 | write:catalog-data                      | Catalog Data Writer |
+| commit\_table                 | read:catalog-data, write:catalog-data   | Catalog Data Writer |
+| commit\_view                  | read:catalog-data, write:catalog-data   | Catalog Data Writer |
+| create\_view                  | read:catalog-data, write:catalog-data   | Catalog Data Writer |
+| drop\_view                    | read:catalog-data, write:catalog-data   | Catalog Data Writer |
+| view\_exists                  | read:catalog-data                       | Catalog Data Reader |
+| list\_views                   | read:catalog-data                       | Catalog Data Reader |
+| load\_view                    | read:catalog-data                       | Catalog Data Reader |
+| rename\_view                  | write:catalog-data                      | Catalog Data Writer |
+
+### Migration Portal Projects Owner
+
+This role is for users who manage Migration Portal projects in an HM project.
+They can create, read, update, and delete these projects.
+
+### Migration Portal Projects Editor
+
+Users with this role can read and update Migration Portal projects in an HM project.
+
+### Migration Portal Projects Viewer
+
+This role provides read-only access to Migration Portal projects in an HM project.
+
+## Best practices
+
+- **Least privilege**: Assign the minimum role that allows the user to perform their tasks. Start with Viewer and escalate only when needed.
+- **Separate human and machine accounts**: Never share human credentials with automation. Create dedicated machine users.
+- **Audit regularly**: Review the activity log monthly to identify unused accounts or over-privileged users.
+- **Short-lived access keys**: Set the shortest practical TTL for access keys. For CI/CD pipelines that run daily, a 7-day key with automated rotation is preferable to a 365-day key.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

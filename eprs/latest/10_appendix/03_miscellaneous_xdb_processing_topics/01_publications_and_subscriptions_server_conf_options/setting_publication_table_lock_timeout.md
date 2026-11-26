@@ -1,0 +1,61 @@
+---
+title: Setting the publication table lock timeout
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/10_appendix/03_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/setting_publication_table_lock_timeout/
+lastModified: 2026-11-24T11:18:20+01:00
+---
+
+# Setting the publication table lock timeout
+
+> **Note**
+>
+> This option applies only to the publication server.
+
+When you create a publication, add tables to a publication, or run the first snapshot of a subscription, the publication server creates or enables the shadow table triggers on each publication table. To create or enable the triggers, the publication server must get an exclusive lock on the table. If another session holds a lock on the table, the publication server waits for the lock to be released. If the lock isn't released within the timeout, the operation fails.
+
+Use `pubDBTableLockTimeout` to set the timeout, in seconds, that the publication server waits for the lock. Increase the value if another application might lock your publication tables for longer than the default wait time. Decrease the value to make the operation fail fast instead of waiting.
+
+`pubDBTableLockTimeout=n`
+
+Specify a whole number greater than or equal to `0`. A value of `0` disables the timeout, so the publication server waits indefinitely. If the value isn't valid, the publication server logs an error and uses the default for the publication database.
+
+## Default value
+
+If you don't set the option, the default depends on the type of the publication database:
+
+| Publication database                        | Default                                                                                                                                                                                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Oracle                                      | 120 seconds                                                                                                                                                                                                                                      |
+| PostgreSQL and EDB Postgres Advanced Server | No timeout. The exception is when you add tables to a multi-master replication system and skip schema replication (`-replicatetableschema false`). In that case, the default is 120 seconds for creating the triggers on the other master nodes. |
+| SQL Server                                  | No timeout                                                                                                                                                                                                                                       |
+
+If you set the option, the value applies to all publication database types.
+
+## Changing the timeout
+
+If your publication database is EDB Postgres Advanced Server and you use an EDB JDBC driver earlier than 42.5.0.1, don't set a non-zero value. Earlier drivers can't apply a custom query timeout, so the operation fails with an internal error. See [Installing a JDBC driver](https://www.enterprisedb.com/docs/eprs/latest/installing/installing_jdbc_driver/) for information on choosing and installing a driver.
+
+1. In the `xdb_pubserver.conf` file on the publication server, uncomment the `pubDBTableLockTimeout` line and set a value.
+
+   See [Installation details](https://www.enterprisedb.com/docs/eprs/latest/installing/installation_details/#additional-details) to find out where this file is stored for your operating system.
+
+   This example makes the publication server wait up to five minutes for a lock:
+
+   ```ini
+   pubDBTableLockTimeout=300
+   ```
+
+2. [Reload the configuration file](https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/52_reload_conf_file/). You don't need to restart the publication server.
+
+## When the timeout is reached
+
+When the publication server can't get the lock within the timeout, the operation fails with the following message:
+
+```text
+The publication creation process timed out as one or more tables may be locked by another session. Please retry later.
+```
+
+The publication server leaves no triggers on the table, and the publication is unchanged. After the other session releases its lock, retry the operation. If the lock is held for longer than the timeout, increase `pubDBTableLockTimeout` first.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,188 @@
+---
+title: "Installing: step-by-step guide"
+description: Plan for, prepare for, install, and perform the initial configuration of Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/
+lastModified: 2026-11-20T19:53:06+05:30
+---
+
+# Installing: step-by-step guide
+
+## Overview
+
+This guide walks you through planning, configuring, and installing Hybrid Manager (HM) onto your infrastructure.
+
+The process is divided into **6 chronological phases** to ensure dependencies are met before deployment proceeds.
+
+> **Note**
+>
+> Please follow these phases in order. Skipping steps, most importantly [Gathering your system requirements](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/sys_reqs/) or [Preparing your environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/), are the most common cause of installation failure.
+
+---
+
+## Phase 1: Planning your architecture
+
+> **Role focus:** CTO / Architect / Lead Engineer
+
+This initial phase is about **designing** your deployment architecture.
+
+It concludes with documenting that architecture (Architectural Decision Record (ADR)), which then serves as the blueprint for all subsequent steps.
+
+- **Goal:** Define the foundational architecture for HM.
+
+- **Key activities:**
+
+  - Review and select the appropriate **Kubernetes flavor**, topology, and deployment locations.
+
+  - Document architectural decisions (ADR) as inputs for infrastructure requirements and Kubernetes installation (Phases 2 and 3).
+
+- **Documentation:** [Planning your architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/)
+
+> **Note**
+>
+> You, as the customer, must ultimately own your deployment architecture.
+> While EDB's Sales Engineering, Professional Services, Support Team, or documentation can be consulted, the final architectural decisions rest with your team.
+
+---
+
+## Phase 2: Gathering your system requirements
+
+> **Role focus:** Infrastructure engineer / CSP Administrator / Platform Engineer
+
+This phase focuses on **identifying, preparing, and verifying** the infrastructure needed to support the architecture defined in Phase 1.
+This is where you begin preparing your configuration.
+
+- **Goal:** Fulfill all prerequisites and prepare the inputs for the core configuration.
+
+- **Key Activities:**
+
+  - Identify **hardware, networking, storage, DNS requirements, and other system requirements** for your chosen architecture.
+
+  - Ensure all prerequisites are met for Kubernetes deployment.
+
+  - Prepare to populate critical configuration entries for Hybrid Manager in the `HybridControlPlane` CR.
+
+- **Documentation:** [Gathering your system requirements](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/sys_reqs/)
+
+> **Note**
+>
+> EDB's Sales Engineering and Professional Services are the primary resources for communicating and clarifying detailed deployment requirements during the sales cycle or via a Statement of Work (SoW).
+> The official documentation also provides comprehensive checklists.
+
+---
+
+## Phase 3: Deploying your Kubernetes cluster
+
+---
+
+> **Role focus:** Kubernetes engineer / CSP Administrator
+
+This phase executes the deployment of your chosen Kubernetes environment based on the previous planning.
+
+- **Goal:** Deploy and provision the operational Kubernetes cluster.
+
+- **Key activities:**
+
+  - Deploy Kubernetes according to the defined architecture and infrastructure requirements.
+
+  - Implement necessary abstractions (node pools, storage classes, networking).
+
+  - Validate that infrastructure requirements are met and prepare critical configuration entries.
+
+- **Documentation:** [Deploying your Kubernetes cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/k8s_install/)
+
+> **Note**
+>
+> **EDB support context:** Customers own the installation and lifecycle operation of their Kubernetes cluster.
+> Professional Services can be engaged via a Statement of Work (SoW), and Support can offer assistance through knowledge base articles.
+
+---
+
+## Phase 4: Preparing your environment
+
+---
+
+> **Role focus:** Site reliability engineer (SRE) / Infrastructure Engineer
+
+Final preparations are made here to ensure the cluster is optimally configured to receive and run HM.
+
+- **Goal:** Provision necessary security and configuration resources.
+
+- **Key activities:**
+
+  - Provision essential **secrets and configuration resources**
+
+  - Perform further validation of cluster readiness for Hybrid Manager installation.
+
+- **Documentation:** [Preparing your environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/)
+
+> **Note**
+>
+> **EDB Support Context:** Final preparation for Hybrid Manager is primarily the **customer's responsibility** (except for Engineered Systems), as is the cluster's lifecycle operation. **Professional Services** can be engaged via a Statement of Work (SoW), and **Support** can offer assistance through knowledge base articles.
+
+---
+
+## Phase 5: Installing Hybrid Manager
+
+---
+
+> **Role focus:** Site reliability engineer (SRE) / Infrastructure Engineer
+
+This is the final deployment step, where Hybrid Manager is installed into your prepared environment.
+
+- **Goal:** Deploy Hybrid Manager and confirm successful operation.
+
+- **Key activities:**
+
+  - Final validation of the configuration files, and environment and deployment settings.
+
+  - Deploy Hybrid Manager
+
+  - Confirm successful installation and operational readiness.
+
+- **Documentation:** [Installing Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/) (standard Kubernetes) or [Installing Hybrid Manager on Red Hat OpenShift](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_rhos/) (Red Hat OpenShift/OperatorHub)
+
+---
+
+## Phase 6: Exploring your post-installation options
+
+---
+
+> **Role focus:** Infrastructure Engineer/Platform Administrator
+
+Once the system is running, this phase covers the "Day 2" configurations required to unlock advanced features like AI workloads and external monitoring.
+
+- **Goal:** Integrate the platform with your wider ecosystem and enable optional modules.
+
+- **Key activities:**
+
+  - **Observability:** Configure notification channels (PagerDuty, Email) and install agents for external database monitoring.
+
+- **Documentation:** [See Post-installation options](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/post_install/)
+
+---
+
+## Configuring HM
+
+Several detailed configuration SOPS are referenced throughout the installation procedure and are either useful or necessary to consult for specific instructions:
+
+1. [Syncing images to a local private registry](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/sync_images/)
+2. [Using the in-cluster container registry](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/in_cluster_registry/)
+3. [Configuring image discovery](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/image_discovery/)
+4. [Customizing secrets](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/customizing_secrets/)
+5. [Implementing TLS](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/cert-man/)
+6. [Deploying HM across multiple data centers](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/multi_dc/)
+7. [Configuring IdPs](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/idp_management/config_idp_hm/)
+8. [Enabling KMS for TDE](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/)
+9. [Optimizing service mesh memory](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/optimize_mesh_memory/)
+
+- [Planning architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/planning_arch/): Plan and document your Hybrid Manager platform architecture.
+- [Gathering requirements](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/sys_reqs/): Determine your hardware, software, and external service requirements for a successful Hybrid Manager deployment.
+- [Deploying Kubernetes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/k8s_install/): Provision and validate the Kubernetes infrastructure required to host Hybrid Manager.
+- [Preparing environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/): Step through preparing your environment for Hybrid Manager installation, including: syncing images to your local registry, configuring secrets, setting up any advanced features, and finalizing your HM configuration.
+- [Installing Hybrid Manager on Kubernetes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/): Deploy Hybrid Manager using the operator method.
+- [Installing Hybrid Manager on Red Hat OpenShift](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_rhos/): Install Hybrid Manager on a Red Hat OpenShift cluster using the OperatorHub catalog.
+- [Exploring post-install](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/post_install/): Finalize and validate your Hybrid Manager deployment with post-installation configuration and checks.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

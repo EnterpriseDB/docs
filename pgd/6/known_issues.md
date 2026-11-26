@@ -1,0 +1,425 @@
+---
+title: Known issues and limitations
+description: Known issues and limitations in EDB Postgres Distributed 6
+product: EDB Postgres Distributed (PGD)
+version: 6.0.2
+url: https://www.enterprisedb.com/docs/pgd/6/known_issues/
+lastModified: 2026-03-24T12:44:06Z
+---
+
+# Known issues and limitations
+
+## Known issues
+
+These are currently known issues in EDB Postgres Distributed 6.
+These known issues are tracked in PGD's ticketing system and are expected to be resolved in a future release.
+
+- If the resolver for the `update_origin_change` conflict
+  is set to `skip`, `synchronous_commit=remote_apply` is used, and
+  concurrent updates of the same row are repeatedly applied on two
+  different nodes, then one of the update statements might hang due
+  to a deadlock with the PGD writer. As mentioned in
+  [Conflicts](https://www.enterprisedb.com/docs/pgd/6/conflict-management/conflicts/), `skip` isn't the default
+  resolver for the `update_origin_change` conflict, and this
+  combination isn't intended to be used in production. It discards
+  one of the two conflicting updates based on the order of arrival
+  on that node, which is likely to cause a divergent cluster.
+  In the rare situation that you do choose to use the `skip`
+  conflict resolver, note the issue with the use of the
+  `remote_apply` mode.
+
+- The Decoding Worker feature doesn't work with CAMO/Eager/Group Commit.
+  Installations using CAMO/Eager/Group Commit must keep `enable_wal_decoder` disabled.
+
+- Lag Control doesn't adjust commit delay in any way on a fully isolated node, that's in case all other nodes are unreachable or not operational.
+  As soon as at least one node connects, replication Lag Control picks up its work and adjusts the PGD commit delay again.
+
+- For time-based Lag Control, PGD currently uses the lag time, measured by commit timestamps, rather than the estimated catch up time that's based on historic apply rates.
+
+- Changing the CAMO partners in a CAMO pair isn't currently possible.
+  It's possible only to add or remove a pair.
+  Adding or removing a pair doesn't require a restart of Postgres or even a reload of the configuration.
+
+- Group Commit can't be combined with [CAMO](https://www.enterprisedb.com/docs/pgd/6/commit-scopes/camo/).
+
+- Transactions using Eager Replication can't yet execute DDL. The TRUNCATE command is allowed.
+
+- Parallel Apply isn't currently supported in combination with Group Commit. Make sure to disable it when using Group Commit by either (a) Setting `num_writers` to 1 for the node group using [`bdr.alter_node_group_option`](https://www.enterprisedb.com/docs/pgd/6/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) or (b) using the GUC [`bdr.writers_per_subscription`](https://www.enterprisedb.com/docs/pgd/6/reference/tables-views-functions/pgd-settings/#bdrwriters_per_subscription). See [Configuration of generic replication](https://www.enterprisedb.com/docs/pgd/6/reference/tables-views-functions/pgd-settings/#generic-replication).
+
+- There currently is no protection against altering or removing a commit scope.
+  Running transactions in a commit scope that's concurrently being altered or removed can lead to the transaction blocking or replication stalling completely due to an error on the downstream node attempting to apply the transaction.
+  Make sure that any transactions using a specific commit scope have finished before altering or removing it.
+
+- The [PGD CLI](https://www.enterprisedb.com/docs/pgd/6/reference/cli/) can return stale data on the state of the cluster if it's still connecting to nodes that were previously parted from the cluster.
+  Edit the [`pgd-cli-config.yml`](https://www.enterprisedb.com/docs/pgd/6/reference/cli/configuring_cli/#using-a-configuration-file) file, or change your [`--dsn`](https://www.enterprisedb.com/docs/pgd/6/reference/cli/configuring_cli/#using-database-connection-strings-in-the-command-line) settings to ensure only active nodes in the cluster are listed for connection.
+
+To modify a commit scope safely, use [`bdr.alter_commit_scope`](https://www.enterprisedb.com/docs/pgd/6/reference/tables-views-functions/functions/#bdralter_commit_scope).
+
+- DDL run in serializable transactions can face the error: `ERROR: could not serialize access due to read/write dependencies among transactions`. A workaround is to run the DDL outside serializable transactions.
+
+- The EDB Postgres Advanced Server 17 data type [`BFILE`](https://www.enterprisedb.com/docs/epas/latest/reference/sql_reference/02_data_types/03a_bfiles/) is not currently supported. This is due to `BFILE` being a file reference that is stored in the database, and the file itself is stored outside the database and not replicated.
+
+- EDB Postgres Advanced Server's native autopartioning is not supported in PGD. See [Restrictions on EDB Postgres Advanced Server-native automatic partitioning](https://www.enterprisedb.com/docs/pgd/6/autopartition/#restrictions-on-edb-postgres-advanced-server-native-automatic-partitioning) for more information.
+
+- When running PGD on community PostgreSQL with Parallel Apply enabled, writer processes may terminate unexpectedly due to lock timeouts. This occurs because PGD sets a 30 second `lock_timeout` in the writer processes, which can be insufficient when one writer waits on a transaction lock held by another writer that is processing a large transaction. When the timeout is reached, the waiting writer exits, causing other writers and the receiver to terminate as well, which resets the replication process.
+  As a workaround, disable parallel apply by setting `bdr.enable_parallel_apply = off` or migrate to an EDB Postgres variant. This issue is resolved in PGD 6.3.
+
+## Limitations
+
+If you have an existing application that works with PostgreSQL, you
+can quickly assess its compatibility with EDB Postgres Distributed by
+using the
+[assess](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/assess/)
+function of the PGD command-line interface (CLI).
+
+The PGD CLI can be installed independently on any Linux or Mac OS
+machine and will generate an assessment report after connecting to the
+source PostgreSQL database remotely.
+
+We have also written out limitations the "assess" command checks here
+for your reference. We have also noted additional limitations that
+must be checked through static scanning and are thus beyond the scope
+of the "assess" command.
+
+### Nodes
+
+- PGD can run hundreds of nodes, assuming adequate hardware and network. However,
+  for mesh-based deployments, we generally don’t recommend running more than 48
+  nodes in one cluster. If you need extra read scalability beyond the 48-node
+  limit, you can add subscriber-only nodes without adding connections to the
+  mesh network.
+
+- The minimum recommended number of nodes in a group is three to provide fault
+  tolerance for PGD's consensus mechanism. With just two nodes, consensus would
+  fail if one of the nodes were unresponsive. Consensus is required for some PGD
+  operations, such as distributed sequence generation. For more information about
+  the consensus mechanism used by EDB Postgres Distributed, see [Architectural
+  details](https://www.enterprisedb.com/docs/pgd/6/overview/basic-architecture/).
+
+### Multiple databases on single instances
+
+Because of many immediate risks and limitations, we currently
+recommend a one-database-per-instance configuration. This best
+practice is also reflected in our tooling, including the CLI and
+Connection Manager, which are designed to work at the instance level.
+
+### Durability options (Group Commit/CAMO)
+
+There are various limits on how the PGD durability options work.
+These limitations are a product of the interactions between Group Commit and CAMO, and how they interact with PGD features such as the [WAL decoder](https://www.enterprisedb.com/docs/pgd/6/decoding_worker/) and  [transaction streaming](https://www.enterprisedb.com/docs/pgd/6/transaction-streaming/).
+
+Also, there are limitations on interoperability with legacy synchronous replication,
+interoperability with explicit two-phase commit, and unsupported combinations
+within commit scope rules.
+
+The following limitations apply to the use of commit scopes and the various durability options they enable.
+
+#### General durability limitations
+
+- [Legacy synchronous replication](https://www.enterprisedb.com/docs/pgd/6/commit-scopes/legacy-sync/) uses a mechanism for transaction confirmation
+  different from the one used by CAMO, Eager, and Group Commit. The two aren't
+  compatible, so don't use them together. Whenever you use Group Commit, CAMO,
+  or Eager, make sure none of the PGD nodes are configured in
+  `synchronous_standby_names`.
+
+- Postgres two-phase commit (2PC) transactions (that is, [`PREPARE
+  TRANSACTION`](https://www.postgresql.org/docs/current/sql-prepare-transaction.html))
+  can't be used with CAMO, Group Commit, or Eager because those
+  features use two-phase commit underneath.
+
+#### Group Commit
+
+[Group Commit](https://www.enterprisedb.com/docs/pgd/6/commit-scopes/group-commit/) enables configurable synchronous commits over
+nodes in a group. If you use this feature, take the following limitations into account:
+
+- Not all DDL can run when you use Group Commit. If you use unsupported DDL, a warning is logged, and the transactions commit scope is set to local. The only supported DDL operations are:
+  - Nonconcurrent `CREATE INDEX`
+  - Nonconcurrent `DROP INDEX`
+  - Nonconcurrent `REINDEX` of an individual table or index
+  - `CLUSTER` (of a single relation or index only)
+  - `ANALYZE`
+  - `TRUNCATE`
+
+- Explicit two-phase commit isn't supported by Group Commit as it already uses two-phase commit.
+
+- Combining different commit decision options in the same transaction or
+  combining different conflict resolution options in the same transaction isn't
+  supported.
+
+- Currently, Raft commit decisions are extremely slow, producing very low TPS.
+  We recommended using them only with the `eager` conflict resolution setting
+  to get the Eager All-Node Replication behavior of PGD 4 and older.
+
+#### Eager
+
+[Eager](https://www.enterprisedb.com/docs/pgd/6/commit-scopes/group-commit/#eager-conflict-resolution) is available through Group Commit. It avoids conflicts by eagerly aborting transactions that might clash. It's subject to the same limitations as Group Commit.
+
+Eager doesn't allow the `NOTIFY` SQL command or the `pg_notify()` function. It
+also doesn't allow `LISTEN` or `UNLISTEN`.
+
+## CAMO
+
+[Commit At Most Once](https://www.enterprisedb.com/docs/pgd/6/commit-scopes/camo/) (CAMO) is a feature that aims to prevent
+applications committing more than once. If you use this feature, take
+these limitations into account when planning:
+
+- CAMO is designed to query the results of a recently failed COMMIT on the
+  origin node. In case of disconnection, the application must request the
+  transaction status from the CAMO partner. Ensure that you have as little delay
+  as possible after the failure before requesting the status. Applications must
+  not rely on CAMO decisions being stored for longer than 15 minutes.
+
+- If the application forgets the global identifier assigned, for example,
+  as a result of a restart, there's no easy way to recover
+  it. Therefore, we recommend that applications wait for outstanding
+  transactions to end before shutting down.
+
+- For the client to apply proper checks, a transaction protected by CAMO
+  can't be a single statement with implicit transaction control. You also can't
+  use CAMO with a transaction-controlling procedure or
+  in a `DO` block that tries to start or end transactions.
+
+- CAMO resolves commit status but doesn't resolve pending
+  notifications on commit. CAMO doesn't
+  allow the `NOTIFY` SQL command or the `pg_notify()` function.
+  They also don't allow `LISTEN` or `UNLISTEN`.
+
+- When replaying changes, CAMO transactions might detect conflicts just
+  the same as other transactions. If timestamp-conflict detection is used,
+  the CAMO transaction uses the timestamp of the prepare-on-the-origin
+  node, which is before the transaction becomes visible on the origin
+  node itself.
+
+- CAMO isn't currently compatible with transaction streaming.
+  Be sure to disable transaction streaming when planning to use
+  CAMO. You can configure this option globally or in the PGD node group. See
+  [Transaction streaming configuration](https://www.enterprisedb.com/docs/pgd/6/transaction-streaming/#configuration).
+
+- CAMO isn't currently compatible with decoding worker.
+  Be sure to not enable decoding worker when planning to use
+  CAMO. You can configure this option in the PGD node group. See
+  [Decoding worker disabling](https://www.enterprisedb.com/docs/pgd/6/decoding_worker/#enabling).
+
+- Not all DDL can run when you use CAMO. If you use unsupported DDL, a warning is logged and the transactions commit scope is set to local only. The only supported DDL operations are:
+  - Nonconcurrent `CREATE INDEX`
+  - Nonconcurrent `DROP INDEX`
+  - Nonconcurrent `REINDEX` of an individual table or index
+  - `CLUSTER` (of a single relation or index only)
+  - `ANALYZE`
+  - `TRUNCATE`
+
+- Explicit two-phase commit isn't supported by CAMO as it already uses two-phase commit.
+
+- You can combine only CAMO transactions with the `DEGRADE TO` clause for
+  switching to asynchronous operation in case of lowered availability.
+
+### Mixed PGD versions
+
+PGD was developed to [enable rolling upgrades of PGD](https://www.enterprisedb.com/docs/pgd/6/reference/upgrades/) by allowing mixed versions of PGD to operate during the upgrade process.
+We expect users to run mixed versions only during upgrades and, once an upgrade starts, that they complete that upgrade.
+We don't support running mixed versions of PGD except during an upgrade.
+
+### Large object replication
+
+Logical decoding and replication, which PGD is built upon, does not
+support large objects. As an alternative, use TEXT, BYTEA, JSON, or
+JSONB data types, as appropriate for the application, for values up to
+1 GB in size.
+
+You can check for existing large objects with:
+
+```sql
+SELECT count(*) FROM pg_largeobject;
+```
+
+### Slow performance for UPDATE/DELETE heavy workloads on large tables without primary keys or unique constraints
+
+For UPDATEs and DELETEs to replicate on other nodes, PGD must be able
+to identify the unique rows affected. If no primary key or unique
+index is defined for a table, performance of replication and conflict
+detection can be severely affected. See:
+[https://www.enterprisedb.com/docs/pgd/latest/reference/appusage/behavior/#replication-behavior](https://www.enterprisedb.com/docs/pgd/6/appusage/behavior/#replication-behavior)
+and
+<https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/pgd-settings/#bdrdefault_replica_identity>.
+
+This is particularly something to keep in mind for making
+UPDATEs/DELETEs of only a small number of rows in a very large table,
+which would otherwise be cheap to replicate.
+
+> **Note**
+>
+> For very small tables (a common use for non-indexed tables) things
+> can be actually faster without index.
+
+> **Note**
+>
+> Replication of large UPDATE/DELETE query that affected millions of
+> rows will still be slow even with indexes.
+
+### EPAS Queue Tables not replicated
+
+EPAS [Queue
+Tables](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_sql/31_create_queue_table/)
+are not replicated. Check for their existence with:
+
+```sql
+SELECT * FROM pg_catalog.edb_queue_table;
+```
+
+### Explicit row-level locks not replicated
+
+Explicit row-level locks like `SELECT ... FOR UPDATE` / `SELECT
+... FOR SHARE` are not replicated. As long as you only write to the
+PGD write leader this will not be a problem.
+
+### Advisory locks not replicated
+
+Postgres advisory locks are not replicated by PGD or physical
+streaming replication, and will not work across the replication
+failover.
+
+Check your application code for uses of `pg_advisory*` and
+`pg_try_advisory*`. Consider using `bdr.global_advisory_lock()`
+instead.
+
+### LOCK TABLE commands
+
+`LOCK TABLE` causes a global DML lock to be taken on the table across
+the entire PGD cluster, which requires participation of all PGD
+nodes. This behaviour is similar to
+[bdr.global\_lock\_table()](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/functions/#bdrglobal_lock_table)
+and can be disabled by setting the configuration variable
+`bdr.lock_table_locking` to "off" (default is "on").
+
+### Avoid DELETE/INSERT of replica identity values
+
+Avoid modification of the replica identity values, such as primary
+keys, especially in quick succession, as it may lead to replication
+conflicts that cannot be automatically resolved, and subsequently to
+divergent data errors.
+
+### TRIGGER and REFERENCES privileges
+
+TRIGGER and REFERENCES privileges are the two types of privileges that
+are not commonly used with PostgreSQL and can cause problems with PGD.
+
+PGD supports triggers, but for security reasons blocks the case when
+the trigger is not owned by the same user as the table on which it is
+defined. That situation can occur when a non-table owner is explicitly
+granted the TRIGGER privilege on a table.
+
+Trigger privileges granted explicitly to non-table-owners may be
+present as part of trigger-based replication solutions, such as Slony
+or Bucardo. PGD generally supersedes functionality of such solutions;
+they are considered insecure and should be avoided.
+
+PGD supports foreign keys but for security and performance reasons
+blocks the case when the owner of the referencing table does not have
+the SELECT privilege on the referenced table. That situation can occur
+when a user is explicitly granted the REFERENCES privilege on a table.
+
+Explicit GRANTs of TRIGGER or REFERENCES privileges can be detected
+using the following query. These two cases are not related to each
+other, but it is convenient to detect both at the same time with one
+query.
+
+```sql
+SELECT * FROM (
+  SELECT  relname
+    ,relowner::regrole as relowner
+    ,split_part(unnest(relacl)::text,'=', 1) as grantee
+    ,split_part(split_part(unnest(relacl)::text,'=', 2), '/', 1) as acl
+  FROM pg_class where relacl is not null) as a   /* Get the raw ACL string(s) */
+  WHERE relowner::regrole::text != grantee  /* NOT table owner */
+  AND ((strpos(acl, 'x') > 0   /* REFERENCES priv */ AND strpos(acl, 'r') = 0)
+  OR strpos(acl, 't') > 0   /* TRIGGER priv */ AND acl != 'arwdDxt' /* NOT ALL */);
+```
+
+Alternatively, you can look for insecure trigger functions using this query:
+
+```sql
+SELECT relname, tgname, proname, relowner, proowner, prosecdef;
+FROM pg_trigger t
+JOIN pg_class c ON t.tgrelid = c.oid
+JOIN pg_proc f ON t.tgfoid = f.oid
+WHERE (relowner != proowner 	/* Different owner */
+  OR prosecdef)  		  /* SECURITY DEFINER */
+  AND proowner != 10  		  /* Non-catalog functions */;
+```
+
+Resolve in the database by modifying trigger ownership and table
+privileges as necessary. Note: if the affected objects are routinely
+created by the application then this should be resolved in the
+application.
+
+### Replica rules are ignored on replicas
+
+Rules, if present, are executed on the origin node, and ignored on replicas.
+
+To check for replica rules, run:
+
+```sql
+SELECT rulename, ev_class, ev_type, ev_enabled
+FROM pg_rewrite
+WHERE ev_type != '1'
+  AND NOT is_instead
+  AND ev_enabled in ('R', 'A');
+```
+
+Resolve in application by eliminating any use of rules that are
+expected to fire on replication, if they exist.
+
+### LISTEN and NOTIFY not replicated
+
+These commands are not replicated and work on each cluster node
+individually. Consider that notifications can be lost in case of a
+failover.
+
+Triggers that send out NOTIFY on commit will work with PGD, as long as
+they are defined as REPLICA TRIGGER.
+
+Instead of LISTEN and NOTIFY consider using replication slots
+directly.
+
+### Sequences
+
+Standard sequences in PostgreSQL aren't multi-node aware and produce
+values that are unique only on the local node. For this reason, PGD
+provides an application-transparent way to generate unique identifiers
+using sequences of integer datatypes across the whole PGD cluster,
+called [global
+sequences](https://www.enterprisedb.com/docs/pgd/6/sequences/).
+
+To find existing sequences, run:
+
+```sql
+SELECT count(*) FROM pg_sequences;
+```
+
+For sequences created on an existing PGD cluster,
+bdr.default\_sequence\_kind is "distributed" by default, which means
+that int8 sequences (i.e. BIGINT) will be created with the type
+“snowflakeid”, while int4 (i.e. INTEGER) will be of the type
+“galloc”.
+
+Set `bdr.default_sequence_kind` as appropriate for application
+requirements and EDB recommendations. Any sequences that exist before
+converting a Postgres database to a PGD node are converted
+automatically when a PGD node group is first created.
+
+### Other limitations
+
+This noncomprehensive list includes other limitations that are expected and
+are by design. We don't expect to resolve them in the future.
+Consider these limitations when planning your deployment:
+
+- A `galloc` sequence might skip some chunks if you create the sequence in a
+  rolled back transaction and then create it again with the same name. Skipping chunks can
+  also occur if you create and drop the sequence when DDL replication isn't active
+  and then you create it again when DDL replication is active. The impact of
+  the problem is mild because the sequence guarantees aren't violated. The
+  sequence skips only some initial chunks. Also, as a workaround, you can
+  specify the starting value for the sequence as an argument to the
+  `bdr.alter_sequence_set_kind()` function.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

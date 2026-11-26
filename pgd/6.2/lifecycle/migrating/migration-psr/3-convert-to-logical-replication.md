@@ -1,0 +1,121 @@
+---
+title: Converting to logical replication
+description: Transitioning the seed node from physical to logical replication.
+product: EDB Postgres Distributed (PGD)
+version: 6.2.0
+url: https://www.enterprisedb.com/docs/pgd/6.2/lifecycle/migrating/migration-psr/3-convert-to-logical-replication/
+lastModified: 2026-03-27T11:48:29Z
+---
+
+# Converting to logical replication
+
+To facilitate a major version upgrade of your Postgres distribution and the subsequent installation of Postgres Distributed (PGD), you must convert the replication stream to the seed node to logical replication. For a seamless transition without data loss, logical replication must resume at the exact Log Sequence Number (LSN) within the WAL stream of the source node where physical replication was interrupted. This is known as the switch-over LSN.
+
+## Creating a publication on the source node
+
+Prepare the source node by defining which data will be replicated and creating a dedicated slot to hold WAL files.
+
+1. Create a publication for all tables in the database:
+
+   ```SQL
+   CREATE PUBLICATION migration_seed_pub FOR ALL TABLES;
+   ```
+
+2. Verify the publications:
+
+   ```sql
+   SELECT * FROM pg_publication;
+   SELECT * FROM pg_publication_tables;
+   ```
+
+3. Create a logical replication slot:
+
+   ```sql
+   SELECT pg_create_logical_replication_slot('migration_node_${SEED_NODE_NAME}', 'pgoutput');
+   ```
+
+   Creating the slot at this stage ensures that the source node begins retaining the necessary WAL data before the switch-over operation. Because the source node will eventually support multiple PGD nodes, each slot is named specifically to identify the target node it serves.
+
+## Promoting the seed node
+
+Promoting the seed node stops the incoming physical replication stream and converts the node into a standalone, writable instance.
+
+> **Warning**
+>
+> To maintain data integrity, you must prevent any application writes to the seed node at this stage. Applications should continue to write exclusively to the source node.
+
+On the seed node, run the following command:
+
+```bash
+su -u enterprisedb --command "pg_ctl promote"
+```
+
+## Enabling logical replication to the seed node
+
+After promotion, you must align the new logical replication slot with the point where physical replication ended.
+
+1. On the seed node, identify the last LSN replayed from the physical stream:
+
+   ```sql
+   SELECT pg_last_wal_replay_lsn();
+   ```
+
+2. On the source node, manually move the logical slot forward to that LSN. Replace `${SWITCH_OVER_LSN}` with the value retrieved from the step above.
+
+   ```sql
+   SELECT pg_replication_slot_advance('migration_node_${SEED_NODE_NAME}', '${SWITCH_OVER_LSN}');
+   ```
+
+3. Create a logical subscription on the seed node:
+
+   ```SQL
+   CREATE SUBSCRIPTION migration_seed_sub
+           CONNECTION '${SOURCE_DSN}'
+           PUBLICATION migration_seed_pub
+               WITH (
+                   enabled = false,
+                   copy_data = false,
+                   create_slot = false,
+                   slot_name = 'migration_node_${SEED_NODE_NAME}'
+                   );
+   ```
+
+4. Verify that the subscription has correctly identified the tables for replication:
+
+   ```sql
+   SELECT n.nspname AS schemaname,
+       c.relname AS tablename,
+       sr.srsubstate AS state,
+       s.subname AS subscription_name
+   FROM pg_subscription_rel sr
+   JOIN pg_class c ON sr.srrelid = c.oid
+   JOIN pg_namespace n ON c.relnamespace = n.oid
+   JOIN pg_subscription s ON sr.srsubid = s.oid
+   WHERE s.subname = 'migration_seed_sub'
+   ORDER BY n.nspname, c.relname;
+   ```
+
+5. Enable logical replication:
+
+   ```SQL
+   ALTER SUBSCRIPTION migration_seed_sub ENABLE;
+   ```
+
+## Cleaning up physical replication
+
+1. Once the logical stream is verified and active, run the following command on the source node to remove the legacy physical replication components and free up resources:
+
+   ```SQL
+   SELECT pg_drop_replication_slot('migration_phy_slot');
+   ```
+
+2. On the seed node, run the following commands to remove any remaining configuration parameters for physical replication:
+
+   ```SQL
+   ALTER SYSTEM RESET primary_conninfo;
+   ALTER SYSTEM RESET primary_slot_name;
+   ```
+
+Next step: [Upgrade the seed node](https://www.enterprisedb.com/docs/pgd/6.2/lifecycle/migrating/migration-psr/4-upgrade-seed-node/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

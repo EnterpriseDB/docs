@@ -1,0 +1,30 @@
+---
+title: Replication concepts and definitions
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/
+lastModified: 2022-03-21T10:35:01-04:00
+---
+
+# Replication concepts and definitions
+
+<div id="replication_concepts_and_definitions" class="registered_link"></div>
+
+Replication Server is a software product that lets you implement a _replication system_. A replication system is software and hardware whose purpose is to make a copy of data from one location to another and to ensure the copied data is the same as the original over time.
+
+Replication Server applies the replication system concept to tables of Oracle, SQL Server, PostgreSQL, and EDB Postgres Advanced Server database management systems.
+
+- [Comparison of single-master and multi-master replication](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/01_smr_mmr_comparison/): Replication Server supports are two models of replication systems:
+- [Publications and subscriptions](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/02_publications_and_subscriptions/): Replication Server uses an architecture called publish and subscribe. The data made available for copying by a replication system is defined as a publication. To get a copy of that data, you must "subscribe" to that publication. The manner in which you subscribe is slightly different for single-master and multi-master replication systems.
+- [Single-master (primary-to-secondary) replication](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/03_smr_replication/): Replication Server performs primary-to-secondary replication when a single-master replication system is implemented. The publication is the master and the subscription is the secondary. In a primary-to-secondary relationship, changes are propagated in one direction only, from the master to the secondary.
+- [Multi-master replication](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/04_mmr_replication/): As an alternative to the single-master (primary-to-secondary) replication model, Replication Server supports multi-master replication.
+- [Asynchronous](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/05_asynchronous/): Replication Server performs replications asynchronously. The systems hosting the databases don't always have to be running continuously for successful replication to occur. If one system goes offline, replication resumes when it comes back online if there is still pending data to replicate.
+- [Snapshot and synchronization overview](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/06_snapshot_and_synchronous/): Replication Server performs two different types of replications. These two main types are called snapshot replication and synchronization replication.
+- [Snapshot-only publications](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/07_snapshot_only_publications/): When a publication is created in a single-master replication system, you can define the publication as a snapshot-only publication. Replication from a snapshot-only publication can be done only by using the snapshot replication method. Synchronization replication isn't permitted on a snapshot-only publication.
+- [Snapshot replication](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/08_snapshot_replication/): In snapshot replication, the target tables are completely reloaded from the source tables. The database system’s truncate operation is used to delete all rows from the target tables.
+- [Synchronization replication with the trigger-based method](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/09_sync_replication_trigger_based/): If a publication in a single-master replication system is created for use in synchronization replications with the trigger-based method, the publication server installs an insert trigger, an update trigger, and a delete trigger on each publication table. In a multi-master replication system, each replicated table in each primary node using the trigger-based method has an insert trigger, an update trigger, and a delete trigger.
+- [Synchronization replication with the log-based method](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/10_sync_replication_log_based/): In PostgreSQL 9.4, a feature was introduced called logical decoding (also called logical replication or changeset extraction). Logical decoding lets you extract data manipulation language (DML) changes from the write-ahead log segments (WAL files) in a readable format.
+- [Multi-master parallel replication](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/12_mmr_parallel_replication/): For a multi-master replication system, you can replicate transactions from one primary node to another by using either the trigger-based method (see Synchronization replication with the trigger-based method) or the log-based method (see Synchronization replication with the log-based method).
+- [Table filters](https://www.enterprisedb.com/docs/eprs/latest/02_overview/02_replication_concepts_and_definitions/13_table_filters/): Table filters specify the selection criteria for rows in publication tables or views to include during replications to subscriptions from the publication database in a single-master replication system. These table filters also apply between primary nodes in a multi-master replication system. Rows that don't satisfy the selection criteria are excluded from replications to subscriptions or primary nodes on which these table filters were enabled.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

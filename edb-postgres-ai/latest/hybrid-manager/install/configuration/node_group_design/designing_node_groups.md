@@ -1,0 +1,103 @@
+---
+title: Designing node groups
+description: Design node groups to pin Postgres clusters by hardware or sizing requirements, or to align with availability zones for failover without a restore.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/node_group_design/designing_node_groups/
+lastModified: 2026-11-04T23:45:50+05:30
+---
+
+# Designing node groups
+
+A node group is a set of data-plane nodes sharing a common label. Labeling nodes this way, and setting matching `nodeSelectors` and `tolerations` on a cluster, lets you control which nodes a Postgres cluster can run on, instead of leaving placement to the default scheduler.
+
+## Pinning clusters to a node group
+
+Pin a cluster to a node group when it has requirements the default scheduler doesn't account for: a specific instance type or hardware class, more CPU or memory than other clusters need, or isolation from other workloads.
+
+Label every node in the group with both the required Hybrid Manager (HM) data-plane label and a pool label you define yourself:
+
+```yaml
+metadata:
+  labels:
+    edbaiplatform.io/postgres: "true"   # Hybrid Manager data plane — required
+    node_pool: pg-large                 # pool identity — name it for your use case
+spec:
+  taints:
+    - key: edbaiplatform.io/postgres    # Hybrid Manager data plane — required
+      value: "true"
+      effect: NoSchedule
+```
+
+`node_pool` isn't a reserved or HM-provided label — you choose the key and value, and apply them consistently across every node in the group. A cluster then selects that group with a matching `nodeSelector`, and tolerates its taint. See [Implementing your node design](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/node_group_design/implementing_node_groups/) for the full workflow, including how to move an existing cluster to a different node group.
+
+## Aligning node groups with availability zones
+
+If you're running HM on a public cloud, or across multiple on-premises data centers, a second reason to design node groups is zonal high availability: aligning each data-plane node group with exactly one availability zone or data center. This alignment is required for any high availability or distributed Postgres cluster that needs to survive the loss of a zone without restoring from backup. It isn't necessary for a single-instance, non-high-availability deployment confined to one zone.
+
+### Why node groups need to align with availability zones
+
+Block storage is zone-bound in every major environment: AWS EBS volumes, GCP zonal persistent disks, Azure managed disks, and on-premises VMware or Nutanix datastores are all reachable only from hosts in one failure domain. Once a persistent volume claim (PVC) binds, the resulting persistent volume (PV) carries a node affinity that pins it to that zone for the life of the volume.
+
+This zone affinity creates a hard scheduling requirement: a Postgres instance's pod must land on a node that satisfies all of the following simultaneously:
+
+- The bound PVC's zone affinity (fixed once the volume binds).
+- Your node group's `nodeSelector` labels.
+- Your node group's taints and the pod's tolerations.
+
+If a node group's nodes don't exist in the zone where an instance's volume is bound, that intersection is empty, and the pod stays in a `Pending` state indefinitely, with a `volume node affinity conflict` event. Autoscaling doesn't resolve this, because the autoscaler only adds nodes to the node group you selected, in whatever zone that node group's launch template targets.
+
+Aligning node groups to availability zones guarantees this intersection is never empty. A rebuilt or rescheduled instance always finds capacity in the zone where its data already exists, and reattaches its existing PVC instead of requiring a restore from backup. Without this alignment, losing an availability zone can force a restore from backup rather than a simple failover to a healthy replica.
+
+### The zonal node group design pattern
+
+Label every data-plane node with both a topology key and a pool key:
+
+```yaml
+topology.kubernetes.io/zone: us-east-1a   # cloud-provided, or set manually on-premises
+edbaiplatform.io/postgres: "true"         # Hybrid Manager data plane (required)
+node_pool: pg-prod                        # pool family — shared across the zonal pools
+node_pool_zone: pg-prod-1a                # this specific zonal pool
+```
+
+`topology.kubernetes.io/zone` reflects an availability zone that already exists: your cloud provider sets it (or you set it manually on-premises), and it identifies the physical failure domain a node is actually in. `node_pool` and `node_pool_zone`, by contrast, are labels you define yourself — there's no required value or external source for them. Choose any naming convention that works for your environment (`pg-prod` and `pg-prod-1a` are just examples here), and apply it consistently: one `node_pool_zone` value per zonal node group, all sharing the same `node_pool` family value.
+
+Create one zonal node group per availability zone, all sharing the same `node_pool` family label but with a distinct `node_pool_zone` label. Then choose a placement pattern for each Postgres cluster:
+
+| Pattern                                         | `nodeSelector`                                                          | Result                                                                          | Use when                                                                                                        |
+| ----------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Zone-spread (recommended for high availability) | `node_pool: pg-prod` — the pool family, spanning every zonal node group | Each instance binds a PVC in its own zone and reattaches it in place on rebuild | Any high availability or distributed cluster that needs zonal fault tolerance                                   |
+| Zone-pinned                                     | `node_pool_zone: pg-prod-1a` — one specific zonal node group            | All instances run in one zone                                                   | Single-instance clusters, development and test environments, or a hard residency requirement to one data center |
+
+> **Important**
+>
+> A `nodeSelector` is permissive, not prescriptive. It defines the set of nodes an instance's pod may use — it doesn't, by itself, spread instances across zones. Keep the pool family label broad enough that every zone is a candidate, and rely on topology spread constraints (configured separately, at the `HybridControlPlane` level) to actually distribute instances across the zones in that candidate set.
+
+Multiple keys in a `nodeSelector` combine with AND logic. For the zone-spread pattern — used for any high availability or distributed cluster that needs zonal fault tolerance — include only the family label (`node_pool`) in the selector. Adding `node_pool_zone` alongside it narrows the candidate set back down to one zone and defeats the purpose.
+
+### Minimum node requirements per zone
+
+Keep at least one active node in every zonal node group at all times. This is equivalent to setting a minimum size of 1 (never 0) on each zone's autoscaling group, `MachineSet`, or `MachineDeployment` — a setting every major node group implementation already supports.
+
+This requirement holds regardless of how you configure topology spread constraints, for different reasons depending on the setting:
+
+- With a soft (`ScheduleAnyway`) spread policy, an empty zone never causes a pod to go `Pending`, so the autoscaler is never triggered to add capacity there. Instances silently stack in whichever zones already have nodes.
+- With a strict (`DoNotSchedule`) spread policy, the scheduler only computes skew across zones that already have at least one matching, ready node. A zone with none isn't counted as an unsatisfied domain — it simply isn't a domain yet. Tightening the spread policy alone doesn't force the autoscaler to reach into an empty zone.
+
+In both cases, a zone with no running node is invisible to the scheduler until a node already exists there. Preprovisioning at least one node per zone, permanently, is what makes either spread policy work as intended.
+
+### Supporting requirements
+
+- **Use a storage class with `volumeBindingMode: WaitForFirstConsumer`.** With `Immediate` binding, the volume provisions before the scheduler picks a node, and can bind in a zone with no matching node group capacity. This is the most common cause of a permanently `Pending` Postgres pod in a multizone deployment. Verify this setting on every storage class HM uses.
+- **Size each zonal node group for at least one instance plus headroom for one rebuild.** A three-instance high availability cluster spread across three single-node zonal pools can't survive a node replacement.
+- **Deploy Postgres nodes in multiples of three, one per availability zone, where possible.** This aligns with standard CloudNativePG guidance and composes cleanly with the pool-per-zone pattern.
+- **On-premises, apply the same logic using the data center or cluster as the failure domain.** Set `topology.kubernetes.io/zone` manually if your platform doesn't set it automatically, so the zone topology is visible to the scheduler.
+- **If your storage is genuinely zone-agnostic** (for example, NFS, CephFS, or a storage system exposed cluster-wide), this constraint relaxes, and a node group spanning multiple zones becomes viable. Confirm this against your actual storage class rather than assuming it from the storage technology alone.
+
+## Limitations
+
+- **A label without a matching taint, or a taint without a matching label, doesn't achieve isolation.** A label without a taint attracts your pods but doesn't repel anyone else's. A taint without a label repels every pod and attracts none. Apply both consistently.
+- **HM doesn't validate that the labels in `nodeSelectors` exist on any node.** A typo produces a permanently `Pending` cluster with no API-level error. Validate your labels against the actual node group before using them in a cluster manifest.
+- **Node placement is configured through `edbctl` or the public API only.** There's no HM console option for `nodeSelectors` or `tolerations`, so `edbctl` and the public API are the source of truth for placement, not the console.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

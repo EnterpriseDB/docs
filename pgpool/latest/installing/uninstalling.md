@@ -1,0 +1,52 @@
+---
+title: Uninstalling EDB Pgpool-II
+product: PgPool-II
+version: "4"
+url: https://www.enterprisedb.com/docs/pgpool/latest/installing/uninstalling/
+lastModified: 2026-04-06T18:44:18Z
+---
+
+# Uninstalling EDB Pgpool-II
+
+For information about uninstallling extensions, see [Uninstalling EDB Pgpool-II extensions](https://www.enterprisedb.com/docs/pgpool/latest/installing/uninstalling/).
+
+## Uninstalling EDB Pgpool-II on an RHEL//Rocky Linux/AlmaLinux host
+
+To uninstall EDB Pgpool-II, assume the identity of the root user and invoke the following command:
+
+```shell
+dnf erase edb-pgpool<xx>
+```
+
+Where `<xx>` is the EDB Pgpool-II version.
+
+## Uninstalling EDB Pgpool-II on a Debian/Ubuntu host
+
+To uninstall EDB Pgpool-II on a Debian/Ubuntu host:
+
+```shell
+apt-get remove -y edb-pgpool<xx>
+```
+
+Where `<xx>` is the EDB Pgpool-II version you want to uninstall.
+
+## Uninstalling EDB Pgpool-II on a SLES host
+
+To uninstall EDB Pgpool-II on a SLES host, assume the identity of the root user and invoke:
+
+```shell
+zypper remove edb-pgpool<xx>
+```
+
+Where `<xx>` is the EDB Pgpool-II version you want to uninstall.
+
+## Uninstalling EDB Pgpool-II Linux uninstaller
+
+The EDB Pgpool-II graphical installer creates an uninstaller in the installation directory. If you used the default installation directory `/opt/edb`, then the uninstaller is in `/opt/edb/pgpool<x.y>`, where `<x.y>` is the EDB Pgpool-II version you installed.
+
+1. Navigate into the directory that contains the uninstaller and assume superuser privileges. Open the uninstaller and select **Yes** to begin uninstalling EDB Pgpool-II.
+
+   The uninstallation process begins.
+2. Select **OK** when the uninstallation completes.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

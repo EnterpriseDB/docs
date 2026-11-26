@@ -1,0 +1,107 @@
+---
+title: Supported Postgres distributions
+description: The different flavors of Postgres distributions supported in Hybrid Manager.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/overview/postgres_distributions/
+lastModified: 2026-10-22T09:55:34+02:00
+---
+
+# Supported Postgres distributions
+
+Selecting the right Postgres distribution when creating a new database cluster in Hybrid Manager (HM) is crucial for optimizing your database environment. EDB offers a range of options, each tailored to different needs, from open-source flexibility to enterprise-grade features and Oracle compatibility.
+
+> **Note**
+>
+> EDB Postgres Extended Server is the legacy name for Enterprise Postgres, and EDB Postgres Advanced Server is the legacy name for Enterprise Postgres (Oracle Compatible). You might see either name in the HM console or in documentation.
+
+For the Postgres and PGD versions each distribution supports, see [Supported Postgres and PGD versions](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/overview/supported_versions/).
+
+## EDB Postgres Advanced Server
+
+EDB Postgres Advanced Server is EDB's most comprehensive PostgreSQL distribution. It supports features such as [advanced security](https://www.enterprisedb.com/docs/epas/latest/epas_security_guide/), [advanced SQL](https://www.enterprisedb.com/docs/epas/latest/application_programming/15_enhanced_sql_and_other_misc_features/), high-availability and multi-master replication in combination with [EDB Postgres Distributed](https://www.enterprisedb.com/docs/pgd/latest/) and, optionally, [Oracle compatibility](https://www.enterprisedb.com/docs/epas/latest/working_with_oracle_data/). It's ideal for demanding enterprise workloads and seamless migration from cost-intensive Oracle databases.
+
+This option is suited for:
+
+- Enterprises migrating from Oracle databases seeking high compatibility to reduce migration costs and complexity.
+- Organizations with mission-critical applications requiring advanced security, performance, and management tools.
+- Businesses that need comprehensive enterprise-grade features, including enhanced auditing, SQL injection protection, and robust high availability.
+- Teams leveraging AI Copilot for automated Oracle schema conversion during migration.
+
+Key features:
+
+- **Oracle compatibility mode** — Run Oracle PL/SQL and use Oracle-compatible data types (`VARCHAR2`, `NUMBER`, `DATE`). Use Oracle SQL syntax including hierarchical queries (`CONNECT BY`), bulk operations (`FORALL`, `BULK COLLECT`), and packages. AI-driven recommendations help assess and resolve schema incompatibilities during migration with Migration Portal.
+- **Advanced security** — Enhanced auditing (EDB Audit), SQL injection protection, data redaction, and virtual private database (VPD) for row-level security policies.
+- **Advanced SQL** — Enhanced SQL features beyond community PostgreSQL, including hierarchical queries, bulk operations, autonomous transactions, and a PL/SQL-compatible procedural language.
+- **EDB Postgres Distributed (PGD)** — Multi-master replication for active-active high-availability deployments across multiple Kubernetes clusters or data centers. Enables Distributed HA (DHA) cluster types in HM.
+- **Transparent Data Encryption (TDE)** — Data-at-rest encryption.
+- **Profile management** — Database-level user profile management with password complexity rules, failed login lockout, and session limits.
+- **Resource management** — EDB Resource Manager for controlling CPU, memory, and I/O allocation per user or workload group.
+
+## EDB Postgres Extended Server
+
+EDB Postgres Extended Server provides specific enhancements designed for enterprise requirements, particularly in data security, for example, through [transparent data encryption](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/). It also supports advanced replication with EDB's powerful high-availability and multi-master replication solution, [EDB Postgres Distributed](https://www.enterprisedb.com/docs/pgd/latest/).
+
+This option is suited for:
+
+- Enterprises requiring enhanced data-security features.
+- Organizations looking to leverage EDB's high-availability and multi-master replication solutions.
+- Users who want a PostgreSQL experience with additional enterprise capabilities while maintaining strong compatibility with community PostgreSQL.
+
+Key features:
+
+- **TDE** — Encrypt data at rest at the storage level without application changes. Supports AES-128 and AES-256 encryption with external key management integration.
+- **PGD** — Multi-master replication for active-active high-availability deployments across multiple Kubernetes clusters or data centers. Enables DHA cluster types in HM.
+- **WAL encryption** — Write-ahead log encryption to protect data in transit between primary and replica nodes.
+- **Enhanced authentication** — SCRAM-SHA-256 authentication with additional enterprise authentication method support.
+
+## PostgreSQL
+
+Open-source PostgreSQL is a powerful, reliable, and feature-rich relational database system. It's known for its strong adherence to SQL standards, robust architecture, data integrity, and a global community. When deployed through HM, community PostgreSQL benefits from the same automated provisioning, monitoring, backup, and lifecycle management as the EDB distributions.
+
+This option is suited for:
+
+- Organizations prioritizing cost effectiveness and open-source freedom.
+- Projects that don't require transparent data encryption (TDE), multi-master replication solutions, or Oracle compatibility.
+- Teams with in-house PostgreSQL expertise and the resources to manage their database environment.
+
+Key features:
+
+- **Standards compliance** — Full SQL:2016 core conformance and extensive SQL:2023 feature support.
+- **Extensibility** — Rich extension ecosystem including pgvector, PostGIS, pg\_stat\_statements, and hundreds of community extensions.
+- **Logical replication** — Built-in logical replication for read replicas and data distribution.
+- **Partitioning** — Declarative table partitioning (range, list, hash) for managing large datasets.
+- **JSON support** — Native JSONB type with indexing and query operators for semi-structured data.
+
+## Extensions for AI workloads
+
+HM makes AI-relevant extensions available across distributions to support AI Factory workloads:
+
+- **pgvector** — Vector similarity search for embeddings, with support for distributed search across large-scale workloads and additional distance metrics. Supports IVFFlat, HNSW, and flat index types. Essential for retrieval-augmented generation (RAG) pipelines. Available on all distributions.
+
+## Supported versions
+
+See [Supported Postgres and PGD versions](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/overview/supported_versions/).
+
+## Distribution comparison
+
+For a comparison of the available distributions by functionality and feature, see:
+
+- [Feature support per distribution](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/feature_support_per_db/)
+- [Advanced replication](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/advanced_replication/)
+- [Advanced security](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/advanced_security/)
+- [Advanced SQL](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/advanced_sql/)
+- [Advanced performance](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/advanced_performance/)
+- [Oracle support](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/oracle_compatibility/)
+- [Tools and extensions](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/tools_extensions/)
+- [Deployment options](https://www.enterprisedb.com/docs/edb-postgres-ai/databases/deployment_options/)
+
+## Documentation by distribution
+
+To get the most out of any of the Postgres distributions, refer to its documentation:
+
+- [PostgreSQL](https://www.postgresql.org/docs/current/)
+- [EDB Postgres Extended Server](https://www.enterprisedb.com/docs/pge/latest/)
+- [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

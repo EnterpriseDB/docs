@@ -1,0 +1,346 @@
+---
+title: Upgrading PGD clusters manually
+product: EDB Postgres Distributed (PGD)
+version: 5.10.0
+url: https://www.enterprisedb.com/docs/pgd/5.10/upgrades/manual_overview/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Upgrading PGD clusters manually
+
+Because EDB Postgres Distributed consists of multiple software components,
+the upgrade strategy depends partially on the components that are being upgraded.
+
+In general, you can upgrade the cluster with almost zero downtime by
+using an approach called _rolling upgrade_. Using this approach, nodes are upgraded one by one, and
+the application connections are switched over to already upgraded nodes.
+
+You can also stop all nodes, perform the upgrade on all nodes, and
+only then restart the entire cluster. This approach is the same as with a standard PostgreSQL setup.
+This strategy of upgrading all nodes at the same time avoids running with
+mixed versions of software and therefore is the simplest. However, it incurs
+downtime and we don't recommend it unless you can't perform the rolling upgrade
+for some reason.
+
+To upgrade an EDB Postgres Distributed cluster:
+
+1. Plan the upgrade.
+2. Prepare for the upgrade.
+3. Upgrade the server software.
+4. Check and validate the upgrade.
+
+## Upgrade planning
+
+There are broadly two ways to upgrade each node:
+
+- Upgrade nodes in place to the newer software version. See [Rolling server
+  software upgrades](#rolling-server-software-upgrades).
+- Replace nodes with ones that have the newer version installed. See [Rolling
+  upgrade using node join](#rolling-upgrade-using-node-join).
+
+You can use both of these approaches in a rolling manner.
+
+### Rolling upgrade considerations
+
+While the cluster is going through a rolling upgrade, mixed versions of software
+are running in the cluster. For example, suppose nodeA has PGD 4.3.6, while
+nodeB and nodeC have 5.6.1. In this state, the replication and group
+management uses the protocol and features from the oldest version (4.3.6
+in this example), so any new features provided by the newer version
+that require changes in the protocol are disabled. Once all nodes are
+upgraded to the same version, the new features are enabled.
+
+Similarly, when a cluster with WAL-decoder-enabled nodes is going through a
+rolling upgrade, WAL decoder on a higher version of PGD node produces
+[logical change records (LCRs)](https://www.enterprisedb.com/docs/pgd/5.10/decoding_worker/#enabling) with a
+higher pglogical version. WAL decoder on a lower version of PGD node produces
+LCRs with a lower pglogical version. As a result, WAL senders on a higher version
+of PGD nodes aren't expected to use LCRs due to a mismatch in protocol
+versions. On a lower version of PGD nodes, WAL senders can continue to use LCRs.
+Once all the PGD nodes are on the same PGD version, WAL senders use LCRs.
+
+A rolling upgrade starts with a cluster with all nodes at a prior release. It
+then proceeds by upgrading one node at a time to the newer release, until all
+nodes are at the newer release. There must be no more than two versions of the
+software running at the same time. An upgrade must be completed, with all nodes
+fully upgraded, before starting another upgrade.
+
+Where additional caution is required to reduce business risk, more time may be required to perform an upgrade.
+For maximum caution and to reduce the time required upgrading production systems, we suggest performing the upgrades in a separate test environment first.
+
+Don't run with mixed versions of the software for any longer than is absolutely necessary to complete the upgrade.
+You can check on the versions in the cluster using the [`pgd nodes list --versions`](https://www.enterprisedb.com/docs/pgd/5.9/cli/command_ref/nodes/list/) command.
+
+The longer you run with mixed versions, the more likely you are to encounter issues, the more difficult it is to diagnose and resolve them.\
+We recommend upgrading in off peak hours for your business, and over a short period of time.
+
+While you can use a rolling upgrade for upgrading a major version of the software, we don't support mixing PostgreSQL, EDB Postgres Extended, and EDB Postgres Advanced Server in one cluster. So you can't use this approach to change the Postgres variant.
+
+> **Warning**
+>
+> Downgrades of EDB Postgres Distributed aren't supported. They require
+> that you manually rebuild the cluster.
+
+### Rolling server software upgrades
+
+A rolling upgrade is where the [server software
+upgrade](#server-software-upgrade) is upgraded sequentially on each node in a
+cluster without stopping the cluster. Each node is temporarily stopped from
+participating in the cluster and its server software is upgraded. Once updated, it's
+returned to the cluster, and it then catches up with the cluster's activity
+during its absence.
+
+The actual procedure depends on whether the Postgres component is being
+upgraded to a new major version.
+
+During the upgrade process, you can switch the application over to a node
+that's currently not being upgraded to provide continuous availability of
+the database for applications.
+
+### Rolling upgrade using node join
+
+The other method to upgrade the server software is to join a new node
+to the cluster and later drop one of the existing nodes running
+the older version of the software.
+
+For this approach, the procedure is always the same. However, because it
+includes node join, a potentially large data transfer is required.
+
+Take care not to use features that are available only in
+the newer Postgres version until all nodes are upgraded to the
+newer and same release of Postgres. This is especially true for any
+new DDL syntax that was added to a newer release of Postgres.
+
+> **Note**
+>
+> `bdr_init_physical` makes a byte-by-byte copy of the source node
+> so you can't use it while upgrading from one major Postgres version
+> to another. In fact, currently `bdr_init_physical` requires that even the
+> PGD version of the source and the joining node be exactly the same.
+> You can't use it for rolling upgrades by way of joining a new node method. Instead, use a logical join.
+
+### Upgrading a CAMO-enabled cluster
+
+Upgrading a CAMO-enabled cluster requires upgrading CAMO groups one by one while
+disabling the CAMO protection for the group being upgraded and reconfiguring it
+using the new [commit scope](https://www.enterprisedb.com/docs/pgd/5.10/commit-scopes/commit-scopes/)-based settings.
+
+We recommended the following approach for upgrading two BDR nodes that
+constitute a CAMO pair to PGD 5.0:
+
+1. Ensure `bdr.enable_camo` remains `off` for transactions on any of
+   the two nodes, or redirect clients away from the two nodes. Removing
+   the CAMO pairing while attempting to use CAMO leads to errors
+   and prevents further transactions.
+2. Uncouple the pair by deconfiguring CAMO either by resetting
+   `bdr.camo_origin_for` and `bdr.camo_parter_of` (when upgrading from
+   BDR 3.7.x) or by using `bdr.remove_camo_pair` (on BDR 4.x).
+3. Upgrade the two nodes to PGD 5.0.
+4. Create a dedicated node group for the two nodes and move them into
+   that node group.
+5. Create a [commit scope](https://www.enterprisedb.com/docs/pgd/5.10/commit-scopes/commit-scopes/) for this node
+   group and thus the pair of nodes to use CAMO.
+6. Reactivate CAMO protection again either by setting a
+   `default_commit_scope` or by changing the clients to explicitly set
+   `bdr.commit_scope` instead of `bdr.enable_camo` for their sessions
+   or transactions.
+7. If necessary, allow clients to connect to the CAMO-protected nodes
+   again.
+
+## Upgrade preparation
+
+Each major release of the software contains several changes that might affect
+compatibility with previous releases. These might affect the Postgres
+configuration, deployment scripts, as well as applications using PGD. We
+recommend considering these changes and making any needed adjustments in advance of the upgrade.
+
+See individual changes mentioned in the [release notes](https://www.enterprisedb.com/docs/pgd/5.10/rel_notes/) and any version-specific upgrade notes.
+
+## Server software upgrade
+
+Upgrading EDB Postgres Distributed on individual nodes happens in place.
+You don't need to back up and restore when upgrading the BDR extension.
+
+### BDR extension upgrade
+
+The BDR extension upgrade process consists of a few steps.
+
+#### Stop Postgres
+
+During the upgrade of binary packages, it's usually best to stop the running
+Postgres server first. Doing so ensures that mixed versions don't get loaded in case
+of an unexpected restart during the upgrade.
+
+#### Upgrade packages
+
+The first step in the upgrade is to install the new version of the BDR packages. This installation
+installs both the new binary and the extension SQL script. This step is specific to the operating system.
+
+> **Note: Upgrading to PGD 6**
+>
+> The PGD 6 packages include the PGD CLI and intentionally conflict with the standalone `edb-pgd5-cli` package. When you upgrade to PGD 6, remove all PGD 5 packages, including `edb-pgd5-cli`, before you install the PGD 6 packages. If you skip this step, the installation fails with a package conflict error. See [Upgrading PGD 5 to PGD 6](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-pgd/pgd5-to-pgd6/).
+
+#### Start Postgres
+
+Once packages are upgraded, you can start the Postgres instance. The BDR
+extension is upgraded upon start when the new binaries
+detect the older version of the extension.
+
+#### Upgrading to a later PGD 5 release
+
+You can upgrade from any PGD 5.x release to a later 5.x release. See [Supported PGD upgrade paths](https://www.enterprisedb.com/docs/pgd/5.9/upgrades/upgrade_paths/). For a rolling upgrade, run the following on each node, one at a time.
+
+> **Note**
+>
+> Before you upgrade PGD, upgrade Postgres to the latest minor version of your Postgres major version. Doing so reduces the risk of the upgrade, because you avoid known vulnerabilities and bugs that can interfere with it. See [Minor version Postgres upgrade](#minor-version-postgres-upgrade) and [PGD compatibility](https://www.enterprisedb.com/docs/pgd/5.9/compatibility/).
+>
+> Newer PGD packages can require a newer Postgres minor version. If your Postgres version is older, the package manager upgrades Postgres as a dependency in the middle of the PGD upgrade.
+
+> **Warning: Connection Manager changes in PGD 5.10.0**
+>
+> If you use Connection Manager, PGD 5.10.0 changes how it handles client TLS and client certificates. Check both changes before you upgrade:
+>
+> - Connection Manager now offers TLS to clients only when `ssl` is `on` in `postgresql.conf`. Earlier releases offered TLS whenever `ssl_cert_file` and `ssl_key_file` pointed to existing files, whatever `ssl` was set to. If clients connect to Connection Manager over TLS, set `ssl = on` on each node before you upgrade it. With `ssl` on, both files must be set.
+> - Connection Manager now verifies client certificates against `ssl_ca_file`, `ssl_crl_file`, and `ssl_crl_dir`. If you use `cert` rules in the Connection Manager HBA configuration, set `ssl_ca_file` before you upgrade, because `cert` authentication fails without it.
+>
+> See [TLS and client certificates](https://www.enterprisedb.com/docs/pgd/5.10/connection-manager/authentication/#tls-and-client-certificates).
+
+1. Fence the node, so it doesn't become the write leader:
+
+   ```shell
+   pgd node <node_name> set-option route_fence true
+   ```
+
+   If your installed PGD CLI doesn't support this syntax, use the earlier syntax:
+
+   ```shell
+   pgd set-node-options --node-name <node_name> --option route_fence=true
+   ```
+
+2. Stop Postgres:
+
+   ```shell
+   sudo systemctl stop postgres
+   ```
+
+3. Upgrade the PGD packages:
+
+   ##### Debian/Ubuntu
+
+   ```shell
+   sudo apt update
+   sudo apt install --only-upgrade edb-bdr5-<distribution><postgres_version> edb-pgd5-cli edb-pgd5-proxy
+   ```
+
+   ##### CentOS/RHEL
+
+   ```shell
+   sudo dnf upgrade -y edb-bdr5-<distribution><postgres_version> edb-pgd5-cli edb-pgd5-proxy
+   ```
+
+   ##### SLES
+
+   ```shell
+   sudo zypper refresh
+   sudo zypper -n update edb-bdr5-<distribution><postgres_version> edb-pgd5-cli edb-pgd5-proxy
+   ```
+
+4. Start Postgres:
+
+   ```shell
+   sudo systemctl start postgres
+   ```
+
+5. Restart PGD Proxy, so it runs the new version. Upgrading the package replaces the binary, but the running service keeps using the old version until you restart it:
+
+   ```shell
+   sudo systemctl restart pgd-proxy
+   ```
+
+6. Unfence the node. The package upgrade installed the new PGD CLI, so use the newer syntax even if you
+   fenced the node with the earlier one:
+
+   ```shell
+   pgd node <node_name> set-option route_fence false
+   ```
+
+### Postgres upgrade
+
+The process of in-place upgrade of Postgres depends on whether you're
+upgrading to a new minor version of Postgres or to a new major version of Postgres.
+
+#### Minor version Postgres upgrade
+
+Upgrading to a new minor version of Postgres is similar to [upgrading
+the BDR extension](#bdr-extension-upgrade). Stopping Postgres, upgrading packages,
+and starting Postgres again is typically all that's needed.
+
+Upgrade every installed package of your Postgres distribution, not only the server package. Subpackages such as the JIT library stay on the old minor version otherwise, and PGD packages upgrade only the Postgres packages they depend on. For example, for EDB Postgres Advanced Server 14:
+
+##### Debian/Ubuntu
+
+```shell
+sudo apt update
+sudo apt install --only-upgrade <postgres_package>
+```
+
+##### CentOS/RHEL
+
+```shell
+sudo dnf upgrade -y $(rpm -qa --qf '%{NAME}\n' 'edb-as14-server*')
+```
+
+##### SLES
+
+```shell
+sudo zypper refresh
+sudo zypper -n update 'edb-as14-server*'
+```
+
+However, sometimes more steps, like reindexing, might be recommended for
+specific minor version upgrades. Refer to the release notes of the
+version of Postgres you're upgrading to.
+
+#### Major version Postgres upgrade
+
+Upgrading to a new major version of Postgres is more complicated than upgrading to a minor version.
+
+EDB Postgres Distributed provides a `pgd node upgrade` command line utility,
+which you can use to do [in-place Postgres major version upgrades](https://www.enterprisedb.com/docs/pgd/5.10/upgrades/inplace_upgrade/).
+
+> **Note**
+>
+> When upgrading to a new major version of any software, including Postgres, the
+> BDR extension, and others, it's always important to ensure
+> your application is compatible with the target version of the software you're upgrading.
+
+## Upgrade check and validation
+
+After you upgrade your PGD node, you can verify the current
+version of the binary:
+
+```sql
+SELECT bdr.bdr_version();
+```
+
+Always check your [monitoring](https://www.enterprisedb.com/docs/pgd/5.10/monitoring/) after upgrading a node to confirm
+that the upgraded node is working as expected.
+
+## Moving from HARP to PGD Proxy
+
+HARP can temporarily coexist with the new
+[connection management](https://www.enterprisedb.com/docs/pgd/5.10/routing/) configuration. This means you can:
+
+- Upgrade a whole pre-5 cluster to a PGD 5 cluster.
+- Set up the connection routing.
+- Replace HARP Proxy with PGD Proxy.
+- Move application connections to PGD Proxy instances.
+- Remove the HARP Manager from all servers.
+
+We strongly recommend doing this as soon as possible after upgrading nodes to
+PGD 5. HARP isn't certified for long-term use with PGD 5.
+
+TPA provides some useful tools for this and will eventually provide a single-command
+upgrade path between PGD 4 and PGD 5.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

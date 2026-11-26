@@ -1,0 +1,170 @@
+---
+title: Configuring your agent role
+description: What a Postgres role needs to act as an MCP agent, and how to revoke it.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/mcp-endpoint/configuring-agent-roles/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Configuring your agent role
+
+Configure a Postgres role to authenticate agents with the MCP server and to define what each agent may list and call. The MCP server authenticates every agent as a Postgres login role, and it refuses any connection that `pg_hba.conf` admits without checking a password (see [Passwords are always checked](#passwords-are-always-checked)). Provisioning an agent is ordinary Postgres administration: create a role with a password, allow it in `pg_hba.conf`, and grant it access to the profile roles and tools it needs. A profile role is an ordinary `NOLOGIN` Postgres role that holds privileges — group them by function (read-only, read-write, and so on) and grant them to agent roles instead of granting privileges directly.
+
+## Granting the role what it needs
+
+1. Give it `LOGIN` and a password. The agent presents these in the HTTP Basic header on every call, and the endpoint opens a Postgres connection with them.
+
+   ```sql
+   CREATE ROLE <agent_role> LOGIN PASSWORD '<password>';
+   ```
+
+2. Add a matching `local` line in `pg_hba.conf`. The endpoint connects over the server's Unix socket, so `local` lines apply (see [How it works](https://www.enterprisedb.com/docs/aidb/latest/mcp-endpoint/#how-it-works) for the TCP fallback). Use a password method such as `scram-sha-256`. Don't use `trust` or `peer`. The endpoint refuses those connections. See [Passwords are always checked](#passwords-are-always-checked).
+
+   ```
+   local   all   <agent_role>   scram-sha-256
+   ```
+
+3. Grant membership in `aidb_users`, which provides `EXECUTE` on `aidb.get_mcp_tools()` and `aidb.run_tool()`. Without it, `tools/list` fails with a permission error.
+
+   ```sql
+   GRANT aidb_users TO <agent_role>;
+   ```
+
+4. Grant the objects its tools touch. A tool runs as the agent, so it needs `USAGE` on the schema and the table privileges its tools use.
+
+   ```sql
+   GRANT USAGE ON SCHEMA <schema> TO <agent_role>;
+   GRANT SELECT ON <schema>.<table> TO <agent_role>;
+   ```
+
+   A tool that runs `INSERT`, `UPDATE`, or `DELETE` with a `RETURNING` clause also needs `SELECT` on the table.
+
+Keep the agent role itself free of direct privileges and grant it profile roles instead. Revoking a profile role from an agent takes effect on the agent's next call, since every call opens a fresh connection.
+
+See [Provisioning example](https://www.enterprisedb.com/docs/aidb/latest/mcp-endpoint/provisioning-example/) for a worked example that creates an agent role and profile roles together.
+
+## Which agents a role sees
+
+The endpoint lists AIDB agents as tools through `aidb.get_mcp_agents()`, which reads `aidb.agents` as the role. Membership in `aidb_users` grants `EXECUTE` on that function and `SELECT` on `aidb.agents`, so a member sees every agent. A role without that access gets no agents, and its catalog tools still list and run. The same holds when the installed extension predates `aidb.get_mcp_agents()`.
+
+The endpoint lists an agent only when its name matches `[A-Za-z_][A-Za-z0-9_-]*`, so an agent named `Sales Bot` isn't exposed. A catalog tool or `execute_sql` with the same name as an agent hides the agent in both `tools/list` and `tools/call`, and the endpoint logs a warning.
+
+A role with `default_transaction_read_only` set to `on` runs agents in [read-only mode](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#read-only-mode), so its agent calls return `"conversation_id": null`.
+
+See [Calling agents as tools](https://www.enterprisedb.com/docs/aidb/latest/mcp-endpoint/connecting-a-client/#calling-agents-as-tools) for the arguments, the result, and the timeout.
+
+## Limiting concurrent AIDB agent calls
+
+The endpoint doesn't cap how many AIDB agent calls run at once. Each call holds one Postgres connection for its whole run, up to 920 seconds, so `max_connections` and per-role connection limits are the only bound. Set a `CONNECTION LIMIT` on the roles your MCP clients use:
+
+```sql
+ALTER ROLE <agent_role> CONNECTION LIMIT 5;
+```
+
+The limit counts every connection the role opens, including `tools/list` and other tool calls.
+
+## Passwords are always checked
+
+The endpoint requires PostgreSQL 16 or later, because the password check reads `SYSTEM_USER`, which is new in 16. On PostgreSQL 14 and 15, the supervisor logs a warning and doesn't start the endpoint.
+
+Every connection the endpoint opens comes from the Postgres host itself, whichever host the MCP client is on. A `pg_hba.conf` line written for local users therefore also admits remote MCP clients, unless the method checks a password:
+
+- `trust` admits any MCP client that names a role, whatever password it sends.
+- `peer` checks the operating-system user, and the endpoint runs as the same OS user as the Postgres server. A line such as `local all postgres peer`, common in packaged installs, admits any client that sends the user `postgres`, as a superuser.
+
+The endpoint enforces this. Right after it connects, and before it runs any of the caller's SQL, it checks which method admitted the connection. It closes the connection unless the method checked a password: `scram-sha-256`, `md5`, `password`, `ldap`, `radius`, `pam`, or `bsd`. The caller gets the error `PostgreSQL admitted it without checking a password`. The reply never names the method, but the endpoint's log does.
+
+For each database the endpoint serves, make sure the `pg_hba.conf` lines that match the endpoint's connections require a password, such as `scram-sha-256`.
+
+A connection that carries an OAuth bearer token instead of a password must be admitted by an `oauth` line. See [Mapping identities to roles](https://www.enterprisedb.com/docs/aidb/latest/edb-endpoints/oauth/#mapping-identities-to-roles).
+
+## Revoking an agent
+
+Revoke with ordinary role changes:
+
+```sql
+REVOKE <profile_role> FROM <agent_role>;   -- narrows what the agent can do, takes effect on its next call
+ALTER ROLE <agent_role> NOLOGIN;           -- the agent can't connect at all
+DROP ROLE <agent_role>;                    -- after reassigning or dropping anything the role owns
+```
+
+See [Provisioning example](https://www.enterprisedb.com/docs/aidb/latest/mcp-endpoint/provisioning-example/#revoking-an-agent) for this applied to a specific agent.
+
+## Granting access to AIDB agents
+
+To let a role list and call agents, grant it membership in `aidb_users`. The endpoint lists AIDB agents as tools through `aidb.get_mcp_agents()`, which reads `aidb.agents` as the role. The membership grants `EXECUTE` on that function and `SELECT` on `aidb.agents`, so a member can list every agent. A role without that access gets no agents, and its catalog tools still list and run. The same holds when the installed extension predates `aidb.get_mcp_agents()`.
+
+The endpoint lists an agent only when its name matches `[A-Za-z_][A-Za-z0-9_-]*`, so an agent named `Sales Bot` isn't exposed. A catalog tool or `execute_sql` with the same name as an agent hides the agent in both `tools/list` and `tools/call`, and the endpoint logs a warning.
+
+A role with `default_transaction_read_only` set to `on` runs agents in [read-only mode](https://www.enterprisedb.com/docs/aidb/latest/agents/conversing-with-agents/#read-only-mode), so its agent calls return `"conversation_id": null`.
+
+To call an agent, see [Calling agents as tools](https://www.enterprisedb.com/docs/aidb/latest/mcp-endpoint/connecting-a-client/#calling-agents-as-tools) for the arguments, result, and timeout.
+
+## Limiting concurrent AIDB agent calls
+
+The endpoint doesn't cap how many AIDB agent calls run at once. Each call holds one Postgres connection for its whole run, up to 920 seconds, so `max_connections` and per-role connection limits are the only bound. Set a `CONNECTION LIMIT` on the roles your MCP clients use:
+
+```sql
+ALTER ROLE <agent_role> CONNECTION LIMIT 5;
+```
+
+The limit counts every connection the role opens, including `tools/list` and other tool calls.
+
+## Configuring read-only roles
+
+To guard an agent role against accidental writes through `execute_sql`, turn on `default_transaction_read_only` for the role, in every database or in one:
+
+```sql
+ALTER ROLE <agent_role> SET default_transaction_read_only = on;
+ALTER ROLE <agent_role> IN DATABASE <database> SET default_transaction_read_only = on;
+```
+
+Set it on the agent role itself, because a setting on a profile role doesn't reach its members. The endpoint reads the setting each time it opens a connection, so a change applies from the role's next call.
+
+### Preventing writes with the read-only block
+
+When the setting resolves to `on`, whether it comes from the role, `ALTER DATABASE`, or the server configuration, the endpoint runs each `execute_sql` statement inside a `BEGIN READ ONLY` block and never commits it.
+
+Without the block, a top-level `DO` or `CALL` can commit the read-only transaction and write in the next one. Inside the block, these all fail and write nothing:
+
+- A `COMMIT` or `ROLLBACK` inside `DO` or `CALL`, which returns `invalid transaction termination`.
+- `SET transaction_read_only = off` inside a `DO` block.
+- `ALTER ROLE` to clear the role's own setting.
+- `PREPARE TRANSACTION`, however it's spelled. The block exports a snapshot when it opens, and Postgres refuses to prepare a transaction that has exported one.
+
+A bare `COMMIT` ends the block without an error and writes nothing. The next call opens a new connection, so it's read-only again.
+
+The endpoint doesn't run catalog tools, AIDB agent calls, or `tools/list` inside the block. Each runs only `SELECT` statements, which the role's read-only default already covers.
+
+### Handling commands that need a read-write role
+
+Read-only roles can't use commands that refuse to run inside a transaction block:
+
+- `VACUUM`
+- `CREATE INDEX CONCURRENTLY`
+- `REINDEX CONCURRENTLY`
+- Procedures that commit
+
+Use a read-write role for these commands. The endpoint doesn't use the block for read-write roles, so the commands still work for them. A server-wide or `ALTER DATABASE` setting of `default_transaction_read_only = on` makes every role read-only, so no role can use them through `execute_sql`.
+
+The block discards any `NOTIFY` that a read-only role sends.
+
+### Reading read-only role errors
+
+Every `execute_sql` error for a read-only role carries a `read-only role` context that names the `BEGIN READ ONLY` block. Errors that the block itself causes also tell you to run the command as a read-write role. Those are SQLSTATE `2D000`, from a `COMMIT` or `ROLLBACK` inside the block, and `25001`, from a command that can't run inside a transaction block.
+
+### Granting access to `pg_export_snapshot()`
+
+Make sure the role has `EXECUTE` on `pg_catalog.pg_export_snapshot()`, because the block calls it. `PUBLIC` holds that grant by default. If you revoked it, `execute_sql` refuses every read-only role, and the error names the grant to restore. Grant it back to `PUBLIC`, or to the agent role alone:
+
+```sql
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO PUBLIC;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_export_snapshot() TO <agent_role>;
+```
+
+### Understanding the security limits
+
+The read-only setting guards against accidental writes, but the role can clear its own setting from any read-write session outside the endpoint, so the setting isn't a security boundary. Where `dblink` is installed and the role can run `dblink_exec`, the role can open that session from inside `execute_sql`. A member of `pg_write_server_files` can still write a server file with `COPY TO`, since that writes no table. Treat the setting as a guard against accidental writes, and control what the role can change with grants. Grant a read-only role only read privileges, through a profile role as in [Granting the role what it needs](#granting-the-role-what-it-needs).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

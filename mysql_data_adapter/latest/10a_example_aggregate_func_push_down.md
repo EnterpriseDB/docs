@@ -1,0 +1,140 @@
+---
+title: "Example: Aggregate pushdown"
+product: MySQL Foreign Data Wrapper
+version: "2"
+url: https://www.enterprisedb.com/docs/mysql_data_adapter/latest/10a_example_aggregate_func_push_down/
+lastModified: 2022-06-20T11:01:47-04:00
+---
+
+# Example: Aggregate pushdown
+
+MySQL Foreign Data Wrapper supports pushdown for the following aggregate functions:
+
+- AVG - Calculates the average of a set of values.
+- COUNT - Counts rows in a specified table or view.
+- MIN - Gets the minimum value in a set of values.
+- MAX - Gets the maximum value in a set of values.
+- SUM - Calculates the sum of values.
+
+Table on MySQL server:
+
+```sql
+CREATE FOREIGN TABLE sales_records
+(
+warehouse_id      INT PRIMARY KEY,
+qty    		  INT
+);
+```
+
+Table on Postgres server:
+
+```sql
+CREATE EXTENSION mysql_fdw;
+CREATE SERVER mysql_server FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '127.0.0.1', port '3306');
+CREATE USER MAPPING FOR public SERVER mysql_server OPTIONS (username 'edb', password 'edb');
+
+CREATE FOREIGN TABLE sales_records
+(
+warehouse_id      INT,
+qty    		  INT
+)
+SERVER mysql_server OPTIONS (dbname 'edb', table_name 'sales_records');
+INSERT INTO sales_records values (1, 100);
+INSERT INTO sales_records values (2, 75);
+INSERT INTO sales_records values (3, 200);
+```
+
+The output:
+
+```sql
+edb=# EXPLAIN VERBOSE SELECT avg(qty) FROM sales_records;
+```
+
+```output title="Output"
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=32)
+   Output: (avg(qty))
+   Relations: Aggregate on (edb.sales_records)
+   Local server startup cost: 10
+   Remote query: SELECT avg(`qty`) FROM `edb`.`sales_records`
+(5 rows)
+```
+
+```sql
+edb=# EXPLAIN VERBOSE SELECT COUNT(qty) FROM sales_records;
+```
+
+```output title="Output"
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=8)
+   Output: (count(qty))
+   Relations: Aggregate on (edb.sales_records)
+   Local server startup cost: 10
+   Remote query: SELECT count(`qty`) FROM `edb`.`sales_records`
+(5 rows)
+```
+
+```sql
+edb=# EXPLAIN VERBOSE SELECT MIN(qty) FROM sales_records;
+```
+
+```output title="Output"
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=4)
+   Output: (min(qty))
+   Relations: Aggregate on (edb.sales_records)
+   Local server startup cost: 10
+   Remote query: SELECT min(`qty`) FROM `edb`.`sales_records`
+(5 rows)
+```
+
+```sql
+edb=# EXPLAIN VERBOSE SELECT MAX(qty) FROM sales_records;
+```
+
+```output title="Output"
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=4)
+   Output: (max(qty))
+   Relations: Aggregate on (edb.sales_records)
+   Local server startup cost: 10
+   Remote query: SELECT max(`qty`) FROM `edb`.`sales_records`
+(5 rows)
+```
+
+```sql
+edb=# EXPLAIN VERBOSE SELECT SUM(qty) FROM sales_records;
+```
+
+```output title="Output"
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=8)
+   Output: (sum(qty))
+   Relations: Aggregate on (edb.sales_records)
+   Local server startup cost: 10
+   Remote query: SELECT sum(`qty`) FROM `edb`.`sales_records`
+(5 rows)
+```
+
+```sql
+edb=# EXPLAIN VERBOSE SELECT SUM(qty) FROM sales_records GROUP BY warehouse_id HAVING SUM(qty) = 75;
+```
+
+```output title="Output"
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=200 width=12)
+   Output: (sum(qty)), warehouse_id
+   Relations: Aggregate on (edb.sales_records)
+   Local server startup cost: 10
+   Remote query: SELECT sum(`qty`), `warehouse_id` FROM `edb`.`sales_records` GROUP BY 2 HAVING ((sum(`qty`) = 75))
+(5 rows)
+
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

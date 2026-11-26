@@ -1,0 +1,168 @@
+---
+title: AI pipelines
+description: Define pipelines to parse, chunk, embed, and index your data — then keep your knowledge base in sync automatically.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# AI pipelines
+
+Pipelines can ingest, prepare and vectorize data for semantic retrieval and RAG applications. They integrate [`pgvector`](https://www.enterprisedb.com/docs/pg_extensions/pgvector/) search capabilities and can keep the knowledge base synchronized with your source data automatically.
+
+## Example: a knowledge base for RAG
+
+This walkthrough builds a knowledge base over internal support articles and shows each retrieval stage independently. For the complete version, see [End-to-end example: Knowledge base for RAG](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/#end-to-end-example-knowledge-base-for-rag), which adds model registration, a reranking demo where the cross-encoder corrects a wrong vector-search result, and a single statement that retrieves, reranks, and generates an answer with verified output.
+
+### Set up the pipeline
+
+The source is a `support_articles` table holding 16 short articles about database operations — take the `CREATE TABLE` and `INSERT` statements from the full example's [source data step](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/#step-2-create-the-source-data). The pipeline embeds each article body with `bge-small-en-v1.5-f16`, one of the built-in llama.cpp embedding models — pre-registered, runs locally, and its model file downloads automatically on first use:
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'support_kb',
+    source             => 'support_articles',
+    source_key_column  => 'id',
+    source_data_column => 'body',
+    step_1             => 'KnowledgeBase',
+    step_1_options     => aidb.knowledge_base_config(
+        model       => 'bge-small-en-v1.5-f16',
+        data_format => 'Text'
+    ),
+    auto_processing    => 'Disabled'
+);
+```
+
+### Run the pipeline
+
+With `auto_processing => 'Disabled'`, nothing runs until you say so. Process all existing rows once:
+
+```sql
+SELECT aidb.run_pipeline('support_kb');
+```
+
+### Retrieve: semantic search
+
+Every article body is now embedded and indexed. Paste raw error text into a semantic search — the top match is the resolution, found by meaning rather than keywords:
+
+```sql
+SELECT key, value, distance::numeric(5,3) AS distance
+FROM aidb.retrieve_text('public.pipeline_support_kb',
+        'application logs show: FATAL: sorry, too many clients already', 3);
+```
+
+```output title="Output"
+ key |                                                                                                          value                                                                                                          | distance
+-----+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------
+ 4   | The error "FATAL: sorry, too many clients already" means the max_connections limit is reached. Find idle sessions in pg_stat_activity and terminate them with pg_terminate_backend(), or introduce a connection pooler. |    0.507
+ 13  | When sorts or hash joins exceed work_mem, they spill to temporary files on disk and slow down dramatically. Raise work_mem session-locally for reporting queries rather than globally.                                  |    0.844
+ 5   | PgBouncer multiplexes thousands of client connections onto a small pool of database sessions. Transaction pooling mode provides the highest connection density for typical web application workloads.                   |    0.908
+(3 rows)
+```
+
+### Re-rank: refine the order
+
+Vector search ranks by embedding distance. It's fast because it runs against the pre-built index, but a reranking model makes the opposite trade-off: a cross-encoder reads the query and each candidate text _together_, which is slower but more accurate. `aidb.rerank_text()` scores a list of texts against a query (in practice, the top-N retrieval results) and returns `(text, logit_score, id)`, where `id` is the 0-based position in the input array and a higher `logit_score` means more relevant. Scores are raw logits, so negative values are normal:
+
+```sql
+SELECT id, text, logit_score
+FROM aidb.rerank_text(
+    'bge-reranker-v2-m3-Q4',
+    '<your question>',
+    ARRAY[
+        '<candidate text 1>',
+        '<candidate text 2>',
+        '<candidate text 3>'
+    ]
+)
+ORDER BY logit_score DESC;
+```
+
+The reranking model is registered in the [full example](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/#end-to-end-example-knowledge-base-for-rag), which also shows the two-stage pattern in action: vector search puts a wrong article first in a near-tie, and the cross-encoder corrects it decisively.
+
+### Generate: grounded answers
+
+Hand the retrieved (and optionally re-ranked) articles to a generation model together with the question, and it answers from _your_ data instead of its training data — retrieval-augmented generation (RAG):
+
+```sql
+SELECT aidb.generate_text(
+    'llama-3.2-3b-instruct-Q8_0',
+    E'Knowledge base articles:\n\n'
+    || '<insert the retrieved and re-ranked article text here>'
+    || E'\n\nQuestion: <insert question here>\n\n'
+    || 'Answer the question using only the facts in the articles above.'
+);
+```
+
+The [full example](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/#end-to-end-example-knowledge-base-for-rag) registers the generation model and combines all three stages into a single SQL statement, with verified output.
+
+## Pipeline architecture
+
+```
+                   ╭──────────────────── the pipeline ─────────────────────╮
+Source          →  Step 1        →  Step 2  →  ...  →  Knowledge Base
+(table/volume)     (parse/chunk)    (embed)            (indexed + queryable)
+                                                              │
+                                                              ▼  on demand, from your app or agent
+                                                      Retrieve — semantic search (aidb.retrieve_text())
+                                                              │
+                                                              ▼  optional
+                                                      Re-rank — refine result order (aidb.rerank_text())
+                                                              │
+                                                              ▼  optional
+                                                      Generate — RAG answer from the matches (aidb.generate_text())
+```
+
+Each step handles one transformation: parsing a PDF, chunking text, running OCR, summarizing content, or generating vector embeddings. The output of one step becomes the input for the next.
+
+A pipeline is configured with `aidb.create_pipeline()` and consists of three main aspects:
+
+- **[Data source](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/data-processing/)** — pipelines read from Postgres tables or from external cloud storage (S3, GCS, Azure) via [Postgres File System (PGFS)](https://www.enterprisedb.com/docs/pg_extensions/pgfs/).
+
+- **[Processing steps](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/)** — up to 10 sequential operations transform your data. Steps include chunking, parsing, OCR, summarization, and embedding into a knowledge base. Each step is configured using a dedicated helper function.
+
+- **[Orchestration](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/)** — auto-processing modes keep your knowledge base in sync with source data automatically, without manual intervention.
+
+Steps that generate embeddings or process text run against any registered model: built-in local models (Candle and llama.cpp — like the example above, no setup needed) or external APIs such as OpenAI-compatible services. See [Integrating models](https://www.enterprisedb.com/docs/aidb/latest/integrating-models/).
+
+## Autovectorization
+
+Embeddings are derived data: the moment a source row changes, its embedding is stale. Keeping the two in sync — autovectorization — is what sets pipelines apart from one-off embedding scripts, and it's controlled per pipeline through the `auto_processing` mode:
+
+- **`Live`** — Postgres triggers process changes immediately, within the same transaction that modifies the source data. Zero lag and a transactional guarantee: if the row committed, its embedding exists. The writing transaction carries the processing cost.
+
+- **`Background`** — a dedicated Postgres background worker processes changes asynchronously at a configurable interval, batching rows for throughput. Writes are never blocked or delayed; results trail the source by up to the sync interval. Ideal for high-volume ingestion.
+
+- **`Disabled`** (the default) — no automatic sync; data is only processed when you call `aidb.run_pipeline()`, as in the example above.
+
+To make the example pipeline self-maintaining, switch it to live processing:
+
+```sql
+SELECT aidb.update_pipeline('support_kb', auto_processing => 'Live');
+
+INSERT INTO support_articles (title, body)
+VALUES ('Cancelling a runaway query',
+        'Use pg_cancel_backend(pid) to cancel a long-running query without terminating its session. Find the pid of the offending backend in pg_stat_activity.');
+```
+
+The new row is embedded and retrievable the moment the `INSERT` commits — no further calls needed. See [Auto-processing](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/auto-processing/) for a full comparison of the modes and [Background workers](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/background-workers/) for the prerequisites of `Background` mode.
+
+## Documentation map
+
+| Page                                                                                                | What it covers                                                                                          |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [Creating pipelines](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/data-processing/) | Defining a pipeline with `aidb.create_pipeline()` — source, steps, auto-processing, and volume sources. |
+| [Pipeline steps](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/)      | Available step types: ChunkText, ParseHtml, ParsePdf, PerformOcr, SummarizeText, KnowledgeBase.         |
+| [Orchestration](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/)        | Auto-processing modes, background workers, observability, and error handling.                           |
+| [Reference](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/)                | Full API reference for pipeline types, views, CRUD functions, and config helpers.                       |
+| [Examples](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/)                   | End-to-end worked examples.                                                                             |
+
+- [Creating pipelines](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/data-processing/): How to define an AI pipeline using aidb.create\_pipeline() — configuring the source, transformation steps, and destination.
+- [Pipeline steps](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/): Learn how to configure each pipeline step — ChunkText, ParseHtml, ParsePdf, PdfToImage, PerformOcr, SummarizeText, and KnowledgeBase — and how to persist intermediate step output, when building AI pipelines in EDB Postgres AI.
+- [Orchestration](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/orchestration/): Orchestration in EDB Postgres AI Pipelines manages the execution of AI workflows, providing auto-processing, background workers, and observability to ensure efficient and reliable data transformation from raw inputs to vector-searchable insights.
+- [Troubleshooting](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/troubleshooting/): Diagnose and fix common pipeline problems, such as a pipeline that stops processing after you rename or drop its owner role.
+- [Reference](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/): Reference documentation for the EDB AI pipelines API: types, views, core functions, and configuration helpers.
+- [Examples](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/): Explore practical examples of EDB Postgres AI Pipelines, demonstrating how to create multi-step workflows with intermediate storage for processing raw data into vector-searchable insights.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

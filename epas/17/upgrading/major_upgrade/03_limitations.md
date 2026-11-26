@@ -1,0 +1,33 @@
+---
+title: Upgrade considerations
+description: Outlines the requirements and limitations to review prior to upgrading
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/upgrading/major_upgrade/03_limitations/
+lastModified: 2026-08-27T17:18:06+05:30
+---
+
+# Upgrade considerations
+
+The `pg_upgrade` executable is distributed with EDB Postgres Advanced Server and is installed as part of the Database Server component. You don't need to further install or configure it. The `pg_upgrade` utility performs an in-place transfer of existing data between EDB Postgres Advanced Server and any later version.
+
+Several factors determine if an in-place upgrade is practical:
+
+- The on-disk representation of user-defined tables must not change between the original version and the upgraded version.
+- The on-disk representation of data types must not change between the original version and the upgraded version.
+- To upgrade between major versions of EDB Postgres Advanced Server with `pg_upgrade`, both versions must share a common binary representation for each data type. Therefore, you can't use `pg_upgrade` to migrate from a 32-bit to a 64-bit Linux platform.
+
+Before performing a version upgrade, `pg_upgrade` verifies that the old cluster and the new cluster are compatible.
+
+If the upgrade involves a change in the on-disk representation of database objects or data, or if it involves a change in the binary representation of data types, `pg_upgrade` can't perform the upgrade. To upgrade, you have to `pg_dump` the old data and then import that data to the new cluster, as described below.
+
+1. Export all of your data using `pg_dump`.
+2. Install the new release.
+3. Run `initdb` to create a new cluster.
+4. Import your old data.
+
+If you export role data with `pg_dumpall --no-role-passwords` as part of this process, note that the `rolpolicyexempt` attribute (`EXEMPT ACCESS POLICY` privilege) isn't preserved and defaults to `false` after import. See [Controlling data access (Virtual Private Database)](https://www.enterprisedb.com/docs/epas/17/epas_security_guide/03_virtual_private_database/) for how to identify and reapply affected roles.
+
+If you're using an ODBC, JDBC, OCI, or .NET driver to connect to your database applications and upgrading to a new major version of EDB Postgres Advanced Server, upgrade your driver to the latest version when upgrading EDB Postgres Advanced Server.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

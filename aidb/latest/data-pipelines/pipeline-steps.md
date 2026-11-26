@@ -1,0 +1,350 @@
+---
+title: Pipeline steps
+description: Learn how to configure each pipeline step — ChunkText, ParseHtml, ParsePdf, PdfToImage, PerformOcr, SummarizeText, and KnowledgeBase — and how to persist intermediate step output, when building AI pipelines in EDB Postgres AI.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/
+lastModified: 2026-10-14T19:31:41+05:30
+---
+
+# Pipeline steps
+
+Each step in an AI pipeline is defined by its operation type and an optional configuration object. You pass the operation name as a string to the `step_N` parameter of `aidb.create_pipeline()`, and the configuration as JSONB to the corresponding `step_N_options` parameter.
+
+```sql
+SELECT aidb.create_pipeline(
+    name              => 'my_pipeline',
+    source            => 'my_source_table',
+    source_key_column => 'id',
+    source_data_column => 'content',
+    step_1            => 'ChunkText',
+    step_1_options    => aidb.chunk_text_config(desired_length => 120, max_length => 150),
+    step_2            => 'KnowledgeBase',
+    step_2_options    => aidb.knowledge_base_config(model => 'bert', data_format => 'Text')
+);
+```
+
+Use the helper functions described below to build the `step_N_options` value for each operation type. All helper functions return a `JSONB` configuration object.
+
+## Intermediate storage
+
+Any step can persist its own output to a dedicated table, in addition to passing it on to the next step (or, for the last step, to the pipeline's final destination). This is useful for debugging a multi-step pipeline, or for reusing an intermediate result (such as chunked text) outside the pipeline. It's off by default.
+
+Set it with an `intermediate_destination` key in that step's `step_N_options`. No step config helper (`aidb.chunk_text_config()`, `aidb.pdf_parse_config()`, and so on) has a parameter for it yet, so add it as plain JSON alongside the helper's own output, merged with the `||` operator:
+
+```sql
+step_1_options => aidb.chunk_text_config(desired_length => 100) || jsonb_build_object(
+    'intermediate_destination', jsonb_build_object('enabled', true)
+)
+```
+
+Or build the whole options object directly with `jsonb_build_object()`:
+
+```sql
+step_1_options => jsonb_build_object(
+    'desired_length', 100,
+    'intermediate_destination', jsonb_build_object('enabled', true)
+)
+```
+
+| Key           | Type    | Default  | Description                                                                                     |
+| ------------- | ------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `enabled`     | BOOLEAN | Required | Turn on intermediate storage for this step.                                                     |
+| `destination` | TEXT    | NULL     | Table to store the step's output in. Auto-generated as `pipeline_<name>_step_<N>` when omitted. |
+
+The simplest form just turns it on and lets AIDB name the table:
+
+```json
+{"enabled": true}
+```
+
+Or name the destination table explicitly:
+
+```json
+{"enabled": true, "destination": "my_custom_chunk_storage"}
+```
+
+The destination table has the same shape as any other pipeline destination table: `source_id`, `part_ids`, and a `value` column holding the step's output.
+
+Setting `intermediate_destination` on a pipeline's **last** step still creates the table and writes to it, but [`aidb.retrieve_text()`](https://www.enterprisedb.com/docs/aidb/latest/reference/knowledge-bases/#aidbretrieve_text)'s `intermediate_steps` column never surfaces it — that lookup only considers steps before the last one, since there's no "next step" for the last one's output to be intermediate before. Query the destination table directly instead if you need to read it back. This matters most for `KnowledgeBase`, which must always be the last step in a pipeline — so there's rarely a reason to enable intermediate storage on it.
+
+> **Note**
+>
+> `intermediate_destination` must be an object with an `enabled` key (and optionally `destination`). Any other JSON type raises an error at pipeline creation:
+>
+> ```
+> ERROR:  Invalid options for step 1: intermediate_destination must be an object with keys 'enabled' and optionally 'destination'; got a string
+> ```
+
+For a full worked example, see [Multi-step pipeline with intermediate storage](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/#end-to-end-example-multi-step-pipeline-with-intermediate-storage). To read intermediate results back at query time — including how this interacts with `deduplicate` — see [`aidb.retrieve_text`](https://www.enterprisedb.com/docs/aidb/latest/reference/knowledge-bases/#aidbretrieve_text) and [Deduplication and intermediate results](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/#deduplication-and-intermediate-results).
+
+## ChunkText
+
+Divides text into smaller segments to fit within LLM context windows.
+
+**Helper function:** `aidb.chunk_text_config()`
+
+| Parameter        | Type      | Default  | Description                                                                          |
+| ---------------- | --------- | -------- | ------------------------------------------------------------------------------------ |
+| `desired_length` | `INTEGER` | Required | Target chunk size. The unit depends on `strategy`.                                   |
+| `max_length`     | `INTEGER` | `NULL`   | Maximum chunk size. If omitted, `desired_length` is a strict upper limit.            |
+| `overlap_length` | `INTEGER` | `NULL`   | Amount of content to overlap between consecutive chunks. Defaults to 0 (no overlap). |
+| `strategy`       | `TEXT`    | `NULL`   | `'chars'` (default) for character-based or `'words'` for word-based chunking.        |
+
+**Basic chunking example**:
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'chunk_pipeline',
+    source             => 'source_table',
+    source_key_column  => 'id',
+    source_data_column => 'content',
+    step_1             => 'ChunkText',
+    step_1_options     => aidb.chunk_text_config(
+        desired_length => 100,
+        max_length     => 150,
+        overlap_length => 20,
+        strategy       => 'words'
+    )
+);
+```
+
+### Result
+
+`ChunkText` transforms the shape of the data by introducing a `part_id` column. Each source row may produce multiple output rows, one per chunk.
+
+## ParseHtml
+
+Extracts readable text from HTML strings, stripping tags while preserving logical structure.
+
+**Helper function:** `aidb.html_parse_config()`
+
+| Parameter | Type   | Default | Description                                                                                                 |
+| --------- | ------ | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `method`  | `TEXT` | `NULL`  | `'StructuredPlaintext'` (default) for plain text extraction, or `'StructuredMarkdown'` to retain hierarchy. |
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'html_pipeline',
+    source             => 'web_data_table',
+    source_key_column  => 'id',
+    source_data_column => 'html_content',
+    step_1             => 'ParseHtml',
+    step_1_options     => aidb.html_parse_config(method => 'StructuredMarkdown'),
+    step_2             => 'ChunkText',
+    step_2_options     => aidb.chunk_text_config(desired_length => 120)
+);
+```
+
+### Result
+
+`ParseHtml` doesn't unnest results — each source row produces exactly one output row containing the extracted text, with the original row correspondence preserved. Pair it with `ChunkText` (as in the example above) to split the extracted text into smaller segments.
+
+## ParsePdf
+
+Extracts text from binary PDF data, with options to handle non-compliant or complex files.
+
+**Helper function:** `aidb.pdf_parse_config()`
+
+| Parameter               | Type      | Default | Description                                                                             |
+| ----------------------- | --------- | ------- | --------------------------------------------------------------------------------------- |
+| `method`                | `TEXT`    | `NULL`  | `'Structured'` (default) — uses the PDF specification to identify text blocks.          |
+| `allow_partial_parsing` | `BOOLEAN` | `NULL`  | If `true` (default), continues parsing when errors are encountered on individual pages. |
+
+The resulting `part_id` column maps to the page index from which each text block was extracted.
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'pdf_pipeline',
+    source             => 'pdf_files_table',
+    source_key_column  => 'id',
+    source_data_column => 'pdf_data',
+    step_1             => 'ParsePdf',
+    step_1_options     => aidb.pdf_parse_config(
+        method                => 'Structured',
+        allow_partial_parsing => true
+    ),
+    step_2             => 'KnowledgeBase',
+    step_2_options     => aidb.knowledge_base_config(model => 'bert', data_format => 'Text')
+);
+```
+
+### Result
+
+`ParsePdf` unnests results — a multi-page PDF produces one row per page, each with a `part_id` corresponding to the page index.
+
+## PdfToImage
+
+Converts each page of a PDF document into an image.
+Use this step when source PDFs are scanned documents, image-heavy layouts, or any PDF where the text layer is absent or unreliable.
+The rendered page images can then pass directly to a `PerformOcr` step for text extraction.
+
+For digitally produced PDFs that contain a native text layer, use `ParsePdf` instead — it's faster and doesn't require an OCR model.
+
+**Options format:** Pass options as a JSON literal.
+
+| Parameter            | Type      | Default           | Description                                                                                                                             |
+| -------------------- | --------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `dpi`                | `INTEGER` | `300`             | Resolution in dots per inch used to render each page. Higher values produce sharper images at the cost of larger file size.             |
+| `first_page`         | `INTEGER` | `NULL`            | First page to render (1-based). Renders from the beginning when omitted.                                                                |
+| `last_page`          | `INTEGER` | `NULL`            | Last page to render, inclusive (1-based). Renders to the end when omitted.                                                              |
+| `max_pages`          | `INTEGER` | `NULL`            | Maximum number of pages to render. Acts as a safety cap regardless of `first_page` and `last_page`.                                     |
+| `render_annotations` | `BOOLEAN` | `true`            | Whether to include PDF annotations (such as comments and form fields) in the rendered output.                                           |
+| `format`             | `JSONB`   | `{"type": "png"}` | Output image format. Accepted values: `{"type": "png"}`, `{"type": "jpeg"}`. Use `{"type": "png"}` when passing output to `PerformOcr`. |
+
+Output images are in PNG or JPEG format depending on the `format` option. Use `"png"` (the default) when passing output to the `PerformOcr` step — NVIDIA NIM PaddleOCR requires PNG or JPEG input.
+
+Before using this step in a pipeline that includes `PerformOcr`, register an OCR-capable model:
+
+```sql
+SELECT aidb.create_model(
+    'my_paddle_ocr_model',
+    'nim_paddle_ocr',
+    credentials => '{"api_key": "<NVIDIA_NIM_API_KEY>"}'::JSONB  -- or credential => '<name>' to use an existing credential
+);
+```
+
+Then create the pipeline:
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'pdf_ocr_pipeline',
+    source             => 'pdf_files_table',
+    source_key_column  => 'id',
+    source_data_column => 'pdf_data',
+    step_1             => 'PdfToImage',
+    step_1_options     => '{"dpi": 150}'::jsonb,
+    step_2             => 'PerformOcr',
+    step_2_options     => aidb.ocr_config(model => 'my_paddle_ocr_model'),
+    step_3             => 'KnowledgeBase',
+    step_3_options     => aidb.knowledge_base_config(model => 'bert', data_format => 'Text')
+);
+```
+
+### Result
+
+`PdfToImage` unnests results — each page of the source PDF produces one output row containing the rendered page as a PNG or JPEG image, depending on the `format` option.
+The `part_id` column maps to the page index (zero-based).
+This output shape is directly compatible with the `PerformOcr` step, which expects image bytes as its input.
+
+## PerformOcr
+
+Extracts text from images using an OCR-capable AI model, such as NVIDIA NIM PaddleOCR.
+
+**Helper function:** `aidb.ocr_config()`
+
+| Parameter | Type   | Default  | Description                              |
+| --------- | ------ | -------- | ---------------------------------------- |
+| `model`   | `TEXT` | Required | Name of the registered OCR model to use. |
+
+Before using this step, register an OCR-capable model:
+
+```sql
+SELECT aidb.create_model(
+    'my_paddle_ocr_model',
+    'nim_paddle_ocr',
+    credentials => '{"api_key": "<NVIDIA_NIM_API_KEY>"}'::JSONB  -- or credential => '<name>' to use an existing credential
+);
+```
+
+Then reference it in your pipeline:
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'ocr_pipeline',
+    source             => 'images_table',
+    source_key_column  => 'id',
+    source_data_column => 'image_data',
+    step_1             => 'PerformOcr',
+    step_1_options     => aidb.ocr_config(model => 'my_paddle_ocr_model'),
+    step_2             => 'KnowledgeBase',
+    step_2_options     => aidb.knowledge_base_config(model => 'bert', data_format => 'Text')
+);
+```
+
+### Result
+
+`PerformOcr` unnests results — a single image may produce multiple rows, one per detected text block. The NVIDIA NIM provider currently supports only `png` and `jpeg` formats.
+
+## SummarizeText
+
+Generates concise summaries of long text passages using an AI language model.
+
+**Helper function:** `aidb.summarize_text_config()`
+
+| Parameter          | Type      | Default  | Description                                                                                            |
+| :----------------- | :-------- | :------- | :----------------------------------------------------------------------------------------------------- |
+| `model`            | `TEXT`    | Required | Name of the registered model to use for summarization.                                                 |
+| `chunk_config`     | `JSONB`   | `NULL`   | Optional chunking configuration (from `aidb.chunk_text_config()`) applied before summarization.        |
+| `prompt`           | `TEXT`    | `NULL`   | Custom prompt to guide the summarization. Uses a standard prompt if omitted.                           |
+| `strategy`         | `TEXT`    | `NULL`   | `'append'` (default) concatenates per-chunk summaries, or `'reduce'` iteratively compresses them.      |
+| `reduction_factor` | `INTEGER` | `NULL`   | Used with `'reduce'` strategy. Controls how aggressively text is reduced per iteration (default is 3). |
+| `inference_config` | `JSONB`   | `NULL`   | Optional runtime inference settings (from `aidb.inference_config()`).                                  |
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'summary_pipeline',
+    source             => 'articles_table',
+    source_key_column  => 'id',
+    source_data_column => 'body',
+    step_1             => 'SummarizeText',
+    step_1_options     => aidb.summarize_text_config(
+        model        => 'my_t5_model',
+        chunk_config => aidb.chunk_text_config(100, 120, 10, 'words'),
+        prompt       => 'Summarize the key points concisely',
+        strategy     => 'reduce',
+        reduction_factor => 3
+    ),
+    step_2             => 'KnowledgeBase',
+    step_2_options     => aidb.knowledge_base_config(model => 'bert', data_format => 'Text')
+);
+```
+
+## KnowledgeBase
+
+Converts processed text or image data into vector embeddings and stores them in a searchable knowledge base. This step must always be the **last step** in a pipeline, as its output is a `VECTOR` type that can't be used as input by any subsequent step. For querying the knowledge base with semantic or hybrid search, see [Knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/).
+
+**Helper function:** `aidb.knowledge_base_config()`
+
+| Parameter           | Type                      | Default  | Description                                                                                      |
+| ------------------- | ------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `model`             | `TEXT`                    | Required | Name of the embedding model.                                                                     |
+| `data_format`       | `aidb.PipelineDataFormat` | Required | `'Text'` or `'Image'`.                                                                           |
+| `distance_operator` | `aidb.DistanceOperator`   | `NULL`   | Similarity metric: `L2` (default), `InnerProduct`, `Cosine`, `L1`, `Hamming`, or `Jaccard`.      |
+| `vector_index`      | `JSONB`                   | `NULL`   | Vector index config, built with a vector index helper such as `aidb.vector_index_hnsw_config()`. |
+
+```sql
+SELECT aidb.create_pipeline(
+    name               => 'kb_pipeline',
+    source             => 'source_table',
+    source_key_column  => 'id',
+    source_data_column => 'content',
+    step_1             => 'KnowledgeBase',
+    step_1_options     => aidb.knowledge_base_config(
+        model             => 'bert',
+        data_format       => 'Text',
+        distance_operator => 'Cosine',
+        vector_index      => aidb.vector_index_hnsw_config(m => 16, ef_construction => 64)
+    )
+);
+```
+
+Use `aidb.knowledge_base_config_from_kb(data_format)` to attach a pipeline to an existing knowledge base. This lets multiple pipelines share one vector table, and inherits the model, distance operator, and vector index from the knowledge base. See [Multi-pipeline knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/multi-pipeline/).
+
+### Destination table
+
+The KnowledgeBase step creates a destination table named by the `destination` parameter. If `destination` isn't set, the table defaults to `pipeline_<pipeline_name>`. When multiple pipelines share a knowledge base, they all write to the same table.
+
+| Column        | Type      | Description                                        |
+| ------------- | --------- | -------------------------------------------------- |
+| `id`          | BIGSERIAL | Primary key.                                       |
+| `pipeline_id` | INT       | Reference to the originating pipeline.             |
+| `source_id`   | TEXT      | ID of the original source record.                  |
+| `part_ids`    | BIGINT\[] | Tracks segments if the data was chunked or parsed. |
+| `value`       | VECTOR    | The pgvector embedding.                            |
+
+For knowledge base views, retrieval functions, and lifecycle behavior, see [Knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/) and [Knowledge bases reference](https://www.enterprisedb.com/docs/aidb/latest/reference/knowledge-bases/).
+
+To see pipeline steps used together in a complete end-to-end workflow, see [Examples](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/example/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

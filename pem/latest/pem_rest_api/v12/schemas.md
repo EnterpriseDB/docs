@@ -1,0 +1,4013 @@
+---
+title: "EDB Postgres Enterprise Manager REST APIs v12.0: Schemas"
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/pem_rest_api/v12/schemas/
+lastModified: 2026-06-22T21:47:06+05:30
+---
+
+# EDB Postgres Enterprise Manager REST APIs v12.0: Schemas
+
+<span id="tocs_alertpayload"></span>
+
+## AlertPayload
+
+<a id="schemaalertpayload"></a> <a id="schema_AlertPayload"></a> <a id="tocSalertpayload"></a> <a id="tocsalertpayload"></a>
+
+```json
+{
+  "alert_name": "string",
+  "alert_template": 0,
+  "description": "string",
+  "enabled": true,
+  "history_retention": 0,
+  "frequency_min": 0,
+  "operator": "string",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "all_alert_enable": true,
+  "email_group_id": 1,
+  "low_alert_enable": true,
+  "low_email_group_id": 1,
+  "med_alert_enable": true,
+  "med_email_group_id": 1,
+  "high_alert_enable": true,
+  "high_email_group_id": 1,
+  "send_trap": false,
+  "snmp_trap_version": 0,
+  "low_send_trap": true,
+  "med_send_trap": true,
+  "high_send_trap": true,
+  "cleared_alert_enable": true,
+  "params": [],
+  "execute_script": true,
+  "execute_script_on_clear": true,
+  "execute_script_on_pem_server": true,
+  "script_code": "string",
+  "submit_to_nagios": true,
+  "override_default_config": true,
+  "send_notification": false,
+  "low_webhook_ids": [],
+  "med_webhook_ids": [],
+  "high_webhook_ids": [],
+  "cleared_webhook_ids": []
+}
+
+```
+
+#### Properties
+
+| Name                             | Type                                | Required | Restrictions | Description                                                                                                                                                                            |
+| -------------------------------- | ----------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| alert\_name                      | string                              | false    | none         | Name of the alert. NOTE: This property is a mandatory parameter for a POST request.                                                                                                    |
+| alert\_template                  | integer                             | false    | none         | ID of the alert template. The ID must be a positive integer value. NOTE: This property is a mandatory parameter for a POST request.                                                    |
+| description                      | string                              | false    | none         | none                                                                                                                                                                                   |
+| enabled                          | boolean                             | false    | none         | Defines whether this alert is enabled/disabled. NOTE: This property is a mandatory parameter for a POST request.                                                                       |
+| history\_retention               | integer                             | false    | none         | Specifies how many days to keep the history of this alert. Possible values are from 1 to 99999. NOTE: This property is a mandatory parameter for a POST request.                       |
+| frequency\_min                   | integer                             | false    | none         | Defines how frequently (in minutes) the alert must be checked on PEM database server. Possible values are 1 to 65534. NOTE: This property is a mandatory parameter for a POST request. |
+| operator                         | string                              | false    | none         | Defines the operator for checking threshold values. Valid string are ">" and "<". NOTE: This property is a mandatory parameter for the POST request.                                   |
+| low\_threshold\_value            | number                              | false    | none         | Threshold value for triggering the low alert. This property can be any valid integer/float value. NOTE: It is a mandatory parameter for a POST request.                                |
+| medium\_threshold\_value         | number                              | false    | none         | Threshold value for triggering the medium alert. This property can be any valid integer/float value. NOTE: It is a mandatory parameter for a POST request.                             |
+| high\_threshold\_value           | number                              | false    | none         | Threshold value for triggering the high alert. This property can be any valid integer/float value. NOTE: It is a mandatory parameter for a POST request.                               |
+| all\_alert\_enable               | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'email\_group\_id' when the state of the alert changes.                                       |
+| email\_group\_id                 | integer                             | false    | none         | Defines the email group to which email notification are sent, when the state of the alert changes.                                                                                     |
+| low\_alert\_enable               | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'low\_email\_group\_id' when the state of the alert is set to LOW.                            |
+| low\_email\_group\_id            | integer                             | false    | none         | Defines the email group to which email notifications are sent when the state of the alert changes to LOW.                                                                              |
+| med\_alert\_enable               | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'medium\_email\_group\_id' when the state of the alert is set to MEDIUM.                      |
+| med\_email\_group\_id            | integer                             | false    | none         | Defines the email group to which email notifications are sent when the state of the alert changes to MEDIUM.                                                                           |
+| high\_alert\_enable              | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'high\_email\_group\_id' when the state of the alert is set to HIGH.                          |
+| high\_email\_group\_id           | integer                             | false    | none         | Defines the email group to which email notification are sent when the state of the alert changes to HIGH.                                                                              |
+| send\_trap                       | boolean                             | false    | none         | Determines whether to send an SNMP trap notification when the state of the alert changes.                                                                                              |
+| snmp\_trap\_version              | integer                             | false    | none         | Defines the SNMP trap version. Supported SNMP trap versions are 1, 2 or 3.                                                                                                             |
+| low\_send\_trap                  | boolean                             | false    | none         | Determines whether to send SNMP trap notifications when the state of the alert changes to LOW.                                                                                         |
+| med\_send\_trap                  | boolean                             | false    | none         | Determines whether to send SNMP trap notifications when the state of the alert changes to MEDIUM.                                                                                      |
+| high\_send\_trap                 | boolean                             | false    | none         | Determines whether to send SNMP trap notifications when the state of the alert chagnes to HIGH.                                                                                        |
+| cleared\_alert\_enable           | boolean                             | false    | none         | Determines whether to mute the notification for 'clear alert'.                                                                                                                         |
+| params                           | \[[AlertParams](#tocs_alertparams)] | false    | none         | List of parameter/value pairs to be used by the alert template for checking alerts. NOTE: The alert template requires the all parameter to be defined.                                 |
+| execute\_script                  | boolean                             | false    | none         | Determines whether to execute the provided script if the state of the alert changes to LOW/MEDIUM/HIGH.                                                                                |
+| execute\_script\_on\_clear       | boolean                             | false    | none         | Determines whether to execute the provided script if the state of the alert clears.                                                                                                    |
+| execute\_script\_on\_pem\_server | boolean                             | false    | none         | Determines whether to execute the provided script on the PEM host or the host where the agent is monitoring the object.                                                                |
+| script\_code                     | string                              | false    | none         | The shell or batch script to be executed. Please read the documentation for detailed information.                                                                                      |
+| submit\_to\_nagios               | boolean                             | false    | none         | Defines whether to send notification to the nagios, when state of the alert is chagned.                                                                                                |
+| override\_default\_config        | boolean                             | false    | none         | Determines whether to override the default webhook configuration.                                                                                                                      |
+| send\_notification               | boolean                             | false    | none         | Determines whether the webhook send notification is enabled.                                                                                                                           |
+| low\_webhook\_ids                | \[integer]                          | false    | none         | Defines webhook IDs for which low alerts can be configured.                                                                                                                            |
+| med\_webhook\_ids                | \[integer]                          | false    | none         | Defines webhook IDs for which medium alerts can be configured.                                                                                                                         |
+| high\_webhook\_ids               | \[integer]                          | false    | none         | Defines webhook IDs for which high alerts can be configured.                                                                                                                           |
+| cleared\_webhook\_ids            | \[integer]                          | false    | none         | Defines webhook IDs for which cleared alerts can be configured.                                                                                                                        |
+
+<span id="tocs_alert"></span>
+
+## Alert
+
+<a id="schemaalert"></a> <a id="schema_Alert"></a> <a id="tocSalert"></a> <a id="tocsalert"></a>
+
+```json
+{
+  "id": 0,
+  "alert_name": "string",
+  "alert_template": 0,
+  "description": "string",
+  "enabled": true,
+  "history_retention": 0,
+  "frequency_min": 0,
+  "auto_created": true,
+  "template_id": "string",
+  "params": [],
+  "param_names": [
+    "string"
+  ],
+  "param_types": "string",
+  "params_units": [
+    "string"
+  ],
+  "threshold_unit": "string",
+  "operator": "string",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "send_email": true,
+  "all_alert_enable": true,
+  "email_group_id": 0,
+  "low_alert_enable": true,
+  "low_email_group_id": 0,
+  "med_alert_enable": true,
+  "med_email_group_id": 0,
+  "high_alert_enable": true,
+  "high_email_group_id": 0,
+  "send_trap": true,
+  "snmp_trap_version": 0,
+  "low_send_trap": true,
+  "med_send_trap": true,
+  "high_send_trap": true,
+  "cleared_alert_enable": true,
+  "execute_script": true,
+  "execute_script_on_clear": true,
+  "execute_script_on_pem_server": true,
+  "script_code": "string",
+  "submit_to_nagios": true,
+  "override_default_config": true,
+  "send_notification": true,
+  "low_webhook_ids": [
+    0
+  ],
+  "med_webhook_ids": [
+    0
+  ],
+  "high_webhook_ids": [
+    0
+  ],
+  "cleared_webhook_ids": [
+    0
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                             | Type                                | Required | Restrictions | Description                                                                                                                                                                                 |
+| -------------------------------- | ----------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                               | integer                             | false    | none         | Alert ID. NOTE: This property is not applicable for a POST request.                                                                                                                         |
+| alert\_name                      | string                              | false    | none         | Name of the alert. NOTE: This property is a mandatory parameter for a POST request.                                                                                                         |
+| alert\_template                  | integer                             | false    | none         | ID of the alert template. This property must be a positive integer value. NOTE: It is a mandatory parameter for a POST request.                                                             |
+| description                      | string                              | false    | none         | none                                                                                                                                                                                        |
+| enabled                          | boolean                             | false    | none         | Determines whether this alert is enabled/disabled. NOTE: This property is a mandatory parameter for a POST request.                                                                         |
+| history\_retention               | integer                             | false    | none         | Specifies how many days to keep the history of this alert. Possible values are from 1 to 99999. NOTE: This property is a mandatory parameter for a POST request.                            |
+| frequency\_min                   | integer                             | false    | none         | Defines in minutes how frequently the alert must be checked on a PEM database server. Possible values are from 1 to 65534. NOTE: This property is a mandatory parameter for a POST request. |
+| auto\_created                    | boolean                             | false    | none         | Specifies whether the alert is auto-created.                                                                                                                                                |
+| template\_id                     | string                              | false    | none         | Defines the alert template.                                                                                                                                                                 |
+| params                           | \[[AlertParams](#tocs_alertparams)] | false    | none         | List of parameter/value pairs to be used by the alert template for checking alerts. NOTE: The alert template requires the all parameter to be defined.                                      |
+| param\_names                     | \[string]                           | false    | none         | Defines the name of parameters.                                                                                                                                                             |
+| param\_types                     | string                              | false    | none         | Defines the type of parameters. Example: INTEGER/STRING..                                                                                                                                   |
+| params\_units                    | \[string]                           | false    | none         | Defines the unit used for parameters.Example: 'DAYS','True or False','Hours','Minutes' etc                                                                                                  |
+| threshold\_unit                  | string                              | false    | none         | Units used to calculate the threshold, such as MB/kB/seconds/days/... This value is only used for the GUI.                                                                                  |
+| operator                         | string                              | false    | none         | Defines the operator for checking threshold values. Valid strings are ">" and "<". NOTE: This property is a mandatory parameter for a POST request.                                         |
+| low\_threshold\_value            | number                              | false    | none         | Threshold value for triggering the low alert. This property can be any valid integer/float value. NOTE: It is a mandatory parameter for the POST request.                                   |
+| medium\_threshold\_value         | number                              | false    | none         | Threshold value for triggering the medium alert. This property can be any valid integer/float value. NOTE: It is a mandatory parameter for the POST request.                                |
+| high\_threshold\_value           | number                              | false    | none         | Threshold value for triggering the high alert. It can be any valid integer/float value. NOTE: It is a mandatory parameter for the POST request.                                             |
+| send\_email                      | boolean                             | false    | none         | Determines whether to send an email when the state of the alert changes.                                                                                                                    |
+| all\_alert\_enable               | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'email\_group\_id' when the state of the alert changes.                                            |
+| email\_group\_id                 | integer                             | false    | none         | Defines the email group to which email notification are sent when the state of the alert changes.                                                                                           |
+| low\_alert\_enable               | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'low\_email\_group\_id' when the state of the alert is set to LOW.                                 |
+| low\_email\_group\_id            | integer                             | false    | none         | Defines the email group to which email notification are sent when the state of the alert changes to LOW.                                                                                    |
+| med\_alert\_enable               | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'medium\_email\_group\_id' when the state of the alert is set to MEDIUM.                           |
+| med\_email\_group\_id            | integer                             | false    | none         | Defines the email group to which email notification are sent when state of the alert changes to MEDIUM.                                                                                     |
+| high\_alert\_enable              | boolean                             | false    | none         | Determines whether to send an email notification to the group specified by the parameter 'high\_email\_group\_id' when the state of the alert is set to HIGH.                               |
+| high\_email\_group\_id           | integer                             | false    | none         | Defines the email group to which email notification are sent when the state of the alert changes to HIGH.                                                                                   |
+| send\_trap                       | boolean                             | false    | none         | Determines whether to send SNMP trap notifications when the state of the alert changes.                                                                                                     |
+| snmp\_trap\_version              | integer                             | false    | none         | Defines the SNMP trap version. Supported SNMP trap versions are 1, 2 or 3                                                                                                                   |
+| low\_send\_trap                  | boolean                             | false    | none         | Determines whether to send SNMP trap notifications when the state of the alert changes to LOW.                                                                                              |
+| med\_send\_trap                  | boolean                             | false    | none         | Determines whether to send SNMP trap notification when the state of the alert changes to MEDIUM.                                                                                            |
+| high\_send\_trap                 | boolean                             | false    | none         | Determines whether to send SNMP trap notification when the state of the alert changes to HIGH.                                                                                              |
+| cleared\_alert\_enable           | boolean                             | false    | none         | Determines whether to mute the notification for 'clear alert'.                                                                                                                              |
+| execute\_script                  | boolean                             | false    | none         | Determines whether to execute the provided script if the state of the alert changes to LOW/MEDIUM/HIGH.                                                                                     |
+| execute\_script\_on\_clear       | boolean                             | false    | none         | Determines whether to execute the provided script if the state of the alert is cleared.                                                                                                     |
+| execute\_script\_on\_pem\_server | boolean                             | false    | none         | Determines whether to execute the provided script on the PEM host or the host where the agent is monitoring the object.                                                                     |
+| script\_code                     | string                              | false    | none         | The shell or batch script to be executed. Please read the documentation for detailed information.                                                                                           |
+| submit\_to\_nagios               | boolean                             | false    | none         | Determines whether to send notification to the nagios when the state of the alert changes.                                                                                                  |
+| override\_default\_config        | boolean                             | false    | none         | Determines whether to override the default webhook configuration.                                                                                                                           |
+| send\_notification               | boolean                             | false    | none         | Determines whether to enable the webhook send notification.                                                                                                                                 |
+| low\_webhook\_ids                | \[integer]                          | false    | none         | Webhook IDs for which low alerts are configured                                                                                                                                             |
+| med\_webhook\_ids                | \[integer]                          | false    | none         | Webhook IDs for which medium alerts are configured                                                                                                                                          |
+| high\_webhook\_ids               | \[integer]                          | false    | none         | Webhook IDs for which high alerts are configured                                                                                                                                            |
+| cleared\_webhook\_ids            | \[integer]                          | false    | none         | Webhook IDs for which cleared alerts are configured                                                                                                                                         |
+
+<span id="tocs_alertparams"></span>
+
+## AlertParams
+
+<a id="schemaalertparams"></a> <a id="schema_AlertParams"></a> <a id="tocSalertparams"></a> <a id="tocsalertparams"></a>
+
+```json
+{
+  "paramname": "Exclude tables smaller than",
+  "paramvalue": "string"
+}
+
+```
+
+#### Properties
+
+| Name       | Type   | Required | Restrictions | Description                                                                                           |
+| ---------- | ------ | -------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| paramname  | string | false    | none         | Name of the parameter. NOTE: This property must present on the alert template parameter list.Example: |
+| paramvalue | string | false    | none         | Value for the given parameter                                                                         |
+
+##### Enumerated Values
+
+| Property  | Value                       |
+| --------- | --------------------------- |
+| paramname | Exclude tables smaller than |
+| paramname | mount point                 |
+| paramname | Host IP Address             |
+| paramname | Time interval to monitor    |
+| paramname | Time since idle             |
+| paramname | Per CPU utilization (K%)    |
+
+<span id="tocs_alerttemplateparams"></span>
+
+## AlertTemplateParams
+
+<a id="schemaalerttemplateparams"></a> <a id="schema_AlertTemplateParams"></a> <a id="tocSalerttemplateparams"></a> <a id="tocsalerttemplateparams"></a>
+
+```json
+{
+  "param_names": "string",
+  "param_types": "string",
+  "params_units": "string"
+}
+
+```
+
+#### Properties
+
+| Name          | Type   | Required | Restrictions | Description                                                                                |
+| ------------- | ------ | -------- | ------------ | ------------------------------------------------------------------------------------------ |
+| param\_names  | string | false    | none         | Defines the name of parameters.                                                            |
+| param\_types  | string | false    | none         | Defines the type of parameters. Example: INTEGER/STRING..                                  |
+| params\_units | string | false    | none         | Defines the unit used for parameters.Example: 'DAYS','True or False','Hours','Minutes' etc |
+
+<span id="tocs_probedependencyparams"></span>
+
+## ProbeDependencyParams
+
+<a id="schemaprobedependencyparams"></a> <a id="schema_ProbeDependencyParams"></a> <a id="tocSprobedependencyparams"></a> <a id="tocsprobedependencyparams"></a>
+
+```json
+{
+  "internal_name": "string"
+}
+
+```
+
+#### Properties
+
+| Name           | Type   | Required | Restrictions | Description                 |
+| -------------- | ------ | -------- | ------------ | --------------------------- |
+| internal\_name | string | false    | none         | Internal name of the probe. |
+
+<span id="tocs_alternateserverprobecode"></span>
+
+## AlternateServerProbeCode
+
+<a id="schemaalternateserverprobecode"></a> <a id="schema_AlternateServerProbeCode"></a> <a id="tocSalternateserverprobecode"></a> <a id="tocsalternateserverprobecode"></a>
+
+```json
+{
+  "server_version_id": 0,
+  "server_probe_code": "string",
+  "extension_version": 0
+}
+
+```
+
+#### Properties
+
+| Name                | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| server\_version\_id | integer | false    | none         | Server version ID for the monitored server<table class="model"><thead><tr><th>server\_version\_id</th><th>Database Server</th></tr></thead><thead /><tbody><tr><td>10905</td><td>PostgreSQL 9.5</td></tr><tr><td>10906</td><td>PostgreSQL 9.6</td></tr><tr><td>11000</td><td>PostgreSQL 10</td></tr><tr><td>11100</td><td>PostgreSQL 11</td></tr><tr><td>11200</td><td>PostgreSQL 12</td></tr><tr><td>11300</td><td>PostgreSQL 13</td></tr><tr><td>20905</td><td>Postgres Plus Advanced Server 9.5</td></tr><tr><td>20906</td><td>Postgres Plus Advanced Server 9.6</td></tr><tr><td>21000</td><td>EDB Postgres Advanced Server 10</td></tr><tr><td>21100</td><td>EDB Postgres Advanced Server 11</td></tr><tr><td>21200</td><td>EDB Postgres Advanced Server 12</td></tr><tr><td>21300</td><td>EDB Postgres Advanced Server 13</td></tr></tbody></table> |
+| server\_probe\_code | string  | false    | none         | SQL query to run on the specified server version                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| extension\_version  | integer | false    | none         | Specifies the extension version. Valid for extension target type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+<span id="tocs_deletedalternateserverprobecode"></span>
+
+## DeletedAlternateServerProbeCode
+
+<a id="schemadeletedalternateserverprobecode"></a> <a id="schema_DeletedAlternateServerProbeCode"></a> <a id="tocSdeletedalternateserverprobecode"></a> <a id="tocsdeletedalternateserverprobecode"></a>
+
+```json
+{
+  "server_version_id": 0
+}
+
+```
+
+#### Properties
+
+| Name                | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| server\_version\_id | integer | false    | none         | Server version ID for the monitored server<table class="model"><thead><tr><th>server\_version\_id</th><th>Database Server</th></tr></thead><thead /><tbody><tr><td>10905</td><td>PostgreSQL 9.5</td></tr><tr><td>10906</td><td>PostgreSQL 9.6</td></tr><tr><td>11000</td><td>PostgreSQL 10</td></tr><tr><td>11100</td><td>PostgreSQL 11</td></tr><tr><td>11200</td><td>PostgreSQL 12</td></tr><tr><td>11300</td><td>PostgreSQL 13</td></tr><tr><td>20905</td><td>Postgres Plus Advanced Server 9.5</td></tr><tr><td>20906</td><td>Postgres Plus Advanced Server 9.6</td></tr><tr><td>21000</td><td>EDB Postgres Advanced Server 10</td></tr><tr><td>21100</td><td>EDB Postgres Advanced Server 11</td></tr><tr><td>21200</td><td>EDB Postgres Advanced Server 12</td></tr><tr><td>21300</td><td>EDB Postgres Advanced Server 13</td></tr></tbody></table> |
+
+<span id="tocs_probecolumn"></span>
+
+## ProbeColumn
+
+<a id="schemaprobecolumn"></a> <a id="schema_ProbeColumn"></a> <a id="tocSprobecolumn"></a> <a id="tocsprobecolumn"></a>
+
+```json
+{
+  "pc_id": 0,
+  "pc_unit": "string",
+  "pc_graphable": true
+}
+
+```
+
+#### Properties
+
+| Name          | Type    | Required | Restrictions | Description                                                        |
+| ------------- | ------- | -------- | ------------ | ------------------------------------------------------------------ |
+| pc\_id        | integer | false    | none         | Column identifier                                                  |
+| pc\_unit      | string  | false    | none         | Returns the unit of the column.                                    |
+| pc\_graphable | boolean | false    | none         | Determines whether the data of the column is graphable on a chart. |
+
+<span id="tocs_chartexporttemplate"></span>
+
+## ChartExportTemplate
+
+<a id="schemachartexporttemplate"></a> <a id="schema_ChartExportTemplate"></a> <a id="tocSchartexporttemplate"></a> <a id="tocschartexporttemplate"></a>
+
+```json
+{
+  "chart_title": "string",
+  "chart_type": "string",
+  "chart_category": "string",
+  "chart_description": "string",
+  "reference_id": "string",
+  "chart_level": 0,
+  "chart_line_ext": [
+    0
+  ],
+  "chart_line_ext_metric": "string",
+  "chart_line_ext_metric_options": [
+    0
+  ],
+  "chart_line_ext_opt": "string",
+  "chart_line_ext_val": "string",
+  "chart_line_extrapolated_type": "string",
+  "chart_line_points": 0,
+  "chart_line_span": [
+    0
+  ],
+  "chart_refresh": 0,
+  "espan": 0,
+  "line_span": 0,
+  "sel_metrics_L": [
+    {}
+  ],
+  "sel_metrics_T": [
+    {}
+  ],
+  "sel_metrics_C": [
+    {}
+  ],
+  "shared": [
+    0
+  ],
+  "shared_all": true
+}
+
+```
+
+#### Properties
+
+| Name                              | Type       | Required | Restrictions | Description                                                                                                           |
+| --------------------------------- | ---------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------- |
+| chart\_title                      | string     | false    | none         | Chart title. NOTE: This property is a mandatory parameter for a POST request.                                         |
+| chart\_type                       | string     | false    | none         | Chart catagory. NOTE: This property is a mandatory parameter for a POST request.                                      |
+| chart\_category                   | string     | false    | none         | Chart type. NOTE: This property is a mandatory parameter for a POST request.                                          |
+| chart\_description                | string     | false    | none         | Description of the chart. NOTE: This property is a mandatory parameter for a POST request.                            |
+| reference\_id                     | string     | false    | none         | Internal identifier for the chart.                                                                                    |
+| chart\_level                      | integer    | false    | none         | Defines the chart level. NOTE: This property is a mandatory parameter for a POST request.                             |
+| chart\_line\_ext                  | \[integer] | false    | none         | Defines the line chart extrapolation. NOTE: This property is a mandatory parameter for a POST request.                |
+| chart\_line\_ext\_metric          | string     | false    | none         | Defines the line chart extrapolation metrics. NOTE: This property is a mandatory parameter for a POST request.        |
+| chart\_line\_ext\_metric\_options | \[integer] | false    | none         | Defines the line chart extrapolation metrics option. NOTE: This property is a mandatory parameter for a POST request. |
+| chart\_line\_ext\_opt             | string     | false    | none         | Defines the line chart extrapolation options. NOTE: This property is a mandatory parameter for a POST request.        |
+| chart\_line\_ext\_val             | string     | false    | none         | Defines the line chart extrapolation values. NOTE: This property is a mandatory parameter for a POST request.         |
+| chart\_line\_extrapolated\_type   | string     | false    | none         | Defines the line chart extrapolation type. NOTE: This property is a mandatory parameter for a POST request.           |
+| chart\_line\_points               | integer    | false    | none         | Defines the line chart extrapolation point.                                                                           |
+| chart\_line\_span                 | \[integer] | false    | none         | Defines the line chart span. NOTE: This property is a mandatory parameter for a POST request.                         |
+| chart\_refresh                    | integer    | false    | none         | Chart refresh time                                                                                                    |
+| espan                             | integer    | false    | none         | Chart span                                                                                                            |
+| line\_span                        | integer    | false    | none         | Chart line span                                                                                                       |
+| sel\_metrics\_L                   | \[object]  | false    | none         | Defines the line chart metrics and its probes data.                                                                   |
+| sel\_metrics\_T                   | \[object]  | false    | none         | Defines the table chart metrics and its probes data.                                                                  |
+| sel\_metrics\_C                   | \[object]  | false    | none         | Defines the capacity manager chart metrics and its probes data.                                                       |
+| shared                            | \[integer] | false    | none         | Defines the role ID to which chart was shared.                                                                        |
+| shared\_all                       | boolean    | false    | none         | Determines whether the chart needs to be shared with everyone.                                                        |
+
+<span id="tocs_dashboardexporttemplate"></span>
+
+## DashboardExportTemplate
+
+<a id="schemadashboardexporttemplate"></a> <a id="schema_DashboardExportTemplate"></a> <a id="tocSdashboardexporttemplate"></a> <a id="tocsdashboardexporttemplate"></a>
+
+```json
+{
+  "name": "string",
+  "descp": "string",
+  "reference_id": "string",
+  "font": "string",
+  "font_size": 0,
+  "level": 0,
+  "is_ops": true,
+  "show_title": true,
+  "design_layout": [
+    {}
+  ],
+  "c_charts": [
+    {}
+  ],
+  "shared": [
+    0
+  ],
+  "shared_all": true
+}
+
+```
+
+#### Properties
+
+| Name           | Type       | Required | Restrictions | Description                                                                                  |
+| -------------- | ---------- | -------- | ------------ | -------------------------------------------------------------------------------------------- |
+| name           | string     | false    | none         | Defines the dashboard name. NOTE: This property is a mandatory parameter for a POST request. |
+| descp          | string     | false    | none         | Provides the dashboard description.                                                          |
+| reference\_id  | string     | false    | none         | Internal identifier for the dashboard                                                        |
+| font           | string     | false    | none         | Defines the dashboard font.                                                                  |
+| font\_size     | integer    | false    | none         | Defines the dashboard font size.                                                             |
+| level          | integer    | false    | none         | Defines the dashboard level.                                                                 |
+| is\_ops        | boolean    | false    | none         | Determines whether the dashboard is for ops.                                                 |
+| show\_title    | boolean    | false    | none         | Determines whether the dashboard title is shown.                                             |
+| design\_layout | \[object]  | false    | none         | Defines the dashboard design layout data.                                                    |
+| c\_charts      | \[object]  | false    | none         | Defines the dependant custom charts and its probes data.                                     |
+| shared         | \[integer] | false    | none         | Defines the role ID to which the dashboard is shared.                                        |
+| shared\_all    | boolean    | false    | none         | Determines whether the dashboard must be shared with everyone                                |
+
+<span id="tocs_customdashboardexportdata"></span>
+
+## CustomDashboardExportData
+
+<a id="schemacustomdashboardexportdata"></a> <a id="schema_CustomDashboardExportData"></a> <a id="tocScustomdashboardexportdata"></a> <a id="tocscustomdashboardexportdata"></a>
+
+```json
+{
+  "dashboards": [
+    0
+  ]
+}
+
+```
+
+#### Properties
+
+| Name       | Type       | Required | Restrictions | Description               |
+| ---------- | ---------- | -------- | ------------ | ------------------------- |
+| dashboards | \[integer] | false    | none         | List of the dashboard IDs |
+
+<span id="tocs_customdashboardexportresponsedata"></span>
+
+## CustomDashboardExportResponseData
+
+<a id="schemacustomdashboardexportresponsedata"></a> <a id="schema_CustomDashboardExportResponseData"></a> <a id="tocScustomdashboardexportresponsedata"></a> <a id="tocscustomdashboardexportresponsedata"></a>
+
+```json
+{
+  "version": 1,
+  "dashboards": [
+    {
+      "name": "string",
+      "descp": "string",
+      "reference_id": "string",
+      "font": "string",
+      "font_size": 0,
+      "level": 0,
+      "is_ops": true,
+      "show_title": true,
+      "design_layout": [
+        {}
+      ],
+      "c_charts": [
+        {}
+      ],
+      "shared": [
+        0
+      ],
+      "shared_all": true
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name       | Type                                                        | Required | Restrictions | Description                     |
+| ---------- | ----------------------------------------------------------- | -------- | ------------ | ------------------------------- |
+| version    | integer                                                     | false    | none         | Version of the dashboard export |
+| dashboards | \[[DashboardExportTemplate](#tocs_dashboardexporttemplate)] | false    | none         | none                            |
+
+<span id="tocs_customdashboardimportpostdata"></span>
+
+## CustomDashboardImportPostData
+
+<a id="schemacustomdashboardimportpostdata"></a> <a id="schema_CustomDashboardImportPostData"></a> <a id="tocScustomdashboardimportpostdata"></a> <a id="tocscustomdashboardimportpostdata"></a>
+
+```json
+{
+  "version": 1,
+  "skip_overwrite": true,
+  "skip_overwrite_probe": true,
+  "skip_overwrite_chart": true,
+  "dashboards": [
+    {
+      "name": "string",
+      "descp": "string",
+      "reference_id": "string",
+      "font": "string",
+      "font_size": 0,
+      "level": 0,
+      "is_ops": true,
+      "show_title": true,
+      "design_layout": [
+        {}
+      ],
+      "c_charts": [
+        {}
+      ],
+      "shared": [
+        0
+      ],
+      "shared_all": true
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                   | Type                                                        | Required | Restrictions | Description                                                      |
+| ---------------------- | ----------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------- |
+| version                | integer                                                     | false    | none         | Version of the dashboard export                                  |
+| skip\_overwrite        | boolean                                                     | false    | none         | Determines whether the existing chart can be skipped.            |
+| skip\_overwrite\_probe | boolean                                                     | false    | none         | Determines whether the existing dependant probes can be skipped. |
+| skip\_overwrite\_chart | boolean                                                     | false    | none         | Determines whether the existing dependant charts can be skipped. |
+| dashboards             | \[[DashboardExportTemplate](#tocs_dashboardexporttemplate)] | false    | none         | none                                                             |
+
+<span id="tocs_customchartexportdata"></span>
+
+## CustomChartExportData
+
+<a id="schemacustomchartexportdata"></a> <a id="schema_CustomChartExportData"></a> <a id="tocScustomchartexportdata"></a> <a id="tocscustomchartexportdata"></a>
+
+```json
+{
+  "charts": [
+    0
+  ]
+}
+
+```
+
+#### Properties
+
+| Name   | Type       | Required | Restrictions | Description           |
+| ------ | ---------- | -------- | ------------ | --------------------- |
+| charts | \[integer] | false    | none         | List of the chart IDs |
+
+<span id="tocs_customchartexportresponsedata"></span>
+
+## CustomChartExportResponseData
+
+<a id="schemacustomchartexportresponsedata"></a> <a id="schema_CustomChartExportResponseData"></a> <a id="tocScustomchartexportresponsedata"></a> <a id="tocscustomchartexportresponsedata"></a>
+
+```json
+{
+  "version": 1,
+  "charts": [
+    {
+      "chart_title": "string",
+      "chart_type": "string",
+      "chart_category": "string",
+      "chart_description": "string",
+      "reference_id": "string",
+      "chart_level": 0,
+      "chart_line_ext": [
+        0
+      ],
+      "chart_line_ext_metric": "string",
+      "chart_line_ext_metric_options": [
+        0
+      ],
+      "chart_line_ext_opt": "string",
+      "chart_line_ext_val": "string",
+      "chart_line_extrapolated_type": "string",
+      "chart_line_points": 0,
+      "chart_line_span": [
+        0
+      ],
+      "chart_refresh": 0,
+      "espan": 0,
+      "line_span": 0,
+      "sel_metrics_L": [
+        {}
+      ],
+      "sel_metrics_T": [
+        {}
+      ],
+      "sel_metrics_C": [
+        {}
+      ],
+      "shared": [
+        0
+      ],
+      "shared_all": true
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name    | Type                                                | Required | Restrictions | Description                 |
+| ------- | --------------------------------------------------- | -------- | ------------ | --------------------------- |
+| version | integer                                             | false    | none         | Version of the chart export |
+| charts  | \[[ChartExportTemplate](#tocs_chartexporttemplate)] | false    | none         | none                        |
+
+<span id="tocs_customchartimportpostdata"></span>
+
+## CustomChartImportPostData
+
+<a id="schemacustomchartimportpostdata"></a> <a id="schema_CustomChartImportPostData"></a> <a id="tocScustomchartimportpostdata"></a> <a id="tocscustomchartimportpostdata"></a>
+
+```json
+{
+  "version": 1,
+  "skip_overwrite": true,
+  "skip_overwrite_probe": true,
+  "charts": [
+    {
+      "chart_title": "string",
+      "chart_type": "string",
+      "chart_category": "string",
+      "chart_description": "string",
+      "reference_id": "string",
+      "chart_level": 0,
+      "chart_line_ext": [
+        0
+      ],
+      "chart_line_ext_metric": "string",
+      "chart_line_ext_metric_options": [
+        0
+      ],
+      "chart_line_ext_opt": "string",
+      "chart_line_ext_val": "string",
+      "chart_line_extrapolated_type": "string",
+      "chart_line_points": 0,
+      "chart_line_span": [
+        0
+      ],
+      "chart_refresh": 0,
+      "espan": 0,
+      "line_span": 0,
+      "sel_metrics_L": [
+        {}
+      ],
+      "sel_metrics_T": [
+        {}
+      ],
+      "sel_metrics_C": [
+        {}
+      ],
+      "shared": [
+        0
+      ],
+      "shared_all": true
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                   | Type                                                | Required | Restrictions | Description                                                  |
+| ---------------------- | --------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------ |
+| version                | integer                                             | false    | none         | Version of the chart export                                  |
+| skip\_overwrite        | boolean                                             | false    | none         | Determines whether the existing chart can be skipped.        |
+| skip\_overwrite\_probe | boolean                                             | false    | none         | Determines whether existing dependant probes can be skipped. |
+| charts                 | \[[ChartExportTemplate](#tocs_chartexporttemplate)] | false    | none         | none                                                         |
+
+<span id="tocs_alertimportexporttemplate"></span>
+
+## AlertImportExportTemplate
+
+<a id="schemaalertimportexporttemplate"></a> <a id="schema_AlertImportExportTemplate"></a> <a id="tocSalertimportexporttemplate"></a> <a id="tocsalertimportexporttemplate"></a>
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "reference_id": "string",
+  "default_history_retention": 0,
+  "object_type": 0,
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "threshold_unit": "string",
+  "is_system_template": true,
+  "is_auto_create": true,
+  "thresholds": [
+    0
+  ],
+  "operator": ">",
+  "high_threshold_value": "string",
+  "medium_threshold_value": "string",
+  "low_threshold_value": "string",
+  "info_sql": "string",
+  "probes": [
+    {
+      "probe_name": "string",
+      "collection_method": "w",
+      "enabled": true,
+      "target_type": 0,
+      "any_server_version": true,
+      "any_extension_version": true,
+      "extension_name": "string",
+      "interval": 0,
+      "lifetime": 0,
+      "discard_history": true,
+      "platform": "unix",
+      "probe_code": "string",
+      "probe_columns": [
+        {
+          "pc_name": "string",
+          "pc_data_type": "bigint",
+          "pc_unit": "string",
+          "pc_col_type": "m",
+          "pc_graphable": true,
+          "pc_calc_pit": true,
+          "pc_pit_default": true
+        }
+      ],
+      "alternate_code": [
+        {
+          "server_version_id": 0,
+          "server_probe_code": "string",
+          "extension_version": 0
+        }
+      ],
+      "internal_name": "string"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                        | Type                                                            | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | --------------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                        | string                                                          | false    | none         | Name of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| description                 | string                                                          | false    | none         | Description of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| reference\_id               | string                                                          | false    | none         | Internal identifier for the alert template                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| default\_history\_retention | integer                                                         | false    | none         | Defines the history retention period in days for this type of alerts. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| object\_type                | integer                                                         | false    | none         | Defines the type of the object to which this alert template applies. <ul><li>A system-wide alert template is <b>50</b>.</li><li>An alert template applicable to an agent is <b>100</b>.</li><li>An alert template applicable to a managed server is <b>200</b>.</li><li>An alert template applicable to a database for a particular monitored server is <b>300</b>.</li><li>An alert template applicable to a schema on a particular database for the managed server is <b>400</b>.</li><li>An alert template applicable to a table on a particular schema for the database on a monitored server is <b>500</b>.</li><li>An alert template applicable to an index on a particular schema for the database on a monitored server is <b>600</b>.</li><li>An alert template applicable to a sequence on a particular schema for the database on a monitored server is <b>700</b>.</li><li>An alert template applicable to a function on a particular schema for the database on a monitored server is <b>800</b>.</li></ul>NOTE: This property is a mandatory parameter for a POST request. |
+| sql                         | string                                                          | false    | none         | SQL query, possibly parameterized, to get a numeric value indicating the threshold reached. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| applicable\_on\_server      | string                                                          | false    | none         | Specifies the type of monitored server to which the template applies. Possible values are ALL, POSTGRES\_SERVER, ADVANCED\_SERVER. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| default\_check\_frequency   | integer                                                         | false    | none         | Specifies how frequently (in minutes) to check for the alert that this template defines. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| threshold\_unit             | string                                                          | false    | none         | Units used to calculate the threshold, such as MB/kB/seconds/days/... This value is only used for the GUI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| is\_system\_template        | boolean                                                         | false    | none         | Determines whether the given template is system-defined or user-defined. NOTE: This property is not applicable for POST/PUT requests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| is\_auto\_create            | boolean                                                         | false    | none         | Determines whether an alert should be created as soon as an agent or server is added to PEM..                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| thresholds                  | \[number]                                                       | false    | none         | Default threshold values. Values in the thresholds array must be in a sorted order based on the operator.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| operator                    | string                                                          | false    | none         | Operator to compare threshold values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| high\_threshold\_value      | string                                                          | false    | none         | High threshold value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| medium\_threshold\_value    | string                                                          | false    | none         | Medium threshold value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| low\_threshold\_value       | string                                                          | false    | none         | Low threshold value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| info\_sql                   | string                                                          | false    | none         | Defines the SQL query that provides detailed information about the alert on the dashboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| probes                      | \[[CustomProbeImportPostData](#tocs_customprobeimportpostdata)] | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+##### Enumerated Values
+
+| Property               | Value            |
+| ---------------------- | ---------------- |
+| applicable\_on\_server | ALL              |
+| applicable\_on\_server | POSTGRES\_SERVER |
+| applicable\_on\_server | ADVANCED\_SERVER |
+| operator               | >                |
+| operator               | <                |
+
+<span id="tocs_customalerttemplateexportdata"></span>
+
+## CustomAlertTemplateExportData
+
+<a id="schemacustomalerttemplateexportdata"></a> <a id="schema_CustomAlertTemplateExportData"></a> <a id="tocScustomalerttemplateexportdata"></a> <a id="tocscustomalerttemplateexportdata"></a>
+
+```json
+{
+  "alert_templates": [
+    0
+  ]
+}
+
+```
+
+#### Properties
+
+| Name             | Type       | Required | Restrictions | Description                |
+| ---------------- | ---------- | -------- | ------------ | -------------------------- |
+| alert\_templates | \[integer] | false    | none         | List of alert template IDs |
+
+<span id="tocs_customalerttemplateexportresponsedata"></span>
+
+## CustomAlertTemplateExportResponseData
+
+<a id="schemacustomalerttemplateexportresponsedata"></a> <a id="schema_CustomAlertTemplateExportResponseData"></a> <a id="tocScustomalerttemplateexportresponsedata"></a> <a id="tocscustomalerttemplateexportresponsedata"></a>
+
+```json
+{
+  "version": 1,
+  "alert_templates": [
+    {
+      "name": "string",
+      "description": "string",
+      "reference_id": "string",
+      "default_history_retention": 0,
+      "object_type": 0,
+      "sql": "string",
+      "applicable_on_server": "ALL",
+      "default_check_frequency": 0,
+      "threshold_unit": "string",
+      "is_system_template": true,
+      "is_auto_create": true,
+      "thresholds": [
+        0
+      ],
+      "operator": ">",
+      "high_threshold_value": "string",
+      "medium_threshold_value": "string",
+      "low_threshold_value": "string",
+      "info_sql": "string",
+      "probes": [
+        {
+          "probe_name": "string",
+          "collection_method": "w",
+          "enabled": true,
+          "target_type": 0,
+          "any_server_version": true,
+          "any_extension_version": true,
+          "extension_name": "string",
+          "interval": 0,
+          "lifetime": 0,
+          "discard_history": true,
+          "platform": "unix",
+          "probe_code": "string",
+          "probe_columns": [
+            {
+              "pc_name": "string",
+              "pc_data_type": "bigint",
+              "pc_unit": "string",
+              "pc_col_type": "m",
+              "pc_graphable": true,
+              "pc_calc_pit": true,
+              "pc_pit_default": true
+            }
+          ],
+          "alternate_code": [
+            {
+              "server_version_id": 0,
+              "server_probe_code": "string",
+              "extension_version": 0
+            }
+          ],
+          "internal_name": "string"
+        }
+      ]
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name             | Type                                                            | Required | Restrictions | Description                          |
+| ---------------- | --------------------------------------------------------------- | -------- | ------------ | ------------------------------------ |
+| version          | integer                                                         | false    | none         | Version of the alert template export |
+| alert\_templates | \[[AlertImportExportTemplate](#tocs_alertimportexporttemplate)] | false    | none         | none                                 |
+
+<span id="tocs_customalerttemplateimportpostdata"></span>
+
+## CustomAlertTemplateImportPostData
+
+<a id="schemacustomalerttemplateimportpostdata"></a> <a id="schema_CustomAlertTemplateImportPostData"></a> <a id="tocScustomalerttemplateimportpostdata"></a> <a id="tocscustomalerttemplateimportpostdata"></a>
+
+```json
+{
+  "version": 1,
+  "skip_overwrite": true,
+  "skip_overwrite_probe": true,
+  "alert_templates": [
+    {
+      "name": "string",
+      "description": "string",
+      "reference_id": "string",
+      "default_history_retention": 0,
+      "object_type": 0,
+      "sql": "string",
+      "applicable_on_server": "ALL",
+      "default_check_frequency": 0,
+      "threshold_unit": "string",
+      "is_system_template": true,
+      "is_auto_create": true,
+      "thresholds": [
+        0
+      ],
+      "operator": ">",
+      "high_threshold_value": "string",
+      "medium_threshold_value": "string",
+      "low_threshold_value": "string",
+      "info_sql": "string",
+      "probes": [
+        {
+          "probe_name": "string",
+          "collection_method": "w",
+          "enabled": true,
+          "target_type": 0,
+          "any_server_version": true,
+          "any_extension_version": true,
+          "extension_name": "string",
+          "interval": 0,
+          "lifetime": 0,
+          "discard_history": true,
+          "platform": "unix",
+          "probe_code": "string",
+          "probe_columns": [
+            {
+              "pc_name": "string",
+              "pc_data_type": "bigint",
+              "pc_unit": "string",
+              "pc_col_type": "m",
+              "pc_graphable": true,
+              "pc_calc_pit": true,
+              "pc_pit_default": true
+            }
+          ],
+          "alternate_code": [
+            {
+              "server_version_id": 0,
+              "server_probe_code": "string",
+              "extension_version": 0
+            }
+          ],
+          "internal_name": "string"
+        }
+      ]
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                   | Type                                                            | Required | Restrictions | Description                                                    |
+| ---------------------- | --------------------------------------------------------------- | -------- | ------------ | -------------------------------------------------------------- |
+| version                | integer                                                         | false    | none         | Version of the alert template export                           |
+| skip\_overwrite        | boolean                                                         | false    | none         | Determines whether the existing alert template can be skipped. |
+| skip\_overwrite\_probe | boolean                                                         | false    | none         | Determines whether existing dependent probes can be skipped.   |
+| alert\_templates       | \[[AlertImportExportTemplate](#tocs_alertimportexporttemplate)] | false    | none         | none                                                           |
+
+<span id="tocs_alerttemplate"></span>
+
+## AlertTemplate
+
+<a id="schemaalerttemplate"></a> <a id="schema_AlertTemplate"></a> <a id="tocSalerttemplate"></a> <a id="tocsalerttemplate"></a>
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "object_type": 0,
+  "param_names": [
+    "string"
+  ],
+  "param_types": "string",
+  "params_units": [
+    "string"
+  ],
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "default_history_retention": 0,
+  "probe_dependency_list": [
+    "string"
+  ],
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "is_auto_create": true,
+  "operator": ">",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "info_sql": "string"
+}
+
+```
+
+#### Properties
+
+| Name                        | Type      | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | --------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                        | string    | false    | none         | Name of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| description                 | string    | false    | none         | Description of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| object\_type                | integer   | false    | none         | Defines the type of the object to which this alert template applies. <ul><li>A system-wide alert template is <b>50</b>.</li><li>An alert template applicable to an agent is <b>100</b>.</li><li>An alert template applicable to a managed server is <b>200</b>.</li><li>An alert template applicable to a database for a particular monitored server is <b>300</b>.</li><li>An alert template applicable to a schema on a particular database for the managed server is <b>400</b>.</li><li>An alert template applicable to a table on a particular schema for the database on a monitored server is <b>500</b>.</li><li>An alert template applicable to an index on a particular schema for the database on a monitored server is <b>600</b>.</li><li>An alert template applicable to a sequence on a particular schema for the database on a monitored server is <b>700</b>.</li><li>An alert template applicable to a function on a particular schema for the database on a monitored server is <b>800</b>.</li></ul>NOTE: This property is a mandatory parameter for a POST request. |
+| param\_names                | \[string] | false    | none         | Defines the name of parameters.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| param\_types                | string    | false    | none         | Defines the type of parameters. Example: INTEGER/STRING..                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| params\_units               | \[string] | false    | none         | Defines the unit used for parameters.Example: 'DAYS','True or False','Hours','Minutes' etc                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| sql                         | string    | false    | none         | SQL query, possibly parameterized, to get a numeric value indicating threshold reached. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| applicable\_on\_server      | string    | false    | none         | Specifies the type of monitored server to which the template applies. Possible values are ALL, POSTGRES\_SERVER, and ADVANCED\_SERVER. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| default\_check\_frequency   | integer   | false    | none         | Defines how frequently (in minutes) to check for the alert defined in this template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| default\_history\_retention | integer   | false    | none         | Defines the history retention period in days for this type of alerts. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| probe\_dependency\_list     | \[string] | false    | none         | Defines the list of probes on which alert template is dependent.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| threshold\_unit             | string    | false    | none         | Units used to calculate the threshold, such as MB/kB/seconds/days/... This value is only used for the GUI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| is\_system\_template        | boolean   | false    | none         | Determines whether the given template is system-defined or user-defined. NOTE: This property is not applicable for POST/PUT requests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| is\_auto\_create            | boolean   | false    | none         | Determines whether an alert should be created as soon as an agent or server is added to PEM.Note: Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| operator                    | string    | false    | none         | Operator to compare threshold values.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| low\_threshold\_value       | number    | false    | none         | Low threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| medium\_threshold\_value    | number    | false    | none         | Medium threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| high\_threshold\_value      | number    | false    | none         | High threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| info\_sql                   | string    | false    | none         | Specifies the SQL query that provides detailed information about the alert on the dashboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+##### Enumerated Values
+
+| Property               | Value            |
+| ---------------------- | ---------------- |
+| applicable\_on\_server | ALL              |
+| applicable\_on\_server | POSTGRES\_SERVER |
+| applicable\_on\_server | ADVANCED\_SERVER |
+| operator               | >                |
+| operator               | <                |
+
+<span id="tocs_alerttemplatepost"></span>
+
+## AlertTemplatePost
+
+<a id="schemaalerttemplatepost"></a> <a id="schema_AlertTemplatePost"></a> <a id="tocSalerttemplatepost"></a> <a id="tocsalerttemplatepost"></a>
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "object_type": 0,
+  "params": [
+    {
+      "param_types": "STRING",
+      "param_units": "KK",
+      "param_names": "param_1"
+    }
+  ],
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "default_history_retention": 0,
+  "probe_dependency_list": [
+    {
+      "internal_name": "probe_name"
+    }
+  ],
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "is_auto_create": true,
+  "operator": ">",
+  "low_threshold_value": 0,
+  "medium_threshold_value": 0,
+  "high_threshold_value": 0,
+  "info_sql": "string"
+}
+
+```
+
+#### Properties
+
+| Name                        | Type                                                    | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                        | string                                                  | false    | none         | Name of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| description                 | string                                                  | false    | none         | Description of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| object\_type                | integer                                                 | false    | none         | Defines the type of the object to which this alert template applies. <ul><li>A system-wide alert template is <b>50</b>.</li><li>An alert template applicable to an agent is <b>100</b>.</li><li>An alert template applicable to a managed server is <b>200</b>.</li><li>An alert template applicable to a database for a particular monitored server is <b>300</b>.</li><li>An alert template applicable to a schema on a particular database for the managed server is <b>400</b>.</li><li>An alert template applicable to a table on a particular schema for the database on a monitored server is <b>500</b>.</li><li>An alert template applicable to an index on a particular schema for the database on a monitored server is <b>600</b>.</li><li>An alert template applicable to a sequence on a particular schema for the database on a monitored server is <b>700</b>.</li><li>An alert template applicable to a function on a particular schema for the database on a monitored server is <b>800</b>.</li></ul>NOTE: This property is a mandatory parameter for a POST request. |
+| params                      | \[[AlertTemplateParams](#tocs_alerttemplateparams)]     | false    | none         | List of parameter/value pairs to be used by the alert template for checking alerts. NOTE: The alert template requires the all parameter to be defined.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| sql                         | string                                                  | false    | none         | SQL query, possibly parameterized, to get a numeric value indicating threshold reached. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| applicable\_on\_server      | string                                                  | false    | none         | Specifies the type of monitored server to which the template applies. Possible values are ALL, POSTGRES\_SERVER, and ADVANCED\_SERVER. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| default\_check\_frequency   | integer                                                 | false    | none         | Defines how frequently (in minutes) to check for the alert defined in this template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| default\_history\_retention | integer                                                 | false    | none         | Defines the history retention period in days for this type of alerts. NOTE: This property is a mandatory parameter for a POST request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| probe\_dependency\_list     | \[[ProbeDependencyParams](#tocs_probedependencyparams)] | false    | none         | Defines the list of probes on which alert template is dependent.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| threshold\_unit             | string                                                  | false    | none         | Units used to calculate the threshold, such as MB/kB/seconds/days/... This value is only used for the GUI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| is\_system\_template        | boolean                                                 | false    | none         | Determines whether the given template is system-defined or user-defined. NOTE: This property is not applicable for POST/PUT requests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| is\_auto\_create            | boolean                                                 | false    | none         | Determines whether an alert should be created as soon as an agent or server is added to PEM.Note: Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| operator                    | string                                                  | false    | none         | Operator to compare threshold values.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| low\_threshold\_value       | number                                                  | false    | none         | Low threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| medium\_threshold\_value    | number                                                  | false    | none         | Medium threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| high\_threshold\_value      | number                                                  | false    | none         | High threshold value.Only supported for Agent and Server level i.e object\_type 100 and 200 respectively.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| info\_sql                   | string                                                  | false    | none         | Specifies the SQL query that provides detailed information about the alert on the dashboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+##### Enumerated Values
+
+| Property               | Value            |
+| ---------------------- | ---------------- |
+| applicable\_on\_server | ALL              |
+| applicable\_on\_server | POSTGRES\_SERVER |
+| applicable\_on\_server | ADVANCED\_SERVER |
+| operator               | >                |
+| operator               | <                |
+
+<span id="tocs_alerttemplateput"></span>
+
+## AlertTemplatePut
+
+<a id="schemaalerttemplateput"></a> <a id="schema_AlertTemplatePut"></a> <a id="tocSalerttemplateput"></a> <a id="tocsalerttemplateput"></a>
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "sql": "string",
+  "applicable_on_server": "ALL",
+  "default_check_frequency": 0,
+  "default_history_retention": 0,
+  "probe_dependency_list": {
+    "deleted": [
+      {
+        "internal_name": "probe_name"
+      }
+    ],
+    "added": [
+      {
+        "internal_name": "probe_name"
+      }
+    ]
+  },
+  "threshold_unit": "string",
+  "is_system_template": false,
+  "info_sql": "string"
+}
+
+```
+
+#### Properties
+
+| Name                        | Type                                                    | Required | Restrictions | Description                                                                                                                                                                                             |
+| --------------------------- | ------------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                        | string                                                  | false    | none         | Name of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                            |
+| description                 | string                                                  | false    | none         | Description of the alert template. NOTE: This property is a mandatory parameter for a POST request.                                                                                                     |
+| sql                         | string                                                  | false    | none         | SQL query, possibly parameterized, to get a numeric value indicating threshold reached. NOTE: This property is a mandatory parameter for a POST request.                                                |
+| applicable\_on\_server      | string                                                  | false    | none         | Specifies the type of monitored server to which the template applies. Possible values are ALL, POSTGRES\_SERVER, and ADVANCED\_SERVER. NOTE: This property is a mandatory parameter for a POST request. |
+| default\_check\_frequency   | integer                                                 | false    | none         | Defines how frequently (in minutes) to check for the alert defined in this template. NOTE: This property is a mandatory parameter for a POST request.                                                   |
+| default\_history\_retention | integer                                                 | false    | none         | Defines the history retention period in days for this type of alerts. NOTE: This property is a mandatory parameter for a POST request.                                                                  |
+| probe\_dependency\_list     | object                                                  | false    | none         | Defines the list of probes on which alert template is dependent.                                                                                                                                        |
+| » deleted                   | \[[ProbeDependencyParams](#tocs_probedependencyparams)] | false    | none         | List of parameter/value pairs to be deleted.                                                                                                                                                            |
+| » added                     | \[[ProbeDependencyParams](#tocs_probedependencyparams)] | false    | none         | List of parameter/value pairs to be added.                                                                                                                                                              |
+| threshold\_unit             | string                                                  | false    | none         | Units used to calculate the threshold, such as MB/kB/seconds/days/... This value is only used for the GUI.                                                                                              |
+| is\_system\_template        | boolean                                                 | false    | none         | Determines whether the given template is system-defined or user-defined. NOTE: This property is not applicable for POST/PUT requests.                                                                   |
+| info\_sql                   | string                                                  | false    | none         | Specifies the SQL query that provides detailed information about the alert on the dashboard.                                                                                                            |
+
+##### Enumerated Values
+
+| Property               | Value            |
+| ---------------------- | ---------------- |
+| applicable\_on\_server | ALL              |
+| applicable\_on\_server | POSTGRES\_SERVER |
+| applicable\_on\_server | ADVANCED\_SERVER |
+
+<span id="tocs_alerthistory"></span>
+
+## AlertHistory
+
+<a id="schemaalerthistory"></a> <a id="schema_AlertHistory"></a> <a id="tocSalerthistory"></a> <a id="tocsalerthistory"></a>
+
+```json
+{
+  "alert_id": 0,
+  "state": "High",
+  "value": "string",
+  "actual_value": 0
+}
+
+```
+
+#### Properties
+
+| Name          | Type    | Required | Restrictions | Description                              |
+| ------------- | ------- | -------- | ------------ | ---------------------------------------- |
+| alert\_id     | integer | false    | none         | Alert ID                                 |
+| state         | string  | false    | none         | State                                    |
+| value         | string  | false    | none         | User-presentable value                   |
+| actual\_value | number  | false    | none         | Actual value at the time of state change |
+
+##### Enumerated Values
+
+| Property | Value  |
+| -------- | ------ |
+| state    | High   |
+| state    | Medium |
+| state    | Low    |
+
+<span id="tocs_serverstatus"></span>
+
+## ServerStatus
+
+<a id="schemaserverstatus"></a> <a id="schema_ServerStatus"></a> <a id="tocSserverstatus"></a> <a id="tocsserverstatus"></a>
+
+```json
+{
+  "id": 0,
+  "name": "string",
+  "group_id": 0,
+  "group_name": "string",
+  "blackout": true,
+  "status": "UP",
+  "alerts": {
+    "total": 0,
+    "acknowledged": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "high_acknowledged": 0,
+    "medium_acknowledged": 0,
+    "low_acknowledged": 0
+  },
+  "version": "string",
+  "number_connections": 0,
+  "remote_monitoring": true,
+  "agent_id": 0,
+  "sessions": {
+    "last_recorded_time": 0,
+    "sessions": [
+      {
+        "database_name": "string",
+        "procpid": 0,
+        "usename": "string",
+        "backend_start": 0,
+        "xact_start": 0,
+        "query_start": 0,
+        "is_waiting": true,
+        "is_idle": true,
+        "is_idle_in_transaction": true,
+        "is_vacuum": true,
+        "is_autovacuum": true,
+        "client_addr": "string",
+        "client_port": 0,
+        "memory_usage_mb": 0,
+        "swap_usage_mb": 0,
+        "cpu_usage": 0,
+        "io_read_bytes": 0,
+        "io_write_bytes": 0,
+        "state": "string",
+        "state_change": 0
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+| Name                         | Type      | Required | Restrictions | Description                                                                                                          |
+| ---------------------------- | --------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| id                           | integer   | false    | none         | Server ID                                                                                                            |
+| name                         | string    | false    | none         | Server name                                                                                                          |
+| group\_id                    | integer   | false    | none         | Group ID under which database server is visible to the user                                                          |
+| group\_name                  | string    | false    | none         | Group name                                                                                                           |
+| blackout                     | boolean   | false    | none         | Status of the alert blackout for the database server                                                                 |
+| status                       | string    | false    | none         | Server status can be UP, DOWN, UNKNOWN, or UNMANAGED,                                                                |
+| alerts                       | object    | false    | none         | List of alerts configured for the database server, including alert status and number of alerts that are acknowledged |
+| » total                      | integer   | false    | none         | Number of alerts configured for the database server                                                                  |
+| » acknowledged               | integer   | false    | none         | Number of acknowledged alerts                                                                                        |
+| » high                       | integer   | false    | none         | Number of alerts with state as 'High'                                                                                |
+| » medium                     | integer   | false    | none         | Number of alerts with state as 'Medium'                                                                              |
+| » low                        | integer   | false    | none         | Number of alerts with state as 'Low'                                                                                 |
+| » high\_acknowledged         | integer   | false    | none         | Number of acknowledged alerts with state as 'High'                                                                   |
+| » medium\_acknowledged       | integer   | false    | none         | Number of acknowledged alerts with state as 'Medium'                                                                 |
+| » low\_acknowledged          | integer   | false    | none         | Number of acknowledged alerts with state as 'Low'                                                                    |
+| version                      | string    | false    | none         | Current version of the database server                                                                               |
+| number\_connections          | integer   | false    | none         | Number of connections on the database servers                                                                        |
+| remote\_monitoring           | boolean   | false    | none         | Determines whether the database server is being monitored remotely by the pemAgent                                   |
+| agent\_id                    | integer   | false    | none         | Agent ID that is monitoring the database server                                                                      |
+| sessions                     | object    | false    | none         | All the session information for database servers                                                                     |
+| » last\_recorded\_time       | number    | false    | none         | Unix time of the last recorded time for session information                                                          |
+| » sessions                   | \[object] | false    | none         | List of all the session information for the database server                                                          |
+| »» database\_name            | string    | false    | none         | Database name                                                                                                        |
+| »» procpid                   | integer   | false    | none         | Process ID                                                                                                           |
+| »» usename                   | string    | false    | none         | User name                                                                                                            |
+| »» backend\_start            | number    | false    | none         | Unix time for the session start time                                                                                 |
+| »» xact\_start               | number    | false    | none         | Unix time for the transaction start time                                                                             |
+| »» query\_start              | number    | false    | none         | Unix time for the query start time (if any queries are running)                                                      |
+| »» is\_waiting               | boolean   | false    | none         | Is the sesion waiting?                                                                                               |
+| »» is\_idle                  | boolean   | false    | none         | Is the session idle?                                                                                                 |
+| »» is\_idle\_in\_transaction | boolean   | false    | none         | Is the session idle in a transaction?                                                                                |
+| »» is\_vacuum                | boolean   | false    | none         | Is this a VACUUM session?                                                                                            |
+| »» is\_autovacuum            | boolean   | false    | none         | Is this an AUTO VACUUM session?                                                                                      |
+| »» client\_addr              | string    | false    | none         | Host address for the client of the session                                                                           |
+| »» client\_port              | integer   | false    | none         | Client port for the session                                                                                          |
+| »» memory\_usage\_mb         | number    | false    | none         | Memory usage (in MB) of the session (available only when monitored locally)                                          |
+| »» swap\_usage\_mb           | number    | false    | none         | Swap memory usage (in MB) of the session (available only when monitored locally)                                     |
+| »» cpu\_usage                | number    | false    | none         | CPU Usage (in percentage) of the session (available only when monitored locally)                                     |
+| »» io\_read\_bytes           | number    | false    | none         | I/O Read (in bytes) of the session (available only when monitored locally)                                           |
+| »» io\_write\_bytes          | number    | false    | none         | I/O Write (in bytes) of the session (available only when monitored locally)                                          |
+| »» state                     | string    | false    | none         | Current state of the session (idle, active, idle in transcation, and so forth)                                       |
+| »» state\_change             | number    | false    | none         | Unix time of the last state change in the session                                                                    |
+
+##### Enumerated Values
+
+| Property | Value     |
+| -------- | --------- |
+| status   | UP        |
+| status   | DOWN      |
+| status   | UNKNOWN   |
+| status   | UNMANAGED |
+
+<span id="tocs_agentstatus"></span>
+
+## AgentStatus
+
+<a id="schemaagentstatus"></a> <a id="schema_AgentStatus"></a> <a id="tocSagentstatus"></a> <a id="tocsagentstatus"></a>
+
+```json
+{
+  "id": 0,
+  "name": "string",
+  "group_id": 0,
+  "group_name": "string",
+  "blackout": true,
+  "status": "UP",
+  "alerts": {
+    "total": 0,
+    "acknowledged": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "high_acknowledged": 0,
+    "medium_acknowledged": 0,
+    "low_acknowledged": 0
+  },
+  "version": "string",
+  "processes": 0,
+  "threads": 0,
+  "cpu_utilization": 0,
+  "memory_utilization": 0,
+  "swap_utilization": 0,
+  "disk_utilization": 0
+}
+
+```
+
+#### Properties
+
+| Name                   | Type    | Required | Restrictions | Description                                                                                                |
+| ---------------------- | ------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------- |
+| id                     | integer | false    | none         | Agent ID                                                                                                   |
+| name                   | string  | false    | none         | Agent name                                                                                                 |
+| group\_id              | integer | false    | none         | Group ID under which agent is visible to the user                                                          |
+| group\_name            | string  | false    | none         | Group name                                                                                                 |
+| blackout               | boolean | false    | none         | Determines whether an alert blackout for the agent is enabled or disabled.                                 |
+| status                 | string  | false    | none         | Agent status can be UP, DOWN, or UNKNOWN                                                                   |
+| alerts                 | object  | false    | none         | List of alerts configured for the agent, including alert status and number of alerts that are acknowledged |
+| » total                | integer | false    | none         | Number of alerts configured for the agent                                                                  |
+| » acknowledged         | integer | false    | none         | Number of acknowledged alerts                                                                              |
+| » high                 | integer | false    | none         | Number of alerts with state as 'High'                                                                      |
+| » medium               | integer | false    | none         | Number of alerts with state as 'Medium'                                                                    |
+| » low                  | integer | false    | none         | Number of alerts with state as 'Low'                                                                       |
+| » high\_acknowledged   | integer | false    | none         | Number of acknowledged alerts with state as 'High'                                                         |
+| » medium\_acknowledged | integer | false    | none         | Number of acknowledged alerts with state as 'Medium'                                                       |
+| » low\_acknowledged    | integer | false    | none         | Number of acknowledged alerts with state as 'Low'                                                          |
+| version                | string  | false    | none         | Current version of the agent                                                                               |
+| processes              | integer | false    | none         | Number of processes running                                                                                |
+| threads                | integer | false    | none         | Number of threads for all the running processes                                                            |
+| cpu\_utilization       | number  | false    | none         | CPU utilization (percentage)                                                                               |
+| memory\_utilization    | number  | false    | none         | Memory utilization (percentage)                                                                            |
+| swap\_utilization      | number  | false    | none         | Swap memory utilization (percentage)                                                                       |
+| disk\_utilization      | number  | false    | none         | Overall disk utilization (percentage)                                                                      |
+
+##### Enumerated Values
+
+| Property | Value   |
+| -------- | ------- |
+| status   | UP      |
+| status   | DOWN    |
+| status   | UNKNOWN |
+
+<span id="tocs_alertstatus"></span>
+
+## AlertStatus
+
+<a id="schemaalertstatus"></a> <a id="schema_AlertStatus"></a> <a id="tocSalertstatus"></a> <a id="tocsalertstatus"></a>
+
+```json
+{
+  "alert_since": "string",
+  "alert_id": 0,
+  "alert_name": "string",
+  "alert_state": "High",
+  "value": "string",
+  "object_description": "string",
+  "server_id": 0,
+  "agent_id": 0,
+  "database": "string",
+  "schema": "string",
+  "package": "string",
+  "object": "string",
+  "alert_target_level": "Global",
+  "last_processed": "string",
+  "info": "string",
+  "info_cols": [
+    "string"
+  ],
+  "info_vals": [
+    [
+      "string"
+    ]
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                 | Type      | Required | Restrictions | Description                                                                                                                |
+| -------------------- | --------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| alert\_since         | string    | false    | none         | Unix time when alert state last changed                                                                                    |
+| alert\_id            | integer   | false    | none         | Alert internal identification number                                                                                       |
+| alert\_name          | string    | false    | none         | Name of the alert                                                                                                          |
+| alert\_state         | string    | false    | none         | Current state of the alert. A 'null' value suggests alert threshold values have not currently been violated for the alert. |
+| value                | string    | false    | none         | Current value of the alert                                                                                                 |
+| object\_description  | string    | false    | none         | Monitoring object description/name                                                                                         |
+| server\_id           | integer   | false    | none         | null or ID of the server                                                                                                   |
+| agent\_id            | integer   | false    | none         | null or ID of the agent                                                                                                    |
+| database             | string    | false    | none         | null or name of the database                                                                                               |
+| schema               | string    | false    | none         | null or name of the schema/namespace                                                                                       |
+| package              | string    | false    | none         | null or name of the EDB package                                                                                            |
+| object               | string    | false    | none         | null or name of any other type of object                                                                                   |
+| alert\_target\_level | string    | false    | none         | Alert target level                                                                                                         |
+| last\_processed      | string    | false    | none         | String reprenting Unix time when the alert was processed                                                                   |
+| info                 | string    | false    | none         | Some information at the time when the alert was generated                                                                  |
+| info\_cols           | \[string] | false    | none         | Array of column names for the information                                                                                  |
+| info\_vals           | \[array]  | false    | none         | Detailed information associated with the alert in the form of a table (an array of an array)                               |
+
+##### Enumerated Values
+
+| Property             | Value    |
+| -------------------- | -------- |
+| alert\_state         | High     |
+| alert\_state         | Medium   |
+| alert\_state         | Low      |
+| alert\_target\_level | Global   |
+| alert\_target\_level | Agent    |
+| alert\_target\_level | Server   |
+| alert\_target\_level | Database |
+| alert\_target\_level | Schema   |
+| alert\_target\_level | Table    |
+| alert\_target\_level | Index    |
+| alert\_target\_level | Sequence |
+| alert\_target\_level | Function |
+| alert\_target\_level | View     |
+
+<span id="tocs_customprobes"></span>
+
+## CustomProbes
+
+<a id="schemacustomprobes"></a> <a id="schema_CustomProbes"></a> <a id="tocScustomprobes"></a> <a id="tocscustomprobes"></a>
+
+```json
+{
+  "probe_id": 0,
+  "probe_name": "string",
+  "enabled": true,
+  "target_type": 0,
+  "internal_name": "string",
+  "is_system_probe": true,
+  "any_server_version": true,
+  "collection_method": "w",
+  "interval": 0,
+  "lifetime": 0,
+  "discard_history": true,
+  "platform": "unix",
+  "probe_code": "string",
+  "probe_columns": [
+    {
+      "pc_id": 0,
+      "pc_name": "string",
+      "pc_data_type": "bigint",
+      "pc_internal_name": "string",
+      "pc_unit": "string",
+      "pc_col_type": "m",
+      "pc_position": 0,
+      "pc_graphable": true,
+      "pc_calc_pit": true,
+      "pc_pit_default": true
+    }
+  ],
+  "alternate_code": [
+    {
+      "server_version_id": 0,
+      "server_probe_code": "string",
+      "extension_version": 0
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                 | Type                                                          | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| probe\_id            | integer                                                       | false    | none         | Identifier for a probe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| probe\_name          | string                                                        | false    | none         | Name of the probe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| enabled              | boolean                                                       | false    | none         | Determines whether the probe is enabled or disabled by default.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| target\_type         | integer                                                       | false    | none         | Defines the type of the object to which the probe applies. <ul><li>A probe with target\_type <b>100</b> is responsible for collecting statistics for an agent.</li><li>A probe with target\_type <b>200</b> is responsible for collecting statistics for a monitored server.</li><li>A probe with target\_type <b>300</b> is responsible for collecting statistics for a database.</li><li>A probe with target\_type <b>400</b> is responsible for collecting statistics for a schema.</li><li>A probe with target\_type <b>500</b> is responsible for collecting statistics for a table.</li><li>A probe with target\_type <b>600</b> is responsible for collecting statistics for a index.</li><li>A probe with target\_type <b>700</b> is responsible for collecting statistics for a sequence.</li><li>A probe with target\_type <b>800</b> is responsible for collecting statistics for a function.</li><li>A probe with target\_type <b>900</b> is responsible for collecting statistics for a view.</li><li>A probe with target\_type <b>1000</b> is responsible for collecting statistics for a extension.</li></ul> |
+| internal\_name       | string                                                        | false    | none         | Defines the internal name of the probe. The PEM system creates internal tables for storing probe statistics in the 'pemdata', and 'pemhistory' schema. The names of those tables are the same as the internal name.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| is\_system\_probe    | boolean                                                       | false    | none         | Determines whether this probe is user-defined. This flag is always false for a user-defined probe.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| any\_server\_version | boolean                                                       | false    | none         | Determines whether this probe applies to any version of a Postgres variant. For more details, please consult the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| collection\_method   | string                                                        | false    | none         | Defines the method of statistics collection. PEM supports three methods for custom made probes: SQL, WMI, or batch/shell script. <ul><li>'w' stands for WMI script.<br />This type of script only applies to the Windows platform, and the target\_type is <b>100</b> (for agent).</li><li>'b' stands for batch/shell script. The 'target\_type' for this script is always <b>100</b> (agent). This script behaves as a batch script on Windows and a shell script on other platforms.</li><li>'s' stands for SQL script. The 'target\_type' is always <b>200</b> (server), <b>300</b> (database), <b>400</b> (schema), <b>500</b> (table), <b>600</b> (index), <b>700</b> (sequence), <b>800</b> (function), or <b>900</b> (view), or <b>1000</b> (extension).</li></ul>                                                                                                                                                                                                                                                                                                                                                    |
+| interval             | integer                                                       | false    | none         | Defines how frequently the probe collects statistics (in seconds).Must be greater than or equal to 10                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| lifetime             | integer                                                       | false    | none         | Defines the history data retention time (in days). Valid range is 1-365. This value does not have any effect if 'discard\_history' is set to true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| discard\_history     | boolean                                                       | false    | none         | Determines whether to discard history data. When 'discard\_history' is set to false, history of the data for this probe is not stored.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| platform             | string                                                        | false    | none         | Defines the platform where this probe can run. This value only applies to an agent-level probe.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| probe\_code          | string                                                        | false    | none         | A <b>SQL/Batch script/Shell script/WMI script</b> to collect the statistics as per the definition of the code.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| probe\_columns       | \[object]                                                     | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| » pc\_id             | integer                                                       | false    | none         | Column identifier                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| » pc\_name           | string                                                        | false    | none         | Column name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| » pc\_data\_type     | string                                                        | false    | none         | Data type of the column.<br />Supported datatypes are:<ul><ul>bigint</ul><ul>char</ul><ul>decimal</ul><ul>double precision</ul><ul>integer</ul><ul>numeric</ul><ul>real</ul><ul>text</ul><ul>text\[]</ul><ul>timestamp</ul><ul>timestamptz</ul></ul>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| » pc\_internal\_name | string                                                        | false    | none         | Returns the internal name of the column.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| » pc\_unit           | string                                                        | false    | none         | Returns the unit of the column.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| » pc\_col\_type      | string                                                        | false    | none         | Returns the column as part of the primary key of the internal table, or not. 'k' stands for a key column, and 'm' stands for a member/normal column.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| » pc\_position       | integer                                                       | false    | none         | Returns the position of the column in the internal table.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| » pc\_graphable      | boolean                                                       | false    | none         | Determines whether the data of the column can be graphed on a chart.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| » pc\_calc\_pit      | boolean                                                       | false    | none         | Determines whether the server calculates the point-in-time for metric data for this column.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| » pc\_pit\_default   | boolean                                                       | false    | none         | Determines whether the metric is stored by point-in-time by default. Please refer to the 'Custom Probes' section in the documentation for detailed information.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| alternate\_code      | \[[AlternateServerProbeCode](#tocs_alternateserverprobecode)] | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+
+##### Enumerated Values
+
+| Property           | Value            |
+| ------------------ | ---------------- |
+| collection\_method | w                |
+| collection\_method | b                |
+| collection\_method | s                |
+| platform           | unix             |
+| platform           | windows          |
+| pc\_data\_type     | bigint           |
+| pc\_data\_type     | char             |
+| pc\_data\_type     | decimal          |
+| pc\_data\_type     | double precision |
+| pc\_data\_type     | integer          |
+| pc\_data\_type     | numeric          |
+| pc\_data\_type     | real             |
+| pc\_data\_type     | text             |
+| pc\_data\_type     | text\[]          |
+| pc\_data\_type     | timestamp        |
+| pc\_data\_type     | timestamptz      |
+| pc\_col\_type      | m                |
+| pc\_col\_type      | k                |
+
+<span id="tocs_customprobeexportdata"></span>
+
+## CustomProbeExportData
+
+<a id="schemacustomprobeexportdata"></a> <a id="schema_CustomProbeExportData"></a> <a id="tocScustomprobeexportdata"></a> <a id="tocscustomprobeexportdata"></a>
+
+```json
+{
+  "probes": [
+    0
+  ]
+}
+
+```
+
+#### Properties
+
+| Name   | Type       | Required | Restrictions | Description                             |
+| ------ | ---------- | -------- | ------------ | --------------------------------------- |
+| probes | \[integer] | false    | none         | List of the probe IDs for custom probes |
+
+<span id="tocs_customprobeimportdata"></span>
+
+## CustomProbeImportData
+
+<a id="schemacustomprobeimportdata"></a> <a id="schema_CustomProbeImportData"></a> <a id="tocScustomprobeimportdata"></a> <a id="tocscustomprobeimportdata"></a>
+
+```json
+{
+  "version": 1,
+  "skip_overwrite": true,
+  "probes": [
+    {
+      "probe_name": "string",
+      "collection_method": "w",
+      "enabled": true,
+      "target_type": 0,
+      "any_server_version": true,
+      "any_extension_version": true,
+      "extension_name": "string",
+      "interval": 0,
+      "lifetime": 0,
+      "discard_history": true,
+      "platform": "unix",
+      "probe_code": "string",
+      "probe_columns": [
+        {
+          "pc_name": "string",
+          "pc_data_type": "bigint",
+          "pc_unit": "string",
+          "pc_col_type": "m",
+          "pc_graphable": true,
+          "pc_calc_pit": true,
+          "pc_pit_default": true
+        }
+      ],
+      "alternate_code": [
+        {
+          "server_version_id": 0,
+          "server_probe_code": "string",
+          "extension_version": 0
+        }
+      ],
+      "internal_name": "string"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name            | Type                                                            | Required | Restrictions | Description                                        |
+| --------------- | --------------------------------------------------------------- | -------- | ------------ | -------------------------------------------------- |
+| version         | integer                                                         | false    | none         | Version of the probe export                        |
+| skip\_overwrite | boolean                                                         | false    | none         | Determines whether existing probes can be skipped. |
+| probes          | \[[CustomProbeImportPostData](#tocs_customprobeimportpostdata)] | false    | none         | none                                               |
+
+<span id="tocs_customprobeimportpostdata"></span>
+
+## CustomProbeImportPostData
+
+<a id="schemacustomprobeimportpostdata"></a> <a id="schema_CustomProbeImportPostData"></a> <a id="tocScustomprobeimportpostdata"></a> <a id="tocscustomprobeimportpostdata"></a>
+
+```json
+{
+  "probe_name": "string",
+  "collection_method": "w",
+  "enabled": true,
+  "target_type": 0,
+  "any_server_version": true,
+  "any_extension_version": true,
+  "extension_name": "string",
+  "interval": 0,
+  "lifetime": 0,
+  "discard_history": true,
+  "platform": "unix",
+  "probe_code": "string",
+  "probe_columns": [
+    {
+      "pc_name": "string",
+      "pc_data_type": "bigint",
+      "pc_unit": "string",
+      "pc_col_type": "m",
+      "pc_graphable": true,
+      "pc_calc_pit": true,
+      "pc_pit_default": true
+    }
+  ],
+  "alternate_code": [
+    {
+      "server_version_id": 0,
+      "server_probe_code": "string",
+      "extension_version": 0
+    }
+  ],
+  "internal_name": "string"
+}
+
+```
+
+#### Properties
+
+allOf
+
+| Name        | Type                                             | Required | Restrictions | Description |
+| ----------- | ------------------------------------------------ | -------- | ------------ | ----------- |
+| _anonymous_ | [CustomProbePostData](#tocs_customprobepostdata) | false    | none         | none        |
+
+and
+
+| Name             | Type   | Required | Restrictions | Description                                                         |
+| ---------------- | ------ | -------- | ------------ | ------------------------------------------------------------------- |
+| _anonymous_      | object | false    | none         | none                                                                |
+| » internal\_name | string | false    | none         | Internal name of the probe from the system where probe was exported |
+
+<span id="tocs_customprobepostdata"></span>
+
+## CustomProbePostData
+
+<a id="schemacustomprobepostdata"></a> <a id="schema_CustomProbePostData"></a> <a id="tocScustomprobepostdata"></a> <a id="tocscustomprobepostdata"></a>
+
+```json
+{
+  "probe_name": "string",
+  "collection_method": "w",
+  "enabled": true,
+  "target_type": 0,
+  "any_server_version": true,
+  "any_extension_version": true,
+  "extension_name": "string",
+  "interval": 0,
+  "lifetime": 0,
+  "discard_history": true,
+  "platform": "unix",
+  "probe_code": "string",
+  "probe_columns": [
+    {
+      "pc_name": "string",
+      "pc_data_type": "bigint",
+      "pc_unit": "string",
+      "pc_col_type": "m",
+      "pc_graphable": true,
+      "pc_calc_pit": true,
+      "pc_pit_default": true
+    }
+  ],
+  "alternate_code": [
+    {
+      "server_version_id": 0,
+      "server_probe_code": "string",
+      "extension_version": 0
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name                    | Type                                                          | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| probe\_name             | string                                                        | false    | none         | Name of the probe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| collection\_method      | string                                                        | false    | none         | Defines the method of statistics collection. PEM supports three methods for custom made probes: SQL, WMI, or batch/shell script. <ul><li>'w' stands for WMI script.<br />This type of script only applies to the Windows platform, and the target\_type is <b>100</b> (for agent).</li><li>'b' stands for batch/shell script. The 'target\_type' for this script is always <b>100</b> (agent). This script behaves as a batch script on Windows and a shell script on other platforms.</li><li>'s' stands for SQL script. The 'target\_type' is always <b>200</b> (server), <b>300</b> (database), <b>400</b> (schema), <b>500</b> (table), <b>600</b> (index), <b>700</b> (sequence), <b>800</b> (function), <b>900</b> (view) or <b>1000</b> (extension).</li></ul>                                                                                                                                                                                                                                                                                                                                                        |
+| enabled                 | boolean                                                       | false    | none         | Determines whether whether the probe is enabled/disabled by default.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| target\_type            | integer                                                       | false    | none         | Defines the type of the object to which the probe applies. <ul><li>A probe with target\_type <b>100</b> is responsible for collecting statistics for an agent.</li><li>A probe with target\_type <b>200</b> is responsible for collecting statistics for a monitored server.</li><li>A probe with target\_type <b>300</b> is responsible for collecting statistics for a database.</li><li>A probe with target\_type <b>400</b> is responsible for collecting statistics for a schema.</li><li>A probe with target\_type <b>500</b> is responsible for collecting statistics for a table.</li><li>A probe with target\_type <b>600</b> is responsible for collecting statistics for a index.</li><li>A probe with target\_type <b>700</b> is responsible for collecting statistics for a sequence.</li><li>A probe with target\_type <b>800</b> is responsible for collecting statistics for a function.</li><li>A probe with target\_type <b>900</b> is responsible for collecting statistics for a view.</li><li>A probe with target\_type <b>1000</b> is responsible for collecting statistics for a extension.</li></ul> |
+| any\_server\_version    | boolean                                                       | false    | none         | Determines whether this probe applies to any version of a Postgres variant. For more details, please consult the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| any\_extension\_version | boolean                                                       | false    | none         | Determines whether this probe applies to any version of a Extension variant. For more details, please consult the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| extension\_name         | string                                                        | false    | none         | Name of the extension.<ul>Valid names are <b>edbspl</b> , <b>plpgsql</b> , <b>hstore</b> , <b>pldbgapi</b> , <b>edb\_dblink\_oci</b> , <b>edb\_dblink\_libpq</b> , <b>sslutils</b> .</ul>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| interval                | integer                                                       | false    | none         | Defines how frequently the probe collects statistics (in seconds).Must be greater than or equal to 10                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| lifetime                | integer                                                       | false    | none         | Defines the history data retention time (in days). Valid range is 1-365. This value does not have any effect if 'discard\_history' is set to true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| discard\_history        | boolean                                                       | false    | none         | Defines whether to discard history data. When 'discard\_history' is set to false, no history data is stored for this probe.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| platform                | string                                                        | false    | none         | Defines the platform where this probe can run. This value only applies to an agent-level probe.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| probe\_code             | string                                                        | false    | none         | A <b>SQL/Batch script/Shell script/WMI script</b> to collect the statistics as per definition of the code.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| probe\_columns          | \[object]                                                     | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| » pc\_name              | string                                                        | false    | none         | Column name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| » pc\_data\_type        | string                                                        | false    | none         | Data type of the column.<br />Supported datatypes are:<ul><ul>bigint</ul><ul>char</ul><ul>decimal</ul><ul>double precision</ul><ul>integer</ul><ul>numeric</ul><ul>real</ul><ul>text</ul><ul>text\[]</ul><ul>timestamp</ul><ul>timestamptz</ul></ul>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| » pc\_unit              | string                                                        | false    | none         | Returns the unit of the column.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| » pc\_col\_type         | string                                                        | false    | none         | Returns the columns as part of the primary key of the internal table, or not. 'k' stands for a key column, and 'm' stands for a member/normal column.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| » pc\_graphable         | boolean                                                       | false    | none         | Determines whether the data of the column can be graphed on a chart.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| » pc\_calc\_pit         | boolean                                                       | false    | none         | Determines whether the server calculates point-in-time for metric data for this column.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| » pc\_pit\_default      | boolean                                                       | false    | none         | Determines whether metric data is stored by point-in-time by default. Please refer to the 'Custom Probes' section in the documentation for detailed information.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| alternate\_code         | \[[AlternateServerProbeCode](#tocs_alternateserverprobecode)] | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+
+##### Enumerated Values
+
+| Property           | Value            |
+| ------------------ | ---------------- |
+| collection\_method | w                |
+| collection\_method | b                |
+| collection\_method | s                |
+| platform           | unix             |
+| platform           | windows          |
+| pc\_data\_type     | bigint           |
+| pc\_data\_type     | char             |
+| pc\_data\_type     | decimal          |
+| pc\_data\_type     | double precision |
+| pc\_data\_type     | integer          |
+| pc\_data\_type     | numeric          |
+| pc\_data\_type     | real             |
+| pc\_data\_type     | text             |
+| pc\_data\_type     | text\[]          |
+| pc\_data\_type     | timestamp        |
+| pc\_data\_type     | timestamptz      |
+| pc\_col\_type      | m                |
+| pc\_col\_type      | k                |
+
+<span id="tocs_customprobeputdata"></span>
+
+## CustomProbePutData
+
+<a id="schemacustomprobeputdata"></a> <a id="schema_CustomProbePutData"></a> <a id="tocScustomprobeputdata"></a> <a id="tocscustomprobeputdata"></a>
+
+```json
+{
+  "interval_min": 0,
+  "interval_sec": 0,
+  "lifetime": 0,
+  "enabled": true,
+  "probe_code": "string",
+  "probe_columns": {
+    "changed": [
+      {
+        "pc_id": 0,
+        "pc_unit": "string",
+        "pc_graphable": true
+      }
+    ]
+  },
+  "alternate_code": {
+    "changed": [
+      {
+        "server_version_id": 0,
+        "server_probe_code": "string",
+        "extension_version": 0
+      }
+    ],
+    "deleted": [
+      {
+        "server_version_id": 0
+      }
+    ],
+    "added": [
+      {
+        "server_version_id": 0,
+        "server_probe_code": "string",
+        "extension_version": 0
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+| Name            | Type                                                                        | Required | Restrictions | Description                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| interval\_min   | integer                                                                     | false    | none         | Defines how frequently the probe collects statistics (in minutes). Possible values are 0 to 2880.                                                   |
+| interval\_sec   | integer                                                                     | false    | none         | Defines how frequently the probe collects statistics (in seconds). Possible values are 0 to 59.                                                     |
+| lifetime        | integer                                                                     | false    | none         | Defines the history data retention time (in days). Valid range is 1-365.  This value does not have any effect if 'discard\_history' is set to true. |
+| enabled         | boolean                                                                     | false    | none         | Determines whether the probe is enabled by default.                                                                                                 |
+| probe\_code     | string                                                                      | false    | none         | A <b>SQL/Batch script/Shell script/WMI script</b> to collect the statistics as per definition of the code.                                          |
+| probe\_columns  | object                                                                      | false    | none         | none                                                                                                                                                |
+| » changed       | \[[ProbeColumn](#tocs_probecolumn)]                                         | false    | none         | List of the changed  probe column                                                                                                                   |
+| alternate\_code | object                                                                      | false    | none         | none                                                                                                                                                |
+| » changed       | \[[AlternateServerProbeCode](#tocs_alternateserverprobecode)]               | false    | none         | List of the changed alternate probe code for some server version                                                                                    |
+| » deleted       | \[[DeletedAlternateServerProbeCode](#tocs_deletedalternateserverprobecode)] | false    | none         | List of the deleted alternate probe code for some server versions                                                                                   |
+| » added         | \[[AlternateServerProbeCode](#tocs_alternateserverprobecode)]               | false    | none         | List of the alternate probe code added for some server versions                                                                                     |
+
+<span id="tocs_probes"></span>
+
+## Probes
+
+<a id="schemaprobes"></a> <a id="schema_Probes"></a> <a id="tocSprobes"></a> <a id="tocsprobes"></a>
+
+```json
+{
+  "probe_id": 0,
+  "probe_name": "string",
+  "default_interval_min": 0,
+  "interval_min": 0,
+  "default_interval_sec": 0,
+  "interval_sec": 0,
+  "default_interval": 0,
+  "interval": 0,
+  "default_lifetime": 0,
+  "lifetime": 0,
+  "default_enabled": true,
+  "enabled": true,
+  "target_type_id_returned": 0
+}
+
+```
+
+#### Properties
+
+| Name                       | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------- | ------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| probe\_id                  | integer | false    | none         | Unique ID of the probe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| probe\_name                | string  | false    | none         | Name of the probe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| default\_interval\_min     | integer | false    | none         | Defines the default interval for the probe to collect statistics (in minutes). Possible values are 0 to 2880.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| interval\_min              | integer | false    | none         | Defines how frequently the probe collects statistics (in minutes). Possible values are 0 to 2880.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| default\_interval\_sec     | integer | false    | none         | Defines the default interval for the probe to collect statistics (in seconds). Possible values are 0 to 59.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| interval\_sec              | integer | false    | none         | Defines how frequently the probe collects statistics (in seconds). Possible values are 0 to 59.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| default\_interval          | integer | false    | none         | Defines the default interval for the probe to collect statistics (in seconds).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| interval                   | integer | false    | none         | Defines how frequently the probe collects statistics (in seconds).Must be greater than or equal to 10                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| default\_lifetime          | integer | false    | none         | Defines the default history data retention time (in days).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| lifetime                   | integer | false    | none         | Defines the history data retention time (in days). Valid range is 1-365. This value does not have any effect if 'discard\_history' is set to true.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| default\_enabled           | boolean | false    | none         | Defines the default probe enabled/disabled value.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| enabled                    | boolean | false    | none         | Specifies whether whether the probe is enabled/disabled by default.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| target\_type\_id\_returned | integer | false    | none         | Defines the return target type value. <ul><li>A probe with target\_type <b>100</b> is responsible for collecting statistics for an agent.</li><li>A probe with target\_type <b>200</b> is responsible for collecting statistics for a monitored server.</li><li>A probe with target\_type <b>300</b> is responsible for collecting statistics for a database.</li><li>A probe with target\_type <b>400</b> is responsible for collecting statistics for a schema.</li><li>A probe with target\_type <b>500</b> is responsible for collecting statistics for a table.</li><li>A probe with target\_type <b>600</b> is responsible for collecting statistics for a index.</li><li>A probe with target\_type <b>700</b> is responsible for collecting statistics for a sequence.</li><li>A probe with target\_type <b>800</b> is responsible for collecting statistics for a function.</li><li>A probe with target\_type <b>900</b> is responsible for collecting statistics for a view.</li></ul> |
+
+<span id="tocs_probeconfigdata"></span>
+
+## ProbeConfigData
+
+<a id="schemaprobeconfigdata"></a> <a id="schema_ProbeConfigData"></a> <a id="tocSprobeconfigdata"></a> <a id="tocsprobeconfigdata"></a>
+
+```json
+{
+  "interval_min": 0,
+  "interval_sec": 0,
+  "lifetime": 0,
+  "enabled": true
+}
+
+```
+
+#### Properties
+
+| Name          | Type    | Required | Restrictions | Description                                                                                                                                                                                                        |
+| ------------- | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| interval\_min | integer | false    | none         | Probe execution frequency (in minutes). The allowed interval value (in minutes) is 0-2880. NOTE: The total interval must be greater than 10 seconds. That is, 10 >= interval\_min \* 60 + interval\_sec >= 172800. |
+| interval\_sec | integer | false    | none         | Probe execution frequency (in seconds). The allowed interval value (in seconds) is 0-59. NOTE: Total interval must be greater than 10 seconds. That is, 10 >= interval\_min \* 60 + interval\_sec >= 172800.       |
+| lifetime      | integer | false    | none         | Probe history data retention period (in days). That is, 1 <= lifetime <= 365.                                                                                                                                      |
+| enabled       | boolean | false    | none         | Determines whether the probe is enabled for the given object.                                                                                                                                                      |
+
+<span id="tocs_copyagentdata"></span>
+
+## CopyAgentData
+
+<a id="schemacopyagentdata"></a> <a id="schema_CopyAgentData"></a> <a id="tocScopyagentdata"></a> <a id="tocscopyagentdata"></a>
+
+```json
+{
+  "type": "string",
+  "agent_id": 0
+}
+
+```
+
+#### Properties
+
+| Name      | Type    | Required | Restrictions | Description           |
+| --------- | ------- | -------- | ------------ | --------------------- |
+| type      | string  | false    | none         | Value must be "agent" |
+| agent\_id | integer | false    | none         | none                  |
+
+<span id="tocs_copyserverdata"></span>
+
+## CopyServerData
+
+<a id="schemacopyserverdata"></a> <a id="schema_CopyServerData"></a> <a id="tocScopyserverdata"></a> <a id="tocscopyserverdata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0
+}
+
+```
+
+#### Properties
+
+| Name       | Type    | Required | Restrictions | Description            |
+| ---------- | ------- | -------- | ------------ | ---------------------- |
+| type       | string  | false    | none         | Value must be "server" |
+| server\_id | integer | false    | none         | none                   |
+
+<span id="tocs_copydatabasedata"></span>
+
+## CopyDatabaseData
+
+<a id="schemacopydatabasedata"></a> <a id="schema_CopyDatabaseData"></a> <a id="tocScopydatabasedata"></a> <a id="tocscopydatabasedata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string"
+}
+
+```
+
+#### Properties
+
+| Name           | Type    | Required | Restrictions | Description              |
+| -------------- | ------- | -------- | ------------ | ------------------------ |
+| type           | string  | false    | none         | Value must be "database" |
+| server\_id     | integer | false    | none         | none                     |
+| database\_name | string  | false    | none         | none                     |
+
+<span id="tocs_copyschemadata"></span>
+
+## CopySchemaData
+
+<a id="schemacopyschemadata"></a> <a id="schema_CopySchemaData"></a> <a id="tocScopyschemadata"></a> <a id="tocscopyschemadata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string",
+  "schema_name": "string"
+}
+
+```
+
+#### Properties
+
+| Name           | Type    | Required | Restrictions | Description            |
+| -------------- | ------- | -------- | ------------ | ---------------------- |
+| type           | string  | false    | none         | Value must be "schema" |
+| server\_id     | integer | false    | none         | none                   |
+| database\_name | string  | false    | none         | none                   |
+| schema\_name   | string  | false    | none         | none                   |
+
+<span id="tocs_copyalertagentdata"></span>
+
+## CopyAlertAgentData
+
+<a id="schemacopyalertagentdata"></a> <a id="schema_CopyAlertAgentData"></a> <a id="tocScopyalertagentdata"></a> <a id="tocscopyalertagentdata"></a>
+
+```json
+{
+  "type": "string",
+  "agent_id": 0,
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "agent"                                                                                                                                                                                                                       |
+| agent\_id                | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_copyalertserverdata"></span>
+
+## CopyAlertServerData
+
+<a id="schemacopyalertserverdata"></a> <a id="schema_CopyAlertServerData"></a> <a id="tocScopyalertserverdata"></a> <a id="tocscopyalertserverdata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "server"                                                                                                                                                                                                                      |
+| server\_id               | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_copyalertdatabasedata"></span>
+
+## CopyAlertDatabaseData
+
+<a id="schemacopyalertdatabasedata"></a> <a id="schema_CopyAlertDatabaseData"></a> <a id="tocScopyalertdatabasedata"></a> <a id="tocscopyalertdatabasedata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string",
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "database"                                                                                                                                                                                                                    |
+| server\_id               | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| database\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_copyalertschemadata"></span>
+
+## CopyAlertSchemaData
+
+<a id="schemacopyalertschemadata"></a> <a id="schema_CopyAlertSchemaData"></a> <a id="tocScopyalertschemadata"></a> <a id="tocscopyalertschemadata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string",
+  "schema_name": "string",
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "schema"                                                                                                                                                                                                                      |
+| server\_id               | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| database\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| schema\_name             | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_copyalerttabledata"></span>
+
+## CopyAlertTableData
+
+<a id="schemacopyalerttabledata"></a> <a id="schema_CopyAlertTableData"></a> <a id="tocScopyalerttabledata"></a> <a id="tocscopyalerttabledata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string",
+  "schema_name": "string",
+  "table_name": "string",
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "table"                                                                                                                                                                                                                       |
+| server\_id               | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| database\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| schema\_name             | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| table\_name              | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_copyalertindexdata"></span>
+
+## CopyAlertIndexData
+
+<a id="schemacopyalertindexdata"></a> <a id="schema_CopyAlertIndexData"></a> <a id="tocScopyalertindexdata"></a> <a id="tocscopyalertindexdata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string",
+  "schema_name": "string",
+  "index_name": "string",
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "index"                                                                                                                                                                                                                       |
+| server\_id               | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| database\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| schema\_name             | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| index\_name              | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_copyalertfunctiondata"></span>
+
+## CopyAlertFunctionData
+
+<a id="schemacopyalertfunctiondata"></a> <a id="schema_CopyAlertFunctionData"></a> <a id="tocScopyalertfunctiondata"></a> <a id="tocscopyalertfunctiondata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string",
+  "schema_name": "string",
+  "function_name": "string",
+  "function_arguments": "string",
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "function"                                                                                                                                                                                                                    |
+| server\_id               | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| database\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| schema\_name             | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| function\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| function\_arguments      | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_copyalertsequencedata"></span>
+
+## CopyAlertSequenceData
+
+<a id="schemacopyalertsequencedata"></a> <a id="schema_CopyAlertSequenceData"></a> <a id="tocScopyalertsequencedata"></a> <a id="tocscopyalertsequencedata"></a>
+
+```json
+{
+  "type": "string",
+  "server_id": 0,
+  "database_name": "string",
+  "schema_name": "string",
+  "sequence_name": "string",
+  "existing_alert_options": "I"
+}
+
+```
+
+#### Properties
+
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                                                                 |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| type                     | string  | false    | none         | Value must be "sequence"                                                                                                                                                                                                                    |
+| server\_id               | integer | false    | none         | none                                                                                                                                                                                                                                        |
+| database\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| schema\_name             | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| sequence\_name           | string  | false    | none         | none                                                                                                                                                                                                                                        |
+| existing\_alert\_options | string  | false    | none         | Determines whether to ignore/Replace the duplicate alerts to be copied or to Delete all the existing alerts from target. Supported valid values are:<br/>I -> Ignore Duplicates<br/>R -> Replace Duplicates<br/>D -> Delete Existing Alerts |
+
+##### Enumerated Values
+
+| Property                 | Value |
+| ------------------------ | ----- |
+| existing\_alert\_options | I     |
+| existing\_alert\_options | R     |
+| existing\_alert\_options | D     |
+
+<span id="tocs_agent"></span>
+
+## Agent
+
+<a id="schemaagent"></a> <a id="schema_Agent"></a> <a id="tocSagent"></a> <a id="tocsagent"></a>
+
+```json
+{
+  "id": 0,
+  "name": "string",
+  "version": "string",
+  "active": true,
+  "heartbeat_int": 0,
+  "alert_blackout": true,
+  "owner": "string",
+  "team": "string",
+  "gid": 0,
+  "ignore_mnt_points": [
+    "string"
+  ]
+}
+
+```
+
+Returns the list of objects, which contains agent information, version, capabilities, and details about the host on which the agent has been installed.
+
+**For example:**<br />\\
+
+```json
+[{
+  /* Agent information */
+  "id": 1,
+  "gid": 0,
+  "name": "Postgres Enterprise Manager Host"
+  "version": "9.3.0",
+  "active": True,
+  "heartbeat_int": 30,
+  "alert_blackout": False,
+  "owner": "postgres",
+  "team": None,
+
+  /* Deatils about the Host, on which it is installed */
+  "operating_sys": "Ubuntu 12.04.5 LTS",
+  "host_name": "edb-ubuntu",
+  "boot_time": "2016-09-19 12:28:27+05:30",
+   "domain_name": "(none)",
+   "window_domain": None,
+
+  /* Agent capabilities */
+  "capability_list": "unix, getloadavg, disk_space, memory_usage, cpu_usage, network_statistics, io_analysis, data_log_file_analysis, disk_busy_info, 
+os_statistics, os_info, slony_replication, auto_discover_servers, allow_server_restart",
+
+  /* Monitored servers */
+  "server_bind": "Postgres Enterprise Manager Server, PostgreSQL 11, PostgreSQL 12"
+}]
+
+```
+
+a
+
+#### Properties
+
+| Name                | Type      | Required | Restrictions | Description                                                                                                                                                                                  |
+| ------------------- | --------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                  | integer   | false    | none         | Identity of the pem-agent                                                                                                                                                                    |
+| name                | string    | false    | none         | Description (name) of the agent.                                                                                                                                                             |
+| version             | string    | false    | none         | Version of the pem-agent                                                                                                                                                                     |
+| active              | boolean   | false    | none         | Determines whether the agent is active.<br/>An active agent is responsible for collecting the statistics for the host and the monitored server.                                              |
+| heartbeat\_int      | integer   | false    | none         | heartbeat interval (in seconds) for the agent.<br/>Specifies how frequently the agent sends the heartbeat status to the PEM database server about itself and the monitoring database server. |
+| alert\_blackout     | boolean   | false    | none         | Determines whether the alert is blacked out for the agent.                                                                                                                                   |
+| owner               | string    | false    | none         | Username of user who installed the agent. This user is called the owner.                                                                                                                     |
+| team                | string    | false    | none         | Name of the role/user who can see this agent.<br/>A null/empty value indicates all users can see this agent.                                                                                 |
+| gid                 | integer   | false    | none         | Identity of the group                                                                                                                                                                        |
+| ignore\_mnt\_points | \[string] | false    | none         | Used to ignore the mount point for disk usage calculation                                                                                                                                    |
+
+<span id="tocs_agents"></span>
+
+## Agents
+
+<a id="schemaagents"></a> <a id="schema_Agents"></a> <a id="tocSagents"></a> <a id="tocsagents"></a>
+
+```json
+[
+  {
+    "id": 0,
+    "name": "string",
+    "version": "string",
+    "active": true,
+    "heartbeat_int": 0,
+    "alert_blackout": true,
+    "owner": "string",
+    "team": "string",
+    "gid": 0,
+    "ignore_mnt_points": [
+      "string"
+    ]
+  }
+]
+
+```
+
+Returns the list of objects, which contains agent information, version, capabilities, and details about the host on which the agent has been installed.
+
+**For example:**<br />\\
+
+```json
+[{
+  /* Agent information */
+  "id": 1,
+  "gid": 0,
+  "name": "Postgres Enterprise Manager Host"
+  "version": "9.3.0",
+  "active": True,
+  "heartbeat_int": 30,
+  "alert_blackout": False,
+  "owner": "postgres",
+  "team": None,
+
+  /* Deatils about the Host, on which it is installed */
+  "operating_sys": "Ubuntu 12.04.5 LTS",
+  "host_name": "edb-ubuntu",
+  "boot_time": "2016-09-19 12:28:27+05:30",
+   "domain_name": "(none)",
+   "window_domain": None,
+
+  /* Agent capabilities */
+  "capability_list": "unix, getloadavg, disk_space, memory_usage, cpu_usage, network_statistics, io_analysis, data_log_file_analysis, disk_busy_info, 
+os_statistics, os_info, slony_replication, auto_discover_servers, allow_server_restart",
+
+  /* Monitored servers */
+  "server_bind": "Postgres Enterprise Manager Server, PostgreSQL 11, PostgreSQL 12"
+}]
+
+```
+
+a
+
+#### Properties
+
+| Name                | Type      | Required | Restrictions | Description                                                                                                                                                                                  |
+| ------------------- | --------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                  | integer   | true     | none         | Identity of the pem-agent                                                                                                                                                                    |
+| name                | string    | true     | none         | Description (name) of the agent.                                                                                                                                                             |
+| version             | string    | true     | none         | Version of the pem-agent                                                                                                                                                                     |
+| active              | boolean   | true     | none         | Determines whether the agent is active.<br/>An active agent is responsible for collecting the statistics for the host and the monitored server.                                              |
+| heartbeat\_int      | integer   | true     | none         | heartbeat interval (in seconds) for the agent.<br/>Specifies how frequently the agent sends the heartbeat status to the PEM database server about itself and the monitoring database server. |
+| alert\_blackout     | boolean   | true     | none         | Determines whether the alert is blacked out for the agent.                                                                                                                                   |
+| owner               | string    | true     | none         | Username of user who installed the agent. This user is called the owner.                                                                                                                     |
+| team                | string    | true     | none         | Name of the role/user who can see this agent.<br/>A null/empty value indicates all users can see this agent.                                                                                 |
+| gid                 | integer   | false    | none         | Identity of the group                                                                                                                                                                        |
+| ignore\_mnt\_points | \[string] | false    | none         | Used to ignore the mount point for disk usage calculation                                                                                                                                    |
+
+<span id="tocs_server"></span>
+
+## Server
+
+<a id="schemaserver"></a> <a id="schema_Server"></a> <a id="tocSserver"></a> <a id="tocsserver"></a>
+
+```json
+{
+  "id": 0,
+  "name": "string",
+  "host": "string",
+  "port": 0,
+  "database": "string",
+  "ssl": 0,
+  "serviceid": "string",
+  "active": true,
+  "alert_blackout": true,
+  "owner": 0,
+  "team": "string",
+  "server_owner": "string",
+  "is_remote_monitoring": true,
+  "efm_cluster_name": "string",
+  "efm_service_name": "string",
+  "efm_installation_path": "string",
+  "comment": "string",
+  "username": "string",
+  "gid": 0,
+  "db_restriction": "string",
+  "role": "string",
+  "is_edb": true,
+  "agent_id": 0,
+  "asb_host": "string",
+  "asb_port": 0,
+  "asb_username": "string",
+  "asb_database": "string",
+  "asb_sslmode": "prefer",
+  "asb_password": "string",
+  "agent_allowtakeover": false,
+  "agent_capability_list": [
+    "string"
+  ],
+  "agent_description": "string",
+  "fgcolor": "#000000",
+  "bgcolor": "#FFFFFF",
+  "sslcompression": false,
+  "use_ssh_tunnel": false,
+  "tunnel_host": "string",
+  "tunnel_port": 22,
+  "tunnel_username": "string",
+  "tunnel_password": "string",
+  "tunnel_authentication": false,
+  "tunnel_identity_file": "string"
+}
+
+```
+
+#### Properties
+
+| Name                    | Type      | Required | Restrictions | Description                                                                                                                                             |
+| ----------------------- | --------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                      | integer   | false    | none         | Server ID.NOTE: This property is not applicable for a POST request.                                                                                     |
+| name                    | string    | false    | none         | Server name                                                                                                                                             |
+| host                    | string    | false    | none         | Server host                                                                                                                                             |
+| port                    | integer   | false    | none         | Server port                                                                                                                                             |
+| database                | string    | false    | none         | Maintenance databse                                                                                                                                     |
+| ssl                     | integer   | false    | none         | SSL mode                                                                                                                                                |
+| serviceid               | string    | false    | none         | Server service ID                                                                                                                                       |
+| active                  | boolean   | false    | none         | Determines whether the server is active.                                                                                                                |
+| alert\_blackout         | boolean   | false    | none         | Determines whether the alerts on the server are blacked out.                                                                                            |
+| owner                   | integer   | false    | none         | ID of the owner who registered the server with PEM.                                                                                                     |
+| team                    | string    | false    | none         | Defines the role/username who can see server information.                                                                                               |
+| server\_owner           | string    | false    | none         | Name of the user who registered the server on the PEM database server.                                                                                  |
+| is\_remote\_monitoring  | boolean   | false    | none         | Determines whether this server is being monitored remotely (that is, the monitoring pemAgent does not reside on the same host as the monitored server). |
+| efm\_cluster\_name      | string    | false    | none         | Cluster name of EFM                                                                                                                                     |
+| efm\_service\_name      | string    | false    | none         | Service name of EFM                                                                                                                                     |
+| efm\_installation\_path | string    | false    | none         | Installation path of EFM                                                                                                                                |
+| comment                 | string    | false    | none         | Description of the server                                                                                                                               |
+| username                | string    | false    | none         | Username for connecting the database server                                                                                                             |
+| gid                     | integer   | false    | none         | ID of the server group                                                                                                                                  |
+| db\_restriction         | string    | false    | none         | Database restriction SQL clause                                                                                                                         |
+| role                    | string    | false    | none         | The role the connection will use                                                                                                                        |
+| is\_edb                 | boolean   | false    | none         | Is server an EDB Advanced Server?                                                                                                                       |
+| agent\_id               | integer   | false    | none         | Agent ID bound to the server                                                                                                                            |
+| asb\_host               | string    | false    | none         | PEM database host used by agent while creating PEM connection                                                                                           |
+| asb\_port               | integer   | false    | none         | PEM database port used by agent while creating PEM connection                                                                                           |
+| asb\_username           | string    | false    | none         | PEM database user name used by agent while creating PEM connection                                                                                      |
+| asb\_database           | string    | false    | none         | PEM database to which agent will connect                                                                                                                |
+| asb\_sslmode            | string    | false    | none         | PEM database SSL mode                                                                                                                                   |
+| asb\_password           | string    | false    | none         | empty string                                                                                                                                            |
+| agent\_allowtakeover    | boolean   | false    | none         | Specifies whether the server can be taken over by another agent.                                                                                        |
+| agent\_capability\_list | \[string] | false    | none         | Array of agent capabilities                                                                                                                             |
+| agent\_description      | string    | false    | none         | Agent description                                                                                                                                       |
+| fgcolor                 | string    | false    | none         | Foreground color of server node in browser tree. Default is black( #000000)                                                                             |
+| bgcolor                 | string    | false    | none         | Background color of server node in browser tree. Default is white( #FFFFFF)                                                                             |
+| sslcompression          | boolean   | false    | none         | Determines whether data sent over SSL should be compressed.                                                                                             |
+| use\_ssh\_tunnel        | boolean   | false    | none         | Determines whether to use ssh tunnel.                                                                                                                   |
+| tunnel\_host            | string    | false    | none         | Tunnel host name                                                                                                                                        |
+| tunnel\_port            | integer   | false    | none         | Tunnel port number                                                                                                                                      |
+| tunnel\_username        | string    | false    | none         | Tunnel username                                                                                                                                         |
+| tunnel\_password        | string    | false    | none         | Tunnel password                                                                                                                                         |
+| tunnel\_authentication  | boolean   | false    | none         | Determines whether to use tunnel authentication.                                                                                                        |
+| tunnel\_identity\_file  | string    | false    | none         | Tunnel identity file used for authentication.                                                                                                           |
+
+##### Enumerated Values
+
+| Property     | Value       |
+| ------------ | ----------- |
+| asb\_sslmode | prefer      |
+| asb\_sslmode | allow       |
+| asb\_sslmode | disable     |
+| asb\_sslmode | require     |
+| asb\_sslmode | verify-ca   |
+| asb\_sslmode | verify-full |
+
+<span id="tocs_servergroupbody"></span>
+
+## ServerGroupBody
+
+<a id="schemaservergroupbody"></a> <a id="schema_ServerGroupBody"></a> <a id="tocSservergroupbody"></a> <a id="tocsservergroupbody"></a>
+
+```json
+{
+  "name": "string"
+}
+
+```
+
+#### Properties
+
+| Name | Type   | Required | Restrictions | Description       |
+| ---- | ------ | -------- | ------------ | ----------------- |
+| name | string | false    | none         | Server group name |
+
+<span id="tocs_servergroupbodyget"></span>
+
+## ServerGroupBodyGet
+
+<a id="schemaservergroupbodyget"></a> <a id="schema_ServerGroupBodyGet"></a> <a id="tocSservergroupbodyget"></a> <a id="tocsservergroupbodyget"></a>
+
+```json
+{
+  "id": 0,
+  "name": "string",
+  "hidden": true
+}
+
+```
+
+#### Properties
+
+| Name   | Type    | Required | Restrictions | Description                               |
+| ------ | ------- | -------- | ------------ | ----------------------------------------- |
+| id     | integer | false    | none         | Server group id                           |
+| name   | string  | false    | none         | Server group name                         |
+| hidden | boolean | false    | none         | Determines whether Server group is hidden |
+
+<span id="tocs_serverbody"></span>
+
+## ServerBody
+
+<a id="schemaserverbody"></a> <a id="schema_ServerBody"></a> <a id="tocSserverbody"></a> <a id="tocsserverbody"></a>
+
+```json
+{
+  "name": "string",
+  "host": "string",
+  "port": 0,
+  "database": "string",
+  "ssl": 0,
+  "serviceid": "string",
+  "alert_blackout": true,
+  "team": "string",
+  "is_remote_monitoring": true,
+  "efm_cluster_name": "string",
+  "efm_service_name": "string",
+  "efm_installation_path": "string",
+  "comment": "string",
+  "username": "string",
+  "gid": 0,
+  "hostaddr": "string",
+  "db_restriction": "string",
+  "role": "string",
+  "agent_id": 0,
+  "asb_host": "string",
+  "asb_port": 0,
+  "asb_username": "string",
+  "asb_database": "string",
+  "asb_sslmode": "prefer",
+  "asb_password": "string",
+  "agent_allowtakeover": false,
+  "fgcolor": "#000000",
+  "bgcolor": "#FFFFFF",
+  "sslcompression": false,
+  "use_ssh_tunnel": false,
+  "tunnel_host": "string",
+  "tunnel_port": 22,
+  "tunnel_username": "string",
+  "tunnel_password": "string",
+  "tunnel_authentication": false,
+  "tunnel_identity_file": "string"
+}
+
+```
+
+#### Properties
+
+| Name                    | Type    | Required | Restrictions | Description                                                                                                                                             |
+| ----------------------- | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                    | string  | false    | none         | Server name                                                                                                                                             |
+| host                    | string  | false    | none         | Server host name or address                                                                                                                             |
+| port                    | integer | false    | none         | Server port                                                                                                                                             |
+| database                | string  | false    | none         | Maintenance databse                                                                                                                                     |
+| ssl                     | integer | false    | none         | SSL mode                                                                                                                                                |
+| serviceid               | string  | false    | none         | Server service ID                                                                                                                                       |
+| alert\_blackout         | boolean | false    | none         | Determines whether the alerts on the server are blacked out.                                                                                            |
+| team                    | string  | false    | none         | Defines the role/username who can see server information.                                                                                               |
+| is\_remote\_monitoring  | boolean | false    | none         | Determines whether this server is being monitored remotely (that is, the monitoring pemAgent does not reside on the same host as the monitored server). |
+| efm\_cluster\_name      | string  | false    | none         | Cluster name of EFM                                                                                                                                     |
+| efm\_service\_name      | string  | false    | none         | Service name of EFM                                                                                                                                     |
+| efm\_installation\_path | string  | false    | none         | Installation path of EFM                                                                                                                                |
+| comment                 | string  | false    | none         | Description of the server                                                                                                                               |
+| username                | string  | false    | none         | Username for connecting the database server                                                                                                             |
+| gid                     | integer | false    | none         | ID of the server group                                                                                                                                  |
+| hostaddr                | string  | false    | none         | Server host address                                                                                                                                     |
+| db\_restriction         | string  | false    | none         | Database restriction SQL clause                                                                                                                         |
+| role                    | string  | false    | none         | The role the connection will use                                                                                                                        |
+| agent\_id               | integer | false    | none         | Agent ID bound to the server                                                                                                                            |
+| asb\_host               | string  | false    | none         | PEM database host used by agent while creating PEM connection                                                                                           |
+| asb\_port               | integer | false    | none         | PEM database port used by agent while creating PEM connection                                                                                           |
+| asb\_username           | string  | false    | none         | PEM database user name used by agent while creating PEM connection                                                                                      |
+| asb\_database           | string  | false    | none         | PEM database to which agent will connect                                                                                                                |
+| asb\_sslmode            | string  | false    | none         | PEM database SSL mode                                                                                                                                   |
+| asb\_password           | string  | false    | none         | empty string                                                                                                                                            |
+| agent\_allowtakeover    | boolean | false    | none         | Specifies whether the server can be taken over by another agent.                                                                                        |
+| fgcolor                 | string  | false    | none         | Foreground color of server node in browser tree. Default is black( #000000)                                                                             |
+| bgcolor                 | string  | false    | none         | Background color of server node in browser tree. Default is white( #FFFFFF)                                                                             |
+| sslcompression          | boolean | false    | none         | Determines whether data sent over SSL should be compressed.                                                                                             |
+| use\_ssh\_tunnel        | boolean | false    | none         | Determines whether to use ssh tunnel.                                                                                                                   |
+| tunnel\_host            | string  | false    | none         | Tunnel host name                                                                                                                                        |
+| tunnel\_port            | integer | false    | none         | Tunnel port number                                                                                                                                      |
+| tunnel\_username        | string  | false    | none         | Tunnel username                                                                                                                                         |
+| tunnel\_password        | string  | false    | none         | Tunnel password                                                                                                                                         |
+| tunnel\_authentication  | boolean | false    | none         | Determines whether to use tunnel authentication.                                                                                                        |
+| tunnel\_identity\_file  | string  | false    | none         | Tunnel identity file used for authentication.                                                                                                           |
+
+##### Enumerated Values
+
+| Property     | Value       |
+| ------------ | ----------- |
+| asb\_sslmode | prefer      |
+| asb\_sslmode | allow       |
+| asb\_sslmode | disable     |
+| asb\_sslmode | require     |
+| asb\_sslmode | verify-ca   |
+| asb\_sslmode | verify-full |
+
+<span id="tocs_agentbody"></span>
+
+## AgentBody
+
+<a id="schemaagentbody"></a> <a id="schema_AgentBody"></a> <a id="tocSagentbody"></a> <a id="tocsagentbody"></a>
+
+```json
+{
+  "name": "string",
+  "heartbeat_int": 0,
+  "alert_blackout": true,
+  "team": "string",
+  "gid": 0,
+  "ignore_mnt_points": [
+    "string"
+  ]
+}
+
+```
+
+Returns the list of objects, which contains agent information, version, capabilities, and details about the host on which the agent has been installed.
+
+**For example:**<br />\\
+
+```json
+[{
+  /* Agent information */
+  "id": 1,
+  "gid": 0,
+  "name": "Postgres Enterprise Manager Host"
+  "version": "9.3.0",
+  "active": True,
+  "heartbeat_int": 30,
+  "alert_blackout": False,
+  "owner": "postgres",
+  "team": None,
+
+  /* Deatils about the Host, on which it is installed */
+  "operating_sys": "Ubuntu 12.04.5 LTS",
+  "host_name": "edb-ubuntu",
+  "boot_time": "2016-09-19 12:28:27+05:30",
+   "domain_name": "(none)",
+   "window_domain": None,
+
+  /* Agent capabilities */
+  "capability_list": "unix, getloadavg, disk_space, memory_usage, cpu_usage, network_statistics, io_analysis, data_log_file_analysis, disk_busy_info, 
+os_statistics, os_info, slony_replication, auto_discover_servers, allow_server_restart",
+
+  /* Monitored servers */
+  "server_bind": "Postgres Enterprise Manager Server, PostgreSQL 11, PostgreSQL 12"
+}]
+
+```
+
+a
+
+#### Properties
+
+| Name                | Type      | Required | Restrictions | Description                                                                                                                                                                                  |
+| ------------------- | --------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                | string    | false    | none         | Description (name) of the agent.                                                                                                                                                             |
+| heartbeat\_int      | integer   | false    | none         | heartbeat interval (in seconds) for the agent.<br/>Specifies how frequently the agent sends the heartbeat status to the PEM database server about itself and the monitoring database server. |
+| alert\_blackout     | boolean   | false    | none         | Determines whether the alert is blacked out for the agent.                                                                                                                                   |
+| team                | string    | false    | none         | Name of the role/user who can see this agent.<br/>A null/empty value indicates all users can see this agent.                                                                                 |
+| gid                 | integer   | false    | none         | Identity of the group                                                                                                                                                                        |
+| ignore\_mnt\_points | \[string] | false    | none         | Used to ignore the mount point for disk usage calculation                                                                                                                                    |
+
+<span id="tocs_agentjobbodyget"></span>
+
+## AgentJobBodyGet
+
+<a id="schemaagentjobbodyget"></a> <a id="schema_AgentJobBodyGet"></a> <a id="tocSagentjobbodyget"></a> <a id="tocsagentjobbodyget"></a>
+
+```json
+{
+  "jobname": "string",
+  "jobenabled": true,
+  "jobdesc": "string"
+}
+
+```
+
+#### Properties
+
+| Name       | Type    | Required | Restrictions | Description                                        |
+| ---------- | ------- | -------- | ------------ | -------------------------------------------------- |
+| jobname    | string  | false    | none         | Name of the job.                                   |
+| jobenabled | boolean | false    | none         | Determines whether the job is enabled or disabled. |
+| jobdesc    | string  | false    | none         | Description of the job.                            |
+
+<span id="tocs_agentjobbody"></span>
+
+## AgentJobBody
+
+<a id="schemaagentjobbody"></a> <a id="schema_AgentJobBody"></a> <a id="tocSagentjobbody"></a> <a id="tocsagentjobbody"></a>
+
+```json
+{
+  "jobname": "string",
+  "jobenabled": true,
+  "jobdesc": "string",
+  "jsteps": [],
+  "jschedules": [
+    {
+      "jscid": 0,
+      "jscjobid": 0,
+      "jscname": "string",
+      "jscdesc": "string",
+      "jscenabled": true,
+      "jscstart": "2019-08-24T14:15:22Z",
+      "jscend": "2019-08-24T14:15:22Z",
+      "jscweekdays": [
+        true
+      ],
+      "jscmonthdays": [
+        true
+      ],
+      "jscmonths": [
+        true
+      ],
+      "jschours": [
+        true
+      ],
+      "jscminutes": [
+        true
+      ],
+      "jscexceptions": [
+        null
+      ],
+      "jsctimezone": "string"
+    }
+  ],
+  "notify": "string",
+  "email_group_id": "string"
+}
+
+```
+
+#### Properties
+
+| Name             | Type              | Required | Restrictions | Description                                                                                                                                                                             |
+| ---------------- | ----------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| jobname          | string            | false    | none         | Name of the job.                                                                                                                                                                        |
+| jobenabled       | boolean           | false    | none         | Determines whether the job is enabled or disabled.                                                                                                                                      |
+| jobdesc          | string            | false    | none         | Description of the job.                                                                                                                                                                 |
+| jsteps           | \[object]         | false    | none         | List of steps for the job.                                                                                                                                                              |
+| » jstid          | integer           | false    | none         | ID of the step.                                                                                                                                                                         |
+| » jstjobid       | integer           | false    | none         | ID of the job associated with the step.                                                                                                                                                 |
+| » jstname        | string            | false    | none         | Name of the step.                                                                                                                                                                       |
+| » jstdesc        | string            | false    | none         | Description of the step.                                                                                                                                                                |
+| » jstenabled     | boolean           | false    | none         | Determines whether the step is enabled or disabled.                                                                                                                                     |
+| » jstkind        | boolean           | false    | none         | Determines the kind of the step. True for SQL step, False for Batch step.                                                                                                               |
+| » jstcode        | string            | false    | none         | Code or script for the step.                                                                                                                                                            |
+| » server\_id     | integer           | false    | none         | ID of the server associated with the step.                                                                                                                                              |
+| » database\_name | string            | false    | none         | Name of the database associated with the step.                                                                                                                                          |
+| » jstonerror     | string            | false    | none         | Specifies the behavior of agent if it encounters an error while executing the step('Fail', 'Success', 'Ignore').                                                                        |
+| jschedules       | \[object]         | false    | none         | List of schedules for the job.                                                                                                                                                          |
+| » jscid          | integer¦null      | false    | none         | ID of the schedule.                                                                                                                                                                     |
+| » jscjobid       | integer¦null      | false    | none         | ID of the job associated with the schedule.                                                                                                                                             |
+| » jscname        | string            | false    | none         | Name of the schedule.                                                                                                                                                                   |
+| » jscdesc        | string            | false    | none         | Description of the schedule.                                                                                                                                                            |
+| » jscenabled     | boolean           | false    | none         | Determines whether the schedule is enabled or disabled.                                                                                                                                 |
+| » jscstart       | string(date-time) | false    | none         | Start date and time of the schedule.                                                                                                                                                    |
+| » jscend         | string(date-time) | false    | none         | End date and time of the schedule.                                                                                                                                                      |
+| » jscweekdays    | \[boolean]        | false    | none         | 7-element boolean array for days of the week. Index 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday. true at an index means the schedule runs on that day. |
+| » jscmonthdays   | \[boolean]        | false    | none         | 32-element boolean array for days of the month. Index 0=1st, index 30=31st, index 31=last day of month. true at an index means the schedule runs on that day.                           |
+| » jscmonths      | \[boolean]        | false    | none         | 12-element boolean array for months. Index 0=January, 1=February, ..., 11=December. true at an index means the schedule runs in that month.                                             |
+| » jschours       | \[boolean]        | false    | none         | 24-element boolean array for hours of the day (0-23). Index 0=midnight, index 12=noon, index 23=11PM. true at an index means the schedule runs at that hour.                            |
+| » jscminutes     | \[boolean]        | false    | none         | 60-element boolean array for minutes of the hour (0-59). true at an index means the schedule runs at that minute.                                                                       |
+| » jscexceptions  | \[any]            | false    | none         | List of exceptions for the schedule.                                                                                                                                                    |
+| » jsctimezone    | string            | false    | none         | Timezone of the schedule.                                                                                                                                                               |
+| notify           | string            | false    | none         | Notification setting for the job.                                                                                                                                                       |
+| email\_group\_id | string            | false    | none         | ID of the email group for notifications.                                                                                                                                                |
+
+<span id="tocs_agentjobbodyput"></span>
+
+## AgentJobBodyPut
+
+<a id="schemaagentjobbodyput"></a> <a id="schema_AgentJobBodyPut"></a> <a id="tocSagentjobbodyput"></a> <a id="tocsagentjobbodyput"></a>
+
+```json
+{
+  "jobname": "string",
+  "jobenabled": true,
+  "jobdesc": "string",
+  "jsteps": {
+    "added": [
+      {
+        "jstname": "string",
+        "jstdesc": "string",
+        "jstenabled": true,
+        "jstkind": true,
+        "jstcode": "string",
+        "server_id": 0,
+        "database_name": "string",
+        "jstonerror": "f"
+      }
+    ],
+    "changed": [
+      {
+        "jstid": 0,
+        "jstname": "string",
+        "jstdesc": "string",
+        "jstenabled": true,
+        "jstkind": true,
+        "jstcode": "string",
+        "server_id": 0,
+        "database_name": "string",
+        "jstonerror": "f",
+        "jstnextrun": "string"
+      }
+    ]
+  },
+  "jschedules": {
+    "added": [
+      {
+        "jscname": "string",
+        "jscdesc": "string",
+        "jscenabled": true,
+        "jscstart": "2023-10-09 22:43 +05:30",
+        "jscend": "2023-10-11 22:43 +05:30",
+        "jscweekdays": "Monday",
+        "jscmonthdays": 1,
+        "jscmonths": "January",
+        "jschours": [
+          16
+        ],
+        "jscminutes": [
+          0,
+          30
+        ],
+        "jscexceptions": [
+          {
+            "jexdate": "2023-10-19",
+            "jextime": "09:39:00"
+          }
+        ],
+        "jsctimezone": "America/New_York"
+      }
+    ],
+    "changed": [
+      {
+        "jscid": 0,
+        "jscname": "string",
+        "jscdesc": "string",
+        "jscenabled": true,
+        "jscstart": "2023-10-09 22:43 +05:30",
+        "jscend": "2023-10-11 22:43 +05:30",
+        "jscweekdays": "Monday",
+        "jscmonthdays": 1,
+        "jscmonths": "January",
+        "jschours": [
+          16
+        ],
+        "jscminutes": [
+          0,
+          30
+        ],
+        "jscexceptions": [
+          {
+            "jexdate": "2023-10-19",
+            "jextime": "09:39:00"
+          }
+        ],
+        "jsctimezone": "America/New_York"
+      }
+    ]
+  },
+  "notify": "DEFAULT",
+  "email_group_id": "string"
+}
+
+```
+
+#### Properties
+
+| Name              | Type         | Required | Restrictions | Description                                                                                                                                                                            |
+| ----------------- | ------------ | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| jobname           | string       | false    | none         | Name of the job.                                                                                                                                                                       |
+| jobenabled        | boolean      | false    | none         | Determines whether the job is enabled or disabled.                                                                                                                                     |
+| jobdesc           | string       | false    | none         | Description of the job.                                                                                                                                                                |
+| jsteps            | object       | false    | none         | none                                                                                                                                                                                   |
+| » added           | \[object]    | false    | none         | List of added steps.                                                                                                                                                                   |
+| »» jstname        | string       | false    | none         | Name of the step.                                                                                                                                                                      |
+| »» jstdesc        | string       | false    | none         | Description of the step.                                                                                                                                                               |
+| »» jstenabled     | boolean      | false    | none         | Determines whether the step is enabled or disabled.                                                                                                                                    |
+| »» jstkind        | boolean      | false    | none         | Determines the kind of the step. True for SQL step, False for Batch step.                                                                                                              |
+| »» jstcode        | string       | false    | none         | Code or script for the step.                                                                                                                                                           |
+| »» server\_id     | integer      | false    | none         | ID of the server associated with the step.                                                                                                                                             |
+| »» database\_name | string       | false    | none         | Name of the database associated with the step.                                                                                                                                         |
+| »» jstonerror     | string       | false    | none         | Specifies the behavior of agent if it encounters an error while executing the step('Fail', 'Success', 'Ignore').                                                                       |
+| » changed         | \[object]    | false    | none         | List of changed steps.                                                                                                                                                                 |
+| »» jstid          | integer      | false    | none         | ID of the step.                                                                                                                                                                        |
+| »» jstname        | string       | false    | none         | Name of the step.                                                                                                                                                                      |
+| »» jstdesc        | string       | false    | none         | Description of the step.                                                                                                                                                               |
+| »» jstenabled     | boolean      | false    | none         | Determines whether the step is enabled or disabled.                                                                                                                                    |
+| »» jstkind        | boolean      | false    | none         | Determines the kind of the step. True for SQL step, False for Batch step.                                                                                                              |
+| »» jstcode        | string       | false    | none         | Code or script for the step.                                                                                                                                                           |
+| »» server\_id     | integer      | false    | none         | ID of the server associated with the step.                                                                                                                                             |
+| »» database\_name | string       | false    | none         | Name of the database associated with the step.                                                                                                                                         |
+| »» jstonerror     | string       | false    | none         | Specifies the behavior of agent if it encounters an error while executing the step('Fail', 'Success', 'Ignore').                                                                       |
+| »» jstnextrun     | string       | false    | none         | none                                                                                                                                                                                   |
+| jschedules        | object       | false    | none         | none                                                                                                                                                                                   |
+| » added           | \[object]    | false    | none         | List of added schedules.                                                                                                                                                               |
+| »» jscname        | string       | false    | none         | Name of the schedule.                                                                                                                                                                  |
+| »» jscdesc        | string       | false    | none         | Description of the schedule.                                                                                                                                                           |
+| »» jscenabled     | boolean      | false    | none         | Determines whether the schedule is enabled or disabled.                                                                                                                                |
+| »» jscstart       | string       | false    | none         | Start date and time of the schedule(YYYY-MM-DD HH:mm ±HH:mm).                                                                                                                          |
+| »» jscend         | string       | false    | none         | End date and time of the schedule(YYYY-MM-DD HH:mm ±HH:mm).                                                                                                                            |
+| »» jscweekdays    | \[any]       | false    | none         | Array of weekday names on which the schedule should run. Each element must be one of: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.                                  |
+| »» jscmonthdays   | \[any]       | false    | none         | List of month days for the schedule.Note: Here,'32' represents Last Day of the Month                                                                                                   |
+| »» jscmonths      | \[any]       | false    | none         | Array of month names indicating when the schedule runs. Each element must be one of: January, February, March, April, May, June, July, August, September, October, November, December. |
+| »» jschours       | \[any]       | false    | none         | Array of hours (0-23) when the schedule should run. 0=midnight, 12=noon, 23=11PM. Pass only the hours you want.                                                                        |
+| »» jscminutes     | \[any]       | false    | none         | Array of minutes (0-59) when the schedule should run. Pass only the minutes you want.                                                                                                  |
+| »» jscexceptions  | \[object]    | false    | none         | List of exceptions for the schedule.                                                                                                                                                   |
+| »»» jexdate       | string(date) | false    | none         | Date of the schedule exception.                                                                                                                                                        |
+| »»» jextime       | string(time) | false    | none         | Time of the schedule exception.                                                                                                                                                        |
+| »» jsctimezone    | string       | false    | none         | Timezone of the schedule. Use standard IANA timezone names.                                                                                                                            |
+| » changed         | \[object]    | false    | none         | List of changed schedules.                                                                                                                                                             |
+| »» jscid          | integer¦null | false    | none         | ID of the schedule.                                                                                                                                                                    |
+| »» jscname        | string       | false    | none         | Name of the schedule.                                                                                                                                                                  |
+| »» jscdesc        | string       | false    | none         | Description of the schedule.                                                                                                                                                           |
+| »» jscenabled     | boolean      | false    | none         | Determines whether the schedule is enabled or disabled.                                                                                                                                |
+| »» jscstart       | string       | false    | none         | Start date and time of the schedule(YYYY-MM-DD HH:mm ±HH:mm).                                                                                                                          |
+| »» jscend         | string       | false    | none         | End date and time of the schedule(YYYY-MM-DD HH:mm ±HH:mm).                                                                                                                            |
+| »» jscweekdays    | \[any]       | false    | none         | Array of weekday names on which the schedule should run. Each element must be one of: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.                                  |
+| »» jscmonthdays   | \[any]       | false    | none         | List of month days for the schedule.Note: Here,'32' represents Last Day of the Month                                                                                                   |
+| »» jscmonths      | \[any]       | false    | none         | Array of month names indicating when the schedule runs. Each element must be one of: January, February, March, April, May, June, July, August, September, October, November, December. |
+| »» jschours       | \[any]       | false    | none         | Array of hours (0-23) when the schedule should run. 0=midnight, 12=noon, 23=11PM. Pass only the hours you want.                                                                        |
+| »» jscminutes     | \[any]       | false    | none         | Array of minutes (0-59) when the schedule should run. Pass only the minutes you want.                                                                                                  |
+| »» jscexceptions  | \[object]    | false    | none         | List of exceptions for the schedule.                                                                                                                                                   |
+| »»» jexdate       | string(date) | false    | none         | Date of the schedule exception.                                                                                                                                                        |
+| »»» jextime       | string(time) | false    | none         | Time of the schedule exception.                                                                                                                                                        |
+| »» jsctimezone    | string       | false    | none         | Timezone of the schedule. Use standard IANA timezone names.                                                                                                                            |
+| notify            | string       | false    | none         | Notification setting for the job.                                                                                                                                                      |
+| email\_group\_id  | string       | false    | none         | ID of the email group for notifications.                                                                                                                                               |
+
+##### Enumerated Values
+
+| Property     | Value       |
+| ------------ | ----------- |
+| jstonerror   | f           |
+| jstonerror   | s           |
+| jstonerror   | i           |
+| jstonerror   | f           |
+| jstonerror   | s           |
+| jstonerror   | i           |
+| jscweekdays  | Monday      |
+| jscweekdays  | Tuesday     |
+| jscweekdays  | Wednesday   |
+| jscweekdays  | Thursday    |
+| jscweekdays  | Friday      |
+| jscweekdays  | Saturday    |
+| jscweekdays  | Sunday      |
+| jscmonthdays | 1           |
+| jscmonthdays | 2           |
+| jscmonthdays | 3           |
+| jscmonthdays | 4           |
+| jscmonthdays | 5           |
+| jscmonthdays | 6           |
+| jscmonthdays | 7           |
+| jscmonthdays | 8           |
+| jscmonthdays | 9           |
+| jscmonthdays | 10          |
+| jscmonthdays | 11          |
+| jscmonthdays | 12          |
+| jscmonthdays | 13          |
+| jscmonthdays | 14          |
+| jscmonthdays | 15          |
+| jscmonthdays | 16          |
+| jscmonthdays | 17          |
+| jscmonthdays | 18          |
+| jscmonthdays | 19          |
+| jscmonthdays | 20          |
+| jscmonthdays | 21          |
+| jscmonthdays | 22          |
+| jscmonthdays | 23          |
+| jscmonthdays | 24          |
+| jscmonthdays | 25          |
+| jscmonthdays | 26          |
+| jscmonthdays | 27          |
+| jscmonthdays | 28          |
+| jscmonthdays | 29          |
+| jscmonthdays | 30          |
+| jscmonthdays | 31          |
+| jscmonthdays | 32          |
+| jscmonths    | January     |
+| jscmonths    | February    |
+| jscmonths    | March       |
+| jscmonths    | April       |
+| jscmonths    | May         |
+| jscmonths    | June        |
+| jscmonths    | July        |
+| jscmonths    | August      |
+| jscmonths    | September   |
+| jscmonths    | October     |
+| jscmonths    | November    |
+| jscmonths    | December    |
+| jscweekdays  | Monday      |
+| jscweekdays  | Tuesday     |
+| jscweekdays  | Wednesday   |
+| jscweekdays  | Thursday    |
+| jscweekdays  | Friday      |
+| jscweekdays  | Saturday    |
+| jscweekdays  | Sunday      |
+| jscmonthdays | 1           |
+| jscmonthdays | 2           |
+| jscmonthdays | 3           |
+| jscmonthdays | 4           |
+| jscmonthdays | 5           |
+| jscmonthdays | 6           |
+| jscmonthdays | 7           |
+| jscmonthdays | 8           |
+| jscmonthdays | 9           |
+| jscmonthdays | 10          |
+| jscmonthdays | 11          |
+| jscmonthdays | 12          |
+| jscmonthdays | 13          |
+| jscmonthdays | 14          |
+| jscmonthdays | 15          |
+| jscmonthdays | 16          |
+| jscmonthdays | 17          |
+| jscmonthdays | 18          |
+| jscmonthdays | 19          |
+| jscmonthdays | 20          |
+| jscmonthdays | 21          |
+| jscmonthdays | 22          |
+| jscmonthdays | 23          |
+| jscmonthdays | 24          |
+| jscmonthdays | 25          |
+| jscmonthdays | 26          |
+| jscmonthdays | 27          |
+| jscmonthdays | 28          |
+| jscmonthdays | 29          |
+| jscmonthdays | 30          |
+| jscmonthdays | 31          |
+| jscmonthdays | 32          |
+| jscmonths    | January     |
+| jscmonths    | February    |
+| jscmonths    | March       |
+| jscmonths    | April       |
+| jscmonths    | May         |
+| jscmonths    | June        |
+| jscmonths    | July        |
+| jscmonths    | August      |
+| jscmonths    | September   |
+| jscmonths    | October     |
+| jscmonths    | November    |
+| jscmonths    | December    |
+| notify       | DEFAULT     |
+| notify       | ON\_FAILURE |
+| notify       | ALWAYS      |
+| notify       | NEVER       |
+
+<span id="tocs_agentjobbodypost"></span>
+
+## AgentJobBodyPost
+
+<a id="schemaagentjobbodypost"></a> <a id="schema_AgentJobBodyPost"></a> <a id="tocSagentjobbodypost"></a> <a id="tocsagentjobbodypost"></a>
+
+```json
+{
+  "jobname": "string",
+  "jobenabled": true,
+  "jobdesc": "string",
+  "jsteps": [],
+  "jschedules": [
+    {
+      "jscname": "string",
+      "jscdesc": "string",
+      "jscenabled": true,
+      "jscstart": "2023-10-09 22:43 +05:30",
+      "jscend": "2023-10-11 22:43 +05:30",
+      "jscweekdays": "Monday",
+      "jscmonthdays": 1,
+      "jscmonths": "January",
+      "jschours": [
+        16
+      ],
+      "jscminutes": [
+        0,
+        30
+      ],
+      "jscexceptions": [
+        {
+          "jexdate": "2023-10-19",
+          "jextime": "09:39:00"
+        }
+      ],
+      "jsctimezone": "America/New_York"
+    }
+  ],
+  "notify": "DEFAULT",
+  "email_group_id": "string"
+}
+
+```
+
+#### Properties
+
+| Name             | Type         | Required | Restrictions | Description                                                                                                                                                                            |
+| ---------------- | ------------ | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| jobname          | string       | false    | none         | Name of the job.                                                                                                                                                                       |
+| jobenabled       | boolean      | false    | none         | Determines whether the job is enabled or disabled.                                                                                                                                     |
+| jobdesc          | string       | false    | none         | Description of the job.                                                                                                                                                                |
+| jsteps           | \[object]    | false    | none         | List of steps for the job.                                                                                                                                                             |
+| » jstname        | string       | false    | none         | Name of the step.                                                                                                                                                                      |
+| » jstdesc        | string       | false    | none         | Description of the step.                                                                                                                                                               |
+| » jstenabled     | boolean      | false    | none         | Determines whether the step is enabled or disabled.                                                                                                                                    |
+| » jstkind        | boolean      | false    | none         | Determines the kind of the step. True for SQL step, False for Batch step.                                                                                                              |
+| » jstcode        | string       | false    | none         | Code or script for the step.                                                                                                                                                           |
+| » server\_id     | integer      | false    | none         | ID of the server associated with the step.                                                                                                                                             |
+| » database\_name | string       | false    | none         | Name of the database associated with the step.                                                                                                                                         |
+| » jstonerror     | string       | false    | none         | Specifies the behavior of agent if it encounters an error while executing the step('Fail', 'Success', 'Ignore').                                                                       |
+| jschedules       | \[object]    | false    | none         | List of schedules for the job.                                                                                                                                                         |
+| » jscname        | string       | false    | none         | Name of the schedule.                                                                                                                                                                  |
+| » jscdesc        | string       | false    | none         | Description of the schedule.                                                                                                                                                           |
+| » jscenabled     | boolean      | false    | none         | Determines whether the schedule is enabled or disabled.                                                                                                                                |
+| » jscstart       | string       | false    | none         | Start date and time of the schedule(YYYY-MM-DD HH:mm ±HH:mm).                                                                                                                          |
+| » jscend         | string       | false    | none         | End date and time of the schedule(YYYY-MM-DD HH:mm ±HH:mm).                                                                                                                            |
+| » jscweekdays    | \[any]       | false    | none         | Array of weekday names on which the schedule should run. Each element must be one of: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.                                  |
+| » jscmonthdays   | \[any]       | false    | none         | List of month days for the schedule.Note: Here,'32' represents Last Day of the Month                                                                                                   |
+| » jscmonths      | \[any]       | false    | none         | Array of month names indicating when the schedule runs. Each element must be one of: January, February, March, April, May, June, July, August, September, October, November, December. |
+| » jschours       | \[any]       | false    | none         | Array of hours (0-23) when the schedule should run. 0=midnight, 12=noon, 23=11PM. Pass only the hours you want.                                                                        |
+| » jscminutes     | \[any]       | false    | none         | Array of minutes (0-59) when the schedule should run. Pass only the minutes you want.                                                                                                  |
+| » jscexceptions  | \[object]    | false    | none         | List of exceptions for the schedule.                                                                                                                                                   |
+| »» jexdate       | string(date) | false    | none         | Date of the schedule exception.                                                                                                                                                        |
+| »» jextime       | string(time) | false    | none         | Time of the schedule exception.                                                                                                                                                        |
+| » jsctimezone    | string       | false    | none         | Timezone of the schedule. Use standard IANA timezone names.                                                                                                                            |
+| notify           | string       | false    | none         | Notification setting for the job.                                                                                                                                                      |
+| email\_group\_id | string       | false    | none         | ID of the email group for notifications.                                                                                                                                               |
+
+##### Enumerated Values
+
+| Property     | Value       |
+| ------------ | ----------- |
+| jstonerror   | f           |
+| jstonerror   | s           |
+| jstonerror   | i           |
+| jscweekdays  | Monday      |
+| jscweekdays  | Tuesday     |
+| jscweekdays  | Wednesday   |
+| jscweekdays  | Thursday    |
+| jscweekdays  | Friday      |
+| jscweekdays  | Saturday    |
+| jscweekdays  | Sunday      |
+| jscmonthdays | 1           |
+| jscmonthdays | 2           |
+| jscmonthdays | 3           |
+| jscmonthdays | 4           |
+| jscmonthdays | 5           |
+| jscmonthdays | 6           |
+| jscmonthdays | 7           |
+| jscmonthdays | 8           |
+| jscmonthdays | 9           |
+| jscmonthdays | 10          |
+| jscmonthdays | 11          |
+| jscmonthdays | 12          |
+| jscmonthdays | 13          |
+| jscmonthdays | 14          |
+| jscmonthdays | 15          |
+| jscmonthdays | 16          |
+| jscmonthdays | 17          |
+| jscmonthdays | 18          |
+| jscmonthdays | 19          |
+| jscmonthdays | 20          |
+| jscmonthdays | 21          |
+| jscmonthdays | 22          |
+| jscmonthdays | 23          |
+| jscmonthdays | 24          |
+| jscmonthdays | 25          |
+| jscmonthdays | 26          |
+| jscmonthdays | 27          |
+| jscmonthdays | 28          |
+| jscmonthdays | 29          |
+| jscmonthdays | 30          |
+| jscmonthdays | 31          |
+| jscmonthdays | 32          |
+| jscmonths    | January     |
+| jscmonths    | February    |
+| jscmonths    | March       |
+| jscmonths    | April       |
+| jscmonths    | May         |
+| jscmonths    | June        |
+| jscmonths    | July        |
+| jscmonths    | August      |
+| jscmonths    | September   |
+| jscmonths    | October     |
+| jscmonths    | November    |
+| jscmonths    | December    |
+| notify       | DEFAULT     |
+| notify       | ON\_FAILURE |
+| notify       | ALWAYS      |
+| notify       | NEVER       |
+
+<span id="tocs_database"></span>
+
+## Database
+
+<a id="schemadatabase"></a> <a id="schema_Database"></a> <a id="tocSdatabase"></a> <a id="tocsdatabase"></a>
+
+```json
+{
+  "database_name": "string",
+  "connections_allowed": true,
+  "system_database": true,
+  "recorded_time": "2019-08-24T14:15:22Z",
+  "encoding": "string",
+  "server_id": 0
+}
+
+```
+
+#### Properties
+
+| Name                 | Type              | Required | Restrictions | Description                                                      |
+| -------------------- | ----------------- | -------- | ------------ | ---------------------------------------------------------------- |
+| database\_name       | string            | false    | none         | Database name                                                    |
+| connections\_allowed | boolean           | false    | none         | Determines whether a connection to the database is allowed.      |
+| system\_database     | boolean           | false    | none         | Determines whether the database is a system database.            |
+| recorded\_time       | string(date-time) | false    | none         | Specifies when the database was first detected by the PEM agent. |
+| encoding             | string            | false    | none         | Database encoding                                                |
+| server\_id           | integer           | false    | none         | Server ID of database                                            |
+
+<span id="tocs_schema"></span>
+
+## Schema
+
+<a id="schemaschema"></a> <a id="schema_Schema"></a> <a id="tocSschema"></a> <a id="tocsschema"></a>
+
+```json
+{
+  "schema_name": "string",
+  "database_name": "string",
+  "server_id": 0,
+  "recorded_time": "2019-08-24T14:15:22Z"
+}
+
+```
+
+#### Properties
+
+| Name           | Type              | Required | Restrictions | Description                                            |
+| -------------- | ----------------- | -------- | ------------ | ------------------------------------------------------ |
+| schema\_name   | string            | false    | none         | Schema name                                            |
+| database\_name | string            | false    | none         | Database name of schema                                |
+| server\_id     | integer           | false    | none         | Server ID schema                                       |
+| recorded\_time | string(date-time) | false    | none         | Specifies when schema was first detected by PEM agent. |
+
+<span id="tocs_table"></span>
+
+## Table
+
+<a id="schematable"></a> <a id="schema_Table"></a> <a id="tocStable"></a> <a id="tocstable"></a>
+
+```json
+{
+  "table_name": "string",
+  "schema_name": "string",
+  "database_name": "string",
+  "server_id": 0,
+  "has_primary_key": true,
+  "recorded_time": "string"
+}
+
+```
+
+#### Properties
+
+| Name              | Type    | Required | Restrictions | Description                                               |
+| ----------------- | ------- | -------- | ------------ | --------------------------------------------------------- |
+| table\_name       | string  | false    | none         | Table name                                                |
+| schema\_name      | string  | false    | none         | Schema name                                               |
+| database\_name    | string  | false    | none         | Database name                                             |
+| server\_id        | integer | false    | none         | Server ID                                                 |
+| has\_primary\_key | boolean | false    | none         | Determines whether table has a primary key.               |
+| recorded\_time    | string  | false    | none         | Specifies when table was first detected by the PEM agent. |
+
+<span id="tocs_index"></span>
+
+## Index
+
+<a id="schemaindex"></a> <a id="schema_Index"></a> <a id="tocSindex"></a> <a id="tocsindex"></a>
+
+```json
+{
+  "index_name": "string",
+  "ind_keys": [
+    0
+  ],
+  "table_name": "string",
+  "schema_name": "string",
+  "database_name": "string",
+  "server_id": 0,
+  "recorded_time": "string"
+}
+
+```
+
+#### Properties
+
+| Name           | Type       | Required | Restrictions | Description                                           |
+| -------------- | ---------- | -------- | ------------ | ----------------------------------------------------- |
+| index\_name    | string     | false    | none         | Index name                                            |
+| ind\_keys      | \[integer] | false    | none         | Indexed column positions in table                     |
+| table\_name    | string     | false    | none         | Table name                                            |
+| schema\_name   | string     | false    | none         | Schema                                                |
+| database\_name | string     | false    | none         | Database name                                         |
+| server\_id     | integer    | false    | none         | Server ID                                             |
+| recorded\_time | string     | false    | none         | Specifies when index was first detected by PEM agent. |
+
+<span id="tocs_sequence"></span>
+
+## Sequence
+
+<a id="schemasequence"></a> <a id="schema_Sequence"></a> <a id="tocSsequence"></a> <a id="tocssequence"></a>
+
+```json
+{
+  "sequence_name": "string",
+  "schema_name": "string",
+  "database_name": "string",
+  "server_id": 0,
+  "recorded_time": "2019-08-24T14:15:22Z"
+}
+
+```
+
+#### Properties
+
+| Name           | Type              | Required | Restrictions | Description                                              |
+| -------------- | ----------------- | -------- | ------------ | -------------------------------------------------------- |
+| sequence\_name | string            | false    | none         | Sequence name                                            |
+| schema\_name   | string            | false    | none         | Schema name                                              |
+| database\_name | string            | false    | none         | Database name                                            |
+| server\_id     | integer           | false    | none         | Server ID                                                |
+| recorded\_time | string(date-time) | false    | none         | Specifies when sequence was first detected by PEM agent. |
+
+<span id="tocs_function"></span>
+
+## Function
+
+<a id="schemafunction"></a> <a id="schema_Function"></a> <a id="tocSfunction"></a> <a id="tocsfunction"></a>
+
+```json
+{
+  "function_name": "string",
+  "function_type": "string",
+  "return_type": "string",
+  "arg_types": [
+    "string"
+  ],
+  "function_binary": "string",
+  "extension_name": "string",
+  "package_name": "string",
+  "schema_name": "string",
+  "database_name": "string",
+  "server_id": 0,
+  "recorded_time": "2019-08-24T14:15:22Z"
+}
+
+```
+
+#### Properties
+
+| Name             | Type              | Required | Restrictions | Description                                              |
+| ---------------- | ----------------- | -------- | ------------ | -------------------------------------------------------- |
+| function\_name   | string            | false    | none         | Function name                                            |
+| function\_type   | string            | false    | none         | Function type                                            |
+| return\_type     | string            | false    | none         | Function return type                                     |
+| arg\_types       | \[string]         | false    | none         | Function argument types                                  |
+| function\_binary | string            | false    | none         | none                                                     |
+| extension\_name  | string            | false    | none         | none                                                     |
+| package\_name    | string            | false    | none         | Function package name                                    |
+| schema\_name     | string            | false    | none         | Function schema                                          |
+| database\_name   | string            | false    | none         | Function database name                                   |
+| server\_id       | integer           | false    | none         | Function server id                                       |
+| recorded\_time   | string(date-time) | false    | none         | Specifies when function was first detected by PEM agent. |
+
+<span id="tocs_view"></span>
+
+## View
+
+<a id="schemaview"></a> <a id="schema_View"></a> <a id="tocSview"></a> <a id="tocsview"></a>
+
+```json
+{
+  "view_name": "string",
+  "view_type": "string",
+  "ispopulated": true,
+  "view_owner": "string",
+  "definition": "string",
+  "tablespace_name": "string",
+  "schema_name": "string",
+  "database_name": "string",
+  "server_id": 0,
+  "recorded_time": "string"
+}
+
+```
+
+#### Properties
+
+| Name             | Type    | Required | Restrictions | Description                                          |
+| ---------------- | ------- | -------- | ------------ | ---------------------------------------------------- |
+| view\_name       | string  | false    | none         | View name                                            |
+| view\_type       | string  | false    | none         | View type                                            |
+| ispopulated      | boolean | false    | none         | Determines whether the view is populated.            |
+| view\_owner      | string  | false    | none         | View owner                                           |
+| definition       | string  | false    | none         | View definition                                      |
+| tablespace\_name | string  | false    | none         | View tablespace                                      |
+| schema\_name     | string  | false    | none         | View schema                                          |
+| database\_name   | string  | false    | none         | View database                                        |
+| server\_id       | integer | false    | none         | View server ID                                       |
+| recorded\_time   | string  | false    | none         | Specifies when view was first detected by PEM agent. |
+
+<span id="tocs_webhook"></span>
+
+## Webhook
+
+<a id="schemawebhook"></a> <a id="schema_Webhook"></a> <a id="tocSwebhook"></a> <a id="tocswebhook"></a>
+
+```json
+{
+  "id": 0,
+  "name": "string",
+  "url": "string",
+  "enabled": true,
+  "method": "POST",
+  "http_headers": [
+    {
+      "http_header_id": 0,
+      "http_header_key": "string",
+      "http_header_value": "string"
+    }
+  ],
+  "payload_template": "{'text': 'You have new alert from PEM', 'attachments': [{'text': 'AlertID \n%AlertID% \nAlertName \n%AlertName%''}]}",
+  "low_alert": true,
+  "med_alert": true,
+  "high_alert": true,
+  "cleared_alert": true
+}
+
+```
+
+#### Properties
+
+| Name              | Type                                                    | Required | Restrictions | Description                                                       |
+| ----------------- | ------------------------------------------------------- | -------- | ------------ | ----------------------------------------------------------------- |
+| id                | integer                                                 | false    | none         | Webhook ID                                                        |
+| name              | string                                                  | false    | none         | Webhook name                                                      |
+| url               | string                                                  | false    | none         | Webhook URL                                                       |
+| enabled           | boolean                                                 | false    | none         | Determines whether the webhook is enabled.                        |
+| method            | string                                                  | false    | none         | Request method                                                    |
+| http\_headers     | \[[WebhookGetHTTPHeaders](#tocs_webhookgethttpheaders)] | false    | none         | List of the HTTP header key/value pairs to be used by the webhook |
+| payload\_template | string                                                  | false    | none         | Payload template. Below is payload example for slack.             |
+| low\_alert        | boolean                                                 | false    | none         | Determines whether the low alert is enabled.                      |
+| med\_alert        | boolean                                                 | false    | none         | Determines whether the medium alert is enabled.                   |
+| high\_alert       | boolean                                                 | false    | none         | Determines whether the high alert is enabled.                     |
+| cleared\_alert    | boolean                                                 | false    | none         | Determines whether the cleared alert is enabled.                  |
+
+##### Enumerated Values
+
+| Property | Value |
+| -------- | ----- |
+| method   | POST  |
+| method   | PUT   |
+
+<span id="tocs_webhookpostdata"></span>
+
+## WebhookPostData
+
+<a id="schemawebhookpostdata"></a> <a id="schema_WebhookPostData"></a> <a id="tocSwebhookpostdata"></a> <a id="tocswebhookpostdata"></a>
+
+```json
+{
+  "name": "string",
+  "url": "string",
+  "enabled": true,
+  "method": "POST",
+  "http_headers": [
+    {
+      "http_header_key": "string",
+      "http_header_value": "string"
+    }
+  ],
+  "payload_template": "{ 'Alert Name':'%AlertName%'','type':'Webhook' }",
+  "low_alert": true,
+  "med_alert": true,
+  "high_alert": true,
+  "cleared_alert": true
+}
+
+```
+
+#### Properties
+
+| Name              | Type                                              | Required | Restrictions | Description                                                       |
+| ----------------- | ------------------------------------------------- | -------- | ------------ | ----------------------------------------------------------------- |
+| name              | string                                            | false    | none         | Webhook name                                                      |
+| url               | string                                            | false    | none         | Webhook URL                                                       |
+| enabled           | boolean                                           | false    | none         | Determines whether the webhook is enabled.                        |
+| method            | string                                            | false    | none         | Request method                                                    |
+| http\_headers     | \[[WebhookHTTPHeaders](#tocs_webhookhttpheaders)] | false    | none         | List of the HTTP header key/value pairs to be used by the webhook |
+| payload\_template | string                                            | false    | none         | Payload template                                                  |
+| low\_alert        | boolean                                           | false    | none         | Determines whether the low alert is enabled.                      |
+| med\_alert        | boolean                                           | false    | none         | Determines whether the medium alert is enabled.                   |
+| high\_alert       | boolean                                           | false    | none         | Determines whether the high alert is enabled.                     |
+| cleared\_alert    | boolean                                           | false    | none         | Determines whether the cleared alert is enabled.                  |
+
+##### Enumerated Values
+
+| Property | Value |
+| -------- | ----- |
+| method   | POST  |
+| method   | PUT   |
+
+<span id="tocs_webhookputdata"></span>
+
+## WebhookPutData
+
+<a id="schemawebhookputdata"></a> <a id="schema_WebhookPutData"></a> <a id="tocSwebhookputdata"></a> <a id="tocswebhookputdata"></a>
+
+```json
+{
+  "name": "string",
+  "url": "string",
+  "enabled": true,
+  "method": "POST",
+  "http_headers": {
+    "added": [
+      {
+        "http_header_key": "string",
+        "http_header_value": "string"
+      }
+    ],
+    "changed": [
+      {
+        "http_header_id": 0,
+        "http_header_key": "string",
+        "http_header_value": "string"
+      }
+    ],
+    "deleted": [
+      {
+        "http_header_id": 0
+      }
+    ]
+  },
+  "payload_template": "{'text': 'You have new alert from PEM', 'attachments': [{'text': 'AlertID \n%AlertID% \nAlertName \n%AlertName%''}]}",
+  "low_alert": true,
+  "med_alert": true,
+  "high_alert": true,
+  "cleared_alert": true
+}
+
+```
+
+#### Properties
+
+| Name                | Type                                                    | Required | Restrictions | Description                                           |
+| ------------------- | ------------------------------------------------------- | -------- | ------------ | ----------------------------------------------------- |
+| name                | string                                                  | false    | none         | Webhook name                                          |
+| url                 | string                                                  | false    | none         | Webhook URL                                           |
+| enabled             | boolean                                                 | false    | none         | Determines whether the webhook is enabled.            |
+| method              | string                                                  | false    | none         | Request method                                        |
+| http\_headers       | object                                                  | false    | none         | none                                                  |
+| » added             | \[[WebhookHTTPHeaders](#tocs_webhookhttpheaders)]       | false    | none         | List of the HTTP header key/value pairs to be added   |
+| » changed           | \[[WebhookGetHTTPHeaders](#tocs_webhookgethttpheaders)] | false    | none         | List of the HTTP header key/value pairs to be updated |
+| » deleted           | \[object]                                               | false    | none         | List of the HTTP header IDs to be deleted             |
+| »» http\_header\_id | integer                                                 | false    | none         | ID of the HTTP header                                 |
+| payload\_template   | string                                                  | false    | none         | Payload template. Below is payload example for slack. |
+| low\_alert          | boolean                                                 | false    | none         | Determines whether the low alert is enabled.          |
+| med\_alert          | boolean                                                 | false    | none         | Determines whether the medium alert is enabled.       |
+| high\_alert         | boolean                                                 | false    | none         | Determines whether the high alert is enabled.         |
+| cleared\_alert      | boolean                                                 | false    | none         | Determines whether the cleared alert is enabled.      |
+
+##### Enumerated Values
+
+| Property | Value |
+| -------- | ----- |
+| method   | POST  |
+| method   | PUT   |
+
+<span id="tocs_webhookgethttpheaders"></span>
+
+## WebhookGetHTTPHeaders
+
+<a id="schemawebhookgethttpheaders"></a> <a id="schema_WebhookGetHTTPHeaders"></a> <a id="tocSwebhookgethttpheaders"></a> <a id="tocswebhookgethttpheaders"></a>
+
+```json
+{
+  "http_header_id": 0,
+  "http_header_key": "string",
+  "http_header_value": "string"
+}
+
+```
+
+#### Properties
+
+| Name                | Type    | Required | Restrictions | Description                 |
+| ------------------- | ------- | -------- | ------------ | --------------------------- |
+| http\_header\_id    | integer | false    | none         | ID of the HTTP header       |
+| http\_header\_key   | string  | false    | none         | Name of the HTTP header key |
+| http\_header\_value | string  | false    | none         | Name of the HTTP header key |
+
+<span id="tocs_webhookhttpheaders"></span>
+
+## WebhookHTTPHeaders
+
+<a id="schemawebhookhttpheaders"></a> <a id="schema_WebhookHTTPHeaders"></a> <a id="tocSwebhookhttpheaders"></a> <a id="tocswebhookhttpheaders"></a>
+
+```json
+{
+  "http_header_key": "string",
+  "http_header_value": "string"
+}
+
+```
+
+#### Properties
+
+| Name                | Type   | Required | Restrictions | Description                 |
+| ------------------- | ------ | -------- | ------------ | --------------------------- |
+| http\_header\_key   | string | false    | none         | Name of the HTTP header key |
+| http\_header\_value | string | false    | none         | Name of the HTTP header key |
+
+<span id="tocs_emailgroups"></span>
+
+## EmailGroups
+
+<a id="schemaemailgroups"></a> <a id="schema_EmailGroups"></a> <a id="tocSemailgroups"></a> <a id="tocsemailgroups"></a>
+
+```json
+{
+  "id": 0,
+  "oid": 0,
+  "gid": 0,
+  "name": "string",
+  "to_addr": "string",
+  "cc_addr": "string",
+  "bcc_addr": "string",
+  "from_addr": "string",
+  "reply_to_addr": "string",
+  "subject_prefix": "string",
+  "from_time": "00:00:00",
+  "to_time": "23:59:59"
+}
+
+```
+
+#### Properties
+
+| Name            | Type    | Required | Restrictions | Description                                                    |
+| --------------- | ------- | -------- | ------------ | -------------------------------------------------------------- |
+| id              | integer | false    | none         | Email group ID                                                 |
+| oid             | integer | false    | none         | Email group options ID                                         |
+| gid             | integer | false    | none         | Email group ID                                                 |
+| name            | string  | false    | none         | Email group name                                               |
+| to\_addr        | string  | false    | none         | Email group options receiver address                           |
+| cc\_addr        | string  | false    | none         | Email group options CC address                                 |
+| bcc\_addr       | string  | false    | none         | Email group options BCC address                                |
+| from\_addr      | string  | false    | none         | Email group options sender address                             |
+| reply\_to\_addr | string  | false    | none         | Email group options reply to address                           |
+| subject\_prefix | string  | false    | none         | Email group options subject prefix                             |
+| from\_time      | string  | false    | none         | Email group options from time to select time range for members |
+| to\_time        | string  | false    | none         | Email group options to time to select time range for members   |
+
+<span id="tocs_emailgroupspostdata"></span>
+
+## EmailGroupsPostData
+
+<a id="schemaemailgroupspostdata"></a> <a id="schema_EmailGroupsPostData"></a> <a id="tocSemailgroupspostdata"></a> <a id="tocsemailgroupspostdata"></a>
+
+```json
+{
+  "name": "string",
+  "options": [
+    {
+      "to_addr": "string",
+      "cc_addr": "string",
+      "bcc_addr": "string",
+      "from_addr": "string",
+      "reply_to_addr": "string",
+      "subject_prefix": "string",
+      "from_time": "00:00:00",
+      "to_time": "23:59:59"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+| Name    | Type                                            | Required | Restrictions | Description                                                   |
+| ------- | ----------------------------------------------- | -------- | ------------ | ------------------------------------------------------------- |
+| name    | string                                          | false    | none         | Email group name                                              |
+| options | \[[EmailGroupOptions](#tocs_emailgroupoptions)] | false    | none         | List of the email group options to be used by the email group |
+
+<span id="tocs_emailgroupsputdata"></span>
+
+## EmailGroupsPutData
+
+<a id="schemaemailgroupsputdata"></a> <a id="schema_EmailGroupsPutData"></a> <a id="tocSemailgroupsputdata"></a> <a id="tocsemailgroupsputdata"></a>
+
+```json
+{
+  "name": "string",
+  "options": {
+    "added": [
+      {
+        "to_addr": "string",
+        "cc_addr": "string",
+        "bcc_addr": "string",
+        "from_addr": "string",
+        "reply_to_addr": "string",
+        "subject_prefix": "string",
+        "from_time": "00:00:00",
+        "to_time": "23:59:59"
+      }
+    ],
+    "changed": [
+      {
+        "oid": 0,
+        "to_addr": "string",
+        "cc_addr": "string",
+        "bcc_addr": "string",
+        "from_addr": "string",
+        "reply_to_addr": "string",
+        "subject_prefix": "string",
+        "from_time": "00:00:00",
+        "to_time": "23:59:59"
+      }
+    ],
+    "deleted": [
+      {
+        "oid": 0
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+| Name      | Type                                                          | Required | Restrictions | Description                               |
+| --------- | ------------------------------------------------------------- | -------- | ------------ | ----------------------------------------- |
+| name      | string                                                        | false    | none         | Email group name                          |
+| options   | object                                                        | false    | none         | none                                      |
+| » added   | \[[EmailGroupOptions](#tocs_emailgroupoptions)]               | false    | none         | Email group options to be added           |
+| » changed | \[[EmailGroupOptionsChanged](#tocs_emailgroupoptionschanged)] | false    | none         | Email group options to be updated.        |
+| » deleted | \[object]                                                     | false    | none         | List of the HTTP header IDs to be deleted |
+| »» oid    | integer                                                       | false    | none         | Email group options ID                    |
+
+<span id="tocs_emailgroupoptions"></span>
+
+## EmailGroupOptions
+
+<a id="schemaemailgroupoptions"></a> <a id="schema_EmailGroupOptions"></a> <a id="tocSemailgroupoptions"></a> <a id="tocsemailgroupoptions"></a>
+
+```json
+{
+  "to_addr": "string",
+  "cc_addr": "string",
+  "bcc_addr": "string",
+  "from_addr": "string",
+  "reply_to_addr": "string",
+  "subject_prefix": "string",
+  "from_time": "00:00:00",
+  "to_time": "23:59:59"
+}
+
+```
+
+#### Properties
+
+| Name            | Type   | Required | Restrictions | Description                                                    |
+| --------------- | ------ | -------- | ------------ | -------------------------------------------------------------- |
+| to\_addr        | string | false    | none         | Email group options receiver address                           |
+| cc\_addr        | string | false    | none         | Email group options CC address                                 |
+| bcc\_addr       | string | false    | none         | Email group options BCC address                                |
+| from\_addr      | string | false    | none         | Email group options sender address                             |
+| reply\_to\_addr | string | false    | none         | Email group options reply to address                           |
+| subject\_prefix | string | false    | none         | Email group options subject prefix                             |
+| from\_time      | string | false    | none         | Email group options from time to select time range for members |
+| to\_time        | string | false    | none         | Email group options to time to select time range for members   |
+
+<span id="tocs_emailgroupoptionschanged"></span>
+
+## EmailGroupOptionsChanged
+
+<a id="schemaemailgroupoptionschanged"></a> <a id="schema_EmailGroupOptionsChanged"></a> <a id="tocSemailgroupoptionschanged"></a> <a id="tocsemailgroupoptionschanged"></a>
+
+```json
+{
+  "oid": 0,
+  "to_addr": "string",
+  "cc_addr": "string",
+  "bcc_addr": "string",
+  "from_addr": "string",
+  "reply_to_addr": "string",
+  "subject_prefix": "string",
+  "from_time": "00:00:00",
+  "to_time": "23:59:59"
+}
+
+```
+
+#### Properties
+
+| Name            | Type    | Required | Restrictions | Description                                                    |
+| --------------- | ------- | -------- | ------------ | -------------------------------------------------------------- |
+| oid             | integer | false    | none         | Email group options ID                                         |
+| to\_addr        | string  | false    | none         | Email group options receiver address                           |
+| cc\_addr        | string  | false    | none         | Email group options CC address                                 |
+| bcc\_addr       | string  | false    | none         | Email group options BCC address                                |
+| from\_addr      | string  | false    | none         | Email group options sender address                             |
+| reply\_to\_addr | string  | false    | none         | Email group options reply to address                           |
+| subject\_prefix | string  | false    | none         | Email group options subject prefix                             |
+| from\_time      | string  | false    | none         | Email group options from time to select time range for members |
+| to\_time        | string  | false    | none         | Email group options to time to select time range for members   |
+
+<span id="tocs_excludedatabases"></span>
+
+## ExcludeDatabases
+
+<a id="schemaexcludedatabases"></a> <a id="schema_ExcludeDatabases"></a> <a id="tocSexcludedatabases"></a> <a id="tocsexcludedatabases"></a>
+
+```json
+{
+  "server_id": 0,
+  "name": "string",
+  "exclude_databases": [
+    "string"
+  ]
+}
+
+```
+
+#### Properties
+
+| Name               | Type      | Required | Restrictions | Description                              |
+| ------------------ | --------- | -------- | ------------ | ---------------------------------------- |
+| server\_id         | integer   | false    | none         | Server ID                                |
+| name               | string    | false    | none         | Server name                              |
+| exclude\_databases | \[string] | false    | none         | Exclude database names (comma separated) |
+
+<span id="tocs_excludedatabasesputdata"></span>
+
+## ExcludeDatabasesPutData
+
+<a id="schemaexcludedatabasesputdata"></a> <a id="schema_ExcludeDatabasesPutData"></a> <a id="tocSexcludedatabasesputdata"></a> <a id="tocsexcludedatabasesputdata"></a>
+
+```json
+{
+  "exclude_databases": [
+    "string"
+  ]
+}
+
+```
+
+#### Properties
+
+| Name               | Type      | Required | Restrictions | Description                              |
+| ------------------ | --------- | -------- | ------------ | ---------------------------------------- |
+| exclude\_databases | \[string] | false    | none         | Exclude database names (comma separated) |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

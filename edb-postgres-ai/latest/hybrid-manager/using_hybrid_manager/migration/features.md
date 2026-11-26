@@ -1,0 +1,64 @@
+---
+title: Migration features
+description: See a list of the most important features you can leverage to perform migrations with Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/features/
+lastModified: 2026-10-14T11:17:37+02:00
+---
+
+# Migration features
+
+Hybrid Manager (HM) provides a comprehensive, centralized solution for database migrations, offering a wide range of features designed to simplify and accelerate your data transfer process.
+
+## Sovereign migration solution
+
+Perform migrations from a single platform deployed entirely within your on-premises or cloud environments. This approach provides you with complete control over your data and infrastructure, ensuring your migrations are sovereign and secure within your own network.
+
+## Migration assessment
+
+HM leverages the EDB Postgres AI agent to generate an assessment of the complexity and estimated effort (LOE) required for Oracle database migrations. By analyzing the registered source database, the platform provides early insights into potential issues and the scale of the migration, helping you plan effectively.
+
+## Bulk migration assessment
+
+When you have a large database estate to evaluate, the EDB Postgres AI agent's `configure-onprem-dbs` command lets you enroll many databases for migration assessment in a single step. Instead of manually constructing a connection string for each database, you can import your inventory from a CSV file, an Oracle `tnsnames.ora` file, or discover databases directly from AWS RDS. See [Assessing multiple databases at once](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrations/assessing_multiple_databases/).
+
+## Database and schema management
+
+Access detailed information about your source database through the database details page. There, you'll find information about schemas, as well as a clear breakdown of migration assessment factors.
+
+## Migration Portal with AI Copilot
+
+Migration Portal manages schema migration projects for both Oracle and Postgres sources. For Oracle-to-Postgres migrations, it automates the assessment of schemas, flags incompatibilities, and provides an integrated AI Copilot to help you quickly identify and resolve complex schema issues, streamlining the conversion process. With [AI DDL repair](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/#ai-ddl-repair), the AI Copilot can also suggest and apply fixes for objects that fail assessment. For Postgres sources, where no conversion is needed, it gives you visibility into the schema and lets you create or delete a project directly from the HM console. Originally a web tool hosted by EDB, Migration Portal has been integrated into HM. This integration deploys the service in your environment, supporting the sovereignty of your deployment.
+
+## Flexible schema and data migration options
+
+### Migration scope
+
+HM supports automated schema migration as part of the data migration workflow for both Oracle and Postgres sources. When creating a migration, you can choose to migrate **Schema and Data**, **Data Only**, or **Schema Only**, giving you full control over what gets transferred.
+
+### Migration method
+
+Choose the migration method that best suits your needs:
+
+- **Snapshot** — A fast, one-time data transfer for bulk migrations.
+- **Snapshot and streaming** — Suitable for migrations that require minimal downtime. It uses change data capture (CDC) to continuously capture and replicate ongoing changes from the source to the destination database.
+- **Streaming** — Skips the initial bulk copy and streams only the changes that occur on the source after the migration starts. Useful when the destination already has the historical data loaded, such as in fallback replication scenarios.
+
+### Role and privilege migration
+
+For Postgres-to-Postgres migrations to self-managed destinations, you can optionally migrate the source cluster's roles, object ownership, privileges, and row-level security policies along with the schema, so your applications keep working with the same authorization model after cutover. See [Migrating roles, ownership, and privileges](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migrating_roles_and_privileges/).
+
+## Diverse migration destinations
+
+The solution offers flexibility in choosing your destination. You can migrate to databases provisioned in HM (HM-managed databases) or to externally managed Postgres databases (externally managed databases).
+
+## Granular migration control
+
+Maintain precise control over your data migration with the ability to select specific database tables and columns to migrate. This feature allows you to migrate only the data you need, reducing migration time and resource usage.
+
+## Schema and column mapping
+
+The migration service allows for flexible schema mapping, enabling you to migrate data to tables and columns with different names in the destination database. This feature is particularly useful for restructuring data during the migration process.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

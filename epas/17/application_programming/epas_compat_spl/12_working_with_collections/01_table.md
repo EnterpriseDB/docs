@@ -1,0 +1,40 @@
+---
+title: Using the TABLE function
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/application_programming/epas_compat_spl/12_working_with_collections/01_table/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# Using the TABLE function
+
+<div id="table" class="registered_link"></div>
+
+Use the `TABLE()` function to transform the members of an array into a set of rows. The signature is:
+
+```sql
+TABLE(<collection_value>)
+```
+
+Where `collection_value` is an expression that evaluates to a value of collection type.
+
+The `TABLE()` function expands the nested contents of a collection into a table format. You can use the `TABLE()` function anywhere you use a regular table expression.
+
+The `TABLE()` function returns a `SETOF ANYELEMENT`, which is a set of values of any type. For example, if the argument passed to this function is an array of `dates`, `TABLE()` returns a `SETOF dates`. If the argument passed to this function is an array of `paths`, `TABLE()` returns a `SETOF paths`.
+
+You can use the `TABLE()` function to expand the contents of a collection into table form:
+
+```sql
+postgres=# SELECT * FROM TABLE(monthly_balance(445.00, 980.20, 552.00));
+```
+
+```output title="Output"
+ monthly_balance
+----------------
+  445.00
+  980.20
+  552.00
+(3 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

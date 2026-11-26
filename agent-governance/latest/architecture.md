@@ -1,0 +1,137 @@
+---
+title: Architecture and data flow
+description: How the AI agent activity that the aidb extension records reaches the EDB Agent Governance screens, and how the legacy Hybrid Manager and Loki path differs.
+product: EDB Agent Governance
+version: "1"
+url: https://www.enterprisedb.com/docs/agent-governance/latest/architecture/
+lastModified: 2026-10-22T22:03:54+05:30
+---
+
+# Architecture and data flow
+
+Trace how AI agent activity travels from the `aidb` extension to the EDB Agent Governance screens. EDB Agent Governance reads that activity from a Postgres database that runs the `aidb` extension. The extension records what agents do, and which actions purpose enforcement allowed or denied, as OpenTelemetry telemetry inside the database itself. The viewer's backend reads that telemetry over a read-only connection, and the viewer renders it. No log pipeline sits in between.
+
+Postgres clusters managed by EDB Hybrid Manager (HM) and standalone Loki endpoints are still supported as a legacy path, on which the viewer reconstructs sessions from Postgres query logs. See [Tracing the legacy data path: Hybrid Manager and Loki](#tracing-the-legacy-data-path-hybrid-manager-and-loki).
+
+## Tracing the data path
+
+Follow an agent call through four stages before it appears in the viewer.
+
+```
+┌─────────────────────────────┐
+│  AI agent (aidb registry)   │  runs inside Postgres as the
+└──────────────┬──────────────┘  role of its declared purpose
+               │ 1. agent calls, tool calls, governed SQL
+               ▼
+┌─────────────────────────────┐
+│  aidb extension             │  one purpose_decision span per
+│  aidb.otel_client=database  │  governed SQL (allowed or denied)
+└──────────────┬──────────────┘
+               │ 2. spans and log records
+               ▼
+┌─────────────────────────────┐
+│  Source database            │  plain tables; retention is
+│  aidb_otel.traces, .logs    │  configured by the operator
+└──────────────┬──────────────┘
+               │ 3. read-only role over TLS, nothing copied
+               ▼
+┌─────────────────────────────┐
+│  Viewer backend             │  groups traces into sessions,
+│                             │  extracts decisions, holds credentials
+└──────────────┬──────────────┘
+               │ 4. API, no credentials
+               ▼
+┌─────────────────────────────┐
+│  Viewer (browser)           │  Dashboard, Activity,
+│                             │  session, and Agents pages
+└─────────────────────────────┘
+```
+
+## Recording telemetry with the aidb extension
+
+Set `aidb.otel_client` to `database` to store AIDB telemetry. The default, `noop`, doesn't record it. A span describes an operation and its timing. A log record contains a message associated with activity, such as an error. AIDB stores spans in `aidb_otel.traces` and log records separately in `aidb_otel.logs`, linked by trace and span identifiers when available. Logs aren't nested inside spans.
+
+## Understanding what the dashboard shows
+
+The dashboard uses the following recorded activity:
+
+| Recorded activity    | Data used by the dashboard                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent conversations  | Agent identity, declared purpose, conversation and session identifiers, start time, duration, and status.                             |
+| Tool and model calls | Recorded operations within the session, including tool or model names, timing, and errors when available.                             |
+| SQL execution        | The SQL submitted by an agent's tool, with execution timing and status.                                                               |
+| Governance decisions | Whether a purpose-scoped SQL action was allowed or denied, the calling user, the resolved Postgres role, and the reason for a denial. |
+| Related log records  | Messages associated with the recorded session or step.                                                                                |
+
+A governance decision is a span named `purpose_decision`. Decision recording applies to tool SQL executed by AIDB agents under a purpose-resolved role. An agent without a purpose doesn't produce these decisions. The dashboard shows the records available for the selected period, subject to telemetry settings and retention. It isn't an audit of every statement executed in Postgres.
+
+AIDB also collects telemetry for other operations and stores metrics in `aidb_otel.metrics`. The dashboard doesn't display all AIDB telemetry or read that metrics table. For the full attribute reference and version-specific decision details, see [AIDB observability](https://www.enterprisedb.com/docs/aidb/latest/reference/observability/). To enable collection, see [Connecting an aidb database](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/).
+
+Activity collected through Airman MCP or Postgres query logs uses the [legacy data path](#tracing-the-legacy-data-path-hybrid-manager-and-loki).
+
+## Storing telemetry in the source database
+
+Plan retention and access control for the two ordinary tables that hold the telemetry in the database the agents use. Anyone with write access to the `aidb_otel` schema can change or delete rows, and the optional cleaner worker deletes rows older than a retention window. The viewer therefore shows the recorded activity that is still stored — not a complete or tamper-evident history. See [Handling retention and missing data](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/#handling-retention-and-missing-data).
+
+## Reading telemetry in the viewer backend
+
+Connect the viewer backend to each registered database with a dedicated read-only role over TLS. Prefer `sslmode=verify-full`, which verifies both the certificate and the host name. The backend reads spans and log records from `aidb_otel.traces` and `aidb_otel.logs`. The Agents roster also reads `aidb.agents` and `aidb.purpose_registry`, and Permissions uses Postgres catalog information. These reads don't require access to the application table contents.
+
+The viewer doesn't copy telemetry into its own database. It queries the source database and groups recorded operations into sessions and steps. Records removed by retention are no longer available in the viewer. The browser receives results through the viewer's API, not through a direct database connection.
+
+No collector is required for this connection. AIDB's optional [OTLP exporter](https://www.enterprisedb.com/docs/aidb/latest/reference/observability/#exporting-traces-logs-and-metrics) sends telemetry to an external monitoring system independently of the dashboard.
+
+For the required grants and credential handling, see [Connecting an aidb database](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/) and [Securing access and handling credentials](https://www.enterprisedb.com/docs/agent-governance/latest/security_and_data/).
+
+## Rendering telemetry in the viewer
+
+Use the viewer — a single-page application that manages client-side routing and calls the backend for all data — to open the cluster [Dashboard](https://www.enterprisedb.com/docs/agent-governance/latest/dashboard/), [Activity](https://www.enterprisedb.com/docs/agent-governance/latest/sessions_list/), [session](https://www.enterprisedb.com/docs/agent-governance/latest/session_detail/), and [Agents](https://www.enterprisedb.com/docs/agent-governance/latest/agents/) pages. Credentials never reach the browser — the backend holds them and reads the source on the browser's behalf.
+
+## Tracing the legacy data path: Hybrid Manager and Loki
+
+Use the legacy path for Postgres clusters managed by HM, and for any cluster whose logs are shipped to a standalone Loki endpoint. The viewer doesn't read `aidb_otel` for these clusters. See [Connecting Hybrid Manager or Loki](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_data_sources/).
+
+On this path, AI agents reach Postgres through the Airman MCP server, which tags every query by setting the Postgres `application_name` session variable to `airman:<purpose>/<session-short>`. Postgres logs each statement with that tag, Loki stores the log lines, and the viewer's backend reconstructs sessions from them. This path shows the SQL an agent ran and whether the database refused it, but it records no agent identity and no purpose-enforcement decision.
+
+```
+┌─────────────────────────────┐
+│  AI agent via Airman MCP    │  application_name =
+└──────────────┬──────────────┘  'airman:<purpose>/<session-short>'
+               │ 1. tagged SQL
+               ▼
+┌─────────────────────────────┐
+│  Postgres cluster           │  logs each statement with the tag,
+└──────────────┬──────────────┘  SQL, duration, severity, role, PID
+               │ 2. JSON log lines
+               ▼
+┌─────────────────────────────┐
+│  Loki                       │  HM Loki pipeline or a
+│                             │  standalone instance; LogQL
+└──────────────┬──────────────┘
+               │ 3. LogQL queries, incremental sync
+               ▼
+┌─────────────────────────────┐
+│  Viewer backend             │  parses log lines into sessions,
+│                             │  caches summaries, holds credentials
+└──────────────┬──────────────┘
+               │ 4. API, no credentials
+               ▼
+┌─────────────────────────────┐
+│  Viewer (browser)           │  clusters, sessions,
+│                             │  session detail
+└─────────────────────────────┘
+```
+
+### Tagging queries with Airman MCP
+
+Route agent Postgres operations through Airman MCP, the MCP server AI agents call on this path. It enforces the access mode — rejecting disallowed statement types in restricted mode — and tags every query with the `airman:<purpose>/<session-short>` identifier. The tag persists for the duration of the connection, grouping all queries in one agent interaction under a single session. See [Configuring Airman MCP](https://www.enterprisedb.com/docs/agent-governance/latest/configuring_airman_mcp/).
+
+### Logging queries in Postgres and Loki
+
+Enable JSON logging on the Postgres cluster so it records every statement Airman MCP sends, with its application\_name, SQL text, duration, error severity, database, role, and process ID. Loki ingests those log lines, labels them by container and cluster, and makes them queryable via LogQL. EDB Agent Governance works with both the HM-managed Loki pipeline and standalone Loki instances.
+
+### Syncing and caching sessions
+
+Use the viewer backend's sync and caching on this path: it queries Loki via LogQL, parses the results into structured session and step data, and caches session summaries for fast retrieval. It uses a watermark-based incremental sync to avoid full-range Loki queries on repeated visits, splits high-verbosity query windows to stay within Loki's per-query limits, and applies separate retry policies for background sync and proxied requests. Resyncing clears all cached sessions and watermarks and restarts the pipeline from scratch. See [Resyncing an instance](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_data_sources/#resyncing-an-instance).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

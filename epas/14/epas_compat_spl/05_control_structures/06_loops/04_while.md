@@ -1,0 +1,54 @@
+---
+title: WHILE
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_spl/05_control_structures/06_loops/04_while/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# WHILE
+
+<div id="while" class="registered_link"></div>
+
+```text
+WHILE <expression> LOOP
+    <statements>
+END LOOP;
+```
+
+The `WHILE` statement repeats a sequence of statements when the condition expression evaluates to `TRUE`. The condition is checked just before each entry to the loop body.
+
+This example uses the `WHILE` statement instead of the `EXIT` statement to determine when to exit the loop:
+
+> **Note**
+>
+> The conditional expression used to determine when to exit the loop differs when using `WHILE` versus `EXIT`. The `EXIT` statement terminates the loop when its conditional expression is true. The `WHILE` statement terminates the loop or never begins it when its conditional expression is false.
+
+```text
+DECLARE
+    v_counter       NUMBER(2);
+BEGIN
+    v_counter := 1;
+    WHILE v_counter <= 10 LOOP
+        DBMS_OUTPUT.PUT_LINE('Iteration # ' || v_counter);
+        v_counter := v_counter + 1;
+    END LOOP;
+END;
+```
+
+The following is the output from this example:
+
+```text
+Iteration # 1
+Iteration # 2
+Iteration # 3
+Iteration # 4
+Iteration # 5
+Iteration # 6
+Iteration # 7
+Iteration # 8
+Iteration # 9
+Iteration # 10
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

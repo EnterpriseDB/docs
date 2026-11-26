@@ -1,0 +1,177 @@
+---
+title: EDB Stat Monitor parameters
+description: The available EDB Stat Monitor parameters
+product: edb_stat_monitor
+url: https://www.enterprisedb.com/docs/pg_extensions/edb_stat_monitor/parameters/
+lastModified: 2025-07-01T03:25:11-04:00
+---
+
+# EDB Stat Monitor parameters
+
+EDB Stat Monitor (edb\_stat\_monitor/EDBSM) has parameters that you can configure to customize its behavior. Following is a list of available parameters along with their default values, minimum and maximum limits, and descriptions.
+
+Prefix all parameters with `edb_stat_monitor.`. You can set them in the `postgresql.conf` file or via SQL commands.
+
+## Parameters
+
+### `edbsm_max`
+
+Sets the maximum size of shared memory used for a statement's metadata tracked by edb\_stat\_monitor, in MB.\
+Type: Integer\
+Default: 256\
+Minimum: 10\
+Maximum: 10240\
+Requires server restart to take effect.
+
+### `edbsm_query_max_len`
+
+Sets the maximum length of query.\
+Type: Integer\
+Default: 2048\
+Minimum: 1024\
+Maximum: INT\_MAX\
+Requires server restart to take effect.
+
+### `edbsm_max_buckets`
+
+Sets the maximum number of buckets.\
+Type: Integer\
+Default: 10\
+Minimum: 1\
+Maximum: 20000\
+Requires server restart to take effect.
+
+### `edbsm_bucket_time`
+
+Sets the time in seconds per bucket.\
+Type: Integer\
+Default: 60\
+Minimum: 1\
+Maximum: INT\_MAX\
+Requires server restart to take effect.
+
+### `edbsm_histogram_min`
+
+Sets the minimum time in milliseconds for histogram buckets.\
+Type: Real\
+Default: 1\
+Minimum: 0\
+Maximum: 1000000\
+Requires server restart to take effect.
+
+### `edbsm_histogram_max`
+
+Sets the maximum time in milliseconds for histogram buckets.
+Type: Real\
+Default: 100000\
+Minimum: 10\
+Maximum: 1000000\
+Requires server restart to take effect.
+
+### `edbsm_histogram_buckets`
+
+Sets the maximum number of histogram buckets.\
+Type: Integer\
+Default: 20\
+Minimum: 2\
+Maximum: 1000\
+Requires server restart to take effect.
+
+### `edbsm_query_shared_buffer`
+
+Sets the maximum size of shared memory used for query tracked by edb\_stat\_monitor, in MB.\
+Type: Integer
+Default: 20\
+Minimum: 1\
+Maximum: 10000\
+Requires server restart to take effect.
+
+### `edbsm_overflow_target`
+
+Sets the overflow target for edb\_stat\_monitor. (Deprecated. Use `edbsm_enable_overflow`.)\
+Type: Integer\
+Default: 1\
+Minimum: 0\
+Maximum: 1\
+Requires server restart to take effect.
+
+### `edbsm_track_utility`
+
+Selects whether utility commands are tracked.\
+Type: Boolean\
+Default: true\
+Does **not** require server restart to take effect.
+
+### `edbsm_track_application_names`
+
+Enables/disables application names tracking.\
+Type: Boolean\
+Default: true
+
+### `edbsm_enable_edbsm_query_id`
+
+Enables/disables EDBSM-specific query id calculation, which is very useful in comparing the same query across databases and clusters.\
+Type: Boolean
+Default: true\
+Requires server restart to take effect.
+
+### `edbsm_normalized_query`
+
+Selects whether to save the query in normalized format.\
+Type: Boolean\
+Default: false\
+Does **not** require server restart to take effect.
+
+### `edbsm_enable_overflow`
+
+Enables/disables edb\_stat\_monitor to grow beyond shared memory into swap space.\
+Type: Boolean\
+Default: true\
+Requires server restart to take effect.
+
+### `edbsm_enable_query_plan`
+
+Enables/disables query plan monitoring.\
+Type: Boolean\
+Default: false\
+Requires server restart to take effect.
+
+### `edbsm_extract_comments`
+
+Enables/disables extracting comments from queries.\
+Type: Boolean\
+Default: false\
+Requires configuration reload to take effect.
+
+### `edbsm_track`
+
+Selects which statements are tracked by edb\_stat\_monitor.\
+Type: Enum
+Values: `none` (`EDBSM_TRACK_NONE`), `top` (`EDBSM_TRACK_TOP`), `all` (`EDBSM_TRACK_ALL`)
+Default: `top`\
+Requires configuration reload to take effect.
+
+### `edbsm_track_planning`
+
+Selects whether planning statistics are tracked.\
+Type: Boolean\
+Default: false\
+Requires server restart to take effect.
+
+### `edbsm_td_compression`
+
+Sets the t-digest compression value.
+Type: Integer\
+Minimum: 1\
+Maximum: 100\
+Default: 100
+
+### `edbsm_sample_rate`
+
+Sets the query sampling rate. 1 means every query, 0.2 means 1 in 5 queries
+Type: Real\
+Default: 1\
+Minimum: 0\
+Maximum: 1
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,72 @@
+---
+title: Developer Portal
+description: Explore the core technologies that power the EDB Developer experience—Kubernetes, Postgres, and AI infrastructure—used across EDB products and solutions.
+product: Developer Portal
+url: https://www.enterprisedb.com/docs/portal/
+lastModified: 2026-06-24T13:31:48+01:00
+---
+
+# Developer Portal
+
+The **EDB Developer Portal** provides learning and operational guidance not just by product, but by the foundational technologies that power the entire EDB ecosystem. This section focuses on the core platforms and patterns used across solutions—including **Kubernetes**, **Postgres**, and emerging **AI infrastructure**.
+
+These technologies form the substrate of everything from database orchestration to generative AI, model serving, vector search, and observability. Whether you’re running Hybrid Manager, building with Agent Factory, or managing large-scale Postgres clusters, these systems provide the operational backbone.
+
+---
+
+## Kubernetes
+
+[Kubernetes](https://www.enterprisedb.com/docs/portal/kubernetes/) is the orchestration engine that underpins many EDB workloads. It’s used to:
+
+- Run containerized Postgres clusters
+- Deploy Agent Factory workloads (Gen AI assistants, model serving, vector search)
+- Enable observability, scaling, and platform automation
+- Support Hybrid Manager across cloud and on-prem deployments
+
+Get started with:
+
+- [Kubernetes at EDB](https://www.enterprisedb.com/docs/portal/kubernetes/learn/explained/k8s-at-edb/)
+- [Kubernetes in Hybrid Manager](https://www.enterprisedb.com/docs/portal/kubernetes/learn/explained/k8s-in-hybrid-manager/)
+- [Kubernetes How-To Guides](https://www.enterprisedb.com/docs/portal/kubernetes/learn/how-to/)
+
+---
+
+## Postgres (Coming Soon)
+
+Postgres is the core data engine across all EDB solutions. This section will cover:
+
+- Postgres internals and architecture
+- High availability, backups, and performance tuning
+- Extensions, logical replication, and clustering
+- Managing Postgres in containers and Kubernetes
+
+Guides and architectural patterns for Postgres will be added to this section as it expands.
+
+---
+
+## AI (Coming Soon)
+
+This section will capture the shared  that powers AI and ML workloads at EDB:
+
+- Model Serving patterns and GPU provisioning
+- Vector-enabled search systems
+- Retrieval-augmented generation (RAG) infrastructure
+- Pipelines for embedding and document processing
+- Scaling and governance of Gen AI features
+
+These guides will help platform teams and AI architects deploy reusable patterns across products like Agent Factory and Hybrid Manager.
+
+---
+
+## Why This Section Exists
+
+While most content on the Developer Portal is organized by product and workload, this section helps you:
+
+- Build mental models around the core tech layers
+- Understand operational responsibilities that cut across products
+- Implement consistent patterns across environments and teams
+- Navigate foundational concerns like security, automation, and performance
+
+---
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

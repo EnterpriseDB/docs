@@ -1,0 +1,314 @@
+---
+title: Configuring a Hybrid Manager deployment across multiple data centers
+description: Learn how to set up multiple data centers (multi-DC) with Hybrid Manager to support the deployment of database clusters across multiple geographical locations.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/multi_dc/multi-dc/
+lastModified: 2026-11-23T08:54:10-05:00
+---
+
+# Configuring a Hybrid Manager deployment across multiple data centers
+
+To be able to deploy Postgres databases into multiple data centers, you first must deploy HM installations into two or three different geographical locations or regions, supporting the [Hub & Spoke or Primary & Secondary architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/multi_dc/overview/#architecture-and-roles-hub-and-spoke). You then link these installations to each other, so you can manage them from a single HM console. This guides help you:
+
+- Create all HM installation configuration files, and deploy them.
+
+- Connect two or more HM installations (HM Kubernetes clusters) on the same provider/on-prem family. These can be on different geographical regions. For example, you can have a primary and one secondary, or a primary and two secondaries.
+
+- Align object storage (identical `edb-object-storage` secret), so backups/artifacts are usable in all data centers.
+
+- Wire the HM-internal agent (Beacon, or `upm-beacon-agent`) so the secondary can register to the primary as managed locations and provision there (9445/TCP).
+
+- Prepare a Postgres topology with a primary Postgres cluster in one data center and replica Postgres cluster(s) in the other(s); perform manual failover by promoting replicas.
+
+## Before you start
+
+Before starting the multi-DC procedure, ensure you have made yourself familiar with:
+
+- [Overview](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/multi_dc/overview/)
+
+## Prerequisites
+
+### Architecture prerequisites
+
+This multi-DC setup follows a Hub and Spoke model, where a single Primary manages several Secondaries. We recommend that secondaries run a [reduced set of components](#reduced-set-of-components-spoke-clusters-only).
+
+- Hub cluster: One Kubernetes cluster to host the Primary HM. This cluster serves as the central management plane and UI.
+
+- Spoke clusters: One or two Kubernetes clusters to host Secondary HMs. These act as execution points for your database workloads.
+
+- Network connectivity:
+
+  - 8444/TCP open between clusters (SPIRE bundle endpoint).
+
+  - 9445/TCP from secondaries → primary (Beacon gRPC).
+
+  - Same provider/on-prem family. Because every location writes to the same bucket, this method can't span clouds.
+
+- Shared object storage: The standard HM installation requires each individual Kubernetes cluster (HM installation) to have dedicated object storage. In the case of a multi-DC deployment, this object storage is shared between all clusters.
+
+> **Note**
+>
+> This page describes the shared-object-storage method. If you want each location to keep its own object storage, or you need locations in different clouds, see [Multi-DC with pairing tokens](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/multi_dc/pairing-token-federation/) instead. Both methods are supported; a deployment uses one or the other.
+
+### Collect the required information
+
+1. Prepare two (or three) copies of your HM installation configuration file. Name them `primary.yaml`, `secondary.yaml` if you are deploying in two locations, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` if you are deploying in three locations. These files are `HybridControlPlane` CR manifests.
+
+2. Domain names:
+
+   Each HM installation must be configured with a dedicated domain name, set as `portal_domain_name` in the configuration. This parameter is used by the primary and secondaries.
+
+   Create these domain names for the each of the HM installations (two or three installations, depending on your configuration), and record this information.
+
+## Object storage across locations
+
+HM uses an object store for backups, artifacts, WAL, and internal bundles.
+**In multi-DC, all HM installations must use the same object store configuration**.
+
+### Key requirement
+
+All HM installations must have an identical Kubernetes secret named `edb-object-storage` in the `edb-system` namespace. Store this secret in the primary and all secondary locations.
+
+## Parameter uniqueness
+
+Because the two or three clusters involved in this multi-data-center deployment are using the same object store, we must ensure that specific parameters are different between all clusters.
+
+| Parameter                | CR path                                                   | Requirement                                                         | Why it matters                                                                                  |
+| ------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `beacon_location_id`     | `spec.componentsParameters.upm-beacon.beacon_location_id` | Must be unique per location.                                        | Human-readable location identifier. Identifies the specific location in the HM console and API. |
+| `internal_backup_folder` | `spec.globalParameters.internal_backup_folder`            | Must be unique per location AND match the format: `^[0-9a-z]{12}$`. | Separates database backups so that a restore doesn't pull the wrong data.                       |
+| `metrics_storage_prefix` | `spec.globalParameters.metrics_storage_prefix`            | Must be unique per location.                                        | Ensures observability data from each site is stored in its own directory.                       |
+| `logs_storage_prefix`    | `spec.componentsParameters.upm-loki.logs_storage_prefix`  | Must be unique per location.                                        | Prevents logs from different locations from overwriting each other in shared storage.           |
+
+## Configure the multi-DC topology
+
+In this step, you define the Hub-and-Spoke relationship. The Hub (primary) must know about all its Spokes (secondaries), and each Spoke must know how to reach the Hub.
+
+Add the following stanza to each of your configuration files (`primary.yaml` and `secondary.yaml`). Fill in the `domainName` values using the `portal_domain_name` you previously set for each HM installation.
+
+In `primary.yaml`: Set role: `primary`. This cluster will act as the Hub.
+
+In `secondary.yaml`: Set role: `secondary`. This cluster will act as a Spoke and use the `primary.domainName` to find its manager.
+
+Add the `clusterGroups` stanza under `spec` in each `HybridControlPlane` CR:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  clusterGroups:
+    # Set to 'primary' for your Hub, 'secondary' for your Spokes
+    role: (secondary|primary|standalone)
+    primary:
+      domainName: <primary portal domain>
+    secondaries:
+    - domainName: <secondary portal domain>
+      # Add an additional entry here for additional locations
+  # ... your other spec fields
+```
+
+> **Note**
+>
+> With operator 2.1 or later, `clusterGroups.primary` and `clusterGroups.secondaries` are deprecated. Values set here are still honored, so the configuration above remains valid, but the operator can also derive the peer topology on its own. `role` is unaffected and is always required.
+
+## Reduced set of components (Spoke clusters only)
+
+The HM consists of a number of different components, some of which are not necessary on the secondary locations. While the full set can be installed successfully on secondary locations, we recommend reducing that list by setting the `scenarios` parameter to `core` and `dbaas`, and disabling the HM console (UI). Each secondary location needs `dbaas`, which contains the components that manage the Postgres clusters at that location. If a secondary location hosts Distributed High Availability (DHA) clusters, add `pgd` to that location's `scenarios` list as well.
+
+Add the following parameters to your secondary location configuration files:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  scenarios:
+    - core
+    - dbaas
+    # - pgd  # add if this location hosts DHA clusters
+  disabledComponents:
+    - upm-ui
+  # ... your other spec fields
+```
+
+1. Validation checklist:
+
+   - The `edb-object-storage` secret must be identical across all locations (compare .data only).
+
+   - All locations can list/write the bucket (quick Pod/Job test).
+
+   - `beacon_location_id`, `internal_backup_folder`, `metrics_storage_prefix`, and `logs_storage_prefix` must be unique per location.
+
+   - `scenarios` has been set to `core` and `dbaas` for secondary locations, plus `pgd` for any secondary location that hosts DHA clusters.
+
+   - `disabledComponents` has the `upm-ui` component listed for secondary locations.
+
+## Hybrid Manager installation
+
+Using your configuration files (`primary.yaml` and `secondary.yaml`, or `primary.yaml`, `secondaryA.yaml` and `secondaryB.yaml` for a three-location setup), install the Hybrid Manager on each cluster. Follow [Phase 5: Installing Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/) for the full installation procedure.
+
+### Validate wiring
+
+Once the installations are complete, verify the Hub and Spoke link.
+
+1. On the primary, list the managed secondary locations:
+
+   ```bash
+   kubectl get location -n edb-system
+   ```
+
+   Each managed location appears as a row named `managed-<LOCATION_ID>` (for example, `managed-primary` and `managed-secondary`), with the location ID under `LOCATIONID` and a recent `LASTHEARTBEAT`:
+
+   ```text
+   NAME                SCOPE     LOCATIONID   LASTHEARTBEAT
+   managed-primary     managed   primary      2026-01-15T10:30:00Z
+   managed-secondary   managed   secondary    2026-01-15T10:30:00Z
+   ```
+
+2. Validate that SPIRE federation is present on all locations:
+
+   ```bash
+   kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+   /opt/spire/bin/spire-server federation list
+   ```
+
+   You should see a `federation list` showing the relationships (the peer trust domain) with `bundle endpoint profile: https_spiffe` and the peer’s `:8444` URL.
+
+   On the primary, you should see one or two entries in the federation list (one for each secondary).
+
+   On each secondary instances, you will only see one entry (the relationship back to the primary).
+
+### Create a Postgres database cluster across different data centers
+
+HM can now provision into the secondary locations, but you must still choose and create the actual database topology. In the HM console, create a database cluster and make sure to select different locations for each database node.
+
+- For single-node and high availability database clusters, during [cluster creation](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Replica Clusters** tab](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/replica-clusters/) to add replica database clusters in other locations.
+
+- For distributed high availability database clusters, during [cluster creation](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/), use the [**Data Groups** tab > **Node Settings** > **Deployment Location**](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/create-clusters/data-groups/#node-settings) option to distribute the cluster data groups across locations.
+
+  > **Note**
+  >
+  > Witness nodes in PGD require a minimum of 10GB of disk space.
+
+Ensure backups are writing to the shared object store from both data centers.
+
+#### Operational notes
+
+- DB TLS is separate from SPIRE/Beacon (platform identity). Configure PG TLS per your policy.
+- Verify StorageClasses in each DC meet PG IOPS/latency.
+- Open replication ports between sites.
+- If you plan to enable TDE for clusters that span multiple data centers, see [TDE across data centers](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/multi_dc/tde/) for the topology-specific behavior of replica clusters and distributed high-availability data groups.
+
+## Validation (end-to-end)
+
+On the primary location, perform the following checks to validate the multi-DC setup:
+
+1. Validate primary/secondary cluster relationships:
+
+   ```bash
+   kubectl -n spire-system exec svc/spire-server -c spire-server -- \
+   /opt/spire/bin/spire-server federation list
+   ```
+
+2. Validate that the secondary locations are registered:
+
+   ```bash
+   kubectl get location -n edb-system
+   ```
+
+3. Validate provisioning to secondary works:
+
+   - From the primary, deploy a small test workload to a secondary location.
+     - Telemetry (optional)
+       Thanos stores show federated peer; Loki queries return logs tagged from secondary.
+     - Object storage
+       Both clusters can read/write the bucket; secrets are identical.
+
+> **Tip**
+>
+> Fixed in HM 2026.8 and later: monitoring components (Thanos, fluent-bit) now use location-aware auto-discovery. No manual configuration is required for primary and secondary sites to establish telemetry federation — the HM operator coordinates this automatically.
+
+## Manual failover
+
+### Manual failover procedure for databases from the primary location to a secondary location
+
+Use this procedure when the primary location is lost or unreachable. For a planned role change between two clusters that can reach each other, see [Switching over to a replica cluster](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/cluster_management/manage-clusters/switchover-clusters/).
+
+1. Suspend writes to the primary location (maintenance mode/LB cutover).
+
+2. Promote a replicas in a secondary location to primary (using the HM console or your scripts).
+
+3. Redirect clients (DNS/LB) to the secondary location.
+
+4. Observe: confirm that writes succeed; and the replication role is updated.
+
+5. When original the primary location returns: re-seed it as a replica of the new primary; optionally plan a later cutback.
+
+> **Note**
+>
+> While you promote the Postgres database in the secondary DC, the HM console itself still runs on the primary. If the primary DC (where HM lives) is completely gone, follow [Disaster recovery for a multi-DC Hybrid Manager deployment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/hadr/hadr_recovery_multi_dc/) to restore the control plane and reconnect the surviving locations.
+
+#### Operator tips
+
+- Keep DNS TTL low enough for cutovers.
+- Track downtime to measure RTO.
+- Validate backups post-promotion.
+
+## Upgrading a multi-DC deployment
+
+The Beacon server on the primary and the Beacon agents on the secondaries must run the same Hybrid Manager version to communicate reliably and provide full feature functionality.
+
+> **Important**
+>
+> Keep all connected locations on the same HM version. Mismatched versions between the primary and a secondary are expected only during the upgrade window. Don't leave a deployment with locations on different versions.
+
+To upgrade a multi-DC deployment:
+
+1. Upgrade the primary location first, following the [Upgrading Hybrid Manager](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/upgrading_hm/) guide for your source and target versions.
+
+2. Upgrade each data-only secondary location to the same version immediately after, one at a time, using the same upgrade guide.
+
+3. After every location is upgraded, verify that all secondaries are still registered and heartbeating to the primary:
+
+   ```bash
+   kubectl get location -n edb-system
+   ```
+
+## Troubleshooting
+
+- Problem: **No federation relationships**
+  - Re-generate and cross-apply `ClusterFederatedTrustDomain` CRs.
+  - Confirm 8444/TCP reachability.
+
+- Problem: **secondary not listed in `kubectl get location -n edb-system`**
+  - Recheck Beacon values on both sides; restart Beacon server/agent.
+  - Confirm 9445/TCP reachability to primary portal; trust domains correct.
+
+- Problem: **Object store access fails on secondary**
+  - Re-sync `edb-object-storage`.
+  - For EKS/IRSA: ensure secondary OIDC is in the role’s trust policy.
+
+- Problem: **Telemetry federation missing**
+
+  !!!tip
+  Fixed in HM 2026.8 and later: this was commonly caused by federated monitoring pods (Thanos, fluent-bit) crashlooping when a peer location wasn't up yet during a multi-DC install. Location-aware auto-discovery now handles this automatically, so it shouldn't recur on HM 2026.8+.
+  !!!
+
+  - Reinstall with the correct -l primary|secondary flags and unique prefixes.
+  - Check Thanos `/api/v1/stores` and Loki read API.
+
+- Problem: **Replica lag / connectivity**
+  - Verify network ACLs/SGs, TLS certs, and storage performance.
+
+## Appendix B — Quick daily checks
+
+- `kubectl get location -n edb-system` on primary shows secondary Ready.
+- Thanos/Loki federation healthy (if enabled).
+- Object store writes succeed from both DCs.
+- Replication lag within SLOs.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

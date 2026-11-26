@@ -1,0 +1,85 @@
+---
+title: DUMP function
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/sql_reference/03_functions_and_operators/dump_function/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# DUMP function
+
+The DUMP function returns a VARCHAR2 value that contains the datatype code, length in bytes, and internal representation of the expression.
+
+```sql
+DUMP(expr[, <return_fmt> [, <start_position> [, <length> ] ] ])
+```
+
+Where `return_fmt` specifies the format of the any of these return values:
+
+- `8` returns the result in octal notation.
+- `10` returns the result in decimal notation.
+- `16` returns the result in hexadecimal notation.
+- `17` returns each byte printed as a character only if it can be interpreted as a printable character in the character set of the compiler.
+
+The arguments `start_position` and `length` combine to determine the portion of the internal representation to return. The default is to return the entire internal representation in decimal notation.
+
+If `expr` is null, then the function returns `NULL`.
+
+## Examples
+
+```sql
+SELECT dump('abc', 10);
+```
+
+```output title="Output"
+          dump          
+------------------------
+ Typ=25 Len=3: 97,98,99
+(1 row)
+```
+
+```sql
+SELECT dump('huvudvärke', 1017) FROM dual;
+```
+
+```output title="Output"
+                           dump                           
+----------------------------------------------------------
+ Typ=25 Len=11 CharacterSet=UTF8: h,u,v,u,d,v,c3,a4,r,k,e
+(1 row)
+```
+
+```sql
+SELECT dump ('edbpostgres', 8,2,3) FROM dual;
+```
+
+```output title="Output"
+            dump            
+----------------------------
+ Typ=25 Len=11: 144,142,160
+(1 row)
+```
+
+```sql
+SELECT dump(to_timestamp('11-06-2021 12:45:24','MM-DD-YYYY HH:MI:SS'), 1008) FROM dual;
+```
+
+```output title="Output"
+                           dump                            
+-----------------------------------------------------------
+ Typ=1184 Len=8 CharacterSet=UTF8: 0,355,12,266,30,163,2,0
+(1 row)
+```
+
+```sql
+SELECT dump(100/4, 10) FROM dual;
+```
+
+```output title="Output"
+            dump            
+----------------------------
+ Typ=1700 Len=4: 0,128,25,0
+(1 row)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

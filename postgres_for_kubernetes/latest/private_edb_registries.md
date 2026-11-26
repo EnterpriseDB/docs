@@ -1,0 +1,187 @@
+---
+title: EDB private container registries
+product: EDB Postgres® AI for CloudNativePG™ Cluster
+version: 1.30.2
+url: https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/private_edb_registries/
+lastModified: 2026-11-19T16:43:34Z
+---
+
+# EDB private container registries
+
+The images for the _EDB Postgres® AI for CloudNativePG™ Cluster_ operator, as well as various
+operands, are kept in a private container image registry under
+`docker.enterprisedb.com`.
+
+> **Note: Important**
+>
+> Access to the private registry requires an account with EDB and is
+> reserved to EDB customers with a valid [subscription plan](https://www.enterprisedb.com/products/plans-comparison#selfmanagedenterpriseplan).
+> Credentials will be funneled through your EDB account.
+
+> **Note: Important**
+>
+> There is a bandwidth quota of 10GB/month per registry.
+
+> **Note**
+>
+> When installing the operator and operands from the private registry, the
+> [license keys](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/license_keys/) are not needed.
+
+## Repository information
+
+<span id="which-repository-to-choose"></span>
+
+Collect the following information:
+
+1. Your [EDB account token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/)
+2. The name of the repository, which will be `k8s`
+3. The repository server, which will be `docker.enterprisedb.com`
+
+For clarity, the following examples assume your token is in an environment variable named `EDB_SUBSCRIPTION_TOKEN`.
+
+### Example with `docker login`
+
+You can log in via Docker from your terminal. In this context,
+
+- The server is `docker.enterprisedb.com`
+- The username is the repository, `k8s`
+- The password is your EDB account token (stored in `$EDB_SUBSCRIPTION_TOKEN`)
+
+```sh
+docker login docker.enterprisedb.com  \
+  --username k8s \
+  --password "$EDB_SUBSCRIPTION_TOKEN"  
+```
+
+```output title="Output"
+WARNING! Using --password via the CLI is insecure. Use --password-stdin.
+Login Succeeded
+```
+
+## Operand images
+
+EDB Postgres® AI for CloudNativePG™ Cluster supports various PostgreSQL distributions that have
+images available from the same private registry:
+
+- Community PostgreSQL
+- EDB Postgres Advanced (EPAS)
+- EDB Postgres Extended (PGE)
+
+These images follow the requirements and the conventions described in the
+["Container image requirements"](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/container_images/)
+page of the EDB Postgres® AI for CloudNativePG™ Cluster documentation.
+
+In the table below you can find the image name prefix for each Postgres distribution:
+
+| Postgres distribution        | Image name              |
+| ---------------------------- | ----------------------- |
+| Community PostgreSQL         | `postgresql`            |
+| EDB Postgres Extended (PGE)  | `edb-postgres-extended` |
+| EDB Postgres Advanced (EPAS) | `edb-postgres-advanced` |
+
+### Browsing the available image tags
+
+The private registry is OCI compliant, which means you can use the
+[OCI Distribution Specification `list-tags` API](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#tags)
+to browse the tags available for a given image name, in order to discover
+which versions of a Postgres distribution you can use.
+
+For example, to list the tags available for the `edb-postgres-extended`
+image:
+
+```sh
+curl -s -u "k8s:$EDB_SUBSCRIPTION_TOKEN" \
+  "https://docker.enterprisedb.com/v2/k8s/edb-postgres-extended/tags/list" | jq
+```
+
+You can replace `edb-postgres-extended` in the URL with any of the image
+names listed in the table above.
+
+> **Note**
+>
+> Besides `curl`, you can use any OCI-compliant client tool, such as
+> [`crane`](https://github.com/google/go-containerregistry/tree/main/cmd/crane)
+> or [`skopeo`](https://github.com/containers/skopeo), to browse tags and
+> inspect images in the registry.
+
+## How to deploy clusters with EPAS or PGE operands
+
+If you have already installed the EDB Postgres® AI for CloudNativePG™ Cluster operator from the
+private registry, you must have already set up an image pull secret. If you
+haven't, the next section may be of interest to you.
+
+If you have an existing installation of the operator, in order to pull images
+for EPAS or PGE from the private registry, you will need to create a
+[`kubernetes.io/dockerconfigjson` pull secret](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types).
+
+You can
+[create a pull secret from credentials](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/#create-a-secret-by-providing-credentials-on-the-command-line).
+
+```sh
+kubectl create secret docker-registry registry-pullsecret \
+  -n <CLUSTER-NAMESPACE> --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password="$EDB_SUBSCRIPTION_TOKEN"
+```
+
+As mentioned above, the `docker-username` is the name of your registry, i.e.
+`k8s`. The `docker-password` is the token retrieved
+from the [EDB portal](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/).
+
+Once your pull secret is created, remember to set the `imagePullSecrets` field
+in the cluster manifest in addition to the `imageName`.
+The manifest below will create a cluster running PG Extended.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: postgresql-extended-cluster
+spec:
+  instances: 3
+  imageName: docker.enterprisedb.com/k8s/edb-postgres-extended:18.1-standard-ubi9
+  imagePullSecrets:
+  - name: registry-pullsecret
+
+  storage:
+    storageClass: standard
+    size: 1Gi
+```
+
+## How to install the operator using the EDB private registry
+
+As mentioned above, the _username_ for docker is the name of your repository,
+and the token is the _password_.
+The same credentials can be used for kubernetes to access the registry by
+setting up a [`kubernetes.io/dockerconfigjson` pull secret](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types).
+
+As mentioned in the [installation document](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/installation_upgrade/), there
+are several different ways to install the operator.
+
+If you are going to install using images from the private registry, you will
+need to create a pull secret, as we have mentioned, and also customize the
+`OPERATOR_IMAGE_NAME` parameter in the deployment manifest.
+
+We suggest to use the Helm chart for installation, which will take care of
+creating the pull secret and customizing the operator image repository
+for you.
+
+You can find more information in the [Helm chart](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts) page.
+
+As an example, the following command (provided the token) will install the CloudNativePG Cluster
+operator when using the repository from the EDB EnterpriseDB Plan:
+
+```sh
+helm upgrade --install edb-pg4k \
+  --namespace postgresql-operator-system \
+  --create-namespace \
+  --set image.repository=docker.enterprisedb.com/k8s/edb-postgres-for-cloudnativepg \
+  --set image.imageCredentials.username=k8s \
+  --set image.imageCredentials.password="$EDB_SUBSCRIPTION_TOKEN" \
+  --set image.imageCredentials.create=true \
+  --set "imagePullSecrets[0].name"=postgresql-operator-pull-secret \
+  --set config.data.PULL_SECRET_NAME=postgresql-operator-pull-secret \
+  edb/edb-postgres-for-kubernetes
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

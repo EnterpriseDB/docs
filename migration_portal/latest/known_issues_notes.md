@@ -1,0 +1,343 @@
+---
+title: Known issues, limitations, and notes
+product: Migration Portal
+version: 5.2.0
+url: https://www.enterprisedb.com/docs/migration_portal/latest/known_issues_notes/
+lastModified: 2026-10-14T11:17:37+02:00
+---
+
+# Known issues, limitations, and notes
+
+These are the known issues, limitations, and notes for:
+
+- [Migration Portal](#migration-portal)
+- [EDB DDL Extractor](#edb-ddl-extractor)
+- [Oracle Data Pump utilities](#oracle-data-pump-utilities)
+
+## Migration Portal
+
+### Wrapped objects
+
+Migration Portal can't assess wrapped objects. If you include them in the extracted DDL, they aren't loaded into Migration Portal and aren't included in the count of objects that are assessed. If you want to assess wrapped objects and migrate them to EDB Postgres Advanced Server, include unwrapped versions of the objects in the DDL file that you upload to Migration Portal. The recommended way of doing this is to replace the wrapped versions in the Oracle database with clear-text versions before performing the schema extraction. After performing the schema extraction, you can replace the objects with the wrapped versions.
+
+### Removed objects
+
+Some unsupported Oracle objects are removed when Migration Portal assesses your source DDL file. These removed objects are excluded from the conversion procedure and aren't flagged as removed in the Migration Portal assessment.
+
+The following objects are removed during the schema assessment:
+
+- Objects related to `MATERIALIZED VIEWS`, for example, backend `TABLE` or `INDEX` statements created to support `MVIEW`
+- Objects related to `Queues`
+- Objects related to `Nested Tables`
+- Objects related to `XMLType Tables`
+- Types that depend on `SYSTEM Schemas`
+- Indexes related to `PRIMARY KEY` and `UNIQUE` constraints
+- Unsupported system `GRANT` privileges
+
+  EDB supports granting only `CREATE DATABASE LINK`, `CREATE PUBLIC DATABASE LINK`, `DROP PUBLIC DATABASE LINK`, and `EXEMPT ACCESS POLICY` system privileges. Other `GRANT` statements aren't supported and are removed from the DDL file.
+
+### File encoding
+
+Migration Portal recommends the `.SQL` output file be in the UTF-8 encoding format. If you upload a `.SQL` file with non-UTF-8 encoding, all the characters that aren't compatible with UTF-8 are converted to the replacement character ‘�’ in the output DDL.
+
+> **Tip**
+>
+> You can manually convert the extracted file to the UTF-8 format by using the iconv utility on Linux or the LibIconv utility on Windows. For example, if your database character set is in Latin-1 (ISO-8859-1), you can convert the extracted file to the UTF-8 format, as follows:
+>
+> `iconv -f iso-8859-1 -t UTF-8 sample.sql > sample_utf8.sql`
+
+### White label error
+
+When a new version of Migration Portal is released, you might encounter an issue in which you can't open Migration Portal. An error like `White label Error Page` or some other error prevents you from using Migration Portal. The browser's stored cache data causes this error. When this happens, clear the cache data from the browser history, or use the Incognito/Private window to access Migration Portal.
+
+### ALTER statements
+
+Except for `ALTER PROFILE DEFAULT`, `ALTER TABLE` and `ALTER TRIGGER`, Migration Portal doesn't process any other `ALTER` statements in the DDL.
+
+### Users, roles, profiles, and grants
+
+#### Grants
+
+The Migration Portal now supports assessing and migrating the Oracle users for the schemas that have been extracted and uploaded.  All the users, roles, and profiles for the schemas associated with a project are grouped together under a `GLOBAL_OBJECTS` pseudo schema in the Migration Portal views.  Currently, grants of system privileges, object privileges, and roles are included with the DDL of the user object.  Similarly, grants of system and object privileges to roles are included with the DDL of the role objects.
+
+Since the grants are currently attached to the user and role objects, if one or more objects that the user is being granted a permission on fails, the user object itself fails assessment.  To resolve this issue, any grant statements on failed objects can be commented out either using a SQL single line comment (`--`) for individual statements or a SQL multi-line comment (`/* */`) for consecutive grant statements and then a reassessment of the object can be performed.  After the failed object corresponding to the failed grant statements have been repaired, the previously failing grant statement can be uncommented and the user object reassessed.
+
+Granting the RESOURCE role is equivalent to granting the CREATE and USAGE privileges on a schema that shares the same name as the grantee. If you want to grant the RESOURCE role, you need to first create a schema with the same name as the user or role. Otherwise, a "Schema does not exist" error occurs.
+
+#### Privileges
+
+To migrate a schema to a target EDB Postgres Advanced Server database, the target database user being used to perform the migration needs the following privileges:
+
+- `SUPERUSER` to migrate profiles
+
+- `SUPERUSER` or `CREATE ROLE` to migrate users and roles
+
+#### Passwords
+
+When migrating users, the Migration Portal does not migrate the users' passwords.  The users are created in the target EDB Postgres Advanced Server database without a password.  If it is desired or required that the users be configured with a password, this can be done manually in the target database after the users have been migrated.
+
+#### Profiles
+
+The Migration Portal migrates non-`DEFAULT` profiles assigned to the schema users. Oracle profiles include both password and resource limits. EDB Postgres Advanced Server supports only the Oracle password-related limits.  Resource limits are extracted with the profiles, but the Migration Portal uploads, assesses, and migrates only the password limits.  Also, the `DEFAULT` profile might be overridden in the Oracle database with new limit values. The EDB DDL Extractor extracts `ALTER PROFILE` statements for `DEFAULT` profiles that are overridden in the Oracle database, and the Migration Portal attempts to apply these statements in the target EDB Postgres Advanced Server database. If the schema is being migrated to an EDB Postgres Advanced Server instance with existing users and databases, we recommend that the settings of the `ALTER PROFILE DEFAULT` statement be verified and updated, if necessary, before migrating the DDL to the target database.
+
+> **Note**
+>
+> Starting with version 4.3.0, the Migration Portal supports assessment of users, roles, profiles, and grants. However, for the projects created using a version earlier than 4.3.0 of the Migration Portal, this capability isn't supported. To assess the users, roles, profiles, and grants, use the latest version of the EDB DDL Extractor and create a new project.
+
+### Using Oracle default case
+
+The option to use the Oracle default case feature preserves Oracle’s default uppercase naming convention for all database objects when migrating a schema from an Oracle database to an EDB Postgres Advanced Server database.
+
+The EDB DDL Extractor and Oracle Data Pump utilities extract all the DDLs in the default case of Oracle (that is, uppercase for object names or the respective case for case-sensitive object names) except for object names referenced inside the body of PL/SQL objects unless they are explicitly double-quoted by the user when creating the DDL.
+
+So, the Migration Portal preserves all double quotes from the source schema file for this feature, and in addition, the Migration Portal applies double quotes to:
+
+- The column names inside the `SELECT` statement of views and materialized views.
+
+- The column names inside check constraints.
+
+- The table name and column names inside the trigger header.
+
+When the option to use Oracle casing is not selected, the default behavior of the Migration Portal is that all objects are created in lowercase (the default case of EDB Postgres Advanced Server) or mixed case if an object name is specified using a quoted mixed case in the source DDL.
+
+Find the below source and target DDLs using the useOraCase feature:
+
+```sql
+-- Source DDL
+CREATE TABLE "RHS_SANITY"."DEPT"
+   (	"DEPTNO" NUMBER(2,0),
+	"DNAME" VARCHAR2(14),
+	"LOC" VARCHAR2(14),
+	 CONSTRAINT "DEPTDEPTNO_PK" PRIMARY KEY ("DEPTNO")
+  USING INDEX  ENABLE,
+	 CONSTRAINT "DEPTDNAME_UK" UNIQUE ("DNAME")
+  USING INDEX  ENABLE
+   ) ;
+
+-- Target DDL
+CREATE TABLE "RHS_SANITY"."DEPT"
+   (	"DEPTNO" NUMBER(2,0),
+	"DNAME" VARCHAR2(14),
+	"LOC" VARCHAR2(14),
+	 CONSTRAINT "DEPTDEPTNO_PK" PRIMARY KEY ("DEPTNO")
+  USING INDEX  ENABLE,
+	 CONSTRAINT "DEPTDNAME_UK" UNIQUE ("DNAME")
+  USING INDEX  ENABLE
+   ) ;
+```
+
+While using the Oracle default case, you may experience a lower compatibility ratio compared to other projects. The following are reasons that might contribute to this lower compatibility ratio:
+
+- The most common reason is that the object/relation doesn't exist. This scenario is caused by the fact that the table/object is in double-quoted upper case to preserve the Oracle case, whereas in the failing object it is referenced without the double-quotes. For example:
+
+  ```sql
+  CREATE TABLE "HR"."EMP"
+     (   "EMPNO" NUMBER(4,0),
+         "ENAME" VARCHAR2(10),
+         "JOB" CLOB,
+         "MGR" NUMBER(4,0),
+         "HIREDATE" DATE,
+         "SAL" NUMBER(7,2),
+         "COMM" NUMBER(7,2),
+         "DEPTNO" NUMBER(2,0),
+       CONSTRAINT "PK_EMP" PRIMARY KEY ("EMPNO")
+    USING INDEX  ENABLE
+     ) ;
+
+  CREATE OR REPLACE  PROCEDURE "HR"."PROC"
+  IS
+   CURSOR emp_cur IS SELECT hiredate, CAST(hiredate AS timestamp(6)) AS timestamped FROM emp;
+   REC emp_cur%rowtype;
+  BEGIN
+     OPEN emp_cur;
+     LOOP
+     FETCH emp_cur INTO rec;
+       EXIT WHEN emp_cur%NOTFOUND ;
+  	          DBMS_OUTPUT.PUT_LINE(rec.hiredate ||'  '||rec.timestamped);
+           END LOOP;
+      CLOSE EMP_CUR;
+     END ;
+  ```
+
+  The error displays as follows:
+
+  ```sql
+  relation "emp" does not exist
+  ```
+
+  In the example above, the table name and its column names are specified with quoted uppercase names in the `CREATE TABLE` statement; however, in the `CREATE OR REPLACE PROCEDURE` statement, the table and its columns are referenced using using unquoted lowercase identifiers.
+
+- The variables defined using `%type` are failing in code objects as preceding `table.column-name` are in lower case, like `employees.employee_id%type` whereas the table name and the column names for the actual table are in double-quoted uppercase. For example:
+
+  ```sql
+  CREATE TABLE "HR"."EMPLOYEES"
+     (    "EMPLOYEE_ID" NUMBER(6,0),
+          "FIRST_NAME" VARCHAR2(20),
+          "LAST_NAME" VARCHAR2(25) CONSTRAINT "EMP_LAST_NAME_NN" NOT NULL ENABLE,
+          "EMAIL" VARCHAR2(25) CONSTRAINT "EMP_EMAIL_NN" NOT NULL ENABLE,
+          "PHONE_NUMBER" VARCHAR2(20),
+          "HIRE_DATE" DATE CONSTRAINT "EMP_HIRE_DATE_NN" NOT NULL ENABLE,
+          "JOB_ID" VARCHAR2(10) CONSTRAINT "EMP_JOB_NN" NOT NULL ENABLE,
+          "SALARY" NUMBER(8,2),
+          "COMMISSION_PCT" NUMBER(2,2),
+          "MANAGER_ID" NUMBER(6,0),
+          "DEPARTMENT_ID" NUMBER(4,0),
+           CONSTRAINT "EMP_SALARY_MIN" CHECK ("SALARY" > 0) ENABLE,
+           CONSTRAINT "EMP_EMP_ID_PK" PRIMARY KEY ("EMPLOYEE_ID")
+    USING INDEX  ENABLE,
+           CONSTRAINT "EMP_EMAIL_UK" UNIQUE ("EMAIL")
+    USING INDEX  ENABLE
+     ) ;
+  CREATE OR REPLACE  PROCEDURE "HR"."PKG" AS
+  -- declare variables for data fetched from cursor
+    empid       employees.employee_id%TYPE; -- variable for employee_id
+    hiredate    employees.hire_date%TYPE;   -- variable for hire_date
+    firstname   employees.first_name%TYPE;  -- variable for first_name
+    lastname    employees.last_name%TYPE;   -- variable for last_name
+    rowcount    NUMBER;
+    bonusamount NUMBER;
+    yearsworked NUMBER;
+  -- declare the cursor with a parameter
+    CURSOR cursor1 (thismonth NUMBER)IS
+      SELECT employee_id, first_name, last_name, hire_date FROM employees
+         WHERE EXTRACT(MONTH FROM hire_date) = thismonth;
+  BEGIN
+    null;
+  END;
+  ```
+
+  The error displays as follows:
+
+  ```sql
+  syntax error at or near "%" (line 3, char 37)
+  ```
+
+- When tables have TYPE reference in column data type they fail due to the difference in case. For example:
+
+  ```sql
+  CREATE OR REPLACE TYPE "HR"."USER_TYPE" IS OBJECT(
+      "ID" NUMBER,
+      "NAME" VARCHAR2(256)
+  );
+
+  CREATE TABLE "HR"."MY_TABLE"
+  (
+      "ID" NUMBER,
+      "MY_NAME" user_type
+  );
+  ```
+
+  The error displays as follows:
+
+  ```sql
+  type "user_type" does not exist
+  LINE 4:     "MY_NAME" user_type
+                ^
+  SQL state: 42704
+  Character: 58
+  ```
+
+### Incomplete object definition
+
+While assessing source schemas with Migration Portal, in rare scenarios, the converted object definitions are incomplete when the source DDL contains reserved words.
+
+If you encounter an issue where some part of the object definition is missing or the definition gets terminated before reaching the actual end of the statement, you might be using keywords reserved by EDB Postgres Advanced Server. For example, when you use `CONSTRAINT` as a column name in a `TABLE` definition and then reference it in `VIEW` or `MVIEW` definitions, Migration Portal might terminate that DDL statement abruptly and skip to the next definition without successfully assessing or converting it.
+
+To work around this issue, you can either:
+
+- Rename the column name in the Oracle database, then reextract the DDL and upload it to Migration Portal.
+
+- Rename the column name in the extracted DDL file and then upload it to Migration Portal.
+
+## EDB DDL Extractor
+
+### General limitations
+
+- The EDB DDL Extractor script doesn't extract objects restored using `Flashback` that still have names like `BIN$b54+4XlEYwPgUAB/AQBWwA==$0`. If you want to extract these objects, you must change the names of the objects and rerun the extraction process.
+- The EDB DDL Extractor extracts `nologging` tables as normal tables. Once these tables are migrated to EDB Postgres Advanced Server, WAL log files are created.
+- The EDB DDL Extractor extracts objects only with `VALID` status. For any objects that have `INVALID` status that you want Migration Portal to assess, first update them to `VALID`.
+- The EDB DDL Extractor doesn't extract objects that were obfuscated using the Oracle wrap feature. As such, these objects aren't included in the set of DDL assessed by the Migration Portal. If you want to assess these objects and migrate them to EDB Postgres Advanced Server, replace the wrapped versions of the objects with nonwrapped versions. See [Wrapped objects](#wrapped-objects) for more information.
+- The EDB DDL Extractor creates Global Temporary tables to store the schema names and their dependency information. These tables are dropped at the end of successful extraction.
+- The EDB DDL Extractor script doesn't extract schemas whose name starts with `PG_` because PostgreSQL doesn't support it. If you want to extract these schemas, you must change the name of the schema before extraction.
+- The EDB DDL Extractor automatically extracts the information for the profiles, roles, and grants.
+- The EDB DDL Extractor currently doesn't support the extraction of `ROLES`, `SYSTEM GRANTS ON ROLES`, `OBJECT GRANTS ON ROLES`, and `ROLE GRANTS` from Oracle 11g. This behavior results in error messages being written to the extracted files in the sections corresponding to these object types. These errors don't cause any issue in the assessment of these files by Migration Portal.
+- The EDB DDL Extractor script may log `object "OBJECT_NAME" of type SYNONYM not found in schema "PUBLIC"` errors in the dependent objects section of the extracted file. This happens only if the user selects the option to extract dependent objects from an Oracle multi tenant environment where the Oracle database is a container database.
+
+### "Snapshot Too Old" error
+
+The EDB DDL Extractor displays the error “ORA-01555: snapshot too old“ at runtime when the database server generates a volume of transactions that can't be properly processed by the UNDO tablespace.
+
+When the database server generates undo transactions at a high rate, it can cause the server to run out of space to store undo data. Since the UNDO tablespace is implemented as a circular buffer, it starts overwriting older undo data blocks. Resolve this error and rerun the EDB DDL Extractor to ensure you extract the DDLs without any errors.
+
+To work around this error, increase the allocated space for the `UNDO_RETENTION` parameter.
+
+First, check the currently allocated total space for undo operations and the currently free space:
+
+1. Check the existing value of the `UNDO_RETENTION` parameter:
+
+   ```sql
+   SELECT value FROM v$parameter WHERE name = 'undo_retention';
+   ```
+
+2. Add the results of the two following queries to check the total available space in the UNDO tablespace:
+
+   ```sql
+   SELECT SUM(bytes)/1024/1024 free_mb FROM dba_undo_extents WHERE status='EXPIRED';
+   ```
+
+   ```sql
+   SELECT dfs.tablespace_name, SUM(dfs.bytes) / 1024 / 1024 AS free_mb FROM 
+   dba_free_space dfs 
+   JOIN dba_tablespaces dt ON dfs.tablespace_name = dt.tablespace_name 
+   WHERE dt.contents = 'UNDO' GROUP BY dfs.tablespace_name; 2 3 4
+   ```
+
+Next, determine the number of MB your environment requires and increase the allocated storage space:
+
+1. Monitor the volume of undo data generated by transactions during peak usage hours:
+
+   ```sql
+   SELECT SUM(undoblks * 8192)/1024/1024 AS undo_mbs FROM v$undostat;
+   ```
+
+   > **Note**
+   >
+   > The value reflects the number of undo blocks consumed during a 10-minute interval, converted to MB.
+
+2. Calculate the total number of MB your environment requires for the UNDO tablespace. For example, if the transaction volume generates X MB of undo data per minute, and the requirement is to retain the data for Y minutes:
+
+   UNDO Space (MB) = X (MB/min) × Y (min)
+
+3. Update the `UNDO_RETENTION` parameter according to the required space in MB. This example increases the storage space to 2400 MB:
+
+   ```sql
+   ALTER SYSTEM SET UNDO_RETENTION = 2400;
+   ```
+
+   ```output title="Output"
+   System altered.
+   ```
+
+## Oracle Data Pump utilities
+
+- Migration Portal might fail to parse your SQL file if you create a database link using the `IDENTIFIED BY` clause with Oracle's quote operator, for example, `IDENTIFIED BY VALUES q'[:1]'`. To parse your file successfully, try using an actual password, for example, `IDENTIFIED BY my_password`.
+
+- The DDL generated by Oracle Data Pump utilities might contain `ALTER STATEMENTS` such as `ALTER FUNCTION`, `ALTER PACKAGE`, and `ALTER TYPE`, which are not processed by Migration Portal.
+
+- Profiles and roles aren't extracted when the Oracle Data Pump is executed in schema mode, that is, when the `SCHEMAS` parameter is used when executing the `expdp` command. If the schema user being exported has a profile assigned to it, the assessment of the schema user object fails in Migration Portal since the profile isn't part of the exported `impdp` file. To correct the issue, remove the profile assignment in the user object target DDL, and reassess the user creation object.
+
+- You might see some errors while trying to extract `ROLES`, `SYSTEM GRANTS ON ROLES`, `OBJECT GRANTS ON ROLES`, and `ROLE GRANTS` from Oracle 11g using `impdp` or `expdp` in schema mode. The workaround is to use the `full=y` option, which extracts all the schemas and these object types without error.
+
+## AI Copilot
+
+AI Copilot is a tool designed to assist you with issues that come up while migrating DDLs.
+While this tool can greatly aid in problem solving, it's important to understand that generative AI technology will sometimes generate inaccurate or irrelevant responses.
+The accuracy and quality of recommended solutions is heavily influenced by your [prompt and query strategies](https://www.enterprisedb.com/docs/migration_portal/latest/03_mp_using_portal/mp_ai_copilot/ai_good_prompts/).
+
+Before applying any suggested solutions in production environments,
+we strongly recommend testing the solutions in a controlled test environment
+to ensure the proposed fixes align with your specific migration requirements.
+
+In this first release, the AI Copilot's response time can be slower than expected.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

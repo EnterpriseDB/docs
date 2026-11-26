@@ -1,0 +1,29 @@
+---
+title: USER_USERS
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_cat_views/oracle_compatible_views/90_user_users/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# USER\_USERS
+
+<div id="user_users" class="registered_link"></div>
+
+The `USER_USERS` view provides information about the current user.
+
+| Name                          | Type                          | Description                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `username`                    | `TEXT`                        | User name of the user.                                                                                                                                                                                                                                                                                                        |
+| `user_id`                     | `OID`                         | ID number of the user.                                                                                                                                                                                                                                                                                                        |
+| `account_status`              | `CHARACTER VARYING(32)`       | The current status of the account. Possible values are: `OPEN`, `EXPIRED`, `EXPIRED(GRACE)`, `EXPIRED & LOCKED`, `EXPIRED & LOCKED(TIMED)`, `EXPIRED(GRACE) & LOCKED`, `EXPIRED(GRACE) & LOCKED(TIMED)`, `LOCKED`, `LOCKED(TIMED)`. Use the `edb_get_role_status(role_id)` function to get the current status of the account. |
+| `lock_date`                   | `TIMESTAMP WITHOUT TIME ZONE` | If the account status is `LOCKED`, `lock_date` displays the date and time the account was locked.                                                                                                                                                                                                                             |
+| `expiry_date`                 | `TIMESTAMP WITHOUT TIME ZONE` | The expiration date of the account.                                                                                                                                                                                                                                                                                           |
+| `default_tablespace`          | `TEXT`                        | The default tablespace associated with the account.                                                                                                                                                                                                                                                                           |
+| `temporary_tablespace`        | `CHARACTER VARYING(30)`       | Included only for compatibility. The value is always '' (an empty string).                                                                                                                                                                                                                                                    |
+| `created`                     | `DATE`                        | Timestamp for the creation of an object.                                                                                                                                                                                                                                                                                      |
+| `last_ddl_time`               | `DATE`                        | Timestamp for the last modification of an object resulting from a DDL statement including grants and revokes.                                                                                                                                                                                                                 |
+| `initial_rsrc_consumer_group` | `CHARACTER VARYING(30)`       | Included only for compatibility. The value is always `NULL`.                                                                                                                                                                                                                                                                  |
+| `external_name`               | `CHARACTER VARYING(4000)`     | Included only for compatibility. Always set to `NULL`.                                                                                                                                                                                                                                                                        |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,101 @@
+---
+title: "Example: Join pushdown"
+product: Mongo Foreign Data Wrapper
+version: "5"
+url: https://www.enterprisedb.com/docs/mongo_data_adapter/latest/08a_example_join_pushdown/
+lastModified: 2023-07-17T13:51:45-04:00
+---
+
+# Example: Join pushdown
+
+MongoDB Foreign Data Wrapper supports pushdown for inner joins, left joins, and right joins. For example:
+
+Postgres data set:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION mongo_fdw;
+
+-- create server object
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address 'localhost', port '27017');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mongo_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (_id NAME, eid INTEGER, ename TEXT, deptid INTEGER) SERVER mongo_server OPTIONS (database 'edb', collection 'emp');
+
+-- insert into table
+INSERT INTO emp VALUES (0, 100, 'John', 10);
+INSERT INTO emp VALUES (0, 110, 'Mark', 10);
+INSERT INTO emp VALUES (0, 120, 'Smith', 20);
+INSERT INTO emp VALUES (0, 130, 'Ed', 30);
+
+-- create foreign table
+CREATE FOREIGN TABLE dept (_id NAME, deptid INTEGER, dname TEXT) SERVER mongo_server OPTIONS (database 'edb', collection 'dept');
+
+-- insert into table
+INSERT INTO dept VALUES (0, 10, 'SALES');
+INSERT INTO dept VALUES (0, 20, 'ENGG');
+INSERT INTO dept VALUES (0, 30, 'IT');
+```
+
+Enable/disable GUC for JOIN pushdown queries at the session level, table level, or server level:
+
+```sql
+-- Session level
+edb=# SET mongo_fdw.enable_join_pushdown to true;
+SET
+-- Table level
+edb=# ALTER FOREIGN TABLE emp OPTIONS (ADD enable_join_pushdown 'true');
+Table altered
+-- Server level
+edb=# ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'true');
+altered
+```
+
+Query with JOIN pushdown:
+
+```sql
+--inner join
+edb=# EXPLAIN VERBOSE SELECT e.ename, d.dname FROM emp e INNER JOIN dept d ON (e.deptid = d.deptid);
+```
+
+```output title="Output"
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=64)
+   Output: e.ename, d.dname
+   Foreign Namespace: (edb.emp e) INNER JOIN (edb.dept d)
+(3 rows)
+```
+
+```sql
+--left join
+edb=# EXPLAIN VERBOSE SELECT e.ename, d.dname FROM emp e LEFT JOIN dept d ON (e.deptid = d.deptid);
+```
+
+```output title="Output"
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=64)
+   Output: e.ename, d.dname
+   Foreign Namespace: (edb.emp e) LEFT JOIN (edb.dept d)
+(3 rows)
+```
+
+```sql
+--right join
+edb=# EXPLAIN VERBOSE SELECT e.ename, d.dname FROM emp e RIGHT JOIN dept d ON (e.deptid = d.deptid);
+```
+
+```output title="Output"
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=64)
+   Output: e.ename, d.dname
+   Foreign Namespace: (edb.dept d) LEFT JOIN (edb.emp e)
+(3 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

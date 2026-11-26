@@ -1,0 +1,68 @@
+---
+title: Upgrading Apache HTTPD server
+product: Postgres Enterprise Manager
+version: "9"
+url: https://www.enterprisedb.com/docs/pem/9/upgrading/upgrading_httpd/
+lastModified: 2023-08-10T15:34:57-04:00
+---
+
+# Upgrading Apache HTTPD server
+
+The Apache HTTPD web server is used to serve the PEM web application.
+On Linux, PEM doesn't bundle HTTPD but depends on the version provided by the system package manager.
+On Windows, the PEM installer bundles a version of HTTPD.
+
+## Upgrading HTTPD on Linux
+
+> **Important**
+>
+> If you're using Red Hat Enterprise Linux (RHEL), Rocky Linux, AlmaLinux, or Oracle Linux, and you're updating HTTPD to address a vulnerability,
+> read [Note on HTTPD versioning in RHEL and RHEL derivatives](#httpd-versioning-in-rhel-and-rhel-derivatives).
+
+If you're running Linux, manage HTTPD along with other system software on your servers.
+We recommend always using the latest version available from your package manager.
+
+You don't need to stop PEM or back up any files prior to upgrade. Initiate the upgrade from your package manager.
+
+#### RHEL / Rocky Linux / AlmaLinux / Oracle Linux
+
+```bash
+sudo yum update httpd
+```
+
+#### Debian / Ubuntu
+
+```bash
+sudo apt update
+sudo apt upgrade apache2
+```
+
+#### SLES
+
+```bash
+sudo zypper update apache2
+```
+
+### HTTPD versioning in RHEL and RHEL derivatives
+
+You might notice that the latest version of HTTPD available from RHEL or other RHEL derivatives has a significantly older version number than the latest community release.
+Specifically, RHEL 7 provides HTTPD 2.4.6, and RHEL 8 provides 2.4.37. It's very important to understand that Red Hat builds custom HTTPD packages for RHEL and backports security fixes.
+
+For this reason, don't assume that a vulnerability present in the community 2.4.37 release is present in the RHEL package of the same version.
+If you're trying to install a newer version of HTTPD for this reason, it's almost certainly not necessary. See the [Apache HTTPD versions supported by Red Hat](https://access.redhat.com/solutions/445713) article in the Red Hat knowledgebase for more information.
+
+> **Warning**
+>
+> Red Hat doesn't support community HTTPD or HTTPD built from source.
+> If you're considering using any other source of HTTPD on a RHEL system, read the [Apache HTTPD versions supported by Red Hat](https://access.redhat.com/solutions/445713) article and make sure you understand the implications.
+
+## Upgrading HTTPD on Windows
+
+To upgrade to the latest version of HTTPD packaged for PEM by EDB, download the latest PostgreSQL or EDB Advanced Server installer for Windows and use
+[Stack Builder](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/using_stackbuilder/)
+or [StackBuilder Plus](https://www.enterprisedb.com/docs/epas/latest/installing/windows/installing_advanced_server_with_the_interactive_installer/using_stackbuilder_plus/) respectively to update PEM-HTTPD.
+PEM-HTTPD is located under the Web Development category.
+
+![PEM-HTTPD in Stack Builder](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/pem/9/images/stackbuilder_pemhttpd.png)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

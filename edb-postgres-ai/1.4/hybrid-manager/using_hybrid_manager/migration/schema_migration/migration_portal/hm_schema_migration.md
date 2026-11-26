@@ -1,0 +1,146 @@
+---
+title: Assessing schemas for HM projects
+description: Reference material on assessing schemas for database migrations with Hybrid Manager, supporting the step-by-step migration guides.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/hm_schema_migration/
+lastModified: 2026-08-13T16:35:17+02:00
+---
+
+# Assessing schemas for HM projects
+
+Use the collaborative [project-scoped workspace](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/access_mp/#project-scoped-workspace-vs-users-workspace) of Migration Portal to convert and migrate schemas in the context of a database migration. HM provides an integration that lets you use the HM console to create a Migration Portal project. In this project, you can add source database schemas preloaded by the [EDB Postgres AI agent](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/) while performing a database migration.
+
+HM creates a Migration Portal project automatically for every registered source database — Oracle or Postgres. Oracle schemas require compatibility assessment and often conversion before they're migrated to the destination database, so Oracle is the only source type where you actively work inside Migration Portal to resolve issues. Postgres schemas are already compatible with the destination, so HM passes them through automatically with no manual assessment or conversion step. This page covers the Oracle workflow — see [Migrating Postgres schemas](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/postgres/) for the Postgres path.
+
+To upload and assess externally provided DDL schema files, [use the user's workspace](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/external_schema_migration/).
+
+## Prerequisites
+
+- [Register an Oracle database](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/) with HM.
+
+- **Optional:** To facilitate resolving schema incompatibilities in Migration Portal, the HM administrator must [enable and configure the AI Copilot with the AI/LLM of your organization](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/enabling_migration_copilot/).
+
+## Accessing Migration Portal
+
+For Oracle databases only, use the Migration Portal integration to assess and migrate schemas:
+
+1. In the **Estate** page, select the **Migrations** tab.
+
+2. To open the detailed view of the database, select the name of the database you want to migrate.
+
+If you already created a schema migration project for one, several, or all schemas, the HM console displays a link with the name of the project in the **Migration Portal Project** column. Select the link to open a Migration Portal workspace that contains all the schemas in that project.
+
+If you haven't created a project for your schema migrations yet, select either the global **New Migration Portal Project** button or the schema-scoped **+** sign. This selection starts a new workflow to [create a Migration Portal](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/hm_schema_migration/#creating-a-migration-portal-project) project.
+
+## Creating a Migration Portal project
+
+If you registered an Oracle database with Hybrid Manager via the EDB Postgres AI agent, a Migration Portal project is **created automatically** for all the database schemas and dependencies. It creates a project per registered database (per `resource_id` established in the `beacon-agent.yaml`). Take into account that any schemas added post-registration aren't reflected in the Migration Portal project.
+
+If the Migration Portal didn't automatically create projects for your registered databases, create projects manually. This can be the case when:
+
+- The size of the ingested DDL exceeds the default limit of 300 MB.
+- The size of the ingested DDL exceeds the [limit customized by yourself](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/controlling_project_creation/#customizing-the-maximum-size-of-migration-portal-projects).
+- You disabled the automatic creation of Migration Portal projects.
+
+### Creating a Migration Portal project manually
+
+Create Migration Portal projects manually when the automatic project creation is disabled or failed.
+
+1. In the **Estate** page, select the **Migrations** tab.
+
+2. To open the detailed view of the database, select the name of the database you want to migrate.
+
+3. In the detailed view of the database, select the **Schemas** tab.
+
+4. Select **New Migration Portal Project** or the the plus sign next to one of the schemas you want to migrate.
+
+   > **Tip**
+   >
+   > The **Dependencies** column shows the other schemas the current schema relies on. We recommend grouping a schema with all its dependencies in a single Migration Portal project to ensure that all referenced objects exist in the destination database.
+
+5. In the pop-up window, enter the details for the Migration Portal project that will host the assessment, conversion, and migration of the schemas. Select **Continue**.
+
+6. Select all the schemas you want to add to this Migration Portal project. You can select only schemas that the EDB Postgres AI agent has ingested successfully and schemas that aren't already part of a different Migration Portal project.
+
+   > **Note**
+   >
+   > You can't add schemas to the existing project later. However, you can use a different project to migrate other schemas to the same destination database.
+
+7. Select **Create New Project**.
+
+   In the background, this creates a Migration Portal project and loads the source schemas into it for analysis.
+
+After HM finishes loading the schemas and creating a project in Migration Portal, a link is added with the name of the project. Select the link to open Migration Portal.
+
+## Working in Migration Portal
+
+The selected schemas were uploaded and assessed by Migration Portal. Use the AI Copilot or QuickHelp to help you resolve incompatibilities.
+
+After you resolve all compatibility issues, choose how to import the schema to the destination database:
+
+### Simplified (recommended)
+
+Skip ahead to configuring the EDB Data Migration Service (DMS) agent. When you create the migration, select **Schema and data** as the scope — HM imports the converted schema with constraints applied in the correct order, and automatically reapplies deferred constraints after data migration completes. See [Configuring the EDB DMS agent](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/configuring_dms_agent/).
+
+### Manual
+
+Import the schema into the destination database directly from Migration Portal, then manage constraint ordering yourself.
+
+1. Select **Migrate to**.
+
+2. Select the **Online migration** option (recommended).
+
+3. Select the schemas you want to migrate, but clear **Constraints** from the list of objects underneath the database. Select **Next**.
+
+   > **Note**
+   >
+   > See [Importing schema](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/migrating_schema/#importing-schema) to learn more about why constraints must be disabled and other considerations.
+
+4. In the **Connect to your cluster** page, enter the host name of the database cluster you want to use as a destination.
+
+   > **Note**
+   >
+   > If you're migrating to an HM-managed database cluster, you can find the read/write host and other connection data from the **Clusters** page. Select your cluster, and then select **Connect**.
+
+5. Select **Next** and wait until the schemas were imported successfully.
+
+6. Connect to the target database cluster and ensure the schemas were migrated.
+
+## Deleting a Migration Portal project
+
+When using the project-scoped workspace of Migration Portal, you can delete projects only through the HM console, not through the integrated portal.
+
+1. From the **Estate** page, select the **Migrations** tab.
+
+2. Select the name of the database you were migrating.
+
+3. In the database's detailed view, select the **Schemas** tab. You see a list of schemas and the assigned Migration Portal projects.
+
+4. Locate the schema assigned to the Migration Portal project you want to delete, and select the **+** (plus) sign in the same line.
+
+   > **Note**
+   >
+   > If you're using a project to assess several schemas, deleting the project from any of the assigned schemas deletes the project for all schemas.
+
+5. In the expanded view, under **Actions**, select the trash can icon.
+
+6. Type **delete project** and select **Confirm Delete** to permanently delete the project.
+
+## Switching to user's workspace
+
+While you're working on schemas in Migration Portal, you can switch to the [user's workspace](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/access_mp/#project-scoped-workspace-vs-users-workspace) for manual DDL upload.
+
+To do so, select **Switch to user's workspace**.
+
+However, this workspace doesn't display the schemas you selected during project creation. It serves only as a way to quickly switch between tasks. See [Managing external schemas for external DDL](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/external_schema_migration/) for more information.
+
+## Related topics
+
+- [Perform an online or offline migration](https://www.enterprisedb.com/docs/migration_portal/latest/04_mp_migrating_database/03_mp_schema_migration/) of the converted schemas to a destination database.
+
+- [Migration Portal documentation](https://www.enterprisedb.com/docs/migration_portal/latest/03_mp_using_portal/) for recommendations and guidelines on how to use the portal.
+
+- [Control Migration Portal project creation](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/schema_migration/migration_portal/controlling_project_creation/) by customizing the maximum size of projects or disabling automatic project creation.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

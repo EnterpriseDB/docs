@@ -1,0 +1,243 @@
+---
+title: Use Cases and Personas for AI Factory on Hybrid Manager
+description: Real-world AI Factory implementations on Hybrid Manager addressing specific organizational needs and user roles
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/use-cases-and-personas/
+lastModified: 2026-06-24T12:48:12Z
+---
+
+# Use Cases and Personas for AI Factory on Hybrid Manager
+
+## Overview
+
+AI Factory on Hybrid Manager enables diverse organizational use cases through sovereign AI infrastructure. Organizations leverage these capabilities to build intelligent applications while maintaining complete control over data and models within their Kubernetes environments.
+
+## Key Use Cases
+
+### Internal Knowledge Management
+
+Organizations deploy AI assistants that provide employees with natural language access to internal documentation, policies, and institutional knowledge.
+
+**Implementation Pattern**
+
+Financial services firms index compliance documentation, regulatory filings, and internal procedures into knowledge bases. Employees query these systems using conversational interfaces, receiving accurate answers with source citations while maintaining data sovereignty.
+
+**Technical Components**
+
+- Knowledge bases indexing SharePoint, Confluence, and database content
+- LLM endpoints for query understanding and response generation
+- Retrieval systems with role-based filtering for access control
+
+See [Knowledge Base Creation](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/create-knowledge-base/) for implementation guidance.
+
+### Customer Service Automation
+
+AI-powered customer support systems handle routine inquiries while escalating complex issues to human agents.
+
+**Implementation Pattern**
+
+E-commerce companies deploy assistants that access order systems, product catalogs, and return policies through secure APIs. These assistants resolve 60-70% of customer inquiries automatically while maintaining full audit trails for quality assurance.
+
+**Technical Components**
+
+- REST API tools for order management system integration
+- Knowledge bases containing product documentation and FAQs
+- Thread tracking for conversation history and escalation workflows
+
+See [Customer Service Agent Quickstart](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/quickstart-customer-service-agent-ui/) for a working example.
+
+### Enterprise RAG Systems
+
+Retrieval-augmented generation applications ground LLM responses in organizational data, reducing hallucination while maintaining accuracy.
+
+**Implementation Pattern**
+
+Healthcare organizations implement RAG systems over clinical guidelines, research papers, and treatment protocols. Medical professionals receive evidence-based recommendations with citations to source materials, supporting clinical decision-making while ensuring traceability.
+
+**Technical Components**
+
+- Vector embeddings stored in PostgreSQL with pgvector
+- Hybrid search combining semantic and keyword matching
+- Reranking models for result optimization
+
+See [RAG Pipeline Documentation](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/knowledge_base/) for detailed architecture.
+
+### AI-Enabled APIs
+
+Organizations expose AI capabilities through secure APIs for integration with existing applications.
+
+**Implementation Pattern**
+
+Software companies provide intelligent features within their products by deploying model endpoints accessible through standard REST interfaces. These APIs handle tasks like document summarization, sentiment analysis, and content generation while maintaining predictable performance characteristics.
+
+**Technical Components**
+
+- InferenceServices exposing OpenAI-compatible endpoints
+- API gateways with authentication and rate limiting
+- Load balancing across model replicas for high availability
+
+See [Model Serving Guide](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/serving/) for deployment instructions.
+
+## User Personas
+
+### Platform Engineers
+
+Platform engineers manage AI Factory infrastructure, ensuring reliable model serving and optimal resource utilization.
+
+**Primary Responsibilities**
+
+- Configure GPU nodes and resource allocation
+- Deploy and monitor InferenceServices
+- Manage model library and registry connections
+- Implement security policies and network configurations
+
+**Key Workflows**
+
+1. Provision GPU resources following [GPU Setup Guide](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/setup-gpu/)
+2. Configure model registries per [Model Library Documentation](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/library/)
+3. Monitor inference performance using [Observability Tools](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/observability/)
+
+### Data Scientists
+
+Data scientists leverage AI Factory to deploy models and build intelligent applications without managing infrastructure complexity.
+
+**Primary Responsibilities**
+
+- Create and optimize knowledge bases
+- Configure retrieval strategies for RAG applications
+- Evaluate model performance and accuracy
+- Design assistant behaviors and tool integrations
+
+**Key Workflows**
+
+1. Build knowledge bases following [Knowledge Base Management](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/manage-knowledge-base/)
+2. Configure retrievers using [Retriever Creation Guide](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/create-retriever/)
+3. Deploy assistants through [Assistant Configuration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/create-assistant/)
+
+### Application Developers
+
+Developers integrate AI capabilities into business applications through APIs and SDKs.
+
+**Primary Responsibilities**
+
+- Integrate model endpoints into applications
+- Implement conversation management using threads
+- Build custom tools for assistant capabilities
+- Handle error conditions and fallback strategies
+
+**Key Workflows**
+
+1. Access model endpoints via [KServe Integration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/access-kserve-endpoints/)
+2. Implement conversation tracking using [Thread Management](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/threads/)
+3. Create custom tools following [Tool Development Guide](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/tools/)
+
+### Business Analysts
+
+Business analysts use Gen AI Builder's visual interfaces to create AI applications without coding expertise.
+
+**Primary Responsibilities**
+
+- Define assistant behaviors and knowledge domains
+- Configure data source connections
+- Test and validate assistant responses
+- Monitor usage patterns and effectiveness
+
+**Key Workflows**
+
+1. Design assistants using visual builder interface
+2. Connect data sources through configuration wizards
+3. Test interactions and refine behaviors iteratively
+
+## Industry-Specific Implementations
+
+### Financial Services
+
+**Use Case**: Regulatory compliance assistant analyzing transaction patterns and generating required reports.
+
+**Components**
+
+- Knowledge base of regulatory documentation
+- Tools accessing transaction databases
+- Audit logging for compliance tracking
+
+### Healthcare
+
+**Use Case**: Clinical decision support system providing evidence-based treatment recommendations.
+
+**Components**
+
+- RAG over medical literature and guidelines
+- Integration with electronic health records
+- Strict access controls for patient data
+
+### Manufacturing
+
+**Use Case**: Maintenance assistant diagnosing equipment issues using sensor data and technical manuals.
+
+**Components**
+
+- Knowledge base of equipment documentation
+- Real-time data integration from IoT sensors
+- Predictive maintenance model endpoints
+
+## Implementation Considerations
+
+### Scalability Planning
+
+Different use cases require varying levels of scale:
+
+- **High-volume customer service**: Multiple model replicas with auto-scaling
+- **Internal knowledge systems**: Moderate scaling with caching optimization
+- **Specialized assistants**: Single instances with dedicated resources
+
+### Security Requirements
+
+Use cases determine security configurations:
+
+- **Public-facing applications**: External ingress with authentication
+- **Internal systems**: Cluster-local access with RBAC
+- **Regulated industries**: Enhanced audit logging and encryption
+
+### Performance Optimization
+
+Optimize based on use case characteristics:
+
+- **Real-time applications**: Low-latency model serving with edge caching
+- **Batch processing**: Higher throughput with larger batch sizes
+- **Interactive assistants**: Balanced latency and throughput
+
+## Getting Started by Use Case
+
+### For Knowledge Management
+
+1. Review [Knowledge Base Concepts](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/knowledge-bases/)
+2. Follow [Data Source Integration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/data-sources/)
+3. Implement [Hybrid Search](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/hybrid-kb-best-practices/)
+
+### For Customer Service
+
+1. Start with [Assistant Concepts](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/assistants/)
+2. Configure [Rulesets](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/rulesets/) for behavior control
+3. Deploy using [Quickstart UI](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/quickstart-customer-service-agent-ui/)
+
+### For API Development
+
+1. Deploy models via [InferenceService Creation](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/create-inferenceservice/)
+2. Access endpoints following [Python Client Guide](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/quickstart-python-using-inference-endpoint/)
+3. Implement monitoring per [Observability Documentation](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/model/monitor-inferenceservice/)
+
+## Additional Resources
+
+**Architecture References**
+
+- [Gen AI Architecture](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/architecture/)
+
+**Implementation Guides**
+
+**Related Documentation**
+
+- [Hybrid Manager Overview](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/)
+- [Analytics](https://www.enterprisedb.com/docs/pgaa/1.3/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

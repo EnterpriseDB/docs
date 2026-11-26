@@ -1,0 +1,91 @@
+---
+title: Known issues
+description: Known issues in EDB Postgres Distributed 5
+product: EDB Postgres Distributed (PGD)
+version: 5.10.0
+url: https://www.enterprisedb.com/docs/pgd/5.10/known_issues/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Known issues
+
+These are currently known issues in EDB Postgres Distributed 5.
+These known issues are tracked in PGD's
+ticketing system and are expected to be resolved in a future
+release.
+
+- If the resolver for the `update_origin_change` conflict
+  is set to `skip`, `synchronous_commit=remote_apply` is used, and
+  concurrent updates of the same row are repeatedly applied on two
+  different nodes, then one of the update statements might hang due
+  to a deadlock with the PGD writer. As mentioned in
+  [Conflicts](https://www.enterprisedb.com/docs/pgd/5.10/conflict-management/conflicts/), `skip` isn't the default
+  resolver for the `update_origin_change` conflict, and this
+  combination isn't intended to be used in production. It discards
+  one of the two conflicting updates based on the order of arrival
+  on that node, which is likely to cause a divergent cluster.
+  In the rare situation that you do choose to use the `skip`
+  conflict resolver, note the issue with the use of the
+  `remote_apply` mode.
+
+- The Decoding Worker feature doesn't work with CAMO/Eager/Group Commit.
+  Installations using CAMO/Eager/Group Commit must keep `enable_wal_decoder` disabled.
+
+- Lag Control doesn't adjust commit delay in any way on a fully isolated node, that's in case all other nodes are unreachable or not operational.
+  As soon as at least one node connects, replication Lag Control picks up its work and adjusts the PGD commit delay again.
+
+- For time-based Lag Control, PGD currently uses the lag time, measured by commit timestamps, rather than the estimated catch up time that's based on historic apply rates.
+
+- Changing the CAMO partners in a CAMO pair isn't currently possible.
+  It's possible only to add or remove a pair.
+  Adding or removing a pair doesn't require a restart of Postgres or even a reload of the configuration.
+
+- Group Commit can't be combined with [CAMO](https://www.enterprisedb.com/docs/pgd/5.10/commit-scopes/camo/).
+
+- Transactions using Eager Replication can't yet execute DDL. The TRUNCATE command is allowed.
+
+- Parallel Apply isn't currently supported in combination with Group Commit. Make sure to disable it when using Group Commit by either (a) Setting `num_writers` to 1 for the node group using [`bdr.alter_node_group_option`](https://www.enterprisedb.com/docs/pgd/5.9/reference/nodes-management-interfaces/#bdralter_node_group_option) or (b) using the GUC [`bdr.writers_per_subscription`](https://www.enterprisedb.com/docs/pgd/5.9/reference/pgd-settings/#bdrwriters_per_subscription). See [Configuration of generic replication](https://www.enterprisedb.com/docs/pgd/5.9/reference/pgd-settings/#generic-replication).
+
+- There currently is no protection against altering or removing a commit scope.
+  Running transactions in a commit scope that's concurrently being altered or removed can lead to the transaction blocking or replication stalling completely due to an error on the downstream node attempting to apply the transaction.
+  Make sure that any transactions using a specific commit scope have finished before altering or removing it.
+
+- The [PGD CLI](https://www.enterprisedb.com/docs/pgd/5.10/cli/) can return stale data on the state of the cluster if it's still connecting to nodes that were previously parted from the cluster.
+  Edit the [`pgd-cli-config.yml`](https://www.enterprisedb.com/docs/pgd/5.10/cli/configuring_cli/#using-a-configuration-file) file, or change your [`--dsn`](https://www.enterprisedb.com/docs/pgd/5.10/cli/configuring_cli/#using-database-connection-strings-in-the-command-line) settings to ensure only active nodes in the cluster are listed for connection.
+
+To modify a commit scope safely, use [`bdr.alter_commit_scope`](https://www.enterprisedb.com/docs/pgd/5.9/reference/functions/#bdralter_commit_scope).
+
+- DDL run in serializable transactions can face the error: `ERROR: could not serialize access due to read/write dependencies among transactions`. A workaround is to run the DDL outside serializable transactions.
+
+- The EDB Postgres Advanced Server 17 data type [`BFILE`](https://www.enterprisedb.com/docs/epas/latest/reference/sql_reference/02_data_types/03a_bfiles/) is not currently supported. This is due to `BFILE` being a file reference that is stored in the database, and the file itself is stored outside the database and not replicated.
+
+- When running PGD on community PostgreSQL with Parallel Apply enabled, writer processes may terminate unexpectedly due to lock timeouts. This occurs because PGD sets a 30 second `lock_timeout` in the writer processes, which can be insufficient when one writer waits on a transaction lock held by another writer that is processing a large transaction. When the timeout is reached, the waiting writer exits, causing other writers and the receiver to terminate as well, which resets the replication process.
+  As a workaround, disable parallel apply by setting `bdr.enable_parallel_apply = off` or migrate to an EDB Postgres variant. This issue is resolved in PGD 6.3.
+
+- In PGD 5.9.2, user login attributes aren't replicated to peer nodes after a `CREATE USER` statement. Users created on one node can log in on the originating node but are blocked on all other nodes because the login attribute is missing from the replicated role definition. This issue is resolved in PGD 5.9.3.
+
+  To identify affected roles, run the following command in psql:
+
+  ```
+  \du
+  ```
+
+  In the **Attributes** column, any role that should have login access but displays `Cannot login` is affected.
+
+  Alternatively, query the system catalog directly:
+
+  ```sql
+  SELECT rolname AS role_name, rolcanlogin
+  FROM pg_roles
+  WHERE rolcanlogin = false;
+  ```
+
+  To resolve the issue without upgrading, manually grant login access on each affected node:
+
+  ```sql
+  ALTER USER <username> WITH LOGIN;
+  ```
+
+Details of other design or implementation [limitations](https://www.enterprisedb.com/docs/pgd/5.10/planning/limitations/) are also available.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

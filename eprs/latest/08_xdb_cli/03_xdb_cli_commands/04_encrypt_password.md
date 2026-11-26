@@ -1,0 +1,220 @@
+---
+title: Encrypting passwords (encrypt)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/04_encrypt_password/
+lastModified: 2025-05-14T14:55:14Z
+---
+
+# Encrypting passwords (encrypt)
+
+<div id="encrypt_password" class="registered_link"></div>
+
+The `encrypt` command encrypts the text supplied in an input file and writes the encrypted result to a specified output file. Use the `encrypt` command to generate an encrypted password to copy into a text file. This text file is referenced by a Replication Server CLI command that requires a user name and the user’s password.
+
+## Synopsis
+
+```
+-encrypt -input <infile> -output <pwdfile> [-passwordEncryptionMethod {DES-MD5|AES-SHA256}]
+```
+
+The text in `infile` is processed using an encryption algorithm, and the encrypted text is written to file `pwdfile`.
+Make sure that `infile` contains only the text that you want to encrypt and that there are no extra characters or empty lines before or after the text that you want to encrypt.
+
+## Parameters
+
+`infile`
+
+The file containing the text to be encrypted.
+
+`pwdfile`
+
+The file containing the encrypted form of the text from `infile`.
+
+`-passwordEncryptionMethod`
+
+Defines the algorithm used to encrypt the password (`DES-MD5` or `AES-SHA256`). If the flag is omitted, the algorith defaults to `DES-MD5`. To override the default `DES-MD5` encryption with the FIPS-compliant `AES-SHA256` encryption, use `-passwordEncryptionMethod AES-SHA256`.
+
+`AES-SHA256` offers stronger protection and supports FIPS, whereas `DES-MD5` is backwards compatible with previous versions.
+
+> **Note**
+>
+> Ensure you use the same encryption method in the publication and subscription servers of a replication cluster.
+
+## Examples
+
+### Encrypt a password with DES-MD5
+
+1. Create a text file with your password using the editor of your choice. Here, `infile` contains the word `password`.
+
+   ```
+   password
+   ```
+
+2. Execute the `encrypt` command to produce a file named `pwdfile`.
+
+   ```shell
+   java -jar edb-repcli.jar -encrypt -input ~/infile -output ~/pwdfile
+   ```
+
+   The content of file pwdfile contains the encrypted form of `password`, namely `ygJ9AxoJEX854elcVIJPTw==`.
+
+3. Copy and paste the encrypted password into the Replication Server configuration file:
+
+   ```ini
+   #xDB Replication Server Configuration Properties
+   admin_password=ygJ9AxoJEX854elcVIJPTw==
+   admin_user=admin
+   ```
+
+### Encrypt a password with AES-SHA256
+
+1. Create a text file with your password using the editor of your choice. Here, `infile` contains the word `password`.
+
+   ```
+   password
+   ```
+
+2. Execute the `encrypt` command to produce a file named `pwdfile`.
+
+   ```shell
+   java -jar edb-repcli.jar -encrypt -input ~/infile -output ~/pwdfile -passwordEncryptionMethod AES-SHA256
+   ```
+
+   The content of file pwdfile contains a FIPS-compliant, AES-SHA256 encrypted form of `password`, namely `BThrXGs/gVmStAV88Yl/U2UjoKXVs9qq56j1n/ZnR05Eyg48`.
+
+   > **Note**
+   >
+   > If you reran the `encrypt` command with the same password input, the generated encrypted password would be a different each time.
+
+3. Copy and paste the encrypted password into the Replication Server configuration file:
+
+   ```ini
+   #xDB Replication Server Configuration Properties
+   admin_password=BThrXGs/gVmStAV88Yl/U2UjoKXVs9qq56j1n/ZnR05Eyg48
+   admin_user=admin
+   ```
+
+4. Enable the AES-SHA256 encryption in both the `xdb_pubserver.conf` and `xdb_subserver.conf` files by uncommenting the `passwordEncryptionMethod=AES-SHA256` line.
+
+   ```ini
+   [...]
+   #Select the encryption method used to protect database connection and replication
+   #server passwords. The AES-SHA256 (PBEWithHmacSHA256AndAES_256) offers stronger
+   #protection and is recommended. The default is set to DES-MD5 (PBEWithMD5AndDES)
+   #for compatibility with the existing cluster configurations.
+   passwordEncryptionMethod=AES-SHA256
+
+   #########################################
+   ### SSL Configuration                 ###
+   #########################################
+   [...]
+   ```
+
+### Change the encryption method
+
+To change the encryption method of an existing Replication Server CLI user password, you must create a new password with the new encryption method, and then replace the password on existing objects.
+
+This example changes the encryption algorithm from `DES-MD5` to `AES-SHA256`.
+
+1. Stop the Publication and Subscription servers.
+
+2. Enable AES-SHA256 encryption in both `xdb_pubserver.conf` and `xdb_subserver.conf` files by uncommenting the `passwordEncryptionMethod=DES-MD5` line and modifying it to `passwordEncryptionMethod=AES-SHA256`.
+
+   ```ini
+   [...]
+   #Select the encryption method used to protect database connection and replication
+   #server passwords. The AES-SHA256 (PBEWithHmacSHA256AndAES_256) offers stronger
+   #protection and is recommended. The default is set to DES-MD5 (PBEWithMD5AndDES)
+   #for compatibility with the existing cluster configurations.
+   passwordEncryptionMethod=AES-SHA256
+
+   #########################################
+   ### SSL Configuration                 ###
+   #########################################
+   [...]
+   ```
+
+3. Create and encrypt a new password for the Replication Server admin user.
+
+   Create a text file with your password using the editor of your choice. Here, `infile` contains the word `password`.
+
+   ```
+   password
+   ```
+
+   Execute the `encrypt` command to produce a file named `pwdfile`.
+
+   ```shell
+   java -jar edb-repcli.jar -encrypt -input ~/infile -output ~/pwdfile -passwordEncryptionMethod AES-SHA256
+   ```
+
+4. Update the previous DES-MD5 password with the new AES-SHA256 password in the `edb-repl.conf` control file which contains connectivity credentials. You must change the password in two places:
+
+   - Replace the value for `admin_password`, which corresponds to the Replication Server `admin_user`.
+
+   - Replace the value for the password that corresponds to the Replication Server control database user.
+
+5. Create new encrypted passwords for Publication Server users, and replace the previous DES-MD5 passwords with the new AES-SHA256 passwords in the Publication database:
+
+   - First, retrieve the IDs of all database connections from the Replication Server control database and note down the `pub_db_id` values:
+
+     ```sql
+     SELECT pub_db_id, db_host, db_port, db_user, db_name FROM _edb_replicator_pub.xdb_pub_database;
+     ```
+
+   - Then, generate encrypted passwords for each of the Publication database users using the Replication Server CLI with `-encrypt` option as previously explained.
+
+   - Finally, update each of the Publication database user passwords. Replace `<NEW_ENCRYPTED_PASSWORD>` with the new password and `<PUB_DB_ID>` with each of the IDs previously noted.
+
+     ```sql
+     UPDATE _edb_replicator_pub.xdb_pub_database SET db_password = '<NEW_ENCRYPTED_PASSWORD>' WHERE pub_db_id = <PUB_DB_ID>;
+     ```
+
+6. Create new encrypted passwords for Subscription database users, and replace the previous DES-MD5 password with the new AES-SHA256 password in the Subscription database:
+
+   - First, retrieve the IDs of all database connections from the Replication Server control database and note down the `sub_db_id` values:
+
+     ```sql
+     SELECT sub_db_id, db_host, db_port, db_user, db_name FROM _edb_replicator_sub.xdb_sub_database;
+     ```
+
+   - Then, generate encrypted passwords for each of the Subscription database users using the Replication Server CLI with `-encrypt` option as previously explained.
+
+   - Finally, update each of the Subscription database user passwords. Replace `<NEW_ENCRYPTED_PASSWORD>`with the new password and `<SUB_DB_ID>` with the ID previously noted.
+
+     ```sql
+     UPDATE _edb_replicator_sub.xdb_sub_database SET db_password = '<NEW_ENCRYPTED_PASSWORD>' WHERE sub_db_id = <SUB_DB_ID>;
+     ```
+
+7. Restart the Publication and Subscription Servers and verify that the replication is running successfully. See [Registering a publication server](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) to learn how to restart Publication Server.
+
+8. If you are using the GUI Console, unregister and register all Publication and Subscription servers.
+
+   If you are using the CLI, create an encrypted password for the admin user based on the AES-SHA256 encryption method and paste it into the Replication Server configuration file:
+
+   ```ini
+   #xDB Replication Server Configuration Properties
+   admin_password=BThrXGs/gVmStAV88Yl/U2UjoKXVs9qq56j1n/ZnR05Eyg48
+   admin_user=admin
+   ```
+
+### Bouncy Castle integration
+
+Replication Server is also certified with the Bouncy Castle FIPS library. If you want to use Bouncy Castle as a provider, you must first enable the library for Replication Server. This way, Replication Server can use it to encrypt passwords using the FIPS-compliant AES-SHA256 algorithm.
+
+Since the library is not bundled with the Java security framework, you must download and configure it for use with Replication Server:
+
+1. [Download the Bouncy Castle FIPS library](https://www.bouncycastle.org/download/bouncy-castle-java-fips/) and place it under `EPRS_HOME/lib`.
+
+2. Bouncy Castle FIPS jar version `bc-fips-2.1.0.jar` is configured by default for Replication Server. If you want to use a different version, create a symlink named `bc-fips.jar` that points to the actual jar.
+
+3. Modify the `java.security` file for your JRE to include Bouncy Castle as a security provider. Ensure its provider number places it higher in preference than other existing providers.
+
+   ```ini
+   security.provider.1=org.bouncycastle.jce.provider.BouncyCastleFipsProvider
+   ```
+
+4. Restart Replication Server services to dynamically load the Bouncy Castle FIPS library and register it in the Java security framework.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

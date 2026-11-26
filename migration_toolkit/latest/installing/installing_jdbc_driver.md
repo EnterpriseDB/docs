@@ -1,0 +1,56 @@
+---
+title: Installing a JDBC driver
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/installing/installing_jdbc_driver/
+lastModified: 2025-08-07T07:25:03+05:30
+---
+
+# Installing a JDBC driver
+
+Migration Toolkit requires Java version 1.8.0 or later.
+
+## Choosing a driver
+
+The JDBC drivers you use depend on the source and target databases for the migration. For example, to migrate from an Oracle Database instance to EDB Postgres Advanced Server, you need the Oracle Database JDBC driver and the EDB JDBC driver.
+
+These are reference sources where JDBC drivers are freely available for download. However, there are other sources where you can obtain the same drivers.
+
+| Source or target database            | JDBC driver                                                                                                                                                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL                           | [PostgreSQL JDBC driver](https://jdbc.postgresql.org/download/)                                                                                                                                                                    |
+| EDB Postgres Advanced Server         | [EDB JDBC connector](https://www.enterprisedb.com/docs/jdbc_connector/latest/installing/)                                                                                                                                          |
+| Oracle Database                      | [Oracle Database JDBC driver](https://www.oracle.com/database/technologies/appdev/jdbc-downloads.html)                                                                                                                             |
+| Microsoft SQL Server                 | [Microsoft JDBC driver for SQL Server](https://learn.microsoft.com/en-us/sql/connect/jdbc/release-notes-for-the-jdbc-driver?view=sql-server-ver16#102)                                                                             |
+| MySQL                                | [Connector/J JDBC driver](https://dev.mysql.com/downloads/connector/j/)                                                                                                                                                            |
+| SAP Adaptive Server Enterprise (ASE) | [Sybase ASE (jTDS) JDBC driver](https://sourceforge.net/projects/jtds/files/) (See note) or [JConnect jconn4 driver](https://help.sap.com/docs/SAP_ASE_SDK/e12c539de04b44a0bb17a545a148361c/b03e2db6bbf910148fc6bbe092513290.html) |
+
+> **Note**
+>
+> The open-source jTDS driver also supports older versions of Microsoft SQL Server (version 2012 and earlier) and may be used with Migration Toolkit. For the newer versions of SQL Server supported by Migration Toolkit, we recommend the Microsoft-provided JDBC driver for SQL Server.
+
+### Driver version compatibility
+
+After selecting the appropriate drivers for your migration, verify that their versions are compatible with the Migration Toolkit you're using. We recommend using the latest available version of the Migration Toolkit to ensure broader compatibility with various database versions and JDBC drivers.
+
+- If you're migrating from Oracle, MySQL, Microsoft SQL Server, or Sybase, use the freely available, source-specific JDBC driver:
+  - [Oracle JDBC](https://www.oracle.com/database/technologies/appdev/jdbc-downloads.html)
+  - [MySQL JDBC](https://dev.mysql.com/downloads/connector/j/)
+  - [Microsoft SQL Server JDBC](https://learn.microsoft.com/en-us/sql/connect/jdbc/release-notes-for-the-jdbc-driver?view=sql-server-ver16#102)
+  - [Sybase ASE (jTDS) JDBC](https://sourceforge.net/projects/jtds/files/) or [SAP jConnect jconn4 driver](https://help.sap.com/docs/SAP_ASE_SDK/e12c539de04b44a0bb17a545a148361c/b03e2db6bbf910148fc6bbe092513290.html)
+
+## Adding the driver to `lib`
+
+After downloading the driver, move the driver file into the `<mtk_install_dir>/lib` directory.
+
+> **Note: For the EDB JDBC driver**
+>
+> If the EDB JDBC driver is installed prior to installing Migration Toolkit you don't need to place a copy of it in the `<mtk_install_dir>/lib` directory. A symbolic link to the edb-jdbc18.jar file is created during installation of Migration Toolkit.
+>
+> After installing Migration Toolkit, you can verify whether the symbolic link exists by executing the following command:
+>
+> ```
+> ls -l /usr/edb/migrationtoolkit/lib/edb-jdbc18.jar
+> ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,157 @@
+---
+title: Installing the host agent and OTel Collector
+description: Install and configure the acp-host-agent and OTel Collector services on every WarehousePG cluster node.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Installing the host agent and OTel Collector
+
+Install the host agent (`acp-host-agent`) on every WarehousePG (WHPG) cluster node to enable privileged operations on behalf of WEM. These operations include editing `pg_hba.conf` through the [**HBA Editor**](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/system-access/access-management/#modifying-authentication-rules) tab, running cluster management actions, taking and restoring [backups](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/protecting-data/backups/), and collecting host metrics and logs through the node's OTel Collector, all without direct shell access to cluster hosts.
+
+> **Note**
+>
+> WEM's internal job-execution engine runs on the same host as WEM. Before installing the host agent, complete [Installing and configuring WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/).
+
+## Downloading and installing the host agent
+
+Run these steps from the coordinator as `gpadmin`.
+
+1. On the coordinator, download the host agent package and its `edb-otelcol` dependency from the EDB repository:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo dnf download edb-acp-host-agent edb-otelcol
+   ```
+
+   The host agent depends on `edb-otelcol`, so download both packages. Installing both `.rpm` files together on each host lets `dnf` resolve that dependency locally, without needing the EDB repository configured on every node.
+
+2. On the coordinator, create a file `all_hosts`, which lists all hosts in the WHPG cluster. For example:
+
+   ```ini
+   cdw
+   scdw
+   sdw1
+   sdw2
+   sdw3
+   ```
+
+3. From the coordinator, transfer both downloaded packages to every host in the cluster. Use the `gpsync` utility on WarehousePG 7, or the `gpscp` utility on WarehousePG 6:
+
+   ### WHPG 7
+
+   ```bash
+   gpsync -f all_hosts edb-acp-host-agent-*.rpm edb-otelcol-*.rpm =:/tmp
+   ```
+
+   ### WHPG 6
+
+   ```bash
+   gpscp -f all_hosts edb-acp-host-agent-*.rpm edb-otelcol-*.rpm =:/tmp
+   ```
+
+4. From the coordinator, use `gpssh` to install both packages together on every host:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo dnf install -y /tmp/edb-acp-host-agent-*.rpm /tmp/edb-otelcol-*.rpm"
+   ```
+
+5. On every node, set `WEM_CONNECT_ADDRESS` in `/etc/edb/acp-host-agent/wem.conf` to WEM's hostname and listen port plus 1 (default 8081). The hostname must resolve from every node. You can use an IP address instead.
+
+   ```bash
+   WEM_HOST=<wem-host>
+   gpssh -f all_hosts -u gpadmin -e \
+     "sudo sed -i 's/^#* *WEM_CONNECT_ADDRESS=.*/WEM_CONNECT_ADDRESS=${WEM_HOST}:8081/' \
+       /etc/edb/acp-host-agent/wem.conf"
+   ```
+
+   For the full variable reference, including agent identity and logging, see [Host agent configuration](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/host-agent-config/).
+
+6. Enable and start the host agent service on every node:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo systemctl enable --now acp-host-agent"
+   ```
+
+   > **Note**
+   >
+   > To skip manual approval, set up a shared secret. See [Approving host agents automatically](#approving-host-agents-automatically).
+
+7. Verify each agent self-registered and is waiting for approval:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo cat /var/log/edb/acp-host-agent/acp-host-agent.log"
+   ```
+
+   Expected output includes:
+
+   ```
+   INFO self-registration succeeded task_queues=coordinator-tasks
+   INFO starting host-agent agent_id=... connect_address=... task_queues=coordinator-tasks
+   INFO awaiting TLS material — an admin must approve this agent in wem agent_id=...
+   ```
+
+   An agent stays in this pending state, repeating the last line, until an Admin approves it. It doesn't reach a running state on its own.
+
+8. Open WEM in a browser, log in with admin credentials, navigate to **Management** > **Host Agents**, select the pending agents, and choose **Approve** from the quick actions. You can confirm you're approving the agent you expect by comparing its **Verification Token** against the join token on the host (cat /etc/edb/acp-host-agent/join-token). If you set up automatic approval, skip this step.
+
+9. Once approved, each agent picks up its TLS material and starts its worker within moments. Verify this on any node:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo tail -5 /var/log/edb/acp-host-agent/acp-host-agent.log"
+   ```
+
+   Expected output includes:
+
+   ```
+   INFO handlers registered  task_kinds=[file.pull, file.push, otel.service.start, ...]
+   INFO connecting to Temporal connect_address=... task_queues=coordinator-tasks
+   INFO worker running       task_queue=coordinator-tasks
+   ```
+
+   WEM pushes the OTel configuration to the host agent and WEM's internal certificate authority issues the agent a short-lived certificate. Every subsequent connection between that agent and WEM authenticates with mutual TLS (mTLS). WEM renews the certificate automatically, with a 24-hour grace window that lets an agent that was briefly offline recover its certificate without Admin intervention.
+
+## Approving host agents automatically
+
+On clusters with many nodes, or when you add nodes to an existing cluster, you can skip manual approval by giving WEM and each agent a shared secret. You can also approve several pending agents at once by selecting them all in **Management** > **Host Agents**.
+
+This method replaces the steps to enable and start the host agent and to approve it in WEM. Complete the steps to set `WEM_CONNECT_ADDRESS` first, then follow these steps instead, and continue with verifying the worker is running.
+
+1. On the WEM host, set `WEM_AGENT_JOIN_SECRET` in `/etc/edb/wem/wem.conf` to a secret that contains only letters, numbers, periods, underscores, and hyphens. For example, generate one with:
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   Don't use `openssl rand -base64`, because the output can include characters WEM rejects.
+
+2. Restart WEM:
+
+   ```bash
+   sudo systemctl restart wem
+   ```
+
+3. On every cluster node, write the same value to `/etc/edb/acp-host-agent/join-token`.
+
+4. Enable and start the host agent service on every node. The agent registers and WEM approves it automatically:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo systemctl enable --now acp-host-agent"
+   ```
+
+   If the host agent is already running, restart it so that it reads the token:
+
+   ```bash
+   gpssh -f all_hosts -u gpadmin -e "sudo systemctl restart acp-host-agent"
+   ```
+
+See [Configuration parameters](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#host-agent) for details.
+
+## Next steps
+
+Your installation is complete. See [Getting started with WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/get-started/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

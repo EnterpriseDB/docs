@@ -1,0 +1,148 @@
+---
+title: Key features
+product: MySQL Foreign Data Wrapper
+version: "2"
+url: https://www.enterprisedb.com/docs/mysql_data_adapter/latest/06_features_of_mysql_fdw/
+lastModified: 2024-07-30T13:32:05-04:00
+---
+
+# Key features
+
+These are the key features of the MySQL Foreign Data Wrapper.
+
+## Writable foreign data wrapper
+
+MySQL Foreign Data Wrapper provides the write capability. You can insert, update, and delete data in the remote MySQL tables by inserting, updating, and deleting the data locally in the foreign tables. MySQL foreign data wrapper uses the Postgres type casting mechanism to provide opposite type casting between MySQL and Postgres data types.
+
+> **Note**
+>
+> The first column of MySQL table must have unique/primary key for DML to work.
+
+See also:
+
+- [Example: Using the MySQL Foreign Data Wrapper](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/08_example_using_the_mysql_data_adapter/#example_using_the_mysql_data_adapter)
+- [Data type mappings](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/configuring/#data-type-mappings)
+
+## Connection pooling
+
+MySQL Foreign Data Wrapper establishes a connection to a foreign server during the first query that uses a foreign table associated with the foreign server. This connection is kept and reused for subsequent queries in the same session.
+
+## WHERE clause pushdown
+
+MySQL Foreign Data Wrapper allows the pushdown of a `WHERE` clause to the foreign server for execution. This feature optimizes remote queries to reduce the number of rows transferred from foreign servers.
+
+## Column pushdown
+
+MySQL Foreign Data Wrapper supports column pushdown. As a result, the query brings back only those columns that are a part of the select target list.
+
+## Join pushdown
+
+MySQL Foreign Data Wrapper supports join pushdown. It pushes the joins between the foreign tables of the same remote MySQL server to that remote MySQL server, enhancing the performance.
+
+> **Note**
+>
+> - Currently, joins involving only relational and arithmetic operators in join clauses are pushed down to avoid any potential join failure.
+> - Only the INNER and LEFT/RIGHT OUTER joins are supported.
+
+See also:
+
+- [Example: Join pushdown](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/10_example_join_push_down/)
+- [Blog: Join Pushdown](https://www.enterprisedb.com/blog/how-enhance-efficiency-your-mysqlfdw-operations-join-push-down) - covers performance improvements and partition-wise join pushdowns
+
+## Aggregate pushdown
+
+MySQL Foreign Data Wrapper supports aggregate pushdown for min, max,
+sum, avg, and count aggregate functions, allowing you to push aggregates to the remote MySQL server instead of fetching all
+of the rows and aggregating them locally. Aggregate filters and aggregate orders aren't pushed down as MySQL doesn't support them.
+
+See also:
+
+For more information, see [Example: Aggregate pushdown](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/10a_example_aggregate_func_push_down/)
+Also, see [Blog: Aggregate Pushdown](https://www.enterprisedb.com/blog/aggregate-push-down-mysqlfdw) - covers performance improvements, using join and aggregate pushdowns together, and pushing down aggregates to the partition table
+
+## ORDER BY pushdown
+
+MySQL Foreign Data Wrapper supports ORDER BY pushdown. If possible, push ORDER BY clause to the remote server so that we get the ordered result set from the foreign server itself. It might help us to have an efficient merge join. NULLs behavior is opposite on the MySQL server. Thus to get an equivalent result, we add the "expression IS NULL" clause at the beginning of each of the ORDER BY expressions.
+
+For more information, see [Example: ORDER BY pushdown](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/10b_example_order_by_push_down/)
+
+## LIMIT OFFSET pushdown
+
+MySQL Foreign Data Wrapper supports limit offset push-down. Wherever possible, perform `LIMIT` and `OFFSET` operations on the remote server. This reduces network traffic between local PostgreSQL and remote MySQL servers. `ALL/NULL` options are not supported on the MySQL server, and thus they are not pushed down. Also, `OFFSET` without `LIMIT` is not supported on the MySQL server hence queries having that construct are not pushed.
+
+For more information, see [Example: LIMIT OFFSET pushdown](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/10c_example_limit_offset_push_down/)
+
+## Configuration file to restrict pushdowns
+
+MySQL 2.9.0 and later provides the `mysql_fdw_pushdown.config` configuration file to restrict the pushdowns. You can define the list of functions and operators in this file that can pushdown to the remote server. You can easily add or modify the list as per the requirements.
+
+This file lists the objects as aggregates, functions, and operators allowed to push down to the remote server. Each entry should be on a single line. Each entry must have two columns:
+
+- Object type that can be ROUTINE (functions, aggregates, and procedures) or OPERATOR
+- The second column is the schema-qualified object names with their arguments
+
+The exact form of the second column can be formatted using the following query:
+
+For ROUTINE:
+
+```sql
+SELECT pronamespace::regnamespace || '.' || oid::regprocedure FROM pg_proc
+WHERE proname = '<routine_name>'
+```
+
+For OPERATOR:
+
+```sql
+SELECT oprnamespace::regnamespace || '.' || oid::regoperator FROM pg_operator
+WHERE oprname = '<operator_name>'
+```
+
+Example of `mysql_fdw_pushdown.config` file:
+
+```shell
+ROUTINE pg_catalog.sum(bigint)
+ROUTINE pg_catalog.sum(smallint)
+ROUTINE pg_catalog.to_number(text)
+ROUTINE pg_catalog.to_number(text,text)
+OPERATOR pg_catalog.=(integer,integer)
+OPERATOR pg_catalog.=(text,text)
+OPERATOR pg_catalog.=(smallint,integer)
+OPERATOR pg_catalog.=(bigint,integer)
+OPERATOR pg_catalog.=(numeric,numeric)
+```
+
+## Using a connection file
+
+MySQL Foreign Data Wrapper 2.9.2 and later provides the `MYSQL_DEFAULT_FILE` option to read the connection details from the default file. You can provide the filename using this option with connection details like username, password, and so on. Set the `MYSQL_DEFAULT_FILE` option at a server level to the default connection filename. If this option is set to a wrong filename or the file contents aren't in the required format, then an error is raised.
+
+If both `MYSQL_DEFAULT_FILE` and the other connection details are provided in the `CREATE SERVER/USER MAPPING` command, then the `MYSQL_DEFAULT_FILE` option takes precedence.
+
+For more information, see [Example: Using a connection file ](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/example_connection_file/).
+
+## IS \[NOT] DISTINCT FROM operator
+
+MySQL Foreign Data Wrapper 2.9.0 and later supports the `IS [NOT] DISTINCT FROM` operator. MySQL uses the `<=>` operator corresponding to the `IS NOT DISTINCT FROM` operator and the `NOT <=>` operator corresponding to the `IS DISTINCT FROM` operator.
+
+## Prepared Statement
+
+MySQL Foreign Data Wrapper supports Prepared Statement. The select queries use prepared statements instead of simple query protocol.
+
+## Import foreign schema
+
+MySQL Foreign Data Wrapper supports import foreign schema, which enables the local host to import table definitions to EDB Postgres Advanced Server from the MySQL server. The new foreign tables are created with the corresponding column types and same table name as the remote tables in the existing local schema. From version 2.9.0 and later, it supports the `import_generated` option to include columns generated from expressions in the definitions of foreign tables imported from a foreign server.
+
+For more information, see [Example: Import foreign schema](https://www.enterprisedb.com/docs/mysql_data_adapter/latest/09_example_import_foreign_schema/#example_import_foreign_schema) for an example.
+
+## Automated cleanup
+
+MySQL Foreign Data Wrapper allows the cleanup of foreign tables in a single operation using the `DROP EXTENSION` command. This feature is useful when a foreign table is set for a temporary purpose. The syntax is:
+
+`DROP EXTENSION mysql_fdw CASCADE;`
+
+For more information, see [DROP EXTENSION](https://www.postgresql.org/docs/current/sql-dropextension.html).
+
+## Truncate table
+
+From version 2.9.0 and later, MySQL Foreign Data Wrapper supports the `TRUNCATE TABLE` command on the foreign tables. However, the `CASCADE` option isn't supported with the `TRUNCATE TABLE` command.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

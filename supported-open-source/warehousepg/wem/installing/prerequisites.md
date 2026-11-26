@@ -1,0 +1,51 @@
+---
+title: WarehousePG Enterprise Manager prerequisites
+description: Understand the prerequisites before installing the WarehousePG Observability components.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/prerequisites/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# WarehousePG Enterprise Manager prerequisites
+
+Before you install WarehousePG Enterprise Manager (WEM), verify that your environment meets the following requirements:
+
+- A supported version of WarehousePG (WHPG). See [Supported WarehousePG versions](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/overview/supported_platforms/#supported-warehousepg-versions).
+
+- A supported operating system on the host where WEM runs, dedicated or within your WHPG cluster. See [Supported platforms](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/overview/supported_platforms/). If you are running WHPG 6.x on RHEL 7, you must run WEM on a standalone host with RHEL 8 or later.
+
+- `gpadmin` OS user on the WEM host. On hosts where WHPG is already installed, `gpadmin` is provisioned automatically. On the standalone WEM host, create it first:
+
+  ```bash
+  sudo useradd -r -m -d /home/gpadmin -s /bin/bash gpadmin
+  ```
+
+- A ClickHouse instance reachable from the WEM host and from every node's OTel Collector or gateway collector. Install one following [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/), or point WEM at an existing instance you already manage. If you're integrating with an existing instance, verify it's reachable from all cluster nodes.
+
+- A database user that holds the superuser role and is able to connect to your WHPG cluster from the WEM host. Update `pg_hba.conf` on the WHPG cluster to permit this connection if the WEM host isn't already covered by an existing rule, network reachability alone isn't enough.
+
+- WarehousePG Backup and Restore (`whpg-backup`) 1.34 or later, installed on every cluster node, to list, restore, report on, and delete backups from the **Backups** panel. 1.33 can still take and schedule backups, but restoring, like listing and deleting, depends on the backup-history commands 1.34 adds. See [Installing WarehousePG Backup and Restore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/).
+
+- The host agent (`acp-host-agent`) 1.2.0 or later, installed on every cluster node. WEM 1.6 requires you to upgrade the host agent along with WEM. See [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/).
+
+- Optional: An active Anthropic account and a valid API key are required to enable the AI Assistant for query writing and optimization.
+
+## Network requirements
+
+The following table lists the connection requirements among the different components. The ports listed are default values, you can customize them according to your environment:
+
+| Source                              | Destination            | Use                                                                                                                                                      |
+| ----------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every cluster node                  | WEM:8081               | Host agent sends privileged operation requests and self-registration to WEM's internal job-execution engine (WEM base port + 1), authenticated with mTLS |
+| Every cluster node's OTel Collector | Gateway collector:4317 | Forward host metrics, logs, and traces (OTLP over gRPC)                                                                                                  |
+| Gateway collector                   | ClickHouse:9000        | Write telemetry data (native protocol)                                                                                                                   |
+| WEM                                 | ClickHouse:9000        | Metrics collection                                                                                                                                       |
+| WEM                                 | WEM:9093               | Push firing alerts to the bundled Alertmanager instance (loopback only, no external network access required)                                             |
+| WEM                                 | WEM:7233               | Internal workflow orchestration via Temporal (loopback only, no external network access required)                                                        |
+| End user                            | WEM:8080               | Access to WEM console                                                                                                                                    |
+
+## Next steps
+
+Continue to [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

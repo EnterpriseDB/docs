@@ -1,0 +1,54 @@
+---
+title: Working with encrypted backup files
+description: Learn how to work with and troubleshoot encrypted backup files.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/encrypted_files/backup_files/
+lastModified: 2026-11-02T10:35:00+01:00
+---
+
+# Working with encrypted backup files
+
+When TDE is enabled, backup files are encrypted. To perform operations on them directly, you must allow the operation to decrypt the file.
+
+The examples on this page use the OpenSSL passphrase command from [Using a passphrase](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/passphrase/) to illustrate the syntax. Replace it with whichever unwrap command you actually configured for the cluster. See [Choosing a key protection mechanism](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/) if you haven't chosen a mechanism yet.
+
+## Verifying a TDE-encrypted backup
+
+To verify an encrypted backup, run [pg\_verifybackup](https://www.postgresql.org/docs/current/app-pgverifybackup.html), providing the same unwrap command you configured for the cluster, either as a command argument or as an environment variable.
+
+### Via command argument
+
+```shell
+pg_verifybackup --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"' /path/to/backup
+```
+
+### Via environment variable
+
+```shell
+export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"'
+pg_verifybackup /path/to/backup
+```
+
+See [pg\_verifybackup TDE options](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/reference/backup_file_options/#pg_verifybackup) for details.
+
+## Resynchronizing timelines on a TDE-encrypted backup
+
+To resynchronize an encrypted cluster with its backup, run [pg\_rewind](https://www.postgresql.org/docs/current/app-pgrewind.html), providing the same unwrap command you configured for the cluster, either as a command argument or as an environment variable.
+
+### Via command argument
+
+```shell
+pg_rewind -D /var/lib/edb/as16/data --source-server="host=primary dbname=postgres" \
+  --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"'
+```
+
+### Via environment variable
+
+```shell
+export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -pass pass:<passphrase> -in "%p"'
+pg_rewind -D /var/lib/edb/as16/data --source-server="host=primary dbname=postgres"
+```
+
+See [pg\_rewind TDE options](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/reference/backup_file_options/#pg_rewind) for details.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

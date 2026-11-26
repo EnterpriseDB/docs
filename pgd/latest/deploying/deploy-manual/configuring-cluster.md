@@ -1,0 +1,296 @@
+---
+title: Configuring the cluster
+description: Perform the necessary configuration changes to your newly installed PGD cluster.
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/configuring-cluster/
+lastModified: 2026-11-24T15:30:12Z
+---
+
+# Configuring the cluster
+
+Configure each host as a PGD node to create a running cluster in which all nodes replicate your database. Your [deployment pattern](https://www.enterprisedb.com/docs/pgd/latest/planning/deployment-patterns/) determines how many nodes and groups you create and which kind of node each host runs.
+
+## Choosing cluster, group, node, and database names
+
+Choose the following names. PGD creates the cluster, groups, nodes, and database with the names you choose:
+
+- `<cluster-name>` identifies the cluster in the PGD CLI and in the database. If you don't specify a name, the default is `pgd`.
+- `<group-name>` identifies a group in the PGD CLI and in the database. A single data group needs one name, and patterns with several groups need one name for each group. Group names must be unique within the cluster.
+- `<node-name>` identifies a node in the PGD CLI and in the database. The node name is separate from the host name, which is the name of the machine that the node runs on. Node names must be unique within the group and within the cluster.
+- `<db-name>` is the name of the database that PGD replicates. Use the same database name on every node in the cluster. Different names per node can cause problems with cluster-wide operations that assume a consistent name.
+
+For example, a cluster named `pgd` with a group named `group-1`, three nodes named `node-1`, `node-2`, and `node-3`, and a database named `pgddb`.
+
+## Preparing the hosts
+
+Prepare each host by setting the environment variables for the Postgres user, using the values that your Postgres distribution and platform define.
+
+1. Select your Postgres distribution and platform to note the Postgres user, port, executable files directory, and data directory for your hosts. The Postgres packages create the Postgres user when you install them:
+
+   ### EDB Postgres Advanced Server
+
+   <br>
+
+   <br>
+
+   <br>
+
+   #### EDB Postgres Advanced Server
+
+   The values depend on your platform.
+
+   ##### Debian/Ubuntu
+
+   | Setting                   | Placeholder         | Value                               |
+   | ------------------------- | ------------------- | ----------------------------------- |
+   | Postgres user             | `<db-user>`         | `enterprisedb`                      |
+   | Postgres port             | `<db-port>`         | `5444`                              |
+   | Postgres executable files | `<executable-path>` | `/usr/lib/edb-as/$PG_VERSION/bin/`  |
+   | Postgres data directory   | `<data-directory>`  | `/var/lib/edb-as/$PG_VERSION/main/` |
+
+   ##### CentOS/RHEL
+
+   | Setting                   | Placeholder         | Value                              |
+   | ------------------------- | ------------------- | ---------------------------------- |
+   | Postgres user             | `<db-user>`         | `enterprisedb`                     |
+   | Postgres port             | `<db-port>`         | `5444`                             |
+   | Postgres executable files | `<executable-path>` | `/usr/edb/as$PG_VERSION/bin/`      |
+   | Postgres data directory   | `<data-directory>`  | `/var/lib/edb/as$PG_VERSION/data/` |
+
+   ### EDB Postgres Extended
+
+   <br>
+
+   <br>
+
+   <br>
+
+   #### EDB Postgres Extended
+
+   The values depend on your platform.
+
+   ##### Debian/Ubuntu
+
+   | Setting                   | Placeholder         | Value                                |
+   | ------------------------- | ------------------- | ------------------------------------ |
+   | Postgres user             | `<db-user>`         | `postgres`                           |
+   | Postgres port             | `<db-port>`         | `5432`                               |
+   | Postgres executable files | `<executable-path>` | `/usr/lib/edb-pge/$PG_VERSION/bin/`  |
+   | Postgres data directory   | `<data-directory>`  | `/var/lib/edb-pge/$PG_VERSION/main/` |
+
+   ##### CentOS/RHEL
+
+   | Setting                   | Placeholder         | Value                                |
+   | ------------------------- | ------------------- | ------------------------------------ |
+   | Postgres user             | `<db-user>`         | `postgres`                           |
+   | Postgres port             | `<db-port>`         | `5432`                               |
+   | Postgres executable files | `<executable-path>` | `/usr/edb/pge$PG_VERSION/bin/`       |
+   | Postgres data directory   | `<data-directory>`  | `/var/lib/edb-pge/$PG_VERSION/data/` |
+
+   ### Community Postgres
+
+   <br>
+
+   <br>
+
+   <br>
+
+   #### Community Postgres
+
+   The values depend on your platform.
+
+   ##### Debian/Ubuntu
+
+   | Setting                   | Placeholder         | Value                                   |
+   | ------------------------- | ------------------- | --------------------------------------- |
+   | Postgres user             | `<db-user>`         | `postgres`                              |
+   | Postgres port             | `<db-port>`         | `5432`                                  |
+   | Postgres executable files | `<executable-path>` | `/usr/lib/postgresql/$PG_VERSION/bin/`  |
+   | Postgres data directory   | `<data-directory>`  | `/var/lib/postgresql/$PG_VERSION/main/` |
+
+   ##### CentOS/RHEL
+
+   | Setting                   | Placeholder         | Value                              |
+   | ------------------------- | ------------------- | ---------------------------------- |
+   | Postgres user             | `<db-user>`         | `postgres`                         |
+   | Postgres port             | `<db-port>`         | `5432`                             |
+   | Postgres executable files | `<executable-path>` | `/usr/pgsql-$PG_VERSION/bin/`      |
+   | Postgres data directory   | `<data-directory>`  | `/var/lib/pgsql/$PG_VERSION/data/` |
+
+2. Connect to each host over SSH as the [admin user you created](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/prerequisites/#creating-an-admin-user) in the prerequisites. The admin user is separate from the Postgres user you switch to in the next step.
+
+3. Switch to the Postgres user:
+
+   ```bash
+   sudo -iu <db-user>
+   ```
+
+4. Set the Postgres version environment variable. Replace `<version>` with your Postgres version, such as `17`.
+
+   ```bash
+   export PG_VERSION=<version>
+   ```
+
+5. Add the Postgres executable files to your path, so that the shell can find the `pgd` command.
+
+   ```bash
+   export PATH=$PATH:<executable-path>
+   ```
+
+6. Set the Postgres data directory environment variable.
+
+   ```bash
+   export PGDATA=<data-directory>
+   ```
+
+7. Set the Postgres password environment variable. Replace `<db-password>` with the password you choose for the Postgres user.
+
+   ```bash
+   export PGPASSWORD=<db-password>
+   ```
+
+For example, to set the environment for EDB Postgres Extended 17 on RHEL:
+
+```bash
+sudo -iu postgres
+export PG_VERSION=17
+export PATH=$PATH:/usr/edb/pge$PG_VERSION/bin/
+export PGDATA=/var/lib/edb-pge/$PG_VERSION/data/
+export PGPASSWORD=secret
+```
+
+## Configuring authentication between nodes
+
+Configure authentication so that every node can connect to every other node without a password prompt. Every node connects to the others both to replicate changes and for regular connections, so each node's `pg_hba.conf` file must accept those connections, and each node needs a stored password for the Postgres user, `<db-user>`. You create the `pg_hba.conf` file in this section, and `pgd node setup` stores the password when you run it with `--update-pgpass`.
+
+On each host, as `<db-user>`, create a `pg_hba.conf` file outside the data directory, for example `~/pg_hba.conf`. The `pgd node setup` command copies this file over the node's default `pg_hba.conf` file, so the file must contain every rule the node needs. The following example has two rules that let the nodes connect to each other, and rules for connections from the host itself. Replace `<node-subnet>` with the network address range, in CIDR notation, that contains all your hosts:
+
+```text
+local   all          all                        trust
+host    all          all   127.0.0.1/32         trust
+host    all          all   ::1/128              trust
+local   replication  all                        trust
+host    replication  all   127.0.0.1/32         trust
+host    replication  all   ::1/128              trust
+host    all          all   <node-subnet>        scram-sha-256
+host    replication  all   <node-subnet>        scram-sha-256
+```
+
+Change the rules for the host itself to match your security policy, and add rules for connections from your applications and administrators. A connection that has no matching rule is rejected.
+
+For encrypted connections and certificate authentication between nodes, see [Securing inter-node connections](https://www.enterprisedb.com/docs/pgd/latest/ensuring-security/access-controls/inter-node-connections/).
+
+## Creating the PGD cluster
+
+Run the `pgd node setup` command as the Postgres user on each host, in the session where you set the environment variables, starting with the first host. The command configures the host it runs on, so the `--dsn` host must be the host where you run it. The command initializes the database in the Postgres data directory. On the first host, it also creates the cluster and its first group. On every other host, it joins the new node to the existing cluster.
+
+### Creating the cluster on the first host
+
+Create the cluster on the first host, which becomes the first node. Run the following command:
+
+```bash
+pgd node <node-name> setup --dsn "host=<host> user=<db-user> port=<db-port> dbname=<db-name>" --group-name <group-name> --hba-conf <hba-file> --initial-node-count <total-nodes> --update-pgpass
+```
+
+Where `<host>` is the host name or IP address of the first host, `<hba-file>` is the path of the `pg_hba.conf` file you created in the previous section, and `<total-nodes>` is the number of nodes you plan to have in the whole cluster, across all groups.
+
+The `--update-pgpass` option stores the Postgres user's password in the `.pgpass` file of the user that runs the command, so the nodes can connect to each other without a password prompt.
+
+For example, to create `node-1` in `group-1` on `host-1`:
+
+```bash
+pgd node node-1 setup --dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-1 --hba-conf ~/pg_hba.conf --initial-node-count 3 --update-pgpass
+```
+
+The command initializes the database in the Postgres data directory, then creates the cluster and the group on the first node. The `--initial-node-count` option sizes the node's resource settings for the number of nodes you plan to deploy, so set it to the total number of nodes in your [deployment pattern](https://www.enterprisedb.com/docs/pgd/latest/planning/deployment-patterns/). The example uses 3 for a three-node cluster.
+
+### Joining the remaining hosts to the cluster
+
+Join every other host to the cluster by running the following command on the host you're joining. The `--cluster-dsn` option points to the first host, so the new node joins the cluster and the group that the first host created:
+
+```bash
+pgd node <node-name> setup --dsn "host=<host> user=<db-user> port=<db-port> dbname=<db-name>" --cluster-dsn "host=<first-host> user=<db-user> port=<db-port> dbname=<db-name>" --hba-conf <hba-file> --initial-node-count <total-nodes> --update-pgpass
+```
+
+Where `<host>` is the host name or IP address of the host you're joining, `<first-host>` is the host name or IP address of the first host, `<hba-file>` is the path of the `pg_hba.conf` file you created on this host, and `<total-nodes>` is the same number you used on the first host.
+
+For example, to join `host-2` and `host-3` as `node-2` and `node-3`, run each command on its own host:
+
+```bash
+pgd node node-2 setup --dsn "host=host-2 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --hba-conf ~/pg_hba.conf --initial-node-count 3 --update-pgpass
+pgd node node-3 setup --dsn "host=host-3 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --hba-conf ~/pg_hba.conf --initial-node-count 3 --update-pgpass
+```
+
+To match your [deployment pattern](https://www.enterprisedb.com/docs/pgd/latest/planning/deployment-patterns/), add options to the command:
+
+- To create a witness or subscriber-only node, set [`--node-kind`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) to `witness` or `subscriber-only`. The default is `data`.
+- To start an additional group, set [`--group-name`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) to the new group name and add `--create-group`.
+- To deploy more than three nodes, set [`--initial-node-count`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) to the total number of nodes in your pattern on every `pgd node setup` command, starting with the first host. The default is 3. Each node sizes its resource settings, such as `max_worker_processes`, when you set it up, so a later join with a higher value doesn't resize the nodes that already exist.
+
+For example, to follow the [two data groups pattern](https://www.enterprisedb.com/docs/pgd/latest/planning/deployment-patterns/two-data-groups/) with a witness location, add `host-4` to `host-6` as a second data group, `group-2`, and `host-7` as a witness node in its own group, `group-3`. The pattern has seven nodes, so create `node-1` to `node-3` with `--initial-node-count 7` as well. Run each command on its own host:
+
+```bash
+pgd node node-4 setup --dsn "host=host-4 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2 --create-group --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
+pgd node node-5 setup --dsn "host=host-5 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2 --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
+pgd node node-6 setup --dsn "host=host-6 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-2 --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
+pgd node node-7 setup --dsn "host=host-7 user=postgres port=5432 dbname=pgddb" --cluster-dsn "host=host-1 user=postgres port=5432 dbname=pgddb" --group-name group-3 --create-group --node-kind witness --hba-conf ~/pg_hba.conf --initial-node-count 7 --update-pgpass
+```
+
+If a node fails to join with the error `worker registration failed, you might want to increase max_worker_processes setting`, the existing nodes were created with a smaller `--initial-node-count` than the cluster needs.
+
+For more about distributing groups across locations, see [Setting up your geo-replication topology](https://www.enterprisedb.com/docs/pgd/latest/geo-replication-dba/topology-setup/).
+
+> **Note**
+>
+> You can run the join commands for several hosts at the same time. While a node joins, the Join State column of `pgd nodes list` shows its progress until the node reaches `ACTIVE`. See [Node join states](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes/) for the full list.
+>
+> Only one regular node at a time can be in the `PROMOTE` or `PROMOTING` state, which are the last steps before `ACTIVE`, so concurrent joins queue at this stage and you don't need to wait or rerun anything. These states are short when all the other nodes are up, so the queue usually clears quickly. Subscriber-only nodes aren't subject to this limit and can join fully concurrently.
+
+### Configuring the PGD CLI
+
+Configure the PGD CLI on each host where you run `pgd` commands, so that the commands connect to your cluster without a `--dsn` option. Create a `pgd-cli-config.yml` file in `$HOME/.edb/pgd-cli` for the user that runs the commands, or in `/etc/edb/pgd-cli` to make it available to every user on the host. The file must list the connection string of at least one node in the cluster as an endpoint. For example, for the three nodes in `group-1`:
+
+```yaml
+cluster:
+  name: pgd
+  endpoints:
+    - "host=host-1 port=5432 dbname=pgddb user=postgres"
+    - "host=host-2 port=5432 dbname=pgddb user=postgres"
+    - "host=host-3 port=5432 dbname=pgddb user=postgres"
+```
+
+The PGD CLI doesn't prompt for a password, so keep `PGPASSWORD` set in your session or add an entry to your `.pgpass` file. For other ways to connect, such as the `PGD_CLI_DSN` environment variable, see [Configuring PGD CLI](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/configuring_cli/).
+
+### Verifying the cluster
+
+List the nodes from a host where you configured the PGD CLI to verify that every node joined the group:
+
+```bash
+pgd nodes list
+```
+
+Every node shows `ACTIVE` as its join state and `Up` as its node status. For example, for the three nodes in `group-1`:
+
+```text
+ Node Name | Group Name | Node Kind | Join State | Node Status
+-----------+------------+-----------+------------+-------------
+ node-1    | group-1    | data      | ACTIVE     | Up
+ node-2    | group-1    | data      | ACTIVE     | Up
+ node-3    | group-1    | data      | ACTIVE     | Up
+```
+
+To verify the group hierarchy, including any additional groups or subgroups, run `pgd groups list`. For example, for the three nodes in `group-1`:
+
+```text
+ Group Name | Parent Group Name | Group Type | Nodes
+------------+-------------------+------------+-------
+ group-1    | pgd               | data       | 3
+ pgd        |                   | global     | 0
+```
+
+## Next steps
+
+Continue to [Accessing your cluster](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/accessing-cluster/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

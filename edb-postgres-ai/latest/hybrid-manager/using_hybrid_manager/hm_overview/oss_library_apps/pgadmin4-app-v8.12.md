@@ -1,0 +1,80 @@
+---
+title: pgAdmin 4 (v8.12)
+description: Deploy and manage pgAdmin 4 in Hybrid Manager for a web-based PostgreSQL administration interface.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/hm_overview/oss_library_apps/pgadmin4-app-v8.12/
+lastModified: 2026-11-11T11:58:09+01:00
+---
+
+# pgAdmin 4 (v8.12)
+
+> **Important**
+>
+> Regular upstream releases deliver security updates. Keep your pgAdmin instance up to date to receive the latest patches.
+
+> **Warning: Disclaimer**
+>
+> OSS Library requires internet connectivity and is not supported in air-gapped environments. Attempting to use it in an air-gapped environment may result in errors or unexpected behavior.
+
+pgAdmin 4 is an open-source web-based interface for administering PostgreSQL databases. When deployed as an app in Hybrid Manager, it provides remote access to your PostgreSQL clusters for managing database objects and executing queries.
+
+> **Warning**
+>
+> pgAdmin 4 isn't supported on Red Hat OpenShift (RHOS).
+
+#### Key features
+
+- Graphical interface for managing PostgreSQL database objects.
+- Query tool with syntax highlighting, query history, and execution plan visualization.
+- Server monitoring including statistics, logs, and activity.
+- Backup and restore tools.
+- Schema, role, and permission management.
+
+## Requirements
+
+### Role requirements
+
+To deploy and manage pgAdmin 4, you need the Project Owner or Project Editor role for the project. Project Viewers can see OSS Library apps but can't deploy or manage them. See [User role permissions](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/managing_users/user_roles_authz/authz/).
+
+### Technical requirements
+
+- Kubernetes cluster.
+- Persistent volume: 10Gi (default) for data storage.
+- Resources: Minimum 512Mi memory, 500m CPU (limits: 1Gi memory, 1000m CPU).
+
+### Supported PostgreSQL versions
+
+- PostgreSQL 12 to 17.
+- EDB Advanced Server: 12 to 16.
+
+## Deploying pgAdmin 4
+
+1. In the HM console, navigate to **Asset Library**, then select **Apps**.
+2. Select **pgAdmin 4**, select the version, and select **Deploy**.
+3. Under **Identity**, enter a name for your deployment and select the target project.
+4. Configure the replica count (default: `1`) and storage size if needed.
+5. Select **Deploy**.
+
+> **Note**
+>
+> Once you have deployed pgAdmin 4 in HM, you can access it in the HM console from **Estate > Apps** or your project's **Apps** view.
+
+## Post-deployment configuration
+
+Once pgAdmin 4 is deployed, complete these steps to finish your setup:
+
+1. Navigate to your **Project** and select the **Apps** tab, or navigate to **Estate > Apps** to check the deployment status. When the status shows **Ready**, launch the app to continue.
+2. Open **pgAdmin 4** from the HM console.
+3. Set the master password.
+4. Register your PostgreSQL servers within the pgAdmin interface to begin managing your databases.
+
+## Support resources
+
+As pgAdmin OSS is community-supported, use these resources for technical guidance and updates:
+
+- [pgAdmin support page](https://www.pgadmin.org/support/) — get support for any queries related to pgAdmin 4.
+- [pgAdmin documentation](https://www.pgadmin.org/docs/pgadmin4/8.12/index.html) — self-service deployment and feature guides, as well as additional information on pgAdmin installation and configuration.
+- [pgAdmin GitHub repository](https://github.com/pgadmin-org/pgadmin4) — source code, issue tracker, and release notes.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,256 @@
+---
+title: csv_extraction_engine
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/engines/extraction/csv_extraction_engine/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# csv\_extraction\_engine
+
+<span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine"></span>
+
+Bases:
+[`BaseExtractionEngine`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/engines/#griptape.engines.BaseExtractionEngine "BaseExtractionEngine (griptape.engines.BaseExtractionEngine)")
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/engines/extraction/csv\_extraction\_engine.py</code>
+
+</summary>
+
+```python
+@define
+class CsvExtractionEngine(BaseExtractionEngine):
+    column_names: list[str] = field(kw_only=True)
+    generate_system_template: J2 = field(default=Factory(lambda: J2("engines/extraction/csv/system.j2")), kw_only=True)
+    generate_user_template: J2 = field(default=Factory(lambda: J2("engines/extraction/csv/user.j2")), kw_only=True)
+    format_header: Callable[[list[str]], str] = field(
+        default=Factory(lambda: lambda value: ",".join(value)), kw_only=True
+    )
+    format_row: Callable[[dict], str] = field(
+        default=Factory(lambda: lambda value: ",".join([value or "" for value in value.values()])), kw_only=True
+    )
+
+    def extract_artifacts(
+        self,
+        artifacts: ListArtifact[TextArtifact],
+        *,
+        rulesets: Optional[list[Ruleset]] = None,
+        **kwargs,
+    ) -> ListArtifact[TextArtifact]:
+        return ListArtifact(
+            self._extract_rec(
+                cast("list[TextArtifact]", artifacts.value),
+                [TextArtifact(self.format_header(self.column_names))],
+                rulesets=rulesets,
+            ),
+            item_separator="\n",
+        )
+
+    def text_to_csv_rows(self, text: str) -> list[TextArtifact]:
+        rows = []
+
+        with io.StringIO(text) as f:
+            for row in csv.DictReader(f):
+                rows.append(TextArtifact(self.format_row(row)))
+
+        return rows
+
+    def _extract_rec(
+        self,
+        artifacts: list[TextArtifact],
+        rows: list[TextArtifact],
+        *,
+        rulesets: Optional[list[Ruleset]] = None,
+    ) -> list[TextArtifact]:
+        artifacts_text = self.chunk_joiner.join([a.value for a in artifacts])
+        system_prompt = self.generate_system_template.render(
+            column_names=self.column_names,
+            rulesets=J2("rulesets/rulesets.j2").render(rulesets=rulesets),
+        )
+        user_prompt = self.generate_user_template.render(
+            text=artifacts_text,
+        )
+
+        if (
+            self.prompt_driver.tokenizer.count_input_tokens_left(system_prompt + user_prompt)
+            >= self.min_response_tokens
+        ):
+            rows.extend(
+                self.text_to_csv_rows(
+                    self.prompt_driver.run(
+                        PromptStack(
+                            messages=[
+                                Message(system_prompt, role=Message.SYSTEM_ROLE),
+                                Message(user_prompt, role=Message.USER_ROLE),
+                            ]
+                        )
+                    ).value,
+                ),
+            )
+
+            return rows
+        chunks = self.chunker.chunk(artifacts_text)
+        partial_text = self.generate_user_template.render(
+            text=chunks[0].value,
+        )
+
+        rows.extend(
+            self.text_to_csv_rows(
+                self.prompt_driver.run(
+                    PromptStack(
+                        messages=[
+                            Message(system_prompt, role=Message.SYSTEM_ROLE),
+                            Message(partial_text, role=Message.USER_ROLE),
+                        ]
+                    )
+                ).value,
+            ),
+        )
+
+        return self._extract_rec(chunks[1:], rows, rulesets=rulesets)
+```
+
+</details>
+
+- `column_names = field(kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine.column_names"></span>
+
+- `format_header = field(default=Factory(lambda: lambda value: ','.join(value)), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine.format_header"></span>
+
+- `format_row = field(default=Factory(lambda: lambda value: ','.join([value or '' for value in value.values()])), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine.format_row"></span>
+
+- `generate_system_template = field(default=Factory(lambda: J2('engines/extraction/csv/system.j2')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine.generate_system_template"></span>
+
+- `generate_user_template = field(default=Factory(lambda: J2('engines/extraction/csv/user.j2')), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine.generate_user_template"></span>
+
+<span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine._extract_rec"></span>
+
+### \_extract\_rec(artifacts, rows, \*, rulesets=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/engines/extraction/csv\_extraction\_engine.py</code>
+
+</summary>
+
+```python
+def _extract_rec(
+    self,
+    artifacts: list[TextArtifact],
+    rows: list[TextArtifact],
+    *,
+    rulesets: Optional[list[Ruleset]] = None,
+) -> list[TextArtifact]:
+    artifacts_text = self.chunk_joiner.join([a.value for a in artifacts])
+    system_prompt = self.generate_system_template.render(
+        column_names=self.column_names,
+        rulesets=J2("rulesets/rulesets.j2").render(rulesets=rulesets),
+    )
+    user_prompt = self.generate_user_template.render(
+        text=artifacts_text,
+    )
+
+    if (
+        self.prompt_driver.tokenizer.count_input_tokens_left(system_prompt + user_prompt)
+        >= self.min_response_tokens
+    ):
+        rows.extend(
+            self.text_to_csv_rows(
+                self.prompt_driver.run(
+                    PromptStack(
+                        messages=[
+                            Message(system_prompt, role=Message.SYSTEM_ROLE),
+                            Message(user_prompt, role=Message.USER_ROLE),
+                        ]
+                    )
+                ).value,
+            ),
+        )
+
+        return rows
+    chunks = self.chunker.chunk(artifacts_text)
+    partial_text = self.generate_user_template.render(
+        text=chunks[0].value,
+    )
+
+    rows.extend(
+        self.text_to_csv_rows(
+            self.prompt_driver.run(
+                PromptStack(
+                    messages=[
+                        Message(system_prompt, role=Message.SYSTEM_ROLE),
+                        Message(partial_text, role=Message.USER_ROLE),
+                    ]
+                )
+            ).value,
+        ),
+    )
+
+    return self._extract_rec(chunks[1:], rows, rulesets=rulesets)
+```
+
+</details>
+
+<span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine.extract_artifacts"></span>
+
+### extract\_artifacts(artifacts, \*, rulesets=None, \*\*kwargs)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/engines/extraction/csv\_extraction\_engine.py</code>
+
+</summary>
+
+```python
+def extract_artifacts(
+    self,
+    artifacts: ListArtifact[TextArtifact],
+    *,
+    rulesets: Optional[list[Ruleset]] = None,
+    **kwargs,
+) -> ListArtifact[TextArtifact]:
+    return ListArtifact(
+        self._extract_rec(
+            cast("list[TextArtifact]", artifacts.value),
+            [TextArtifact(self.format_header(self.column_names))],
+            rulesets=rulesets,
+        ),
+        item_separator="\n",
+    )
+```
+
+</details>
+
+<span id="griptape.engines.extraction.csv_extraction_engine.CsvExtractionEngine.text_to_csv_rows"></span>
+
+### text\_to\_csv\_rows(text)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/engines/extraction/csv\_extraction\_engine.py</code>
+
+</summary>
+
+```python
+def text_to_csv_rows(self, text: str) -> list[TextArtifact]:
+    rows = []
+
+    with io.StringIO(text) as f:
+        for row in csv.DictReader(f):
+            rows.append(TextArtifact(self.format_row(row)))
+
+    return rows
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

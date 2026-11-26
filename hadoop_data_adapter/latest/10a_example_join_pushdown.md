@@ -1,0 +1,239 @@
+---
+title: "Example: Join pushdown"
+product: Hadoop Data Adapter
+version: "2"
+url: https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/10a_example_join_pushdown/
+lastModified: 2023-07-17T13:51:45-04:00
+---
+
+# Example: Join pushdown
+
+This example shows join pushdown between the foreign tables of the same remote HIVE/SPARK server to that remote HIVE/SPARK server:
+
+Tables on HIVE/SPARK server:
+
+```sql
+0: jdbc:hive2://localhost:10000> describe emp;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| empno     | int        | NULL     |
+| ename     | string     | NULL     |
+| job       | string     | NULL     |
+| mgr       | int        | NULL     |
+| hiredate  | date       | NULL     |
+| sal       | int        | NULL     |
+| comm      | int        | NULL     |
+| deptno    | int        | NULL     |
++-----------+------------+----------+--+
+8 rows selected (0.747 seconds)
+0: jdbc:hive2://localhost:10000> describe dept;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| deptno    | int        | NULL     |
+| dname     | string     | NULL     |
+| loc       | string     | NULL     |
++-----------+------------+----------+--+
+3 rows selected (0.067 seconds)
+```
+
+Tables on Postgres server:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION hdfs_fdw;
+
+-- create server object
+CREATE SERVER hdfs_server FOREIGN DATA WRAPPER hdfs_fdw OPTIONS(host 'localhost', port '10000', client_type 'spark', auth_type 'LDAP');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER hdfs_server OPTIONS (username 'user1', password 'pwd123');
+
+-- create foreign table
+CREATE FOREIGN TABLE dept (
+    deptno          INTEGER,
+    dname           VARCHAR(14),
+    loc             VARCHAR(13)
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'dept');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (
+    empno           INTEGER,
+    ename           VARCHAR(10),
+    job             VARCHAR(9),
+    mgr             INTEGER,
+    hiredate        DATE,
+    sal             INTEGER,
+    comm            INTEGER,
+    deptno          INTEGER
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'emp');
+```
+
+Queries with join pushdown:
+
+```sql
+--inner join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 INNER JOIN dept t2 ON ( t1.deptno = t2.deptno );
+```
+
+```output title="Output"
+                                                                QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) INNER JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 INNER JOIN `fdw_db`.`dept` r2 ON (((r1.`deptno` = r2.`deptno`))))
+ (4 rows)
+```
+
+```sql
+--left join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 LEFT JOIN dept t2 ON ( t1.deptno = t2.deptno );
+```
+
+```output title="Output"
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) LEFT JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 LEFT JOIN `fdw_db`.`dept` r2 ON (((r1.`deptno` = r2.`deptno`))))
+(4 rows)
+```
+
+```sql
+--right join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 RIGHT JOIN dept t2 ON ( t1.deptno = t2.deptno );
+```
+
+```output title="Output"
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.dept t2) LEFT JOIN (fdw_db.emp t1)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`dept` r2 LEFT JOIN `fdw_db`.`emp` r1 ON (((r1.`deptno` = r2.`deptno`))))
+(4 rows)
+```
+
+```sql
+--full join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 FULL JOIN dept t2 ON ( t1.deptno = t2.deptno );
+```
+
+```output title="Output"
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) FULL JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 FULL JOIN `fdw_db`.`dept` r2 ON (((r1.`deptno` = r2.`deptno`))))
+(4 rows)
+```
+
+```sql
+--cross join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 CROSS JOIN dept t2;
+```
+
+```output title="Output"
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=1000000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) INNER JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 INNER JOIN `fdw_db`.`dept` r2 ON (TRUE))
+(4 rows)
+```
+
+Enable/disable GUC for join pushdown queries at the table level:
+
+```sql
+-- enable join pushdown at the table level
+ALTER FOREIGN TABLE emp OPTIONS (SET enable_join_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT e.empno, e.ename, d.dname
+  FROM emp e JOIN dept d ON (e.deptno = d.deptno)
+  ORDER BY e.empno;
+```
+
+```output title="Output"
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: e.empno, e.ename, d.dname
+   Sort Key: e.empno
+   ->  Foreign Scan
+         Output: e.empno, e.ename, d.dname
+         Relations: (fdw_db.emp e) INNER JOIN (fdw_db.dept d)
+         Remote SQL: SELECT r1.`empno`, r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 INNER JOIN `fdw_db`.`dept` r2 ON (((r1.`deptno` = r2.`deptno`))))
+(7 rows)
+```
+
+```sql
+--Disable the GUC enable_join_pushdown.
+SET hdfs_fdw.enable_join_pushdown to false;
+-- Pushdown shouldn't happen as enable_join_pushdown is false.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT e.empno, e.ename, d.dname
+  FROM emp e JOIN dept d ON (e.deptno = d.deptno)
+  ORDER BY e.empno;
+```
+
+```output title="Output"
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Sort
+   Output: e.empno, e.ename, d.dname
+   Sort Key: e.empno
+   ->  Nested Loop
+         Output: e.empno, e.ename, d.dname
+         Join Filter: (e.deptno = d.deptno)
+         ->  Foreign Scan on public.emp e
+               Output: e.empno, e.ename, e.job, e.mgr, e.hiredate, e.sal, e.comm, e.deptno
+               Remote SQL: SELECT `empno`, `ename`, `deptno` FROM `fdw_db`.`emp`
+         ->  Materialize
+               Output: d.dname, d.deptno
+               ->  Foreign Scan on public.dept d
+                     Output: d.dname, d.deptno
+                     Remote SQL: SELECT `deptno`, `dname` FROM `fdw_db`.`dept`
+```
+
+Enable/disable GUC for join pushdown queries at the session level:
+
+```sql
+SET hdfs_fdw.enable_join_pushdown to true;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT e.empno, e.ename, d.dname
+  FROM emp e JOIN dept d ON (e.deptno = d.deptno)
+  ORDER BY e.empno;
+```
+
+```output title="Output"
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Sort
+   Output: e.empno, e.ename, d.dname
+   Sort Key: e.empno
+   ->  Nested Loop
+         Output: e.empno, e.ename, d.dname
+         Join Filter: (e.deptno = d.deptno)
+         ->  Foreign Scan on public.emp e
+               Output: e.empno, e.ename, e.job, e.mgr, e.hiredate, e.sal, e.comm, e.deptno
+               Remote SQL: SELECT `empno`, `ename`, `deptno` FROM `fdw_db`.`emp`
+         ->  Materialize
+               Output: d.dname, d.deptno
+               ->  Foreign Scan on public.dept d
+                     Output: d.dname, d.deptno
+                     Remote SQL: SELECT `deptno`, `dname` FROM `fdw_db`.`dept`
+(14 rows)
+```
+
+> **Note**
+>
+> You can also enable/disable join pushdown at the server level using a GUC. For more information, see [CREATE SERVER](https://www.enterprisedb.com/docs/hadoop_data_adapter/latest/configuring/#create-server).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

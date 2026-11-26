@@ -1,0 +1,24 @@
+---
+title: Replication Server 7.5.0 release notes
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/eprs_rel_notes/eprs_rel_notes_7.5.0/
+lastModified: 2023-09-28T10:23:28+01:00
+---
+
+# Replication Server 7.5.0 release notes
+
+Released: 14 Feb 2023
+
+New features, enhancements, bug fixes, and other changes in Replication Server 7.5.0 include the following:
+
+| Type        | Description                                                                                                                                                                                                                                        |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enhancement | EDB Replication Server now supports EDB Postgres Advanced Server version 15 as a source publication and/or target subscription database in trigger and WAL based replication cluster configurations.                                               |
+| Enhancement | EDB Replication Server has been enhanced to support snapshot replication of materialized views from Oracle to EDB Postgres Advanced Server. \[Support ticket #86033]                                                                               |
+| Bug fix     | Fixed an issue where the synchronize replication fails from an EDB Postgres Advanced Server publication database to an Oracle subscription database when another Oracle database is registered as a publication database. \[Support ticket #89152] |
+| Bug fix     | Fixed a corner case issue where snapshot replication fails with a halt state when table-level parallel loading is enabled with the `snapshotParallelTableLoaderLimit` option. \[Support ticket #87586]                                             |
+| Bug fix     | Fixed an issue where the replication of a foreign key constraint is skipped in an MMR cluster when the FK is based on a unique index constraint in a source PostgreSQL/EDB Postgres Advanced Server publication database. \[Support ticket #89491] |
+| Bug fix     | Fixed a regression issue introduced in EDB Replication Server 7.x that might result in synchronize replication failure when a PostgreSQL/EDB Postgres Advanced Server publication table contains a geometric type column.                          |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

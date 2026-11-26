@@ -1,0 +1,152 @@
+---
+title: Installing and upgrading WarehousePG Backup and Restore
+description: Learn how to install and upgrade the gpbackup and gprestore utilities on your WarehousePG cluster.
+product: WarehousePG Backup and Restore
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/installing/
+lastModified: 2026-11-03T13:45:29Z
+---
+
+# Installing and upgrading WarehousePG Backup and Restore
+
+Install `whpg-backup` on all hosts in your WarehousePG cluster.
+
+## Downloading and installing the utility
+
+1. On the coordinator, download the package from the EDB repository:
+
+   ### RHEL 8, 9
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo dnf download whpg-backup
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo yumdownloader whpg-backup
+   ```
+
+2. On the coordinator, create a file `all_hosts` which lists all hosts in the WHPG cluster. For example:
+
+   ```ini
+   cdw
+   scdw
+   sdw1
+   sdw2
+   sdw3
+   ```
+
+3. From the coordinator, transfer the package to all hosts in the cluster. Use the `gpsync` utility on WarehousePG 7, or the `gpscp` utility on WarehousePG 6:
+
+   ### WHPG 7
+
+   ```bash
+   gpsync -f all_hosts <whpg-backup-package-name> =:/tmp
+   ```
+
+   ### WHPG 6
+
+   ```bash
+   gpscp -f all_hosts <whpg-backup-package-name> =:/tmp
+   ```
+
+   Where `<whpg-backup-package-name>` is the name of the WarehousePG Backup package file you downloaded, for example `whpg-backup-1.33.1-WHPG-2.el8.x86_64.rpm`.
+
+4. From the coordinator, use the `gpssh` utility to install the package on all hosts:
+
+   ### RHEL 8, 9
+
+   ```bash
+   gpssh -f all_hosts -e 'sudo dnf install -y /tmp/<whpg-backup-package-name>'
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   gpssh -f all_hosts -e 'sudo yum install -y /tmp/<whpg-backup-package-name>'
+   ```
+
+5. Verify the installation by checking the `gpbackup` and `gprestore` versions:
+
+   ```bash
+   gpbackup --version
+   gprestore --version
+   ```
+
+## Upgrading
+
+Upgrade `whpg-backup` on every host in your cluster. `gpbackup` and `gprestore` don't run as a service and don't persist configuration between runs, so there's no data or configuration migration to complete. Avoid upgrading while a backup or restore is in progress.
+
+> **Note: Upgrading to 1.34.1**
+>
+> Review the following before you upgrade to 1.34.1 from an earlier version:
+>
+> - On WarehousePG 7.4 and later, backups taken with 1.34.0 or earlier contain no data for [coordinator-only tables](https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/ddl/ddl-table/#choosing-the-table-distribution-policy), including incremental backups. After upgrading, take a new full backup of any database that has them.
+> - If you use a custom storage plugin and have coordinator-only tables, make sure the plugin is installed on the coordinator and accepts `backup_data` and `restore_data` calls with content `-1`. Backing up or restoring a coordinator-only table now calls the plugin on the coordinator, once per table. The [S3 storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/s3-plugin/) is not affected.
+> - Scripts that pass an empty `--plugin-config`, for example `--plugin-config "$CFG"` with `CFG` unset, used to run without a plugin and now fail.
+> - Backups taken with an empty `--plugin-config` on earlier versions are on the segment hosts' local disks, not on plugin storage. Restore them with `gprestore` without `--plugin-config`, or delete them to free the disk space.
+
+1. On the coordinator, download the new package version from the EDB repository:
+
+   ### RHEL 8, 9
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo dnf download whpg-backup
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo yumdownloader whpg-backup
+   ```
+
+2. From the coordinator, transfer the package to all hosts in the cluster. Use the `gpsync` utility on WarehousePG 7, or the `gpscp` utility on WarehousePG 6:
+
+   ### WHPG 7
+
+   ```bash
+   gpsync -f all_hosts <whpg-backup-package-name> =:/tmp
+   ```
+
+   ### WHPG 6
+
+   ```bash
+   gpscp -f all_hosts <whpg-backup-package-name> =:/tmp
+   ```
+
+   Where `<whpg-backup-package-name>` is the name of the new WarehousePG Backup package file you downloaded, for example `whpg-backup-1.34.0-WHPG-1.el8.x86_64.rpm`.
+
+3. From the coordinator, use the `gpssh` utility to upgrade the package on all hosts:
+
+   ### RHEL 8, 9
+
+   ```bash
+   gpssh -f all_hosts -e 'sudo dnf upgrade -y /tmp/<whpg-backup-package-name>'
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   gpssh -f all_hosts -e 'sudo yum upgrade -y /tmp/<whpg-backup-package-name>'
+   ```
+
+4. Verify the upgrade by checking the `gpbackup` and `gprestore` versions:
+
+   ```bash
+   gpbackup --version
+   gprestore --version
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

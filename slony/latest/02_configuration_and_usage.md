@@ -1,0 +1,43 @@
+---
+title: Configuring Slony Replication
+product: Slony Replication
+version: 2.2.10
+url: https://www.enterprisedb.com/docs/slony/latest/02_configuration_and_usage/
+lastModified: 2022-01-24T15:29:13-05:00
+---
+
+# Configuring Slony Replication
+
+<div id="configuring_slony" class="registered_link"></div>
+
+On a CentOS/Rocky Linux/AlmaLinux/Debian host, the configuration file (`slony-replication.ini`) is located in the `/etc/edb/slony-replication<xx>` directory. Use the configuration file to specify connection information for the master and standby nodes.
+
+On a Windows host, the configuration files are named `master.conf.sample` and `slave.conf.sample`. They are located in the `/etc` directory under the EDB Postgres Advanced Server installation. Before configuring Slony Replication, you must rename the configuration files to `master.conf` and `slave.conf`.
+
+For information about configuring a Slony Replication environment, please refer to the [Slony official project documentation](https://www.slony.info/adminguide/2.2/doc/adminguide/slony.pdf).
+
+After specifying configuration options, you must start the Slony Replication service on all nodes of the replication environment. For detailed information about controlling a service, see EDB Advanced Server Installation Guide at the [EDB website](https://www.enterprisedb.com/docs/epas/latest/).
+
+After installing, configuring, and starting the Slony Replication on a Linux system, you must manually configure your system to autostart the service when your system reboots.
+
+To configure a service to autostart on a Linux system, open a command line, assume superuser privileges, and enter the following command.
+
+On a Redhat-compatible Linux system:
+
+```text
+/sbin/chkconfig service_name on
+```
+
+Where `service_name` specifies the name of the service.
+
+On a Debian-compatible Linux system, use the command:
+
+```text
+/usr/sbin/update-rc.d service_name enable
+```
+
+Where `service_name` specifies the name of the service.
+
+Please note that on a Windows system, the Slony Replication service is configured to autostart by default; you can use the `Service Properties` dialog to control the service startup type.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

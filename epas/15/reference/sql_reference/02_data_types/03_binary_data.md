@@ -1,0 +1,84 @@
+---
+title: Binary data
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/reference/sql_reference/02_data_types/03_binary_data/
+lastModified: 2024-02-06T16:57:32-05:00
+---
+
+# Binary data
+
+<div id="binary_data" class="registered_link"></div>
+
+| Name        | Native | Alias | Description                                                                                                                                                                                                              |
+| ----------- | ------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BYTEA`     | ✅      |       | Variable-length binary string: 1 or 4 bytes plus the actual binary string.                                                                                                                                               |
+| `BINARY`    |        | ✅     | Alias for `BYTEA`. Fixed-length binary string, with a length between 1 and 8300.                                                                                                                                         |
+| `BLOB`      |        | ✅     | Alias for `BYTEA`. Variable-length binary string, with a maximum size of 1GB. The actual binary string plus 1 byte if the binary string is less than 127 bytes, or 4 bytes if the binary string is 127 bytes or greater. |
+| `VARBINARY` |        | ✅     | Alias for `BYTEA`. Variable-length binary string, with a length between 1 and 8300.                                                                                                                                      |
+
+## Overview
+
+A binary string is a sequence of octets (or bytes). Binary strings are distinguished from characters strings by two characteristics:
+
+- Binary strings specifically allow storing octets of value zero and other _non-printable_ octets. Non-printable octets are those outside the range 32 to 126.
+- Operations on binary strings process the actual bytes, whereas the encoding and processing of character strings depends on locale settings.
+
+The `BYTEA` type supports two formats for input and output: hex format and escape. Both of these are always accepted on input. The output format depends on the configuration parameter `bytea_output`. The default is hex.
+
+### Hex format
+
+The hex format encodes binary data as two hexadecimal digits per byte, most significant nibble first. The entire string is preceded by the sequence `\x` to distinguish it from the escape format. In some contexts, you might need to escape the backslash by doubling it. For input, the hexadecimal digits can be either upper or lower case, and whitespace is permitted between digit pairs but not within a digit pair or in the starting `\x` sequence. The hex format is compatible with a wide range of external applications and protocols, and it tends to be faster to convert than the escape format, so using that format is preferred.
+
+Example:
+
+```
+SET bytea_output = 'hex';
+
+SELECT '\xDEADBEEF'::bytea;
+   bytea
+------------
+ \xdeadbeef
+```
+
+### Escape format
+
+The escape format is the traditional PostgreSQL format for the bytea type. It takes the approach of representing a binary string as a sequence of ASCII characters, while converting those bytes that can't be represented as an ASCII character into special escape sequences. If, from the point of view of the application, representing bytes as characters makes sense, then this representation can be convenient. But in practice it's usually confusing because it blurs the distinction between binary strings and character strings. Also, the escape mechanism can be unwieldy. Therefore, we recommend avoiding this format for most new applications.
+
+When entering `BYTEA` values in escape format, while all octet values can be escaped, you must escape octets of certain values. In general, to escape an octet, convert it to its three-digit octal value and precede it with a backslash. You can alternatively represent a backslash (octet decimal value 92) with double backslashes. The following table shows the characters that you must escape and gives the alternative escape sequences where applicable.
+
+| Decimal octet value    | Description            | Escaped input representation | Example         | Hex representation |
+| ---------------------- | ---------------------- | ---------------------------- | --------------- | ------------------ |
+| 0                      | zero octet             | `'\000'`                     | `'\000'::bytea` | \x00               |
+| 39                     | single quote           | `''''` or `'\047'`           | `''''::bytea`   | \x27               |
+| 92                     | backslash              | `'\\'` or `'\134'`           | `'\\'::bytea`   | \x5c               |
+| 0 to 31 and 127 to 255 | “non-printable” octets | `'\xxx'` (octal value)       | `'\001'::bytea` | \x01               |
+
+The requirement to escape nonprintable octets varies depending on locale settings. In some instances you can leave them unescaped.
+
+Single quotes must be doubled. This is true for any string literal in a SQL command. The generic string-literal parser consumes the outermost single quotes and reduces any pair of single quotes to one data character. What the `BYTEA` input function sees is just one single quote, which it treats as a plain data character. However, the `BYTEA` input function treats backslashes as special, and the other behaviors shown in the table are implemented by that function.
+
+In some contexts, backslashes must be doubled compared to what's shown in the table because the generic string-literal parser also reduces pairs of backslashes to one data character.
+
+`BYTEA` octets are output in hex format by default. If you change `bytea_output` to escape, nonprintable octets are converted to their equivalent three-digit octal value and preceded by one backslash. Most printable octets are output by their standard representation in the client character set, as shown in this example:
+
+```
+SET bytea_output = 'escape';
+
+SELECT 'abc \153\154\155 \052\251\124'::bytea;
+     bytea
+----------------
+ abc klm *\251T
+```
+
+The octet with decimal value 92 (backslash) is doubled in the output, as detailed in the following table.
+
+| Decimal octet value    | Description         | Escaped input representation        | Example         | Output result |
+| ---------------------- | ------------------- | ----------------------------------- | --------------- | ------------- |
+| 92                     | Backslash           | `\\`                                | `'\134'::bytea` | `\\`          |
+| 0 to 31 and 127 to 255 | Nonprintable octets | `'\xxx'` (octal value)              | `'\001'::bytea` | `\001`        |
+| 32 to 126              | Printable octets    | client character set representation | `'\176'::bytea` | \~            |
+
+Depending on the front end to PostgreSQL you use, you might have additional work in terms of escaping and unescaping `BYTEA` strings. For example, you might also have to escape line feeds and carriage returns if your interface translates these.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

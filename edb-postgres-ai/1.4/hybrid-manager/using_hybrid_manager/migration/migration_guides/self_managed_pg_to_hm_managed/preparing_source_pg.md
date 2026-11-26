@@ -1,0 +1,283 @@
+---
+title: Preparing your Postgres source database
+description: Configure your self-managed Postgres source database and create the required users for schema assessment with the EDB Postgres AI agent and data migration with the DMS agent.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/preparing_source_pg/
+lastModified: 2026-11-03T11:47:58+01:00
+---
+
+# Preparing your Postgres source database
+
+Configure your Postgres source database and create the required users before starting your migration. What you need to configure depends on your goal:
+
+- **Schema ingestion only** with the EDB Postgres AI agent: Create a machine user in Hybrid Manager (HM) and a migration user with schema extraction permissions. No WAL-level database changes are required.
+
+- **Data migration** with the Data Migration Service (DMS) agent: Configure WAL settings and grant the required replication privileges.
+
+If you plan to run both schema ingestion and data migration, complete all sections. If you only plan to do schema or data migration, each section explains whether it's applicable for your use case.
+
+## Creating the migration user
+
+> **Tip**
+>
+> Required for both schema ingestion with the EDB Postgres AI agent and data migration with the DMS agent.
+
+Create a single migration user that serves both the EDB Postgres AI agent and the DMS agent. Using one user simplifies credential management across agents.
+
+Using a database admin account, connect to your source Postgres database and create the migration user:
+
+```sql
+CREATE USER <migration_user> WITH REPLICATION LOGIN PASSWORD '<migration_user_password>';
+```
+
+`REPLICATION` is required for the DMS agent to create replication slots and read from the WAL. If you're performing schema ingestion only, you can omit it — but including it now means you won't need to alter the user later if you add data migration.
+
+### Granting schema ingestion permissions
+
+> **Tip**
+>
+> Required for schema ingestion with the EDB Postgres AI agent.
+
+1. Grant the EDB Postgres AI agent connect access to the source database:
+
+   ```sql
+   GRANT CONNECT ON DATABASE <source_database> TO <migration_user>;
+   ```
+
+   Where `<source_database>` is the name of the database you want to assess. If you plan to connect the agent to additional databases on the same server, grant `CONNECT` on each one.
+
+2. Grant the roles needed for a complete schema extraction:
+
+   #### Postgres 14 and later
+
+   ```sql
+   GRANT pg_monitor TO <migration_user>;
+   GRANT pg_read_all_data TO <migration_user>;
+   GRANT pg_read_all_settings TO <migration_user>;
+   ```
+
+   Together, these three roles enable a full schema extraction, including ownership and privilege information. With only `pg_read_all_data` granted, the agent performs a partial extraction limited to schema object definitions, without ownership and privilege information.
+
+   #### Postgres 10 to 13
+
+   `pg_read_all_data` isn't available in Postgres 10 to 13:
+
+   ```sql
+   GRANT pg_monitor TO <migration_user>;
+   GRANT pg_read_all_settings TO <migration_user>;
+   ```
+
+### Granting data migration permissions
+
+> **Tip**
+>
+> Required for data migration with the DMS agent.
+
+1. Grant the migration user usage on each schema containing tables to migrate:
+
+   ```sql
+   GRANT USAGE ON SCHEMA <db_schema> TO <migration_user>;
+   ```
+
+2. Grant `SELECT` on source tables. For an entire schema:
+
+   ```sql
+   GRANT SELECT ON ALL TABLES IN SCHEMA <db_schema> TO <migration_user>;
+   ```
+
+   For individual tables:
+
+   ```sql
+   GRANT SELECT ON <table_name> TO <migration_user>;
+   ```
+
+3. Grant `CREATE` on the source database so the DMS agent can create publications:
+
+   ```sql
+   GRANT CREATE ON DATABASE <pg_db_name> TO <migration_user>;
+   ```
+
+   > **Note: Required for large object (LO) migration**
+   >
+   > If you're migrating Postgres large objects (`LO_SNAPSHOT_ENABLED=true`), also grant `SELECT` on the `pg_largeobject` system catalog:
+   >
+   > ```sql
+   > GRANT SELECT ON pg_largeobject TO <migration_user>;
+   > ```
+   >
+   > Without this grant, the DMS agent can't read large object content from the source, and the large object snapshot fails.
+   >
+   > You also need a role on the _destination_ matching each role that owns a large object on the source — see [Large object (LO) migration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/terminology/#large-object-lo-migration) for details.
+
+## OS-level requirements for the agent
+
+Schema ingestion connects to the source database entirely over the network, using the migration user's credentials — it doesn't require a dedicated OS user account or any special OS-level access.
+
+However, `beacon-agent` must be able to find a `pg_dump`/`pg_dumpall` binary matching your source database's distribution and version. See [Configuring the environment](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/auxiliary_machine/#configuring-the-environment) for the version and distribution rules, and how to point the agent at the right binaries with `pg_bin_path`.
+
+> **Note**
+>
+> If you run `beacon-agent` directly on the database server itself and connect to it over a local Unix socket using Postgres's default peer authentication — uncommon, since even a colocated agent typically connects over the network rather than a Unix socket — the connecting OS user must match a database role. The default service account is `postgres` for community PostgreSQL and EDB Postgres Extended Server, and `enterprisedb` for EDB Postgres Advanced Server (EPAS).
+
+## Preparing for extension migration (EDB Postgres AI agent)
+
+> **Tip**
+>
+> Required for schema migration with the EDB Postgres AI agent when your source database has extensions installed.
+
+As part of schema migration, the EDB Postgres AI agent automatically extracts all extensions installed on the source database and applies them to the destination before any other schema DDL runs. If any extension fails to install, the entire schema migration aborts.
+
+Before running schema migration, check which extensions are installed on the source and confirm they're available on the destination at the same version. If an extension isn't available at the matching version, schema migration fails. When migrating across different major Postgres versions, the extension versions available on the destination may not match those on the source, which can cause migration failures.
+
+```sql
+SELECT name, installed_version
+FROM pg_available_extensions
+WHERE installed_version IS NOT NULL;
+```
+
+Run the same query on the destination to compare versions.
+
+After migration completes, if your source uses foreign data wrapper (FDW) extensions, the agent installs the FDW extension itself but doesn't migrate FDW objects. Recreate foreign servers, user mappings, and foreign tables on the destination manually.
+
+For a full list of extension migration limitations, see [Extension migration limitations](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/limitations/#extension-migration-limitations).
+
+## Preparing for data migration (DMS agent)
+
+> **Tip**
+>
+> Required for data migration with the DMS agent.
+
+### Configuring WAL settings
+
+The DMS agent uses Postgres logical decoding to capture changes from the write-ahead log (WAL). Configure the following parameters in `postgresql.conf`:
+
+1. Set `wal_level` to `logical` to enable logical decoding:
+
+   ```ini
+   wal_level = logical
+   ```
+
+2. Set `max_wal_senders` to at least `1`. If other streaming clients connect to your database, consult your DBA for the appropriate value:
+
+   ```ini
+   max_wal_senders = 1
+   ```
+
+3. Set `max_replication_slots` to at least `1`. This can be higher if your organization uses Postgres replication:
+
+   ```ini
+   max_replication_slots = 1
+   ```
+
+4. Set `max_wal_size` large enough that production traffic generates mostly timed checkpoints rather than requested checkpoints based on WAL size. We recommend at least 8 GB:
+
+   ```ini
+   max_wal_size = 8GB
+   ```
+
+   Setting `max_wal_size` too small can allow Postgres to drop WAL entries before the DMS agent can stream them, interfering with or slowing down the migration. Consult your DBA to determine the appropriate size for your environment.
+
+5. Restart the database server to apply the changes.
+
+### Creating the replication group role
+
+The migration user must own the source tables to auto-create Postgres publications. Because those tables are already owned by another role, create a replication group role that both the current table owner and the migration user belong to:
+
+```sql
+CREATE ROLE <replication_group>;
+GRANT <replication_group> TO <migration_user>;
+GRANT <replication_group> TO <original_owner>;
+ALTER TABLE <table_name> OWNER TO <replication_group>;
+```
+
+Where:
+
+- `<migration_user>` is the Postgres user you created for migration.
+- `<original_owner>` is the original owner of the tables.
+- `<replication_group>` is the shared role that owns the source tables for publication auto-creation.
+- `<table_name>` is the name of a table to migrate (case-sensitive).
+
+You must run `ALTER TABLE ... OWNER TO <replication_group>` for every table you plan to migrate, across all schemas. To transfer ownership of all tables in the database at once:
+
+```sql
+DO $$
+DECLARE
+  s text;
+  t text;
+BEGIN
+  FOR s, t IN
+    SELECT <schemaname>, <tablename> FROM pg_tables
+    WHERE <schemaname> NOT IN ('pg_catalog', 'information_schema')
+  LOOP
+    EXECUTE 'ALTER TABLE ' || quote_ident(s) || '.' || quote_ident(t) || ' OWNER TO <replication_group>';
+  END LOOP;
+END;
+$$;
+```
+
+### Configuring SSL
+
+Configure your source database server to [accept SSL connections](https://www.postgresql.org/docs/current/ssl-tcp.html). The DMS agent requires SSL to connect to the source. Create a server certificate and server private key — you can generate the private key with a tool like OpenSSL.
+
+### Validating your configuration
+
+The DMS agent includes a validation script that checks whether your source database meets all requirements for CDC migration.
+
+1. Navigate to the DMS agent folder:
+
+   ```shell
+   cd /opt/cdcagent/reader/
+   ```
+
+2. Create an array of all tables to migrate in `<schema_name>.<table_name>` format:
+
+   ```shell
+   arr=(schema1.table1 schema1.table2 schema2.table1)
+   ```
+
+3. Run the validation script:
+
+   ```shell
+   PG_USERNAME=postgres PG_PASSWORD=<password> PG_HOST=<host> PG_PORT=5432 DB_NAME=<db_name> DBZ_USERNAME=<migration_user> DBZ_PASSWORD=<migration_user_password> ./postgresConfigValidation.sh "${arr[@]}"
+   ```
+
+   A passing result looks like this:
+
+   ```shell
+    *** [Transporter] - Get PostgreSQL Major Version
+   PostgreSQL major version: 17
+    *** [Transporter] - Validate WAL Level
+   wal_level:  logical
+   [Pass] wal_level is 'logical'.
+    *** [Transporter] - Validate max WAL senders
+   max_wal_senders: 10
+   [Pass] max_wal_senders is at least 1.
+    *** [Transporter] - Validate max replication slots
+   max_replication_slots: 10
+   [Pass] max_replication_slots is at least 1.
+    *** [Transporter] - Validate max WAL size
+   max_wal_size: 8 GB
+   [Pass] max_wal_size is set to the recommended value of 8GB or higher.
+    *** [Transporter] - Validate checkpoints
+   checkpoints_timed: 100
+   checkpoints_req: 5
+   [Pass] Timed checkpoints are more frequent than requested checkpoints.
+    *** [Transporter] - Check <migration_user> user role
+   [Pass] User '<migration_user>' is present
+   [Pass] User '<migration_user>' has replication permission
+    *** [Transporter] - Check SELECT privilege on the tables to be migrated
+   [Pass] User <migration_user> has select privilege on all tables to be migrated.
+    *** [Transporter] - Check CREATE privilege on database
+   [Pass] Role '<migration_user>' has CREATE privilege on database '<db_name>'.
+   ```
+
+> **Note**
+>
+> Address any `[Failed]` or `[Suggestion]` statuses before proceeding. `[Failed]` checks are blocking issues you must resolve before the DMS agent can execute the data migration. `[Suggestion]` checks allow migration but can negatively affect performance if left unaddressed.
+
+## Next step
+
+[Configure the EDB Postgres AI agent to assess your database](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/agent_postgres/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

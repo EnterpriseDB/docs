@@ -1,0 +1,25 @@
+---
+title: AIDB 6.0.0 release notes
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/release-notes/6/aidb_6.0.0_rel_notes/
+lastModified: 2026-06-23T17:51:45+05:30
+---
+
+# AIDB 6.0.0 release notes
+
+Released: 10 Feb 2026
+
+AIDB 6.0.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enhancement | **Generic pipeline autoprocessing:** Pipelines can now be configured to process data automatically in the background as new rows are inserted into the source table, without requiring manual invocation. |
+| Enhancement | **`halfvec` support:** Added native support for the `halfvec` type (16-bit floating point vectors), reducing storage requirements for vector data by up to 50% compared to `vector`.                      |
+| Enhancement | **Merge pipelines:** Multiple pipelines can now be merged, enabling combined processing workflows across different pipeline configurations.                                                               |
+| Enhancement | **Intermediate step tables:** Pipeline intermediate step results are now stored in dedicated tables, improving debuggability and enabling inspection of data at each stage of a multistep pipeline.       |
+| Enhancement | **Pipeline source/destination migration:** Added tooling to migrate existing pipeline source and destination table configurations to updated schemas.                                                     |
+| Enhancement | **Improved pipeline error messages:** Error messages for invalid pipeline source table configurations are now more descriptive and actionable.                                                            |
+| Change      | **Standardized pipeline destination table schemas:** Pipeline destination tables now follow a standardized schema. Existing pipelines may require migration. See the migration guide for details.         |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

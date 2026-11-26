@@ -1,0 +1,38 @@
+---
+title: Planning storage capacity
+description: Monitor disk capacity, usage distribution, and historical growth across the WarehousePG cluster.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/performance/storage/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Planning storage capacity
+
+Monitor and manage disk utilization across the WarehousePG (WHPG) cluster to prevent database write failures and ensure consistent performance. Use the **Storage** panel on the left sidebar to audit current capacity, isolate hardware imbalances, and forecast future storage requirements.
+
+### Managing cluster-wide capacity
+
+Perform high-level audits of your total storage footprint and ensure data is spread evenly across the infrastructure using the **Overview** tab.
+
+- Review the **Total Capacity**, **Used**, **Free**, and **Avg Usage** header cards for a cluster-wide snapshot. If average usage is climbing, begin identifying data archival candidates before capacity is exhausted.
+- An alert appears automatically when one or more filesystems exceed 80% usage.
+- Identify storage imbalances with the **Free Space Distribution by Host and Mount Point** chart. If certain nodes have significantly less free space than others, it usually indicates data skew at the database level that requires re-distribution. Consider using `ALTER TABLE ... SET DISTRIBUTED BY` to choose a column with more unique values.
+- Differentiate database and system growth by inspecting the **Storage Details** table. The **Host**, **Mount Point**, **Total**, **Used**, **Free**, and **Usage %** columns help you determine if storage pressure is caused by database tables (typically in `/data`) or by expanding system logs and temporary files in other partitions.
+
+### Forecasting and growth analysis
+
+Perform proactive capacity planning on your cluster using the **Historical** tab.
+
+- The **Historical Storage Trends** section shows storage consumption over a selectable time range. Use the date range picker to define a custom window, or choose a preset (from 1 hour up to 30 days). Toggle between **Free Space (GB)** and **Usage %** views, and filter by host or mount point to isolate specific filesystems.
+- Analyze consumption trends to determine your daily or weekly ingest rate and predict when your current storage volume will reach a critical state.
+
+### Responding to storage pressure
+
+When storage indicators show filesystems approaching capacity:
+
+- Analyze table and index volume if storage is running low. Navigate to the **Database Objects** panel to identify the largest tables and indexes. Focus on high-growth objects that are the primary drivers of disk consumption. See [Analyzing data distribution](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/performance/data-analysis/) for details.
+- Monitor for database bloat and check for high levels of dead tuples. Reclaiming space from bloated tables through vacuuming can often postpone the need for physical hardware expansion.
+- Initiate data archiving by moving historical or low-access data to cold storage or external archives.
+- If growth is consistent with expected usage and can't be mitigated by archiving or vacuuming, consult your administrator. Use the **Historical Storage Trends** data to justify adding additional disk space or scaling out with more cluster nodes.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

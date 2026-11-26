@@ -1,0 +1,25 @@
+---
+title: DBA_PRIVS_CAPTURE
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_cat_views/oracle_compatible_views/45a_dba_privs_capture/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# DBA\_PRIVS\_CAPTURE
+
+The `DBA_PRIVS_CAPTURE` view provides information about all the used privileges. The used privileges are populated by the `DBMS_PRIVILEGE_CAPTURE.GENERATE_RESULT` procedure.
+
+Superuser or the user with `CAPTURE_ADMIN` role can access this view.
+
+| Name          | Type        | Description                                                                                                           |
+| ------------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| `name`        | `NAME`      | Name of the capture policy for privilege analysis.                                                                    |
+| `description` | `TEXT`      | Description of the capture policy for privilege analysis.                                                             |
+| `type`        | `TEXT`      | Type of the privilege analysis policy. Possible values are `G_DATABASE`, `G_ROLE`, `G_CONTEXT`, `G_ROLE_AND_CONTEXT`. |
+| `enabled`     | `BOOLEAN`   | Whether or not the policy is enabled on the object. Possible values are `YES` or `NO`.                                |
+| `roles`       | `REGROLE[]` | Name of the roles whose privileges are to be analyzed, if the `type` is `G_ROLE` or `G_ROLE_AND_CONTEXT`.             |
+| `context`     | `TEXT`      | Condition if the privilege analysis type is `G_CONTEXT` or `G_ROLE_AND_CONTEXT`.                                      |
+| `run_name`    | `NAME`      | Name of the run for which privileges are analyzed.                                                                    |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

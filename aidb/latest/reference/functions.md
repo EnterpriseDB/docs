@@ -1,0 +1,367 @@
+---
+title: Functions reference
+description: API reference for AIDB standalone SQL functions — text chunking, HTML and PDF parsing, OCR, text summarization, and PII detection and redaction.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/reference/functions/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Functions reference
+
+Reference for AIDB standalone SQL functions that transform data directly in queries, without requiring a pipeline. For usage context and examples, see [AI SQL functions](https://www.enterprisedb.com/docs/aidb/latest/sql-functions/).
+
+For AI inference functions (`encode_text`, `generate_text`, `rerank_text`, and related), see [Models reference](https://www.enterprisedb.com/docs/aidb/latest/reference/models/#inference-functions).
+
+The `options` argument of `aidb.chunk_text()`, `aidb.parse_html()`, `aidb.parse_pdf()`, `aidb.perform_ocr()`, and `aidb.summarize_text()` accepts `JSON`, `JSONB`, or `TEXT`, so you can pass the result of a config helper such as `aidb.chunk_text_config()` without a cast. `aidb.summarize_text_aggregate()` still needs `::json`.
+
+---
+
+## `aidb.chunk_text`
+
+Divides a text string into smaller, semantically coherent segments.
+
+### Parameters
+
+| Parameter | Type                 | Description                                                                |
+| --------- | -------------------- | -------------------------------------------------------------------------- |
+| `input`   | TEXT                 | The text to chunk.                                                         |
+| `options` | JSON, JSONB, or TEXT | Chunking configuration, built with `aidb.chunk_text_config()` (see below). |
+
+**Options**
+
+| Key              | Type    | Default   | Description                                                                                                                                         |
+| ---------------- | ------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `desired_length` | integer | Required  | Target segment size. Acts as a strict upper limit if you omit `max_length`.                                                                         |
+| `max_length`     | integer | NULL      | Upper bound for chunk size. Chunks extend past `desired_length` only to preserve semantic boundaries.                                               |
+| `overlap_length` | integer | `0`       | Amount of content to repeat between consecutive chunks, to preserve cross-boundary context.                                                         |
+| `strategy`       | text    | `'chars'` | Chunking unit: `'chars'` (character-based) or `'words'` (word-based). Determines the unit for `desired_length`, `max_length`, and `overlap_length`. |
+
+### Returns
+
+| Column    | Type   | Description               |
+| --------- | ------ | ------------------------- |
+| `part_id` | bigint | Zero-based segment index. |
+| `chunk`   | text   | The text segment.         |
+
+### Example
+
+```sql
+SELECT * FROM aidb.chunk_text(
+    input   => 'Long text here...',
+    options => '{"desired_length": 120, "max_length": 150}'
+);
+```
+
+---
+
+## `aidb.parse_html`
+
+Extracts readable text from an HTML string, stripping tags while preserving structure.
+
+### Parameters
+
+| Parameter | Type                 | Description                        |
+| --------- | -------------------- | ---------------------------------- |
+| `html`    | TEXT                 | The HTML string to parse.          |
+| `options` | JSON, JSONB, or TEXT | Parsing configuration (see below). |
+
+**Options**
+
+| Key      | Type | Default                 | Description                                                                                                                                      |
+| -------- | ---- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `method` | text | `'StructuredPlaintext'` | Parsing method: `'StructuredPlaintext'` (plain text extraction) or `'StructuredMarkdown'` (Markdown-like output that retains headers and lists). |
+
+### Returns
+
+`TEXT` — the extracted text content.
+
+### Example
+
+```sql
+SELECT aidb.parse_html(
+    html    => '<h1>Hello</h1><p>World</p>',
+    options => '{"method": "StructuredPlaintext"}'
+);
+```
+
+---
+
+## `aidb.parse_pdf`
+
+Extracts text from binary PDF data. Returns one row per page.
+
+### Parameters
+
+| Parameter | Type                 | Description                        |
+| --------- | -------------------- | ---------------------------------- |
+| `bytes`   | BYTEA                | Raw PDF binary data.               |
+| `options` | JSON, JSONB, or TEXT | Parsing configuration (see below). |
+
+**Options**
+
+| Key                     | Type    | Default        | Description                                                                                                         |
+| ----------------------- | ------- | -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `method`                | text    | `'Structured'` | Parsing method. Currently `'Structured'` (spec-based text block extraction).                                        |
+| `allow_partial_parsing` | boolean | `true`         | When `true`, continues parsing when errors are encountered on individual pages, returning as much data as possible. |
+
+### Returns
+
+| Column    | Type   | Description                                                |
+| --------- | ------ | ---------------------------------------------------------- |
+| `part_id` | bigint | Page index (zero-based) from which the text was extracted. |
+| `text`    | text   | Extracted text for that page.                              |
+
+### Example
+
+```sql
+SELECT * FROM aidb.parse_pdf(
+    bytes   => pg_read_binary_file('/path/to/doc.pdf')::BYTEA,
+    options => '{"allow_partial_parsing": true}'
+);
+```
+
+---
+
+## `aidb.perform_ocr`
+
+Extracts text from image data using a registered OCR-capable model.
+
+### Parameters
+
+| Parameter | Type                 | Description                    |
+| --------- | -------------------- | ------------------------------ |
+| `input`   | BYTEA                | Raw binary image data.         |
+| `options` | JSON, JSONB, or TEXT | OCR configuration (see below). |
+
+**Options**
+
+| Key     | Type | Description                                                                                                      |
+| ------- | ---- | ---------------------------------------------------------------------------------------------------------------- |
+| `model` | text | Name of a registered OCR-capable model (for example, one using the `nim_paddle_ocr` or `llamacpp_ocr` provider). |
+
+### Returns
+
+| Column    | Type   | Description                                                                                                |
+| --------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| `part_id` | bigint | Text block index. A single image may produce multiple rows if the provider returns multiple text segments. |
+| `text`    | text   | Extracted text for that block.                                                                             |
+
+### Example
+
+```sql
+SELECT * FROM aidb.perform_ocr(
+    input   => pg_read_binary_file('/path/to/image.png')::BYTEA,
+    options => '{"model": "my_ocr_model"}'
+);
+```
+
+---
+
+## `aidb.summarize_text`
+
+Generates a concise summary of a text string using a registered language model.
+
+### Parameters
+
+| Parameter | Type                 | Description                              |
+| --------- | -------------------- | ---------------------------------------- |
+| `input`   | TEXT                 | The text to summarize.                   |
+| `options` | JSON, JSONB, or TEXT | Summarization configuration (see below). |
+
+**Options**
+
+| Key                | Type    | Default           | Description                                                                                                                                                        |
+| ------------------ | ------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model`            | text    | Required          | Name of a registered model that supports `generate_text`.                                                                                                          |
+| `prompt`           | text    | (standard prompt) | Custom instruction to guide the summary style, for example, `'Summarize for a 5th grader'`.                                                                        |
+| `chunk_config`     | JSONB   | NULL              | Chunking configuration to apply before summarization when input exceeds the model's context window. Accepts the same keys as `aidb.chunk_text` options.            |
+| `strategy`         | text    | `'append'`        | Summarization strategy: `'append'` (summarize each chunk independently and concatenate) or `'reduce'` (iteratively summarize until the desired length is reached). |
+| `reduction_factor` | integer | `3`               | Used with the `'reduce'` strategy. Controls how aggressively each iteration reduces the text.                                                                      |
+
+### Returns
+
+`TEXT` — the generated summary.
+
+### Example
+
+```sql
+SELECT aidb.summarize_text(
+    input   => 'Long article text here...',
+    options => '{"model": "my_t5_model"}'
+);
+```
+
+---
+
+## `aidb.summarize_text_aggregate`
+
+Aggregate version of `aidb.summarize_text`. Accumulates text from all rows in each group, then sends the combined result to the LLM for summarization. Returns one summary per `GROUP BY` group. Empty and NULL rows are skipped.
+
+### Parameters
+
+| Parameter | Type | Required | Description                                                                                      |
+| --------- | ---- | -------- | ------------------------------------------------------------------------------------------------ |
+| `input`   | TEXT | Yes      | Text column from each row. Empty/NULL rows are skipped.                                          |
+| `options` | JSON | Yes      | Configuration object built with `aidb.summarize_text_config()`. Must contain `model` at minimum. |
+
+**Options**
+
+Accepts the same options as `aidb.summarize_text` (see above). `options` is **required** for the aggregate, not optional.
+
+### Returns
+
+`TEXT` — the summary for the group.
+
+### Example
+
+```sql
+SELECT category,
+       aidb.summarize_text_aggregate(
+           text_column,
+           aidb.summarize_text_config('my_t5_model')::json ORDER BY id
+       ) AS summary
+FROM my_table
+GROUP BY category;
+```
+
+---
+
+## `aidb.pii_extract`
+
+Finds PII spans in a text string using a registered `onnx_token_classifier` model. Returns one row per span.
+
+### Parameters
+
+| Parameter    | Type  | Description                                         |
+| ------------ | ----- | --------------------------------------------------- |
+| `model_name` | TEXT  | Name of a registered `onnx_token_classifier` model. |
+| `input`      | TEXT  | The text to scan.                                   |
+| `options`    | JSONB | Optional per-call settings (see below).             |
+
+**Options**
+
+| Key         | Type  | Default                   | Description                                                          |
+| ----------- | ----- | ------------------------- | -------------------------------------------------------------------- |
+| `labels`    | JSONB | All of the model's labels | Keep only spans with these labels. An unknown label causes an error. |
+| `min_score` | float | `0`                       | Drop spans that score below this value, from 0 to 1.                 |
+
+The `viterbi_biases` option is also accepted. See [Setting per-call options](https://www.enterprisedb.com/docs/aidb/latest/sql-functions/pii-detection/#setting-per-call-options).
+
+### Returns
+
+A table with one row per span: `label`, `start_pos` (1-based), `length` (in characters), `text`, and `score` (from 0 to 1).
+
+### Example
+
+```sql
+SELECT label, text FROM aidb.pii_extract('pii', 'Call Alice Smith at +1 (415) 555-0123.');
+```
+
+---
+
+## `aidb.pii_extract_batch`
+
+Batch version of `aidb.pii_extract`. Classifies all array elements together. An element with no PII produces no rows.
+
+### Parameters
+
+| Parameter    | Type    | Description                                                  |
+| ------------ | ------- | ------------------------------------------------------------ |
+| `model_name` | TEXT    | Name of a registered `onnx_token_classifier` model.          |
+| `input`      | TEXT\[] | The texts to scan.                                           |
+| `options`    | JSONB   | Optional per-call settings. Same keys as `aidb.pii_extract`. |
+
+### Returns
+
+The same columns as `aidb.pii_extract`, plus `input_index`, the 1-based array position of the text.
+
+### Example
+
+```sql
+SELECT input_index, label, text
+FROM aidb.pii_extract_batch('pii', ARRAY['Email jordan.lee@acme-mail.com', 'No PII here.']);
+```
+
+---
+
+## `aidb.pii_redact`
+
+Replaces each PII span in a text string with a placeholder.
+
+### Parameters
+
+| Parameter    | Type  | Description                                         |
+| ------------ | ----- | --------------------------------------------------- |
+| `model_name` | TEXT  | Name of a registered `onnx_token_classifier` model. |
+| `input`      | TEXT  | The text to redact.                                 |
+| `options`    | JSONB | Optional per-call settings (see below).             |
+
+**Options**
+
+| Key           | Type  | Default                   | Description                                                                                         |
+| ------------- | ----- | ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `labels`      | JSONB | All of the model's labels | Keep only spans with these labels. An unknown label causes an error.                                |
+| `min_score`   | float | `0`                       | Drop spans that score below this value, from 0 to 1.                                                |
+| `placeholder` | text  | `<{LABEL}>`               | Replacement for each span. `{LABEL}` becomes the label in uppercase, and `{label}` the label as is. |
+
+The `viterbi_biases` option is also accepted. See [Setting per-call options](https://www.enterprisedb.com/docs/aidb/latest/sql-functions/pii-detection/#setting-per-call-options).
+
+### Returns
+
+`TEXT` — the input with each span replaced. A text with no PII is returned unchanged.
+
+### Example
+
+```sql
+SELECT aidb.pii_redact('pii', 'My email is harry.potter@hogwarts.edu.');
+```
+
+---
+
+## `aidb.pii_redact_batch`
+
+Batch version of `aidb.pii_redact`.
+
+### Parameters
+
+| Parameter    | Type    | Description                                                 |
+| ------------ | ------- | ----------------------------------------------------------- |
+| `model_name` | TEXT    | Name of a registered `onnx_token_classifier` model.         |
+| `input`      | TEXT\[] | The texts to redact.                                        |
+| `options`    | JSONB   | Optional per-call settings. Same keys as `aidb.pii_redact`. |
+
+### Returns
+
+One redacted `TEXT` per array element, in array order. A NULL element gives NULL.
+
+### Example
+
+```sql
+SELECT * FROM aidb.pii_redact_batch('pii', ARRAY['Call 020 7946 0958.', NULL]) WITH ORDINALITY AS r(redacted, n);
+```
+
+---
+
+## Parameter defaults quick reference
+
+| Function                   | Parameter             | SQL default  | Runtime default           |
+| -------------------------- | --------------------- | ------------ | ------------------------- |
+| `summarize_text`           | `options`             | `'{}'`       | Must include `model`      |
+| `summarize_text_aggregate` | `input`               | — (required) | —                         |
+| `summarize_text_aggregate` | `options`             | — (required) | —                         |
+| `summarize_text_config`    | `model`               | — (required) | —                         |
+| `summarize_text_config`    | `chunk_config`        | `NULL`       | No chunking               |
+| `summarize_text_config`    | `prompt`              | `NULL`       | Standard summarize prompt |
+| `summarize_text_config`    | `strategy`            | `NULL`       | `'append'`                |
+| `summarize_text_config`    | `reduction_factor`    | `NULL`       | `3`                       |
+| `summarize_text_config`    | `inference_config`    | `NULL`       | Provider defaults         |
+| `chunk_text_config`        | `desired_length`      | — (required) | —                         |
+| `chunk_text_config`        | `max_length`          | `NULL`       | Same as `desired_length`  |
+| `chunk_text_config`        | `overlap_length`      | `NULL`       | `0`                       |
+| `chunk_text_config`        | `strategy`            | `NULL`       | `'chars'`                 |
+| `pii_extract`              | `options.labels`      | `NULL`       | All of the model's labels |
+| `pii_extract`              | `options.min_score`   | `NULL`       | `0`                       |
+| `pii_redact`               | `options.placeholder` | `NULL`       | `<{LABEL}>`               |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

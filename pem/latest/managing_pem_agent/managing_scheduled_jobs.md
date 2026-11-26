@@ -1,0 +1,109 @@
+---
+title: Managing scheduled jobs
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/managing_scheduled_jobs/
+lastModified: 2026-09-29T20:38:51+05:30
+---
+
+# Managing scheduled jobs
+
+You can create a PEM scheduled job to perform a set of steps you define in a specified sequence. These steps can contain SQL code or a batch/shell script that you can run on a server that's bound with the agent. For example, you can create a job for taking a backup of a database server and schedule when it runs each month.
+
+To create or manage a PEM scheduled job, use the PEM tree to browse to the PEM agent whose job you want to create. To add a job, right-click the **Jobs** node and select **Create Job**.
+
+> **Note**
+>
+> This creates a job on a single agent. If you want to define a job once and run it on many servers or agents at the same time, see [Understanding job templates](https://www.enterprisedb.com/docs/pem/latest/job_templates/) instead.
+
+Use the tabs on the Create - Agent Job dialog box to define the steps and schedule that make up a PEM scheduled job.
+
+## Provide general information about the job
+
+Use the **General** tab to provide general information about a job:
+
+- Provide a name for the job in the **Name** field.
+- Set **Enabled** to **Yes** to enable a job.
+- Enter notes about the job in the **Comment** field.
+
+## Define the job steps
+
+Use the **Steps** tab to define and manage the steps that the job performs. Select **Add** (+) to add a step. Then, select the compose icon, to the left of the header, to open the Step Definition dialog box where you define the step:
+
+- Enter the name for the step in the **Name** field. Steps are performed in alphanumeric order by name.
+
+- Set **Enabled** to **True** to include the step when executing the job.
+
+- Set the **Kind** switch to set the job step to invoke SQL code or a batch script. Then use the **Code** tab to enter the SQL code or the batch script for the step.
+
+- Use the **On error** list to specify the pemAgent behavior if it encounters an error while executing the step:
+
+  - **Fail** — Stop the job if you encounter an error while processing this step.
+  - **Success** — Mark the step as completing successfully and continue.
+  - **Ignore** — Ignore the error and continue.
+
+- If you selected **SQL** as your input for the **Kind** switch:
+
+  - In the **Server** field, enter the server that's bound with the agent for which you're creating the PEM scheduled job.
+  - In the **Database** field, enter the database associated with the server you selected.
+
+- In the **Comment** field, enter a comment about the step.
+
+- Use the context-sensitive field on the Step Definition dialog box **Code** tab to provide the SQL code or batch script to execute during the step:
+
+  - If the step invokes SQL code, provide one or more SQL statements in the **SQL query** field.
+
+  - If the step invokes a batch script, provide the script in the **Code** field. If you're running on a Windows server, use standard batch file syntax. On a Linux server, you can use any shell script, provided that you specify a suitable interpreter on the first line (such as `#!/bin/sh`). Along with the defined inline code, you can also provide the path of any batch script, shell script, or SQL file on the filesystem.
+
+    - To invoke a script on a Linux system, you must modify the entry for the `batch_script_user` parameter in the `agent.cfg` file and specify the user who runs the script. You can specify either a nonroot user or root for this parameter. If you don't specify a user or the specified user doesn't exist, then the script doesn't execute. Restart the agent after modifying the file.
+
+    - To invoke a script on a Windows system, set the registry entry for `AllowBatchJobSteps` to `true` and restart the PEM agent. PEM registry entries are located in `HKEY_LOCAL_MACHINE\Software\EnterpriseDB\PEM\agent`.
+
+After providing all the information required by the step, select **Save**.
+
+## Define the job schedule
+
+Select **Add** (+) to add each step, or select the **Schedules** tab to define the job schedule.
+
+On the **Schedules** tab, select **Add** (+) to add a schedule for the job. Then select the compose icon located to the left of the header to open the Schedule Definition dialog box.
+
+Use the **Schedules definition** tab to specify the days and times for the job to execute:
+
+- Enter a name for the schedule in the **Name** field.
+- Set **Enabled** to **Yes** to use the schedule (**Yes**).
+- Use the calendar selectors to specify the start and end date and time for the schedule.
+- In the **Comment** field, enter a comment about the schedule.
+
+Select the **Repeat** tab to define the days when the schedule executes in a cron-style format. The job executes on each date or time element selected on the **Repeat** tab.
+
+In each field, select a value to add it to the list of selected values for the field.
+
+- Use the fields in the **Days** box to specify the days when the job executes:
+  - Use the **Week Days** field to select the days when the job executes.
+  - Use the **Month Days** field to select the numeric days when the job executes. Select **Last Day** to perform the job on the last day of the month, regardless of the date.
+  - Use the **Months** field to select the months when the job executes.
+- Use the fields in the **Times** box to specify the times when the job executes in hours and minutes.
+
+Select the **Exceptions** tab to specify any days when you don't want the schedule to execute. For example, you might not want to run jobs on holidays.
+
+Select **Add** (+) to add a row to the exception table. Then:
+
+- In the **Date** column, open a calendar selector and select a date when you don't want the job to execute. Specify \***\*\<Any>\*\*** to indicate that you don't want the job to execute on any day at the time selected.
+- In the **Time** column, open a time selector and specify a time when you don't want the job to execute. Specify \***\*\<Any>\*\*** to indicate that you don't want the job to execute at any time on the day selected.
+
+## Configure the email notifications
+
+Select the **Notifications** tab to configure the email notification settings on job level:
+
+- In the **Send the notifications** field, specify when you want to send the email notifications.
+- In the **Email group** field, specify the email group to send the email notification to.
+
+When you finish defining the schedule, you can use the **SQL** tab to review the code that creates or modifies your job.
+
+Select **Save** to save the job definition.
+
+After you save a job, the job is listed under the **Jobs** node of the PEM tree of the server on which it was defined. The **Properties** tab in the PEM console displays a high-level overview of the selected job, and the **Statistics** tab shows the details of each run of the job.
+
+To modify an existing job or to review detailed information about a job, right-click a job name, and select **Properties** from the context menu.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,32 @@
+---
+title: Schema assessment checks
+description: These automatic checks are performed during the assessment of schemas with the Migration Portal.
+product: Migration Portal
+version: 5.2.0
+url: https://www.enterprisedb.com/docs/migration_portal/latest/04_mp_migrating_database/mp_schema_assessment/checks/
+lastModified: 2026-08-31T17:56:08+02:00
+---
+
+# Schema assessment checks
+
+During schema assessment, the following check is performed automatically.
+
+## SPL Check
+
+SPL Check is a code analysis tool that identifies potential runtime errors in your Oracle procedural code. It's an important part of the assessment process when you're migrating to EDB Postgres Advanced Server (EPAS).
+
+All schemas that are assessed with Migration Portal are analyzed by SPL Check. This function, which is based on the [EDB SPL Check](https://www.enterprisedb.com/docs/pg_extensions/spl_check/) extension, detects execution time errors within `FUNCTION`, `PROCEDURE`, `PACKAGE BODY`,`TYPE BODY`, and `TRIGGER` object types.
+
+SPL Check findings are reported as warnings, separate from the compatibility errors that determine whether an object passes assessment. An object with an SPL Check warning can still pass assessment, and warnings don't block you from importing the object — however, it's recommended to resolve them to avoid potential runtime failures after migration.
+
+To review SPL Check warnings:
+
+- In the object tree, select the **Only SPL Check warnings** filter check box to show only objects that have SPL Check warnings. You can combine it with the status filters (for example, **Passed**) to find, for example, passed objects that still carry a warning.
+
+- Open an affected object in the editor. An amber triangle icon appears in the gutter at the line SPL Check flagged.
+
+> **Note**
+>
+> SPL Check findings were previously recorded as errors. Starting with 5.1.0, they're recorded as warnings. Objects in existing projects still show their SPL Check findings as errors, and still show as failed, until you select **Reassess** on the object or create a new project with the same file.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

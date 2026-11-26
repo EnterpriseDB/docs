@@ -1,0 +1,162 @@
+---
+title: EDB Postgres AI agent CLI
+description: CLI reference documentation for the EDB Postgres AI agent (`beacon-agent`).
+product: Postgres tools
+url: https://www.enterprisedb.com/docs/tools/agent/agent_ref/
+lastModified: 2026-06-08T14:02:54+02:00
+---
+
+# EDB Postgres AI agent CLI
+
+This page provides an overview of the EDB Postgres AI agent (packaged as `beacon-agent`) CLI, as well as its subcommands and options.
+
+The main command is:
+
+```
+beacon-agent [subcommand] [options]
+```
+
+## Global options
+
+| Option                         | Description                                                                                                                                                                                   |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--help`                       | Use `--help` to obtain information about the main command, subcommands and options.                                                                                                           |
+| `--config <path>`, `-c <path>` | Path to the configuration file. Applies to all subcommands. If not set, the EDB Postgres AI agent looks for `beacon_agent.yaml` in `/etc/beacon`, `$HOME/.beacon`, and the current directory. |
+
+## Subcommands
+
+| Subcommand                                      | Description                                                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| [`(no subcommand)`](#no-subcommand)             | Runs the EDB Postgres AI agent and establishes a connection to the external database and, if specified, to Hybrid Manager (HM). |
+| [`setup`](#setup)                               | Creates a basic EDB Postgres AI agent configuration file.                                                                       |
+| [`version`](#version)                           | Prints the version of the EDB Postgres AI agent and exits.                                                                      |
+| [`validate`](#validate)                         | Validates the configuration file and tests connectivity to HM and all configured databases.                                     |
+| [`configure-onprem-dbs`](#configure-onprem-dbs) | Populates `beacon_agent.yaml` with database entries imported from a CSV file, Oracle `tnsnames.ora`, or AWS RDS discovery.      |
+
+### (no subcommand)
+
+When no subcommand is specified, `beacon-agent` runs the EDB Postgres AI agent process. This process collects data ingestions. If configured, it sends the collected data to an HM instance for [monitoring](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/), or to an EDB-managed bucket for [usage reporting](https://www.enterprisedb.com/docs/tools/agent/usage_reporting/).
+
+```
+beacon-agent [--config <configuration_file_path>]
+```
+
+| Option                         | Description                            |
+| ------------------------------ | -------------------------------------- |
+| `--config <path>`, `-c <path>` | Path to the configuration file to use. |
+
+If no configuration file is specified, the EDB Postgres AI agent looks for a `beacon_agent.yaml` file in `/etc/beacon`, `$HOME/.beacon`, and in the current directory.
+
+### setup
+
+The `setup` subcommand runs the initial setup process for the EDB Postgres AI agent.
+
+> **Note**
+>
+> While the `setup` subcommand performs initial setup, we recommend using the documented `beacon_agent.yaml` templates. These templates offer use-case specific configurations designed to help you leverage the full range of EDB Postgres AI agent functionality.
+
+```shell
+beacon-agent setup
+beacon-agent --config <path> setup
+```
+
+The global `--config`/`-c` flag can be used with `setup` to specify a configuration file path.
+
+**Example:**
+
+```shell
+beacon-agent --config /path/to/beacon_agent.yaml setup
+```
+
+### version
+
+The `version` subcommand prints the version of the EDB Postgres AI agent and exits. This subcommand has no options.
+
+**Example:**
+
+```shell
+beacon-agent version
+```
+
+### validate
+
+The `validate` subcommand checks the EDB Postgres AI agent's configuration and connectivity. It prints a summary report covering: HM connectivity (URL, TLS, project ID, access key, and a live connection test), telemetry and metrics upload settings, availability of required external tools (such as `sqlplus` for Oracle), and a live DSN connection test for every configured database. This subcommand has no options of its own; use the global `--config`/`-c` flag to specify a non-default configuration file.
+
+**Example:**
+
+```shell
+beacon-agent validate
+```
+
+### configure-onprem-dbs
+
+The `configure-onprem-dbs` subcommand populates a `beacon_agent.yaml` configuration file with database entries imported in bulk from a CSV file, an Oracle `tnsnames.ora` file, or through automatic AWS RDS instance discovery. This command eliminates the need to manually construct a DSN and add an entry for each database.
+
+The command doesn't require connectivity to an HM — it only reads the input source and writes to the local YAML file.
+
+If you point `--output-yaml` at an existing file, the command merges the new entries into it. Databases from the input that match an existing `resource_id` have their `dsn`, `schema`, and `tags` fields updated. Databases already in the file that aren't in the input are left untouched, and new databases are appended. All other configuration in the file — agent settings, comments, and unrelated sections — is preserved.
+
+If the file doesn't exist, the command creates a new one containing only the `provider.onprem.databases` section. Add the agent configuration separately.
+
+Entries without credentials in the input source are written with the placeholder values `CHANGEME_USERNAME` and `CHANGEME_PASSWORD`. After the command runs, a warning lists any entries that still use placeholders. Replace these values in the output file before starting the EDB Postgres AI agent.
+
+```shell
+beacon-agent configure-onprem-dbs --source-type <csv|tns|rds> [flags]
+```
+
+| Option                          | Description                                                                                                                                                        | Default                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `--source-type <csv\|tns\|rds>` | Source type for database import. Required.                                                                                                                         |                                                      |
+| `--input <path>`                | Path to the input file. Required for `csv` and `tns` source types.                                                                                                 |                                                      |
+| `--output-yaml <path>`          | Path to write the configuration file. Use this option to point to an existing `beacon_agent.yaml` to merge into it.                                                | `beacon_agent.yaml` in the current working directory |
+| `--interactive`                 | Prompt for credentials interactively for each database entry.                                                                                                      | `false`                                              |
+| `--profile <name>`              | AWS profile to use for RDS discovery.                                                                                                                              | Profile from the default credential chain            |
+| `--region <region>`             | AWS region to scan for RDS instances.                                                                                                                              | All regions                                          |
+| `--rds-engine <engine>`         | Filter RDS discovery by engine type (repeatable). Supported values: `postgres`, `aurora-postgresql`, `oracle-ee`, `oracle-ee-cdb`, `oracle-se2`, `oracle-se2-cdb`. | All supported engines                                |
+| `--tag-filter <Key=Value>`      | Filter RDS instances by tag (repeatable, AND logic).                                                                                                               |                                                      |
+| `--include-all-statuses`        | Include RDS instances in all statuses, not just `available`.                                                                                                       | `false`                                              |
+
+**Examples**
+
+Import databases from a CSV file with interactive credential entry:
+
+```shell
+beacon-agent configure-onprem-dbs --source-type csv --input databases.csv --output-yaml beacon_agent.yaml --interactive
+```
+
+Import databases from an Oracle `tnsnames.ora` file:
+
+```shell
+beacon-agent configure-onprem-dbs --source-type tns --input tnsnames.ora --output-yaml beacon_agent.yaml --interactive
+```
+
+Discover PostgreSQL and Aurora instances in a specific AWS region:
+
+```shell
+beacon-agent configure-onprem-dbs --source-type rds \
+  --rds-engine postgres \
+  --rds-engine aurora-postgresql \
+  --region us-east-1 \
+  --output-yaml beacon_agent.yaml
+```
+
+#### CSV file format
+
+The CSV file must have a header row. Column order doesn't matter and extra columns are ignored. Lines beginning with `#` are treated as comments. The file may include a UTF-8 BOM (common in Excel exports).
+
+| Column           | Required | Default             | Description                                                      |
+| ---------------- | -------- | ------------------- | ---------------------------------------------------------------- |
+| `resource_id`    | Yes      |                     | Unique identifier for the database.                              |
+| `host`           | Yes      |                     | Database hostname or IP address.                                 |
+| `port`           | Yes      |                     | Database port.                                                   |
+| `db_name`        | Yes      |                     | Database name, Oracle service name, or SID.                      |
+| `db_type`        | No       | `oracle`            | Database type: `oracle` or `postgresql`.                         |
+| `username`       | No       | `CHANGEME_USERNAME` | Database username.                                               |
+| `password`       | No       | `CHANGEME_PASSWORD` | Database password.                                               |
+| `schema_enabled` | No       | `true`              | Whether to enable schema collection.                             |
+| `poll_interval`  | No       | `15s`               | How often to collect data, for example `15s` or `1m`.            |
+| `tags`           | No       |                     | Pipe-separated list of tags, for example `production\|critical`. |
+
+For a conceptual overview of this feature and a step-by-step workflow, see [Assessing multiple databases at once](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrations/assessing_multiple_databases/) and [Enrolling multiple databases for assessment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrations/assessing_multiple_databases/enrolling_databases/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

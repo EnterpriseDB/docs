@@ -1,0 +1,27 @@
+---
+title: EDB Postgres Advanced Server 18.3.0 release notes
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/epas_rel_notes/epas18_3_rel_notes/
+lastModified: 2026-03-09T17:14:31+05:30
+---
+
+# EDB Postgres Advanced Server 18.3.0 release notes
+
+Released: 26 Feb 2026
+
+> **Note: Why is RHEL 9.6 not supported for EPAS 18?**
+>
+> - **Version pivot:** Due to OpenSSL and LLVM breakages introduced in RHEL 9.7, our current minor releases for back-branches for version 17 and earlier were built on RHEL 9.6 to maintain stability for existing users.
+> - **EPAS 18 requirement:** Moving forward, EPAS 18 is specifically designed for RHEL 9.7 and later versions. It relies on the newer toolset available in 9.7, which is incompatible with the 9.6 environment.
+
+EDB Postgres Advanced Server 18.3.0 includes the following enhancements and bug fixes:
+
+| Type         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                | Addresses  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| Security fix | This release includes security fix for [CVE-2026-2003](https://www.postgresql.org/support/security/CVE-2026-2003/), [CVE-2026-2004](https://www.postgresql.org/support/security/CVE-2026-2004), [CVE-2026-2005](https://www.postgresql.org/support/security/CVE-2026-2005/), [CVE-2026-2006](https://www.postgresql.org/support/security/CVE-2026-2006/), and [CVE-2026-2007](https://www.postgresql.org/support/security/CVE-2026-2007/). |            |
+| Bug fix      | Parallel Execution: Ensured memory is allocated in the correct long-lived context to prevent rare crashes caused by premature memory release.                                                                                                                                                                                                                                                                                              | #52519     |
+|              |                                                                                                                                                                                                                                                                                                                                                                                                                                            |            |
+| Bug fix      | `edb_partition`: Fixed a stack overflow issue triggered by circular partition references.                                                                                                                                                                                                                                                                                                                                                  |            |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

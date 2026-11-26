@@ -1,0 +1,118 @@
+---
+title: PEM application security configurations
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/considerations/pem_security_best_practices/pem_application_configuration/
+lastModified: 2025-08-25T08:18:17+02:00
+---
+
+# PEM application security configurations
+
+## Session timeout
+
+Setting session expiration time too long in the web application increases the exposure of other session-based attacks. The attacker has more time to reuse a valid session ID and hijack the associated session. The shorter the session interval is, the less time an attacker has to use the valid session ID. To avoid this security issue, we recommend that you set the inactivity timeout for the web application to a low value.
+
+In PEM, you can set the timeout value for a user session. When there's no user activity for a specified duration on the web console, PEM logs the user out of the web console. A PEM administrator can set the length of time for inactivity. This value is for the whole application, not for each user.
+
+To configure the timeout duration, modify the `USER_INACTIVITY_TIMEOUT` parameter in the `config_local.py` file in the `<PEM_INSTALLATION_PATH>/web` directory. By default, this parameter is disabled. Specify the value in seconds.
+
+For example, to specify for an application to log a user out after 15 minutes of inactivity:
+
+```ini
+USER_INACTIVITY_TIMEOUT = 900
+```
+
+To apply the change, restart the Apache service.
+
+For detailed information on the `config.py` file, see [Managing configuration settings](https://www.enterprisedb.com/docs/pem/latest/managing_configuration_settings/).
+
+## RestAPI header customization
+
+You can customize the RestAPI token headers to meet your requirements. The default values aren't exposed by the `config.py` file. In the `config_local.py` file, customize the following headers.
+
+### PEM\_HEADER\_SUBJECT\_TOKEN\_KEY
+
+This configuration option lets you change the HTTP header name to get the generated token. By default, when you send a request to create a token, the server response has an `X-Subject-Token` header. This header contains the value of a newly generated token. If you want to customize the header name, then you can update the `config_local.py` file:
+
+```ini
+PEM_HEADER_SUBJECT_TOKEN_KEY = 'Pem-RestAPI-Generate-Token'
+```
+
+This command produces the following output:
+
+```shell
+curl -ik -X POST -d '{"username":"enterprisedb","password":"edb"}' -H "Content-Type: application/json" https://localhost:8443/pem/api/token/
+HTTP/1.1 201 CREATED
+Date: Thu, 29 Oct 2020 11:03:48 GMT
+Server: Apache
+Content-Length: 326
+Pem-RestAPI-Generate-Token: 997aef95-d46d-4d84-932a-a80146eaf84f
+```
+
+### PEM\_HEADER\_TOKEN\_KEY
+
+This configuration option lets you change the header name of the HTTP request. With this header name, you can send the token to the PEM server. By default, when you send a request to generate a token, the token header name is `X-Auth-Token`. If you want to customize the RestAPI request header name, you can update the `config_local.py` file:
+
+```ini
+PEM_HEADER_TOKEN_KEY = 'Pem-Token'
+```
+
+This setting lets you send the token:
+
+```shell
+$ curl -Lk -X GET -H "Pem-Token: gw5rzaloxydp91ttd1c97w24b5sv60clic24sxy9" https://localhost:8443/pem/api/v4/agent
+```
+
+### PEM\_TOKEN\_EXPIRY
+
+This configuration option lets you change the PEM RestAPI token expiry time after it's generated. By default, the token expiry time is set to 20 minutes (1200 seconds). For example, to change the token expiry time to 10 minutes, update the `config_local.py` file as follows:
+
+```ini
+PEM_TOKEN_EXPIRY = 600
+```
+
+To apply the change, restart the Apache service.
+
+## Role-based access control in PEM
+
+Role-based access control (RBAC) restricts application access based on a user’s role in an organization. It's one of the primary methods for access control. The roles in RBAC refer to the levels of access to the application for users. Users are allowed to access only the information needed to do their jobs. Roles in PEM are inheritable and additive rather than subscriptive. In other words, as a PEM admin, you need to grant the lowest level role to the user and then grant the roles the user needs to perform their job. For example, to give access only to SQL Profiler:
+
+```sql
+CREATE ROLE user_sql_profiler WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOREPLICATION CONNECTION LIMIT -1 PASSWORD 'xxxxxx';
+GRANT pem_user, pem_comp_sqlprofiler TO user_sql_profiler;
+```
+
+For detailed information on roles, see [PEM roles](https://www.enterprisedb.com/docs/pem/latest/managing_pem_server/#using-pem-predefined-roles-to-manage-access-to-pem-functionality).
+
+## Password management
+
+One security tip for PEM administrative users is to regularly change your PEM login passwords to something new. Changing your password:
+
+- Prevents breaches of multiple accounts
+- Prevents constant access
+- Prevents the use of saved passwords on a physically unsecured system
+- Limits access gained by keystroke loggers
+
+## Run PEM agent jobs with a non-root user
+
+In most cases, the PEM agent is installed as a root user and runs as a daemon process with root privileges. By default, PEM disables running the scheduled jobs/task. PEM provides support for running scheduled jobs as a non-root user by changing the PEM agent configuration file.
+
+To run scheduled jobs as a non-root user, modify the entry for the `batch_script_user` parameter in the `agent.cfg` file and specify the user to run the script. You can specify either a non-root user or root user identity. If you don't specify a user or the specified user doesn't exist, the script doesn't execute.
+
+After modifying the file, restart the agent. If a non-root user is running the PEM agent, the value of `batch_script_user` is ignored. The same non-root user used for running the PEM agent executes the script.
+
+To invoke a script on a Windows system, set the registry entry for `AllowBatchJobSteps` to `true` and restart the PEM agent. PEM registry entries are located in:
+
+```shell
+HKEY_LOCAL_MACHINE\Software\EnterpriseDB\PEM\agent
+```
+
+## Changing the PEM agent and PEM backend database server certificates
+
+By default, when you install PEM, the installer generates and uses self-signed certificates for the PEM agent and PEM database server. The PEM agent uses these certificates when connecting to the PEM database server. To use your own SSL certificate for the PEM agent and PEM database server, see [Managing certificates](https://www.enterprisedb.com/docs/pem/latest/certificates/).
+
+> **Note**
+>
+> PEM doesn't support placing the SSL CA certificates at a custom location. Don't change the location of `ca_certificate.crt` and `ca_key.key`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

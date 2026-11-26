@@ -1,0 +1,75 @@
+---
+title: Storing user settings in the backend, accessible to all web application instances
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/installing/ha/user_settings/
+lastModified: 2026-09-29T19:38:32+05:30
+---
+
+# Storing user settings in the backend, accessible to all web application instances
+
+When deploying more than one instance of the PEM web application, configure PEM to store user settings in the backend database to ensure they are synchronized across all instances.
+
+## Configure the PEM backends
+
+In the PEM backend Postgres instance, connect as a superuser and create a new database.
+
+Grant the new user the right to connect to this database and revoke the right to connect to the PEM database.
+
+```sql
+CREATE DATABASE pem_user_settings;
+CREATE USER pem_user_settings WITH PASSWORD 'choose-a-password';
+GRANT CONNECT ON DATABASE pem_user_settings TO pem_user_settings;
+GRANT CREATE ON DATABASE pem_user_settings TO pem_user_settings;
+REVOKE CONNECT ON DATABASE pem FROM pem_user_settings;
+```
+
+You should also revoke rights to connect to any other database on this instance, for example `postgres` or `edb`.
+
+From the `pem_user_settings` database, grant the new user the ability to create schemas:
+
+```sql
+GRANT CREATE ON SCHEMA public TO pem_user_settings;
+```
+
+You should also ensure that the user `pem_user_settings` is permitted to connect to each Postgres instance from any web application instances.
+This may require adding a rule to pg\_hba.conf of the following form:
+
+```
+hostssl  pem_user_settings  pem_user_settings  <web-application-subnet>  scram-sha-256
+```
+
+Connect to the new database as a superuser and grant the new user all necessary permissions on the new database.
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE pem_user_settings GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pem_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE pem_user_settings GRANT SELECT, UPDATE ON SEQUENCES TO pem_user;
+```
+
+## Configure the PEM web applications
+
+On each instance of the PEM web application, locate the `config_local.py` file or create one if it does not exist (see [Managing configuration settings](https://www.enterprisedb.com/docs/pem/latest/managing_configuration_settings/)).
+
+Add the following line, replacing `<password>` with the password of the `pem_user_settings` user.
+
+- If you are using a single endpoint to route traffic to the primary PEM backend instance, then `<host-ip>` and `<host-port>` should be the IP address and port of that endpoint.
+
+```python
+CONFIG_DATABASE_URI="postgresql://pem_user_settings:<password>@/pem_user_settings?host=<host-ip>:<host-port>&options=-c%20DateStyle%3DISO"
+```
+
+- If you are using multi-host connection strings to route traffic to the PEM primary, you may use the following format, specifying the details of each PEM backend.
+
+```python
+CONFIG_DATABASE_URI="postgresql://pem_user_settings:<password>@/pem_user_settings?host=<host-1-ip>:<host-1-port>&host=<host-2-ip>:<host-2-port>&target_session_attrs=read-write&options=-c%20DateStyle%3DISO"
+```
+
+Starting with PEM 10.6, the connection string sets `DateStyle` to `ISO` using the `options` parameter. This is required if the `pem_user_settings` database is hosted on EDB Postgres Advanced Server, which defaults to the Oracle-compatible `Redwood` date style. Without it, logging in to PEM fails with an error similar to:
+
+```
+unexpected DateStyle: Redwood, SHOW_TIME
+```
+
+Setting `DateStyle` to `ISO` has no effect if the backend is already using it by default, such as with PostgreSQL or EDB Postgres Extended Server, so it's safe to include regardless of your backend type.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

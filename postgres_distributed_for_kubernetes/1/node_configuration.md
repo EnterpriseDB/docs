@@ -1,0 +1,118 @@
+---
+title: PGD Node configuration
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/node_configuration/
+lastModified: 2026-06-22T07:38:49-07:00
+---
+
+# PGD Node configuration
+
+The EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC or PGD4K) operator relies on the EDB Postgres for Kubernetes (PG4K) operator
+to manage individual nodes.
+
+For each PGDGroup, a PGD node is represented as a single-instance PG4K cluster. The PGD4K operator reflects modifications
+made to the PGDGroup onto the CNP cluster and leverages the PG4K operator to handle these changes. These modifications are
+specific to the fields `spec.cnp` and `spec.witness` within the PGDGroup.
+
+By default, `spec.cnp` governs the settings for all nodes within the group. If you wish for the witness node to have different
+configurations from the data nodes, you can define `spec.witness`. Please note that once `spec.witness` is defined, you must
+explicitly specify all configuration parameters; any configurations not explicitly defined will default to the standard settings.
+
+## InitDB option
+
+You can specify the options passed to the initdb command within the `spec.[cnp|witness].initDBOptions` section.
+The following nodes will initialize from scratch using these options:
+
+- All witness nodes
+- Data nodes that use logical join
+- The data node that is the first node in the [initial group](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/node_joins/#the-initial-group)
+
+The supported initdb options within PGDGroup are:
+
+- dataChecksums
+- encoding
+- walSegmentSize
+- localeCollate
+- localeCType
+- localeProvider
+- locale
+- icuLocale
+- icuRules
+- builtinLocale
+
+PGDGroup passes these initdb options to the underlying PG4K cluster.  For more details on supported
+initdb options, please refer to [Passing Options to initdb](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/bootstrap/#passing-options-to-initdb)
+in the PG4K documentation.
+
+## Managed configuration
+
+The PGD operator allows configuring the `managed` section of a PG4K cluster. The `spec.cnp.managed` stanza
+is used for configuring the supported managed roles and services within the cluster.
+
+In this example, a PGDGroup is defined with default `read only` and `read` services disabled. Additionally,
+it is configured to have a managed role named `foo` with the specified properties set up in postgres.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-managed
+spec:
+  [...]
+  cnp:
+    [...]
+    managed:
+      roles:
+        - name: foo
+          comment: Foo
+          ensure: present
+          connectionLimit: 100
+          login: true
+          superuser: true
+          createdb: true
+          createrole: true
+          replication: true
+      services:
+        disabledDefaultServices:
+          - ro
+          - r
+```
+
+For more information about managed roles, see [Database role management](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/declarative_role_management/)
+in the EDB Postgres for Kubernetes documentation.
+
+> **Note**
+>
+> The PGD4K operator also leverages the PG4K operator to handle managed configurations.
+> User and role definitions in the managed configuration are created or modified within
+> the `postgres` database.
+
+## Node Environment Variables
+
+The PGD operator allows configuring the `env` section of a PG4K cluster. The `spec.cnp.env` stanza
+is used for configuring the environment variables for the instance pod (node).
+
+In the following example, the `WORK_LOAD_TYPE` variable is set for data and witness nodes.
+If you need to configure additional environment variables for each node type, add them under the respective env maps.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-environment
+spec:
+  [...]
+  cnp:
+    [...]
+    env:
+      - name: WORK_LOAD_TYPE
+        value: data
+  witness:
+    [...]
+    env:
+      - name: WORK_LOAD_TYPE
+        value: witness
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

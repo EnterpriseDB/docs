@@ -1,0 +1,89 @@
+---
+title: Reference
+description: Comprehensive technical reference for WarehousePG Enterprise Manager.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Reference
+
+Review WarehousePG Enterprise Manager (WEM) technical specifications, definitions, and permission structures.
+
+## Configuration parameters
+
+A complete reference for all [WEM and Collector configuration parameters](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/), including defaults, types, and descriptions.
+
+## Host agent configuration
+
+A complete reference for all [`acp-host-agent` configuration variables](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/host-agent-config/), including WEM connection settings, agent identity, and logging.
+
+## OTel Collector configuration
+
+A reference for the [OTel Collector configuration file](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/otel-collector-config/) that WEM generates on every node, including which values come from WEM parameters and which you can override.
+
+## Live query plan extension settings
+
+A reference for the [settings of the `whpg_live_query_plan` extension](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/live-query-plan-extension/), including how many statements it tracks and how many segments it lists for each step.
+
+## WEM command reference
+
+WEM includes a powerful CLI tool for initialization, diagnostics, and service management.
+
+- [wem setup:](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/#wem-setup) Initialize the monitoring database, install schemas, and set the admin password.
+- [wem doctor:](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/#wem-doctor) Run pre-flight checks to validate database connectivity and observability stack reachability.
+
+## Metrics
+
+OTel collects WHPG cluster health, query state, and host hardware metrics and sends them to ClickHouse to store them. Two separate endpoints expose [Prometheus metrics](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/metrics/) from these components. WEM exposes its own internal metrics, covering canary checks and WEM's own state, at `/prom/metrics`. The OTel gateway collector separately exposes WHPG metrics at `<host>:<port>/metrics`, for an external Prometheus instance to scrape directly.
+
+## Role permissions matrix
+
+WEM uses Role-Based Access Control (RBAC). The matrix below shows which panels each profile can access by default, and whether they have read-only or read-write access within that panel. Within a panel, individual actions, such as running a backup or deleting an alert rule, carry their own default grants too. See [Defining role-based access control](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/system-access/management/#defining-role-based-access-control).
+
+**Dashboard** is always visible to all profiles and isn't listed here because it isn't controlled by the permissions system.
+
+| Panel               | Admin | Operator | Viewer    |
+| ------------------- | ----- | -------- | --------- |
+| Cluster             | Yes   | Yes      | Yes       |
+| Query Monitoring    | Yes   | Yes      | Yes       |
+| Query Editor        | Yes   | Yes      | View only |
+| Database Objects    | Yes   | Yes      | No        |
+| Storage             | Yes   | Yes      | Yes       |
+| System Metrics      | Yes   | Yes      | Yes       |
+| Backups             | Yes   | Yes      | No        |
+| FlowServer          | Yes   | Yes      | View only |
+| Safeguard           | Yes   | No       | No        |
+| Logs                | Yes   | Yes      | No        |
+| Canary Checks       | Yes   | Yes      | Yes       |
+| Alerts              | Yes   | Yes      | Yes       |
+| Access Management   | Yes   | No       | No        |
+| Resource Management | Yes   | Yes      | No        |
+| Management          | Yes   | No       | No        |
+
+Viewers can open **Query Editor** to see query and result history, but can't execute queries. Viewers can open **FlowServer** to see jobs and their activity, but can't create, start, stop, or remove jobs.
+
+**Safeguard** covers disaster-recovery backup and restore and is separate from the **Backups** panel. Its default access is Admin-only, but unlike **Management**, this default can be changed from **Management > Permissions**.
+
+> **Note**
+>
+> This matrix represents the default system settings. Administrators can customize panel and action access for each profile via **Management > Permissions**. Affected users must log out and log in again for the changes to take effect. The **Management** panel is always restricted to the Admin profile and can't be reassigned.
+
+## Keyboard shortcuts
+
+Speed up your workflow within the WEM interface using the following shortcuts:
+
+| Shortcut                          | Action             | Context                             |
+| --------------------------------- | ------------------ | ----------------------------------- |
+| `Ctrl+Enter` (`Cmd+Enter` on Mac) | Execute query      | Query Editor                        |
+| `Ctrl+K` (`Cmd+K` on Mac)         | Open AI Assistant  | Query Editor, Alerts                |
+| `Escape`                          | Close modal/dialog | Anywhere except in-progress dialogs |
+
+- [Configuration parameters](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/): Complete reference for all WEM and host agent configuration parameters.
+- [Host agent configuration](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/host-agent-config/): Complete reference for all acp-host-agent configuration variables.
+- [OTel Collector configuration](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/otel-collector-config/): Reference for the OTel Collector configuration file that WEM generates on every WarehousePG node, including which values come from WEM parameters and which you can override.
+- [Live query plan extension](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/live-query-plan-extension/): Reference for the settings of the whpg\_live\_query\_plan extension that WEM uses to show the live plan of a running query.
+- [Command reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/commands/): Command reference for WarehousePG Enterprise Manager.
+- [Metrics](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/metrics/): A complete reference of all metrics exposed and collected by WarehousePG Enterprise Manager, including their descriptions and types.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

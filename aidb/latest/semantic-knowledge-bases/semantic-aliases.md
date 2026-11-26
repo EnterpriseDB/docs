@@ -1,0 +1,199 @@
+---
+title: Semantic aliases
+description: Define named, parameterized SQL queries with vectorized descriptions so recurring questions map to trusted, reusable queries.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Semantic aliases
+
+A semantic alias is a named, parameterized SQL query paired with a natural-language description. The description is embedded, so an alias can be found by meaning — the same way schema metadata is. Aliases are the reusable, governed layer of text-to-SQL: instead of generating fresh SQL for every question, a recurring question resolves to a query you've already written and reviewed.
+
+An alias can belong to more than one semantic KB. See [Multi-KB membership](#multi-kb-membership) for how that works.
+
+## Creating an alias
+
+Before creating an alias, make sure a semantic KB already covers the schema its query reads — see [Getting started](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/#getting-started) to create one first.
+
+`aidb.create_semantic_alias()` takes a unique name, a description to embed, the SQL query text, and its parameter definitions. Placeholders in the query use `${name}` syntax. The query must be a single read-only `SELECT`.
+
+```sql
+SELECT aidb.create_semantic_alias(
+    name        => 'monthly_revenue',
+    description => 'Total revenue for a given month and year',
+    query_text  => $$
+        SELECT SUM(amount) AS total
+        FROM sales.orders
+        WHERE EXTRACT(MONTH FROM order_date) = ${month}
+          AND EXTRACT(YEAR  FROM order_date) = ${year}
+    $$,
+    params => '[
+        {"name": "month", "param_type": "integer", "description": "Month number (1-12)"},
+        {"name": "year",  "param_type": "integer", "description": "Four-digit year"}
+    ]'
+);
+```
+
+Parameters: `name`, `description`, `query_text`, `params` (each entry needs a `name`, `param_type`, and optionally a `description` or `enum_values`), and `kb_name` (optional, omit to embed the alias for every KB that owns the query's schema). Returns the alias name. See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbcreate_semantic_alias) for the full parameter list.
+
+If the query's schema maps to more than one KB, the alias is embedded once for each of them. Creation never fails on ambiguity. Pass `kb_name` only to narrow it to a single KB. A schema not yet owned by any KB leaves the alias unembedded, until a KB covering it is created or adopts it later.
+
+## Multi-KB membership
+
+Each alias is a member of every semantic KB that owns the schema its SQL reads, not just one. AIDB infers the owning KB(s) from the query and embeds the alias's description once per KB, using that KB's model, so each embedding stays comparable to that KB's schema vectors. A schema owned by two KBs yields two embeddings, so the alias is findable from either KB using [`aidb.semantic_kb_search()`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-everything-at-once).
+
+Deleting a KB removes only that KB's embedding of each alias, while the alias definition and its embeddings in any other owning KBs survive. A later KB covering the same schema adopts the alias, adding a fresh embedding for it, even if the alias is already embedded for other KBs.
+
+## Finding an alias
+
+`aidb.search_semantic_aliases()` searches aliases by natural-language query. Without `kb_name`, it searches `default_semkb` — the name a KB gets when created without an explicit one — if that KB exists, or every KB with stored alias embeddings otherwise. The query is embedded once per distinct model among those KBs, so the search stays dimension-safe, and results are de-duplicated to the best match per alias.
+
+```sql
+SELECT name, query_text, similarity
+FROM aidb.search_semantic_aliases(
+    query_text => 'how much money did we make last month',
+    kb_name    => 'analytics_kb',
+    top_k      => 5
+);
+```
+
+Parameters: `query_text`, `min_similarity` (optional floor), `top_k` (default `10`), `offset` (default `0`), and `kb_name` (optional, omit to resolve `default_semkb`, or every KB with alias embeddings). Returns `name`, `query_text`, and `similarity`. See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbsearch_semantic_aliases) for the full parameter list.
+
+Aliases also appear in [`aidb.semantic_kb_search()`](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#searching-everything-at-once) results with `source_type = 'alias'`, so a single composite search finds both schema and aliases at once.
+
+## Running an alias
+
+`aidb.execute_semantic_alias()` runs an alias by name, substituting its parameters. It returns a set of `result` rows, each a JSONB object:
+
+```sql
+SELECT result
+FROM aidb.execute_semantic_alias(
+    alias_name => 'monthly_revenue',
+    args       => '{"month": 3, "year": 2025}'
+);
+```
+
+Parameters: `alias_name`, `args` (a JSONB object of parameter values keyed by name), and `execute_role` (optional). See the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbexecute_semantic_alias) for the full parameter list.
+
+Use `execute_role` to run an alias under a least-privilege reporting role rather than the connecting user. Because every alias is validated as a single read-only `SELECT` at creation and re-validated at execution, an alias can't be used to run writes.
+
+## Managing aliases
+
+| Function                                                                     | Purpose                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aidb.get_semantic_aliases()`                                                | List all aliases with `name`, `description`, `query_text`, and `param_count`.                                                                                                                                                                                                                                         |
+| `aidb.get_semantic_alias(alias_name)`                                        | Get one alias's `name`, `description`, `query_text`, and `params`.                                                                                                                                                                                                                                                    |
+| `aidb.update_semantic_alias(name, description, query_text, params, kb_name)` | Update an alias. Changing `query_text` or `kb_name` re-infers its owning KB(s) and reconciles embeddings — adding KBs it newly belongs to and dropping ones it no longer does. If AIDB can't infer the owning KBs, it keeps the existing embeddings. Changing `description` re-embeds it in every KB it's already in. |
+| `aidb.delete_semantic_alias(name)`                                           | Delete an alias by name.                                                                                                                                                                                                                                                                                              |
+
+## Detecting orphaned aliases
+
+An alias stores SQL text, not the identity of the objects it reads. If someone drops or renames a schema, table, view, or column, the alias keeps its old query and fails when it runs. The health functions compare the names in each alias's SQL with the live catalog, so you can find and repair broken aliases before anyone runs them. The check only parses the SQL. It never runs it.
+
+The alias and object names in this section, such as `order_totals`, `sales.orders.legacy_total`, and `sales.old_orders`, are illustrative.
+
+### Checking alias health
+
+To see how many aliases need attention, run `aidb.semantic_kb_health_report()` and select the alias columns:
+
+```sql
+SELECT total_aliases, orphan_aliases, unverified_aliases,
+       partially_checked_aliases
+FROM aidb.semantic_kb_health_report('analytics_kb');
+```
+
+Each column counts the aliases in one state:
+
+- `total_aliases` is the number of aliases that have an embedding for this semantic KB.
+
+- `orphan_aliases` is the number of aliases that name a missing schema, relation, or column.
+
+- `unverified_aliases` is the number of aliases that the checker couldn't verify.
+
+- `partially_checked_aliases` is the number of aliases whose tables exist but whose SQL has column references that the checker couldn't fully resolve.
+
+The remaining aliases are verified. An alias that belongs to more than one semantic KB is counted in each KB where it has an embedding. An alias with no embedding for the semantic KB isn't counted. If the three problem counts are zero, every counted alias passed the name check.
+
+### Inspecting aliases that need attention
+
+To list the aliases that need attention and see what's wrong with each, run `aidb.semantic_kb_alias_diagnostics()`:
+
+```sql
+SELECT alias_name, status, missing, reason, detail, unchecked
+FROM aidb.semantic_kb_alias_diagnostics('analytics_kb');
+```
+
+The function returns one row for each alias with the status `orphan`, `unverified`, or `partial`, ordered by alias name. Verified aliases don't appear. The result has no `query_text` column. The counts in the health report equal the number of diagnostic rows with each status.
+
+| Status       | Meaning                                                                                                                                                                                                                                                                                                                               | Column to read     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `orphan`     | The alias names an object that no longer exists. Entries look like `schema:archive`, `relation:sales.old_orders`, or `column:sales.orders.legacy_total`. If an alias has other findings too, `orphan` takes precedence.                                                                                                               | `missing`          |
+| `unverified` | The checker couldn't assess the alias. The reason is `unparseable`, `invalid_alias_sql` (the SQL isn't a read-only `SELECT`, or reads an object a `SELECT` can't read), `unsupported_syntax`, or `outside_kb_schemas` (an unqualified table name exists only outside the semantic KB's schemas, or the SQL names a temporary object). | `reason`, `detail` |
+| `partial`    | The tables exist, but some column references couldn't be tied to a table. Each entry names the reason in parentheses, for example `c.total (cte)`. The alias can still contain a broken column reference.                                                                                                                             | `unchecked`        |
+
+For a worked example of the output, see [Checking semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/health/#checking-semantic-aliases).
+
+### Repairing an alias
+
+To repair an orphaned alias, find the missing object, then either update the alias query or restore the object. The following steps assume `missing` shows `column:sales.orders.legacy_total` for the alias `order_totals`:
+
+1. To read the saved query, run `aidb.get_semantic_alias()`. You need an account that's allowed to manage aliases.
+
+   ```sql
+   SELECT name, query_text, params
+   FROM aidb.get_semantic_alias('order_totals');
+   ```
+
+2. Confirm which column or table the alias should read now. If the schema change was accidental, restore the missing object instead of editing the alias.
+
+3. To change the query, run `aidb.update_semantic_alias()` with the complete revised `SELECT`. You don't need to pass `params` if the revised query keeps the same `${name}` placeholders and definitions. Pass a new `params` array if the definitions change. Omitting `description` or `params` keeps their current values. For example, if `sales.orders.amount` is the correct column:
+
+   ```sql
+   SELECT aidb.update_semantic_alias(
+       name       => 'order_totals',
+       query_text => 'SELECT SUM(amount) AS total FROM sales.orders'
+   );
+   ```
+
+4. To confirm the repair, run the health report and the diagnostics again. The check reads the current alias SQL and catalog on every call, so there's no separate refresh step.
+
+   Updating `query_text` re-infers which semantic KBs own the alias. If the revised query still belongs to the same semantic KB, AIDB updates its embedding and the alias stays in `total_aliases`. If the inferred ownership changes, the alias can leave one semantic KB's counts or enter another's. If AIDB can't infer the owning semantic KBs, it keeps the existing embeddings.
+
+5. To confirm that the alias runs, call `aidb.execute_semantic_alias()` under the role that will use it.
+
+### Seeing alias diagnostic details
+
+Access to alias diagnostics depends on the login that you connect with:
+
+| Login                                                                                            | What it can read                                                                                             |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Any member of `aidb_users`                                                                       | The alias counts in the health report.                                                                       |
+| A login that belongs to the semantic KB's owner role                                             | `alias_name`, `status`, `missing`, and `reason` from `semantic_kb_alias_diagnostics`.                        |
+| The same login, with `USAGE` on `aidb_internal` and `SELECT` on `aidb_internal.semantic_aliases` | `detail` and `unchecked`, which can quote parts of the saved SQL. Without these privileges, both are `NULL`. |
+
+The owner-role check uses the authenticated login, so `SET ROLE` doesn't grant access. A login outside the owner role gets SQLSTATE `42501`. For the full rules, see [Permissions for the health functions](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/health/#permissions-for-the-health-functions).
+
+### Understanding the limits of the check
+
+The check compares names, so a verified alias isn't guaranteed to run. The check has these limits:
+
+- It parses the SQL but never plans or runs it, so it can't find runtime errors, missing functions, changed types, or missing permissions.
+
+- It leaves column references unchecked when they pass through a CTE, subquery, function, `LATERAL` item, join alias, or column alias list. A `partial` alias can still read a dropped column.
+
+- It doesn't know the `search_path` of the alias author. An unqualified table name is shown only to exist somewhere, so it can resolve to a same-named table in another of the semantic KB's schemas. If you drop the intended table and a same-named table remains, the alias isn't flagged.
+
+- It checks a view by name, not the objects inside the view's definition.
+
+- A renamed object, followed by a new object created under the old name, passes the check.
+
+## Next steps
+
+- Alias functions aren't exposed as [agent tools](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/#semantic-knowledge-bases), but an agent still uses aliases indirectly, through the end-to-end [text-to-SQL](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/text-to-sql/) workflow.
+- Walk through aliases and search together in the [example](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/example/).
+- Look up every alias function's full parameters and return columns in the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#creating-and-managing-aliases).
+- Check coverage, queued schema changes, and orphaned relationships alongside aliases in [Inspecting health](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/health/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

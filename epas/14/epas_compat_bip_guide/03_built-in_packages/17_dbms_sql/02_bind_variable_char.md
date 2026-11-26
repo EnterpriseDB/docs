@@ -1,0 +1,36 @@
+---
+title: BIND_VARIABLE_CHAR
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/17_dbms_sql/02_bind_variable_char/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# BIND\_VARIABLE\_CHAR
+
+The `BIND_VARIABLE_CHAR` procedure associates a `CHAR` value with an `IN` or `IN OUT` bind variable in a SQL command.
+
+```text
+BIND_VARIABLE_CHAR(<c> NUMBER, <name> VARCHAR2, <value> CHAR
+  [, <out_value_size> NUMBER ])
+```
+
+## Parameters
+
+`c`
+
+Cursor ID of the cursor for the SQL command with bind variables.
+
+`name`
+
+Name of the bind variable in the SQL command.
+
+`value`
+
+Value of type `CHAR` to be assigned.
+
+`out_value_size`
+
+If `name` is an `IN OUT` variable, defines the maximum length of the output value. If not specified, the length of `value` is assumed.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

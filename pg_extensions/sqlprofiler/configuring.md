@@ -1,0 +1,33 @@
+---
+title: Configuring SQL Profiler
+product: SQL Profiler
+url: https://www.enterprisedb.com/docs/pg_extensions/sqlprofiler/configuring/
+lastModified: 2025-07-22T12:32:31+05:30
+---
+
+# Configuring SQL Profiler
+
+## Permissions for SQL Profiler
+
+To access the SQL Profiler tool on PEM, there are two prerequisites:
+
+1. The user logged in to the PEM interface must either be a superuser or a member of group `pem_comp_sqlprofiler` in the PEM server database. For more information, see [PEM groups](https://www.enterprisedb.com/docs/pem/latest/managing_pem_server/#using-pem-predefined-roles-to-manage-access-to-pem-functionality).
+2. The user configured for the database server in the server tree (`Username`) must be a superuser on the database server that the trace is being run on (monitored server).
+
+In SQL Profiler version 4.2.0, the `sql_profiler_admin` role allows a non-superuser to execute SQL Profiler functions. To assign this role to a user, run the following command:
+
+```sql
+grant sql_profiler_admin to username
+```
+
+## Parameters
+
+The following parameters in `postgresql.conf` control the SQL Profiler extension behavior.
+
+| Parameter                            | Description                                                                         | Default               | Reload or restart                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------- |
+| `sql_profiler.enabled`               | Enable or disable SQL Profiler for this session.                                    | `true`                | No need to restart or reload, can be set by anyone at any time. |
+| `sql_profiler.use_array_for_paramas` | Enable or disable to load the prepared parameters in `'params'` (OIDVECTOR) column. | `false`               | No need to restart or reload, can be set by anyone at any time. |
+| `sql_profiler.explain_format`        | `EXPLAIN` format to be used in the trace.                                           | `EXPLAIN_FORMAT_TEXT` | No need to restart or reload, can be set by anyone at any time. |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,62 @@
+---
+title: IF-THEN
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/reference/application_programmer_reference/stored_procedural_language_reference/05_control_structures/01_if_statement/01_if_then/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# IF-THEN
+
+<div id="if_then" class="registered_link"></div>
+
+## Syntax
+
+```sql
+IF boolean-expression THEN
+  <statements>
+END IF;
+```
+
+`IF-THEN` statements are the simplest form of `IF`. The statements between `THEN` and `END IF` are executed if the condition is `TRUE`. Otherwise, they are skipped.
+
+## Example
+
+This example uses `IF-THEN` statement to test and display employees who have a commission:
+
+```sql
+DECLARE
+    v_empno         emp.empno%TYPE;
+    v_comm          emp.comm%TYPE;
+    CURSOR emp_cursor IS SELECT empno, comm FROM emp;
+BEGIN
+    OPEN emp_cursor;
+    DBMS_OUTPUT.PUT_LINE('EMPNO    COMM');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    LOOP
+        FETCH emp_cursor INTO v_empno, v_comm;
+        EXIT WHEN emp_cursor%NOTFOUND;
+--
+--  Test whether or not the employee gets a commission
+--
+        IF v_comm IS NOT NULL AND v_comm > 0 THEN
+            DBMS_OUTPUT.PUT_LINE(v_empno || '  ' ||
+            TO_CHAR(v_comm,'$99999.99'));
+        END IF;
+    END LOOP;
+    CLOSE emp_cursor;
+END;
+```
+
+The following is the output from this program:
+
+```sql
+__OUTPUT__
+EMPNO    COMM
+-----    -------
+7499     $300.00
+7521     $500.00
+7654    $1400.00
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

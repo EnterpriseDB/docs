@@ -1,0 +1,150 @@
+---
+title: Migrating Postgres schemas
+description: Choose between Simplified (HM-managed) or Manual schema migration, handle constraints, and prepare your schema before data migration begins.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/aws_rds_pg_to_hm_managed/migrating_schema/
+lastModified: 2026-11-12T17:51:38+01:00
+---
+
+# Migrating Postgres schemas
+
+Before starting a data migration, choose how to handle schema migration. Hybrid Manager (HM) supports two approaches:
+
+- **Simplified (recommended)**: HM manages schema migration and constraint handling automatically as part of the data migration setup.
+- **Manual**: Export and import the schema yourself using Migration Toolkit or `pg_dump`, and handle constraints based on the key structure of each source table.
+
+## Simplified (recommended)
+
+No manual schema preparation is required. HM handles schema migration and constraint ordering automatically when you select the **Schema and data** scope later. Before proceeding, confirm:
+
+- The EDB Postgres AI agent has ingested your source schema and a Migration Portal project exists for the database. To verify, go to **Estate > Migrations** in the HM console, select the database in the **Database Name** column, and confirm a project appears in the **MP Project** column.
+- When you configure the Data Migration Service (DMS) reader agent in a later step, you'll set `DBCONFIG_DATABASES_<N>__RESOURCEID` to the same `resource_id` value as in `beacon_agent.yaml`. The **Schema and data** and **Schema only** scopes will fail without it.
+
+Continue to the next step.
+
+## Manual
+
+Before you use EDB DMS for data migration, export and import your schema to the destination database. DMS migrates data only — the destination database must have schemas in place before migration begins.
+
+### Handling constraints
+
+How to handle constraints depends on the constraint type and the key structure of each source table.
+
+| Constraint type                              | Action                                               | Notes                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Primary key                                  | Exclude now — DMS applies automatically              | The DMS writer applies the primary key when the migration enters the streaming phase, using it to deduplicate snapshot data.                                                                                                                                                                           |
+| Unique key (source table has a primary key)  | Exclude now, apply after streaming starts            | Primary key-based deduplication ensures no duplicate rows remain when you apply unique constraints after streaming starts.                                                                                                                                                                             |
+| Unique key (source table has no primary key) | Exclude now — apply post-snapshot with deduplication | Don't create the unique key (UK) on the destination before the snapshot completes — doing so causes an infinite retry loop. Requires replica identity setup on the source before migration starts. See [UK-identity tables](#uk-identity-tables-replica-identity-and-post-snapshot-constraints) below. |
+| `NOT NULL`                                   | Include now                                          | `NOT NULL` validation adds no meaningful overhead to the data load, unlike foreign key and check constraint validation.                                                                                                                                                                                |
+| Foreign key, check, and exclusion            | Exclude now, reapply after migration                 | These constraints cause unnecessary CPU and memory overhead while data is actively being migrated.                                                                                                                                                                                                     |
+
+> **Note**
+>
+> For tables with no primary key or unique key, you don't need to create key constraints on the destination, before or after migration. DMS treats these tables as keyless and provides at-least-once delivery, so check for duplicate rows and deduplicate them as part of your post-migration verification.
+>
+> To include these tables in a migration that streams changes, you must also set a replica identity on them in the source database. In HM 1.4.2 and later, a **Snapshot** migration doesn't require it. See [Migrating tables without a primary key](#migrating-tables-without-a-primary-key).
+
+#### UK-identity tables: replica identity and post-snapshot constraints
+
+A UK-identity table is a source table that has no primary key and uses a unique key as its only row identifier.
+
+Before starting the migration, set replica identity on each UK-identity table on the **source** database. DMS needs this to emit change events keyed by the UK columns so streaming works correctly after you add the constraint on the destination.
+
+```sql
+-- Run on the source database for each UK-identity table.
+ALTER TABLE <schema_name>.<table_name>
+  REPLICA IDENTITY USING INDEX <index_name>;
+```
+
+Don't create the unique constraint on the destination before the snapshot completes. With delayed primary key (PK) behavior enabled, the DMS writer treats tables as keyless if they have no PK on the destination — even if a UK exists. This means snapshot writes use plain `INSERT` operations with no conflict handling. If a retry occurs before the snapshot finishes, those rows hit the UK constraint and the migration enters an infinite retry loop.
+
+After the snapshot for a UK-identity table completes, follow the deduplication and constraint procedure in [Applying unique constraints on UK-identity tables](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/migrating_data/#applying-unique-constraints-on-uk-identity-tables).
+
+### Exporting your schema
+
+We recommend using [EDB Migration Toolkit](https://www.enterprisedb.com/docs/migration_toolkit/latest/) (MTK) to export your schema. MTK's [offline migration](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability generates SQL scripts you can apply on the destination without direct connectivity. Other valid export methods include `pg_dump`/`pg_restore`, pgAdmin, or `psql`.
+
+When using Migration Toolkit:
+
+- Use the `-offlineMigration` option to generate SQL scripts.
+- Use the `-schemaOnly <schema_scope>` option to export schema only.
+- Exclude (comment out) primary key, unique, foreign key, check, and exclusion constraints from the generated script before importing.
+- If you plan to map objects to different names in the destination, edit them directly in the DDL script before importing. Update all dependent objects — views, constraints, and other references — that reference renamed objects. See [Mapping schema, tables, and columns](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/#mapping-schema-tables-and-columns-during-a-migration) for details.
+
+### Importing your schema
+
+After preparing the DDL and excluding the deferred constraints, connect to the destination database and apply the SQL file by executing the generated [offline migration script](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options).
+
+> **Note**
+>
+> Apply the excluded unique, foreign key, check, and exclusion constraints after migration completes. The DMS writer applies primary key constraints automatically — don't reapply them manually. Keep track of excluded constraints so you can reapply them when the time comes.
+
+## Migrating tables without a primary key
+
+How DMS handles a source table with no primary key depends on the snapshot type you select when you create the migration and on your HM version.
+
+| Snapshot type            | HM version       | Preparation needed for tables without a primary key?              |
+| ------------------------ | ---------------- | ----------------------------------------------------------------- |
+| **Snapshot**             | 1.4.2 and later  | No. DMS migrates these tables as they are.                        |
+| **Snapshot**             | 1.4.0 and 1.4.1  | Yes. Set a replica identity on each table in the source database. |
+| **Snapshot + Streaming** | All 1.4 releases | Yes. Set a replica identity on each table in the source database. |
+
+- **No preparation needed**: Snapshot migrations in HM 1.4.2 and later create no publication on the source database, so tables without a primary key migrate as they are. DMS treats them as keyless and provides at-least-once delivery, so rows can be duplicated, for example when a snapshot is retried. After any snapshot retry, and as part of your post-migration verification, check for duplicate rows and deduplicate them.
+- **Preparation needed**: Every selected table must have a primary key, `REPLICA IDENTITY FULL`, or `REPLICA IDENTITY USING INDEX` on the source database. If any selected table doesn't, the migration doesn't move any data and reports an error that begins with `Refusing to add the following table(s) to the publication` and lists the tables.
+
+To prepare a table without a primary key, run one of the following on the **source** database:
+
+```sql
+-- Preferred when the table has a unique index on NOT NULL columns.
+ALTER TABLE <schema_name>.<table_name>
+  REPLICA IDENTITY USING INDEX <index_name>;
+
+-- Use only when the table has no usable unique index.
+ALTER TABLE <schema_name>.<table_name>
+  REPLICA IDENTITY FULL;
+```
+
+### Choosing a replica identity
+
+| Option                         | Use when                                            | What DMS does                                                                                                                 |
+| ------------------------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `REPLICA IDENTITY USING INDEX` | The table has a unique index on `NOT NULL` columns. | In HM 1.4.1 and later, the index gives DMS a key, so writes are idempotent and duplicate rows are removed after the snapshot. |
+| `REPLICA IDENTITY FULL`        | The table has no usable unique index.               | DMS still treats the table as keyless, so writes aren't idempotent and duplicate rows aren't removed.                         |
+| Leave the table out            | You don't need to migrate the table.                | Nothing to prepare. Don't select the table on the **Review your Tables** tab.                                                 |
+
+> **Important**
+>
+> On a Postgres 18 source, a table that has a stored generated column and `REPLICA IDENTITY FULL` rejects `UPDATE` and `DELETE` statements while the table is in the DMS publication, because the publication doesn't publish generated columns. For these tables, use `REPLICA IDENTITY USING INDEX` on an index that has no generated columns.
+
+### Partitioned tables
+
+When a migration requires a replica identity, partitioned tables need extra care. If a partitioned table has a primary key on the parent, you don't need to do anything, because each partition gets its own primary key.
+
+For a partitioned table without a primary key, run the `ALTER TABLE` statement on every partition, not only on the parent table. Postgres doesn't apply the parent's replica identity to its partitions, including partitions you create later. For `REPLICA IDENTITY USING INDEX`, use each partition's own index. Repeat the statement for any partition you create later.
+
+If a partition has no usable replica identity, `UPDATE` and `DELETE` statements on it fail on the source database once DMS creates the publication, with an error such as `cannot update table "p_2025" because it does not have a replica identity and publishes updates`. DMS currently checks only the parent table, so it doesn't report this before the migration starts.
+
+To list the partitions that are missing a usable replica identity, run the following query on the source database:
+
+```sql
+SELECT n.nspname AS schema_name, c.relname AS partition_name
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relispartition
+AND c.relkind = 'r'
+AND NOT (
+  c.relreplident = 'f'
+  OR (c.relreplident = 'd' AND EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conrelid = c.oid AND contype = 'p'))
+  OR (c.relreplident = 'i' AND EXISTS (
+    SELECT 1 FROM pg_index WHERE indrelid = c.oid AND indisreplident))
+)
+ORDER BY 1, 2;
+```
+
+## Next step
+
+[Configure the EDB DMS agent](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/configuring_dms_agent/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

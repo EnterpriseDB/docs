@@ -1,0 +1,207 @@
+---
+title: Using a ref cursor in a .NET application
+product: .NET Connector
+version: 10.0.1.1
+url: https://www.enterprisedb.com/docs/net_connector/latest/13_using_a_ref_cursor_in_a_net_application/
+lastModified: 2026-02-16T12:16:04+01:00
+---
+
+# Using a ref cursor in a .NET application
+
+<div id="using_a_ref_cursor_in_a_net_application" class="registered_link"></div>
+
+A `ref cursor` is a cursor variable that contains a pointer to a query result set. The result set is determined by executing the `OPEN FOR` statement using the cursor variable. A cursor variable isn't tied to a particular query like a static cursor. You can open the same cursor variable a number of times with the `OPEN FOR` statement containing different queries each time. A new result set is created for that query and made available by way of the cursor variable. You can declare a cursor variable in two ways:
+
+- Use the `SYS_REFCURSOR` built-in data type to declare a weakly typed ref cursor.
+- Define a strongly typed ref cursor that declares a variable of that type.
+
+`SYS_REFCURSOR` is a ref cursor type that allows any result set to be associated with it. This is known as a weakly typed ref cursor. The following example is a declaration of a weakly typed ref cursor:
+
+```sql
+ name SYS_REFCURSOR;
+```
+
+Following is an example of a strongly typed ref cursor:
+
+```sql
+TYPE <cursor_type_name> IS REF CURSOR RETURN emp%ROWTYPE;
+```
+
+## Creating the stored procedure
+
+This sample code creates a stored procedure called `refcur_inout_callee`. It specifies the data type of the ref cursor being passed as an OUT parameter. To create the sample procedure, invoke EDB-PSQL and connect to the EDB Postgres Advanced Server host database. Enter the following SPL code at the command line:
+
+```sql
+CREATE OR REPLACE PROCEDURE
+  refcur_inout_callee(v_refcur OUT SYS_REFCURSOR)
+IS
+BEGIN
+   OPEN v_refcur FOR SELECT ename FROM emp;
+END;
+```
+
+This C# code uses the stored procedure to retrieve employee names from the `emp` table.
+
+> **Note**
+>
+> Ref cursors live only within the current scope of the caller/callee. The sample below creates an ambient transaction to leave the cursor variable alive and ready to fetch.
+
+### .NET
+
+```csharp
+using System.Data;
+using EnterpriseDB.EDBClient;
+
+namespace UsingRefCursor
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+            try
+            {
+                await using var dataSource = EDBDataSource.Create(connectionString);
+                await using var connection = await dataSource.OpenConnectionAsync();
+                await using var tran = await connection.BeginTransactionAsync();
+                await using var command = new EDBCommand("refcur_inout_callee", connection);
+
+                command.CommandType = CommandType.StoredProcedure;
+                command.Transaction = tran;
+
+                var refCursorParam = command.Parameters.Add(new EDBParameter("refCursor", EDBTypes.EDBDbType.Refcursor));
+                refCursorParam.Direction = ParameterDirection.Output;
+
+                await command.PrepareAsync();
+                await command.ExecuteNonQueryAsync();
+
+                if (refCursorParam.Value is null)
+                {
+                    Console.WriteLine("Error: Ref cursor is null!");
+                    return;
+                }
+                var cursorName = refCursorParam.Value.ToString();
+                command.CommandText = "fetch all in \"" + cursorName + "\"";
+                command.CommandType = CommandType.Text;
+
+                await using (var reader = await command.ExecuteReaderAsync())
+                {
+                    var fc = reader.FieldCount;
+                    while (await reader.ReadAsync())
+                    {
+                        for (int i = 0; i < fc; i++)
+                        {
+                            Console.WriteLine($"{reader.GetName(i)} = {reader.GetString(i)}");
+                        }
+                    }
+                    await reader.CloseAsync();
+                }
+
+                await tran.CommitAsync();
+                await connection.CloseAsync();
+
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+        }
+    }
+}
+```
+
+### .NET Framework
+
+```csharp
+using System;
+using System.Data;
+using System.Threading.Tasks;
+using EnterpriseDB.EDBClient;
+
+namespace UsingRefCursor
+{
+    internal static class Program
+    {
+        static async Task Main(string[] args)
+        {
+            // NOT FOR PRODUCTION, consider moving the connection string in a configuration file
+            var connectionString = "Server=127.0.0.1;Port=5444;User Id=enterprisedb;Password=edb;Database=edb";
+            try
+            {
+                using (var dataSource = EDBDataSource.Create(connectionString))
+                using (var connection = await dataSource.OpenConnectionAsync())
+                using (var tran = connection.BeginTransaction())
+                {
+                    using (var command = new EDBCommand("refcur_inout_callee", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Transaction = tran;
+
+                        var refCursorParam = command.Parameters.Add(new EDBParameter("refCursor", EDBTypes.EDBDbType.Refcursor));
+                        refCursorParam.Direction = ParameterDirection.Output;
+
+                        await command.PrepareAsync();
+                        await command.ExecuteNonQueryAsync();
+                        
+                        if (refCursorParam.Value is null)
+                        {
+                            Console.WriteLine("Error: Ref cursor is null!");
+                            return;
+                        }
+
+                        var cursorName = refCursorParam.Value.ToString();
+                        command.CommandText = "fetch all in \"" + cursorName + "\"";
+                        command.CommandType = CommandType.Text;
+
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            var fc = reader.FieldCount;
+                            while (await reader.ReadAsync())
+                            {
+                                for (int i = 0; i < fc; i++)
+                                {
+                                    Console.WriteLine($"{reader.GetName(i)} = {reader.GetString(i)}");
+                                }
+                            }
+                            await reader.CloseAsync();
+                        }
+                    }
+                    await tran.CommitAsync();
+                    await connection.CloseAsync();
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine($"An error occured: {exp}");
+            }
+         }
+    }
+}
+```
+
+This .NET code snippet displays the result on the console:
+
+```text
+ename = ALLEN
+ename = WARD
+ename = JONES
+ename = MARTIN
+ename = BLAKE
+ename = CLARK
+ename = KING
+ename = TURNER
+ename = ADAMS
+ename = JAMES
+ename = FORD
+ename = MILLER
+ename = EDB
+ename = EDB
+ename = EDB
+ename = EDB
+ename = EDB
+ename = Mark
+ename = SCOTT
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

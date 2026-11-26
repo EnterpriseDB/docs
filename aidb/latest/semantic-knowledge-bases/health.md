@@ -1,0 +1,336 @@
+---
+title: Inspecting semantic KB health
+description: Check description coverage, queued schema changes, orphaned relationships and aliases, and recorded usage for a semantic knowledge base.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/health/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Inspecting semantic KB health
+
+A semantic knowledge base (semantic KB) is useful only when it's current and complete. As your schema changes, a semantic KB can fall behind. New tables and columns have no description, and DDL changes wait to be re-embedded. Relationships point at dropped tables, and saved [semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/) refer to objects that no longer exist. The health functions show you where a semantic KB has fallen behind. They're read-only and never change the semantic KB.
+
+AIDB provides a one-row health report and five detail functions for each semantic KB. The report gives you counts, and each detail function lists the objects behind one count. With these functions, you can:
+
+- Find the tables, views, and columns that have no [description](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/curation/), so you can add one and improve search results.
+
+- See which schema changes are still queued for re-embedding in `Background` mode, and how long they have waited.
+
+- Find [relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/) whose tables or columns no longer exist, so you can fix or retire them.
+
+- Find semantic aliases whose SQL refers to a missing schema, table, or column, or that AIDB couldn't check.
+
+- See which objects searches return and which aliases run, so you know which parts of the semantic KB are in use.
+
+## Prerequisites
+
+The health functions are part of AIDB. They work on any existing semantic KB. You need:
+
+- A semantic KB. To create a semantic KB, see [Getting started](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/#getting-started). Pass its name to each function. You can omit `kb_name` when the database has exactly one semantic KB. With more than one, the function raises an ambiguity error that gives the number of semantic KBs and up to five of their names, and an unknown name raises an error rather than returning an empty result.
+
+- The `aidb_users` role to run the health report.
+
+- Membership in the semantic KB's owner role to run any of the five detail functions. A login that isn't a member of the owner role gets SQLSTATE `42501`. To find the owner role, run `aidb.list_semantic_kbs()`. For the exact rules, see [Permissions for the health functions](#permissions-for-the-health-functions).
+
+The auto-processing mode and the audit log change what the numbers mean. For how they affect the results, see [Settings that affect the results](#settings-that-affect-the-results).
+
+The examples on this page use a semantic KB named `analytics_kb` over a `sales` schema. The sample output is illustrative and doesn't all come from one schema.
+
+## Running the health report
+
+Run the health report first to see which counts need attention. It returns one row for the semantic KB:
+
+```sql
+SELECT total_objects, commented_objects, comment_coverage, coverage_gaps
+FROM aidb.semantic_kb_health_report('analytics_kb');
+```
+
+```output title="Output"
+ total_objects | commented_objects | comment_coverage | coverage_gaps
+---------------+-------------------+------------------+---------------
+             3 |                 1 |            0.333 |             2
+(1 row)
+```
+
+In this example, `total_objects` is 3 and `commented_objects` is 1, so `comment_coverage` is 0.333. The semantic KB indexes the table `sales.items` and its columns `id` and `label`, and only the table has a description. The two columns are the gaps. To list them, see [Finding descriptions to add](#finding-descriptions-to-add). The report returns more columns than this query selects. The following table describes them all:
+
+| Columns                                                                              | What they mean                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`                                                                            | The semantic KB the row describes.                                                                                                                                                                                                                                                           |
+| `total_objects`, `commented_objects`, `coverage_gaps`, `comment_coverage`            | Coverage of live tables, views, and columns. `comment_coverage` is the fraction with a description embedding, rounded to three decimal places (`NUMERIC(4,3)`). It's `NULL` when there are no eligible objects. Semantic aliases are excluded.                                               |
+| `auto_processing`, `pending_events`, `stale_objects`                                 | The [processing mode](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#auto-processing-modes), the number of queued DDL events, and the number of distinct objects named by those events. The queue counts are meaningful for `Background` processing only. |
+| `total_relationships`, `orphan_relationships`                                        | Counts of relationships that aren't `retired`. An orphan has a missing relation or column endpoint. These counts don't inspect SQL stored in semantic aliases.                                                                                                                               |
+| `total_aliases`, `orphan_aliases`, `unverified_aliases`, `partially_checked_aliases` | Counts of the semantic aliases that belong to the semantic KB, by the result of checking the SQL they store against the live catalog. Only an alias that passes the check is known to be healthy.                                                                                            |
+| `oldest_embedded_at`, `newest_embedded_at`                                           | When eligible object vectors were computed. These timestamps alone don't establish that the stored metadata matches the current schema.                                                                                                                                                      |
+| `audit_window_start`, `retrieve_ops`, `execute_ops`, `audit_metrics_available`       | The start of the retained audit window and counts of recorded search and alias-execution operations. `retrieve_ops` and `execute_ops` count operations, not objects returned by searches.                                                                                                    |
+
+When `audit_metrics_available` is `false`, the three audit-derived columns (`audit_window_start`, `retrieve_ops`, and `execute_ops`) are `NULL`. The other summary values remain available.
+
+## Investigating the report's counts
+
+To investigate a count in the report, run the detail function for it:
+
+| If the report shows                                                                      | Run                                                                   | To                                                                          |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `coverage_gaps` greater than zero                                                        | [`semantic_kb_coverage_gaps`](#finding-descriptions-to-add)           | List the tables, views, and columns without a description.                  |
+| `pending_events` or `stale_objects` greater than zero                                    | [`semantic_kb_stale_objects`](#inspecting-queued-schema-changes)      | See which objects have queued schema changes and how long they have waited. |
+| `orphan_relationships` greater than zero                                                 | [`semantic_kb_orphan_relationships`](#finding-orphaned-relationships) | See which relationship endpoints no longer exist.                           |
+| `orphan_aliases`, `unverified_aliases`, or `partially_checked_aliases` greater than zero | [`semantic_kb_alias_diagnostics`](#checking-semantic-aliases)         | See which semantic aliases refer to missing objects or couldn't be checked. |
+| `retrieve_ops` or `execute_ops` of interest                                              | [`semantic_kb_object_usage`](#reviewing-recorded-object-usage)        | See which objects appeared in recorded searches and which aliases ran.      |
+
+### Finding descriptions to add
+
+To find the tables, views, and columns that have no description, run `semantic_kb_coverage_gaps`. Use it when `coverage_gaps` is greater than zero. It lists live objects without a description embedding.
+
+```sql
+SELECT object_ref, entity_type, column_name, has_pending_proposal
+FROM aidb.semantic_kb_coverage_gaps('analytics_kb');
+```
+
+```output title="Output"
+    object_ref     | entity_type | column_name | has_pending_proposal
+-------------------+-------------+-------------+----------------------
+ sales.items.id    | Column      | id          | f
+ sales.items.label | Column      | label       | f
+(2 rows)
+```
+
+`has_pending_proposal` is true when a description proposal is awaiting review. A proposal remains a gap until someone approves it. The function also returns `schema_name`, `relation_name`, and `embedded_at`, the time AIDB embedded the object's metadata row. A value in `embedded_at` doesn't mean the object has a description.
+
+To close a gap, apply a description or approve a pending proposal. For how, see [Descriptions and curation](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/curation/). After you do, the object no longer appears in this function's output, and `comment_coverage` in the [health report](#running-the-health-report) updates to match. With `Disabled` auto-processing, or if triggers were bypassed, AIDB doesn't pick up a direct SQL `COMMENT ON` until you [refresh the semantic KB](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbrefresh_semantic_kb).
+
+### Inspecting queued schema changes
+
+To see which objects have schema changes waiting to be re-embedded, run `semantic_kb_stale_objects` on a `Background` semantic KB. The oldest queued event appears first.
+
+```sql
+SELECT object_ref, pending_events, event_types, oldest_event_at
+FROM aidb.semantic_kb_stale_objects('analytics_kb');
+```
+
+```output title="Output"
+  object_ref  | pending_events |   event_types   |   oldest_event_at
+--------------+----------------+-----------------+---------------------
+ sales.wide   |              2 | {ALTER}         | 2026-01-01 00:00:01
+ sales.doomed |              1 | {DROP}          | 2026-01-01 00:00:03
+ sales_old    |              1 | {SCHEMA_RENAME} | 2026-01-01 00:00:04
+(3 rows)
+```
+
+Each row groups events for one schema, relation, or column. `pending_events` counts the queued events and `event_types` lists their types. `oldest_event_at` shows when the first event was queued. The function also returns `oldest_embedded_at`, the oldest matching metadata embedding time, if one exists. A schema rename names no relation, so its `oldest_embedded_at` is always `NULL`. The background worker processes the queued events, so a short queue needs no action. Once the worker drains the queue, the function returns no rows.
+
+If events stay queued, find out why the worker isn't processing them:
+
+1. Confirm that `auto_processing` is `Background` in the [health report](#running-the-health-report).
+
+2. Check that the AIDB workers are running:
+
+   ```sql
+   SELECT pid, backend_type, state
+   FROM pg_stat_activity
+   WHERE backend_type LIKE 'aidb%';
+   ```
+
+   Look for the AIDB root worker, the database dispatcher, and a pipeline worker whose name includes `_semantic_kb_analytics_kb`, where `analytics_kb` is the name of your semantic KB.
+
+3. If the queue remains, check the PostgreSQL logs for worker startup or processing errors.
+
+4. Verify that `aidb` is in `shared_preload_libraries`, that worker capacity is available, and that the pipeline owner role still exists.
+
+If processing failed, `aidb.refresh_semantic_kb()` reconciles the semantic KB's metadata with the current catalog. It doesn't drain the queue of pending events.
+
+> **Note**
+>
+> `semantic_kb_stale_objects` and the report's queue counts describe `Background` processing. A `Live` semantic KB processes DDL in a trigger, and a `Disabled` or trigger-bypassed one doesn't queue DDL events. For `Live`, `Disabled`, and trigger-bypassed semantic KBs, zero queued events doesn't prove that embeddings are current. Check `auto_processing` in the report before you interpret an empty result.
+
+### Finding orphaned relationships
+
+To find relationships whose tables or columns no longer exist, run `semantic_kb_orphan_relationships`. Use it when the report shows orphaned relationships, or when you also want to inspect retired relationships.
+
+```sql
+SELECT left_object, right_object, status, missing
+FROM aidb.semantic_kb_orphan_relationships('analytics_kb');
+```
+
+```output title="Output"
+     left_object      |  right_object   |  status  |        missing
+----------------------+-----------------+----------+------------------------
+ sales.accounts       | sales.customers | approved | {junction_relation}
+ sales.audits         | sales.customers | approved | {left_column:cust_ref}
+ sales.legacy_tickets | sales.customers | approved | {left_relation}
+ sales.tickets        | sales.customers | retired  | {left_relation}
+ sales.victim         | sales.customers | approved | {left_relation}
+(5 rows)
+```
+
+Each `missing` entry names an endpoint that no longer exists. Read it together with the row's `left_object`, `right_object`, and `junction_object`. An entry that ends in `_relation`, such as `left_relation`, `right_relation`, or `junction_relation`, means the table or view in that object is missing, or isn't a valid relation endpoint. An entry with a colon names a missing column, and its label says which endpoint the column belongs to: `left_column`, `right_column`, `junction_left_column`, or `junction_right_column`. For example, `left_column:cust_ref` means the left object exists but the column `cust_ref` listed for it doesn't. In the example, the `sales.audits` row is missing the column `cust_ref` on its left side. Tables, views, partitioned tables, materialized views, and foreign tables are valid relation endpoints. `semantic_kb_orphan_relationships` is read-only and doesn't change a relationship's status. To detect and mark relationships that have drifted from the schema, see [Keeping relationships current](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#keeping-relationships-current).
+
+The health report excludes `retired` relationships from `total_relationships` and `orphan_relationships`, but this function lists them and marks them in `status`. In the example above, four rows aren't retired, so the report shows `total_relationships = 4` and `orphan_relationships = 4`. The fifth row, `sales.tickets`, is retired, so the report doesn't count it. If the report shows `orphan_relationships = 0` and this function still returns rows, every orphan is retired.
+
+The function also returns `junction_object`, `kind`, `source`, and `last_referenced`. `last_referenced` is the latest recorded schema-source, relation-level search hit on either endpoint. It can be `NULL` when there's no such hit or an endpoint name contains a dot. A concept-only search hit doesn't update it. Treat it as a limited usage signal, not proof that the relationship is unused.
+
+To fix an orphaned relationship, restore the missing table or column, or retire the relationship. See [Keeping relationships current](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#keeping-relationships-current).
+
+### Checking semantic aliases
+
+To find [semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/) that refer to missing objects or that AIDB couldn't check, run `semantic_kb_alias_diagnostics`. Use it when the report shows aliases that aren't verified. It returns one row for each alias that isn't known to be healthy, matching the counts in the report.
+
+```sql
+SELECT alias_name, status, missing
+FROM aidb.semantic_kb_alias_diagnostics('analytics_kb');
+```
+
+```output title="Output"
+     alias_name    | status |           missing
+-------------------+--------+-----------------------------
+ sequence_position | orphan | {relation:sales.seq}
+ doomed_ids        | orphan | {relation:sales.doomed}
+ gone_ids          | orphan | {schema:archive}
+ legacy_values     | orphan | {column:sales.orders.legacy}
+(4 rows)
+```
+
+The `status` column is `orphan`, `unverified`, or `partial`. When an alias has more than one finding, `orphan` takes precedence over `unverified`, which takes precedence over `partial`. The function compares names in each alias's stored SQL with the live catalog. It never plans or runs the SQL, so a verified alias isn't guaranteed to run.
+
+For what each status means, how to repair an alias, who can read the `detail` and `unchecked` columns, and the limits of the check, see [Detecting orphaned aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/#detecting-orphaned-aliases).
+
+To fix an orphaned alias, update its query or restore the missing object. See [Repairing an alias](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/#repairing-an-alias).
+
+### Reviewing recorded object usage
+
+To see which objects appeared in recorded search results and which semantic aliases were executed, run `semantic_kb_object_usage`. Use the optional `since` argument to limit the audit window.
+
+```sql
+SELECT object_ref, source_type, retrieve_count, execute_count, lower_bound
+FROM aidb.semantic_kb_object_usage('analytics_kb');
+```
+
+```output title="Output"
+    object_ref     | source_type | retrieve_count | execute_count | lower_bound
+-------------------+-------------+----------------+---------------+-------------
+ all_item_ids      | alias       |              0 |             2 | t
+ sales.items       | schema      |              3 |             0 | t
+ sales.items.id    | schema      |              3 |             0 | t
+ sales.items.label | schema      |              3 |             0 | t
+(4 rows)
+```
+
+Here, three searches each returned the three `sales.items` objects, and an alias ran twice. To count only recent activity, pass `since`:
+
+```sql
+SELECT object_ref, source_type, retrieve_count, execute_count, window_start
+FROM aidb.semantic_kb_object_usage(
+    'analytics_kb', since => now() - interval '30 days');
+```
+
+The counts are per object: one search can increase `retrieve_count` for several returned objects. `source_type` distinguishes sources such as `schema`, `alias`, `relationship`, `history`, and `concept`. A result found through both schema and concept sources is recorded as a schema hit. `window_start` is the earliest retained audit record in the selected window, including operations other than search or execution. The report's `retrieve_ops` and `execute_ops` count recorded operations instead of per-object hits. To see them, query the health report:
+
+```sql
+SELECT retrieve_ops, execute_ops
+FROM aidb.semantic_kb_health_report('analytics_kb');
+```
+
+```output title="Output"
+ retrieve_ops | execute_ops
+--------------+-------------
+            3 |           2
+(1 row)
+```
+
+Here, `retrieve_ops` is `3` and `execute_ops` is `2`. A search that returns no objects still counts as one operation, but it adds no usage row.
+
+The usage counts are lower bounds, so `lower_bound` is always `true`. AIDB doesn't record every operation:
+
+- Read-only transactions and standby reads don't write semantic KB audit records.
+- A rolled-back search leaves no record.
+- Each search records at most 100 returned hits and at most 16 KiB of hit details.
+- The per-KB plugin search path doesn't write a record.
+- Manually [pruned records](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/#retention-and-pruning) are no longer counted.
+
+Usage is grouped by the displayed object reference and source type. Distinct quoted SQL names that display identically can share a row and have their counts combined.
+
+The counts are informational. Use them to prioritize descriptions and to see which search results or aliases were used recently. AIDB applies no threshold or automatic action to them. A count of zero doesn't show that an object is unused, because the audit data is incomplete by design and can be pruned.
+
+## Settings that affect the results
+
+The health report and the usage results depend on two settings: the auto-processing mode and how long you keep the audit log.
+
+### Auto-processing mode
+
+The auto-processing mode decides whether the queue counts mean anything. The queue counts, `pending_events` and `stale_objects`, and `semantic_kb_stale_objects` describe `Background` processing only. A new semantic KB uses `Disabled` unless you set another mode, and in that mode schema changes aren't picked up until you [refresh the semantic KB](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbrefresh_semantic_kb). A health report that shows no queued events for such a semantic KB doesn't mean the schema is unchanged. To change the mode, run [`aidb.update_semantic_kb_auto_processing()`](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#aidbupdate_semantic_kb_auto_processing):
+
+```sql
+SELECT aidb.update_semantic_kb_auto_processing('analytics_kb', 'Background');
+```
+
+For what each mode does, see [Auto-processing modes](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#auto-processing-modes).
+
+### Audit log
+
+The usage numbers come from the [audit log](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/), so they depend on how long you keep it. The audit columns of the report come from the same log. AIDB doesn't delete audit records automatically, so the window grows until you prune it, and the counts drop when you do. To learn how to prune the audit log, see [Retention and pruning](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/#retention-and-pruning).
+
+## Permissions for the health functions
+
+All six health functions are granted to `aidb_users`, but the detail functions also check the semantic KB's owner role:
+
+| Function                                                                                                                                                  | Requirement beyond `aidb_users`                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `semantic_kb_health_report`                                                                                                                               | None. It never refuses. For a login that fails the owner-role check, it returns `NULL` for the audit-derived columns and sets `audit_metrics_available` to `false`. |
+| `semantic_kb_coverage_gaps`, `semantic_kb_stale_objects`, `semantic_kb_orphan_relationships`, `semantic_kb_alias_diagnostics`, `semantic_kb_object_usage` | The login must belong to the semantic KB's owner role. Otherwise the function raises SQLSTATE `42501`.                                                              |
+
+For example, a login that isn't in the owner role still gets the report's counts, with the audit columns blank:
+
+```sql
+SELECT kb_name, total_objects, retrieve_ops, execute_ops, audit_metrics_available
+FROM aidb.semantic_kb_health_report('analytics_kb');
+```
+
+```output title="Output"
+   kb_name    | total_objects | retrieve_ops | execute_ops | audit_metrics_available
+--------------+---------------+--------------+-------------+-------------------------
+ analytics_kb |             3 |              |             | f
+(1 row)
+```
+
+A detail function refuses the same login, and the error names the semantic KB, the login, and where to find the owner role:
+
+```sql
+SELECT count(*) FROM aidb.semantic_kb_object_usage('analytics_kb');
+```
+
+```output title="Output"
+ERROR:  permission denied to read the audit history of semantic knowledge base "analytics_kb": the login "report_reader" is not a member of its owner role. Ask an administrator to grant that role (aidb.list_semantic_kbs() names it) to the login.
+```
+
+The owner-role check follows these rules:
+
+- It uses the authenticated login (`session_user`), so `SET ROLE` alone doesn't grant access. A login that belongs to the owner role keeps its access after `SET ROLE` to a role that doesn't.
+- For a semantic KB with a valid recorded owner role, the login must belong to that role. A superuser also passes. By default, `aidb.create_semantic_kb()` sets the owner role to the extension owner, so members of the extension owner's role pass for such a KB.
+- Membership in the extension owner's role by itself doesn't bypass a valid owner role that you've set to a different role, for a KB-specific detail, audit, or prune call.
+- If the recorded owner role was dropped, renamed, or recreated, access falls back to the extension owner's role or a superuser. An administrator must explicitly select the intended owner and refresh the semantic KB to restore access. Refreshing alone doesn't silently assign a new role that has the same name.
+- An explicit `EXECUTE` grant on a function, or a direct table grant, doesn't replace owner-role membership.
+
+The same rule governs [reading the audit log and pruning it](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/#reading-the-audit-log).
+
+## Agent tools and the deprecated statistics function
+
+`semantic_kb_health_report` and `semantic_kb_coverage_gaps` are also read-only [agent tools](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/). The other health functions are available through SQL only.
+
+`aidb.semantic_kb_stats` is deprecated. It remains callable in SQL, but it's no longer an agent tool, and a later release will remove it. Use the health report instead. The report doesn't have a one-to-one replacement for every `semantic_kb_stats` column:
+
+| `semantic_kb_stats` column                         | Use instead                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `total`, `pending`                                 | `total_objects` and `pending_events` in the report.                                              |
+| `relationships`                                    | `total_relationships`. The report excludes retired relationships, which `relationships` counted. |
+| `tables`, `views`, `columns`, `drifted`, `queries` | No equivalent in the report.                                                                     |
+
+## Next steps
+
+- Write or approve descriptions for the gaps you found in [Descriptions and curation](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/curation/).
+- Fix or retire the orphaned relationships you found in [Relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/).
+- Re-create or update the aliases you found in [Semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/).
+- Review who ran searches and changed descriptions in [Auditing semantic KB operations](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/).
+- Look up every health function's parameters and return columns in the [reference](https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/#inspecting-kb-health).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

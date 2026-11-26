@@ -1,0 +1,80 @@
+---
+title: Handling embedding service outages
+description: Implement a three-tier fallback chain — hybrid search, FTS-only, and regex — to keep queries returning results when the embedding service is unavailable.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/hybrid-search/fallback-and-degradation/
+lastModified: 2026-09-30T22:23:49+05:30
+---
+
+# Handling embedding service outages
+
+When the embedding service is unavailable or embeddings haven't been generated for recent rows, hybrid search queries fail or return incomplete results. Implement a three-tier fallback to keep your application returning results in those situations.
+
+## Defining the fallback chain
+
+A recommended degradation chain:
+
+1. **Hybrid** — Vector + full-text search (FTS) — the primary path; requires the embedding service.
+2. **FTS-only** — Keyword search using `tsvector` (no embedding service required).
+3. **Regex** — `ILIKE` pattern match (last resort, no index required).
+
+## Implementing the fallback
+
+Implement this strategy in application code by catching connection errors from the embedding step and routing to the appropriate fallback, or in SQL using a `CASE` expression or a wrapper function. The three queries below are the building blocks for each tier:
+
+**Primary: hybrid (vector + native FTS)**
+
+The vector leg uses the cosine operator `<=>` and the score normalization `(2.0 - distance) / 2.0`. Both assume the knowledge base was created with `distance_operator => 'Cosine'`.
+
+```sql
+WITH semantic AS (
+    SELECT source_id,
+           (2.0 - (value <=> aidb.kb_query_encode('public.pipeline_docs', :'query')::vector)) / 2.0 AS vec_score
+    FROM public.pipeline_docs
+    ORDER BY value <=> aidb.kb_query_encode('public.pipeline_docs', :'query')::vector
+    LIMIT 50
+),
+keyword AS (
+    SELECT id::TEXT AS source_id,
+           ts_rank_cd(search_vector, plainto_tsquery('english', :'query')) AS fts_score
+    FROM my_docs
+    WHERE search_vector @@ plainto_tsquery('english', :'query')
+    LIMIT 50
+)
+SELECT COALESCE(s.source_id, k.source_id) AS id,
+       0.6 * COALESCE(s.vec_score, 0) + 0.4 * COALESCE(k.fts_score, 0) AS score
+FROM semantic s
+FULL OUTER JOIN keyword k ON s.source_id = k.source_id
+ORDER BY score DESC
+LIMIT 10;
+```
+
+**Fallback 1: FTS-only (no embedding service)**
+
+```sql
+SELECT id, title,
+       ts_rank_cd(search_vector, plainto_tsquery('english', :'query')) AS score
+FROM my_docs
+WHERE search_vector @@ plainto_tsquery('english', :'query')
+ORDER BY score DESC
+LIMIT 10;
+```
+
+**Fallback 2: regex (no index)**
+
+```sql
+SELECT id, title
+FROM my_docs
+WHERE title ILIKE '%' || :'query' || '%'
+   OR body  ILIKE '%' || :'query' || '%'
+LIMIT 10;
+```
+
+The regex fallback performs a full sequential scan and doesn't scale to large tables. Reserve it for emergency use or small datasets, and add a timeout guard in your application to prevent long-running queries.
+
+> **Note**
+>
+> The `tsvector` trigger pattern described in [Setting up native PostgreSQL FTS](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/hybrid-search/set-up-native-fts/) ensures FTS coverage is always current, even for rows that arrive before embeddings are generated. This makes it a reliable fallback for new content.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

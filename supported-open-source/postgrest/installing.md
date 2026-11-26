@@ -1,0 +1,52 @@
+---
+title: Installing postgREST
+product: postgREST
+url: https://www.enterprisedb.com/docs/supported-open-source/postgrest/installing/
+lastModified: 2026-03-24T09:18:21-03:00
+---
+
+# Installing postgREST
+
+`postgREST` is supported on the same platforms as the Postgres distribution you're using. Support for `postgREST` starts with Postgres 12. For details, see:
+
+- [PostgreSQL Product Compatibility](https://www.enterprisedb.com/resources/platform-compatibility#pg)
+
+## Installation
+
+Before you begin the installation process:
+
+- Install Postgres. See:
+
+  - [Installing PostgreSQL](https://www.postgresql.org/download/)
+
+- Set up the repository.
+
+  Setting up the repository is a one-time task. If you've already set up your repository, you don't need to perform this step.
+
+  To set up the repository, go to [EDB repositories](https://www.enterprisedb.com/repos-downloads) and follow the instructions provided there.
+
+## Install the package
+
+The syntax for the package install command is:
+
+```shell
+sudo <package-manager> -y install edb-postgrest
+```
+
+Where:
+
+- `<package-manager>`is the package manager used with your operating system:
+
+  | Package manager | Operating system         |
+  | --------------- | ------------------------ |
+  | dnf             | RHEL 8/9 and derivatives |
+  | zypper          | SLES                     |
+  | apt-get         | Debian and derivatives   |
+
+For example, to install postgREST on a RHEL 8 platform:
+
+```shell
+sudo dnf -y install edb-postgrest
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

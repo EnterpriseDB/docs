@@ -1,0 +1,178 @@
+---
+title: Writing to object storage
+description: How to write to object storage with Analytics Accelerator by creating tables from queries and appending rows to them.
+product: EDB Postgres AI Analytics Accelerator
+version: "1.12"
+url: https://www.enterprisedb.com/docs/pgaa/latest/ctas/
+lastModified: 2026-11-18T10:56:45Z
+---
+
+# Writing to object storage
+
+The Postgres Analytics Accelerator (PGAA) supports writing directly to your data lake. You can process and persist data from any source into high-performance columnar formats like Iceberg or Delta Lake. The destination can be a storage location on AWS S3 (and S3-compatible APIs), Google Cloud Storage (GCS), Azure Blob Storage (ADLS Gen2), or a local filesystem, or an integrated Iceberg catalog.
+
+PGAA supports these ways of writing data:
+
+- **`CREATE TABLE AS SELECT` (CTAS):** Create a PGAA table from the result of a query. PGAA converts the rows to the target format, generates the metadata, and commits the results in a single atomic operation. See [Creating tables with CTAS](#creating-tables-with-ctas).
+- **`INSERT`:** Append rows to an existing PGAA table, from a query or from a list of values. See [Inserting data into existing tables](#inserting-data-into-existing-tables).
+- **Replication:** Continuously keep a lakehouse table in sync with a Postgres table. See [Replicating Postgres tables natively](https://www.enterprisedb.com/docs/pgaa/latest/replication/) or the [PGD integration](https://www.enterprisedb.com/docs/pgaa/latest/pgd/).
+
+Because PGAA integrates with the Postgres query executor, the source data for a CTAS or `INSERT ... SELECT` operation can reside in any location accessible to your instance, which enables several advanced workflows:
+
+- **Exporting:** Move data from a standard local Postgres table into your data lake to archive historical data.
+- **Transforming:** Read from one object storage location, perform a join or aggregation, and write the result back to a different cloud directory.
+- **Federated joins:** Join a local relational table with a remote object storage table and write the combined result back to the cloud.
+
+> **Note**
+>
+> On WarehousePG, a single writer writes the data when you create a table with CTAS or insert rows with `INSERT`. For CTAS, the writer is the coordinator on WarehousePG 7.6 and later versions, and the designated segment on earlier versions. See [Reading from and writing to object storage on WarehousePG](https://www.enterprisedb.com/docs/pgaa/latest/whpg/reading/).
+
+## Creating tables with CTAS
+
+Use CTAS to create a PGAA table from the result of a query. You can create the table in a standalone storage location or in an integrated Iceberg catalog.
+
+### Using a standalone storage location
+
+This method is ideal for one-off exports or ad-hoc data movement. PGAA handles the conversion from Postgres rows to the target format, generates the necessary metadata or transaction logs (such as the Iceberg manifest or Delta transaction log), and commits the results in a single atomic operation.
+
+Provisioning a table in object storage via CTAS requires a two-step process: first, you establish a physical connection to the remote storage environment via a storage location, and then you execute the SQL command that maps your query results to that location.
+
+#### Creating a storage location
+
+To write to object storage, you must [create a PGFS storage location](https://www.enterprisedb.com/docs/pg_extensions/pgfs/using/#creating-a-storage-location). This defines the target bucket and provides the necessary credentials. For example:
+
+```sql
+SELECT pgfs.create_storage_location(
+    'my_lake_data', 
+    's3://your-bucket-name/path', 
+    '{"aws_region": "us-east-1", "aws_access_key_id": "...", "aws_secret_access_key": "..."}'
+);
+```
+
+> **Note**
+>
+> The credentials associated with your storage location must have both read and write permissions for the destination bucket. You can verify this by running the following function, which returns `NULL` if successful:
+>
+> ```sql
+> SELECT pgaa.test_storage_location ('my_lake_data', true);
+> ```
+
+#### Creating the table with CTAS
+
+Create a table with the `USING PGAA WITH` and `AS` clauses that exports its result set directly to a structured table format in object storage. For example:
+
+```sql
+CREATE TABLE s3_export_table 
+USING PGAA 
+WITH (
+    pgaa.storage_location = 'my_lake_data',
+    pgaa.path = 'path/in/s3/iceberg_data',
+    pgaa.format = 'iceberg'
+) AS 
+SELECT * FROM local_source_table;
+```
+
+Where:
+
+- `pgaa.format`: Specifies the destination table format. Supported values are `iceberg` and `delta`.
+- `pgaa.storage_location`: The name of the storage location defined in the previous step.
+- `pgaa.path`: The destination directory. PGAA creates the metadata and log directories automatically within this path.
+
+### Using an Iceberg catalog
+
+If you have integrated an Iceberg catalog, you can write to it using CTAS. In this mode, the catalog automatically manages the storage paths and table versioning for you.
+
+Writing to a table in object storage via CTAS and using an Iceberg catalog comprises two steps: first, configure a catalog connection, and then execute the SQL command that maps your query results via that catalog.
+
+#### Configuring a catalog connection
+
+Use the function `pgaa.add_catalog()` to register an external Iceberg catalog with your Postgres instance. For example:
+
+```sql
+SELECT pgaa.add_catalog(
+    'my_iceberg_catalog',    
+    'iceberg-rest',           
+    '{ 
+        "url": "https://your-catalog-endpoint.com",
+        "warehouse_name": "your_warehouse_name",
+        "warehouse": "your_warehouse_id",
+        "token": "your_secret_auth_token"
+        "danger_accept_invalid_certs": "false"
+    }'
+);
+```
+
+See [Adding a catalog connection](https://www.enterprisedb.com/docs/pgaa/latest/catalog/#adding-a-catalog-connection) for a full list of configuration options.
+
+> **Note**
+>
+> You must have write permissions on your catalog. You can verify this by running the following function, which returns `NULL` if successful:
+>
+> ```sql
+> SELECT pgaa.test_catalog('my_iceberg_catalog', test_writes := TRUE);
+> ```
+
+#### Creating the catalog-managed CTAS table
+
+Create a table with the `USING PGAA WITH` and `AS` clauses that exports its result set directly to a configured Iceberg catalog. For example:
+
+```sql
+CREATE TABLE export_local_transactions 
+USING PGAA 
+WITH (
+    pgaa.format = 'iceberg',
+    pgaa.managed_by = 'my_iceberg_catalog',
+    pgaa.catalog_namespace = 'public',
+    pgaa.catalog_table = 'managed_sales_data'
+) AS
+SELECT * FROM local_transactions;
+```
+
+Where:
+
+- `pgaa.format`: Sets the destination table format. Currently, only 'iceberg' is supported.
+- `pgaa.managed_by`: Specifies the catalog name.
+- `pgaa.catalog_namespace`: Defines the namespace or database where the table will be located within the Iceberg catalog.
+- `pgaa.catalog_table`: Sets the name of the table to be created in your data lake.
+
+### Monitoring CTAS progress
+
+For large CTAS operations, PGAA emits `NOTICE` messages to help you track progress without needing to poll system views or query logs. Progress is reported every 1 million rows or every 10 minutes, whichever comes first, followed by a final completion message:
+
+```
+NOTICE: CTAS progress: 1000000 rows processed
+NOTICE: CTAS progress: 2000000 rows processed
+NOTICE: CTAS completed: 2500000 rows processed
+```
+
+### Limitations of CTAS
+
+While CTAS is a powerful tool for data movement and transformation, it operates under a specific execution model with the following constraints:
+
+- When executing a CTAS operation, the source (inner) query doesn't utilize DirectScan. Instead, the data retrieval is processed by the standard Postgres engine via CompatScan. Consequently, complex joins or aggregations within the `SELECT` phase won't benefit from the full vectorized acceleration provided by the Seafowl engine.
+- To prevent accidental data loss, when using a standalone storage location, the command fails by default if data already exists at the specified `pgaa.path`. To replace the existing data, set the `pgaa.purge_data_if_exists` parameter to `true` in the `WITH` clause of your CTAS statement.
+- A transaction can write to only one PGAA table, and you can't run CTAS inside a subtransaction, such as a savepoint or a PL/pgSQL `EXCEPTION` block.
+- CTAS is an atomic, write-once operation. You can append rows afterward with `INSERT`, but PGAA tables don't support `UPDATE` and `DELETE`. These statements don't return an error, but they don't change any rows. To modify or delete existing rows, you must drop the table and recreate it at a new path.
+
+## Inserting data into existing tables
+
+Append rows to an existing PGAA table with `INSERT`, either from a query with `INSERT ... SELECT` or from a list of values with `INSERT ... VALUES`. As with CTAS, the source query of an `INSERT ... SELECT` can read from any location that your instance can access, such as a local Postgres table or another object storage table. PGAA converts the rows to the target format and commits them to the lakehouse table as a single atomic operation when your transaction commits.
+
+```sql
+INSERT INTO sales_archive
+SELECT * FROM sales
+WHERE sale_date < '2026-01-01';
+```
+
+### Limitations of INSERT
+
+The following limitations apply to `INSERT` on PGAA tables:
+
+- You can't load rows into a PGAA table with `COPY ... FROM`.
+- `INSERT` into a PGAA table doesn't write to the Postgres WAL. The node that runs the statement writes the rows directly to the lakehouse location, so Postgres doesn't replicate the inserted rows to standbys or other PGD nodes. Other nodes that read the same lakehouse location see the rows.
+- The transaction that runs the `INSERT` can't read the new rows until it commits.
+- A transaction can write to only one PGAA table, and you can't write to PGAA tables inside a subtransaction, such as a savepoint or a PL/pgSQL `EXCEPTION` block.
+- PGAA tables don't support `UPDATE` and `DELETE`. These statements don't return an error, but they don't change any rows.
+- On WarehousePG, a single writer gathers and writes the rows. You can insert from heap tables with any distribution. Inserting into a PGAA table that you explicitly hash-distribute isn't supported.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

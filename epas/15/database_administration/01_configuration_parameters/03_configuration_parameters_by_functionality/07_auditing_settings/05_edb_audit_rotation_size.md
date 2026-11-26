@@ -1,0 +1,27 @@
+---
+title: edb_audit_rotation_size
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/database_administration/01_configuration_parameters/03_configuration_parameters_by_functionality/07_auditing_settings/05_edb_audit_rotation_size/
+lastModified: 2023-11-09T17:35:38+05:30
+---
+
+# edb\_audit\_rotation\_size
+
+<div id="edb_audit_rotation_size" class="registered_link"></div>
+
+**Parameter type:** Integer
+
+**Default value:** 0MB
+
+**Range:** 0MB to 5000MB
+
+**Minimum scope of effect:** Cluster
+
+**When value changes take effect:** Reload
+
+**Required authorization to activate:** EDB Postgres Advanced Server service account
+
+Specifies a file size threshold in megabytes when file rotation occurs. If the parameter is commented out or set to 0, rotating the file based on size doesn't occur.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

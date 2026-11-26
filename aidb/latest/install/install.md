@@ -1,0 +1,109 @@
+---
+title: Installing AIDB
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/install/install/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Installing AIDB
+
+AIDB is a standalone PostgreSQL extension — it installs directly on your Postgres instance with no dependency on Agent Factory or Hybrid Manager. The steps below walk you through installing it as a standalone package.
+
+> **Note**
+>
+> If you're deploying through Agent Factory, AIDB is bundled and configured as part of that setup. Refer to the Agent Factory installation guide instead.
+>
+> You can also deploy [EDB Postgres AI Agent Factory from AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-mv4vb2hulrx34). Its image includes EDB Postgres Advanced Server 18, AIDB, Vector Plus, and the AIDB MCP server, and it deploys in your own AWS account as an AWS CloudFormation stack.
+
+AIDB is supported on the same platforms as the Postgres distribution you're using. For details, see:
+
+- [PostgreSQL product compatibility](https://www.enterprisedb.com/resources/platform-compatibility#pg)
+
+- [EDB Postgres Advanced Server product compatibility](https://www.enterprisedb.com/platform-compatibility#epas)
+
+- [EDB Postgres Extended Server product compatibility](https://www.enterprisedb.com/resources/platform-compatibility#epas_extended)
+
+To install AIDB on WarehousePG, see [AIDB on WarehousePG](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/extensions/additional/aidb/#installing-aidb).
+
+## Prerequisites
+
+Before you begin the installation process:
+
+1. Set up the repository:
+
+   Setting up the repository is a one-time task. If you've already set up your repository, you don't need to perform this step.
+
+   To set up the repository, go to [EDB repositories](https://www.enterprisedb.com/repos-downloads) and follow the instructions provided there.
+
+2. Install your flavor of Postgres if not already installed. See:
+
+   - [Installing PostgreSQL](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/)
+
+   - [Installing EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/installing/)
+
+   - [Installing EDB Postgres Extended Server](https://www.enterprisedb.com/docs/pge/latest/installing/)
+
+3. Install the pgvector extension:
+
+   AIDB relies on the pgvector extension for vector data management.
+
+   For installation instructions, see [Installing pgvector](https://www.enterprisedb.com/docs/pg_extensions/pgvector/installing/).
+
+4. Make sure the database uses UTF-8 encoding:
+
+   `CREATE EXTENSION aidb` fails on any other encoding with `Database <name> must be UTF-8 encoded`. Minimal container images often initialize the cluster with `SQL_ASCII`. Check the encoding with `SHOW server_encoding;`. To create a UTF-8 cluster, run:
+
+   ```shell
+   initdb -E UTF8 --locale=C.UTF-8 -D <data_directory>
+   ```
+
+## Install the package
+
+The syntax for the package install command is:
+
+```shell
+# For Debian/Ubuntu:
+sudo apt-get install edb-<postgres><postgres_version>-aidb
+
+# For Linux:
+sudo dnf install edb-<postgres><postgres_version>-aidb
+```
+
+Where:
+
+- `<postgres>` is the distribution of Postgres you're using:
+
+  | Postgres distribution               | Value             |
+  | ----------------------------------- | ----------------- |
+  | PostgreSQL                          | pg                |
+  | EDB Postgres Advanced Server (EPAS) | as                |
+  | EDB Postgres Extended               | postgresextended- |
+
+  > **Note**
+  >
+  > Unlike the other distributions, the EDB Postgres Extended package name includes a hyphen before the version.
+
+- `<postgres_version>` is the version of Postgres you're using.
+
+For example, to install AIDB for EDB Postgres Advanced Server 17 on Debian/Ubuntu:
+
+```shell
+sudo apt-get install edb-as17-aidb
+```
+
+For example, to install AIDB for PostgreSQL 16 on RHEL8:
+
+```shell
+sudo dnf install edb-pg16-aidb
+```
+
+For example, to install AIDB for EDB Postgres Extended 18 on RHEL9:
+
+```shell
+sudo dnf install edb-postgresextended-18-aidb
+```
+
+After installing the AIDB package, see [Configuring AIDB](https://www.enterprisedb.com/docs/aidb/latest/install/configure/) for the next steps.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

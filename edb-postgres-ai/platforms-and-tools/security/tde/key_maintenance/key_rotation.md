@@ -1,0 +1,51 @@
+---
+title: Rotating the key
+description: Learn how to rotate your data encryption key.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/key_maintenance/key_rotation/
+lastModified: 2026-11-02T10:46:12+01:00
+---
+
+# Rotating the key
+
+To change the master key, manually run the unwrap command, specifying the old key. Then feed the result into the wrap command, specifying the new key.
+
+If the data key is protected by a passphrase, to change the passphrase, run the unwrap command using the old passphrase. Then feed the result into the wrap command using the new passphrase.
+
+You can perform these operations while the database server is running. The wrapped data key in the file is used only on startup. It isn't used while the server is running.
+
+## Rotating the passphrase
+
+Building on the example in [Using a passphrase](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/passphrase/), which uses OpenSSL, to change the passphrase, you can use this approach:
+
+```shell
+cd $PGDATA/pg_encryption/
+openssl enc -d -aes-128-cbc -pbkdf2 -in key.bin | openssl enc -e -aes-128-cbc -pbkdf2 -out key.bin.new
+mv key.bin.new key.bin
+```
+
+With this method, the decryption and the encryption commands ask for the passphrase on the terminal at the same time. An alternative is:
+
+```shell
+cd $PGDATA/pg_encryption/
+openssl enc -d -aes-128-cbc -pbkdf2 -in key.bin -pass pass:<replaceable>ACTUALPASSPHRASE</replaceable> | openssl enc -e -aes-128-cbc -pbkdf2 -out key.bin.new
+mv key.bin.new key.bin
+```
+
+This technique leaks the old passphrase, which is being replaced anyway. OpenSSL supports a number of other ways to supply the passphrases.
+
+## Rotating the key store wrapping key
+
+When using a [key store](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/key_store/), you can connect the unwrap and wrap commands similarly. For example, rotating an AWS KMS key:
+
+```shell
+cd $PGDATA/pg_encryption/
+aws kms decrypt --key-id alias/pg-tde-master-1 --ciphertext-blob fileb://key.bin --output text --query Plaintext | base64 -d | aws kms encrypt --key-id alias/pg-tde-master-2 --plaintext fileb:///dev/stdin --output text --query CiphertextBlob | base64 -d > key.bin.new
+mv key.bin.new key.bin
+```
+
+> **Note**
+>
+> You can't change the data key (the key wrapped by the master key) on an existing data directory. If you need to do that, you need to run the data directory through an upgrade process using pg\_dump, pg\_upgrade, or logical replication.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

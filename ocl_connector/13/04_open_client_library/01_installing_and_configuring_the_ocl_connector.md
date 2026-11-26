@@ -1,0 +1,313 @@
+---
+title: Installing and Configuring the OCL Connector
+product: OCL Connector
+version: "13"
+url: https://www.enterprisedb.com/docs/ocl_connector/13/04_open_client_library/01_installing_and_configuring_the_ocl_connector/
+lastModified: 2026-06-04T17:31:33Z
+---
+
+# Installing and Configuring the OCL Connector
+
+<div id="installing_and_configuring_the_ocl_connector" class="registered_link"></div>
+
+You can use an RPM package, a native package, or a graphical installer to install or update the EDB OCL Connector.
+
+## Installing the Connector with an RPM Package
+
+You can install the OCL Connector using an RPM package on the following platforms:
+
+- [RHEL 7](#rhel7)
+- [RHEL 8](#rhel8)
+- [CentOS 7](#centos7)
+- [Rocky Linux/AlmaLinux 8](#centos8)
+
+<div id="rhel7" class="registered_link"></div>
+
+### On RHEL 7
+
+Before installing the OCL Connector, you must install the following prerequisite packages, and request credentials from EDB:
+
+Install the `epel-release` package:
+
+```shell
+yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+```
+
+Enable the optional, extras, and HA repositories:
+
+```shell
+subscription-manager repos --enable "rhel-*-optional-rpms" --enable "rhel-*-extras-rpms"  --enable "rhel-ha-for-rhel-*-server-rpms"
+```
+
+You must also have credentials that allow access to the EDB repository. For information about requesting credentials, see [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/). Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+To set up the EDB repository:
+
+1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+2. Select the button that provides access to the EDB repository.
+3. Select the platform and software that you want to download.
+4. Follow the instructions for setting up the EDB repository.
+
+**Installing OCL Connector**
+
+```shell
+yum install edb-oci
+yum install edb-oci-devel
+```
+
+When you install an RPM package that is signed by a source that is not recognized by your system, yum may ask for your permission to import the key to your local server. If prompted, and you are satisfied that the packages come from a trustworthy source, enter `y`, and press `Return` to continue.
+
+During the installation, yum may encounter a dependency that it cannot resolve. If it does, it will provide a list of the required dependencies that you must manually resolve.
+
+<div id="rhel8" class="registered_link"></div>
+
+### On RHEL 8
+
+Before installing the OCL Connector, you must install the following prerequisite packages, and request credentials from EDB:
+
+Install the `epel-release` package:
+
+```shell
+dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+```
+
+Enable the `codeready-builder-for-rhel-8-\*-rpms` repository:
+
+```shell
+ARCH=$( /bin/arch )
+subscription-manager repos --enable "codeready-builder-for-rhel-8-${ARCH}-rpms"
+```
+
+You must also have credentials that allow access to the EDB repository. For information about requesting credentials, see [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/). Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+To set up the EDB repository:
+
+1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+2. Select the button that provides access to the EDB repository.
+3. Select the platform and software that you want to download.
+4. Follow the instructions for setting up the EDB repository.
+
+**Installing OCL Connector**
+
+```shell
+dnf install edb-oci
+dnf install edb-oci-devel
+```
+
+When you install an RPM package that is signed by a source that is not recognized by your system, yum may ask for your permission to import the key to your local server. If prompted, and you are satisfied that the packages come from a trustworthy source, enter `y`, and press `Return` to continue.
+
+During the installation, yum may encounter a dependency that it cannot resolve. If it does, it will provide a list of the required dependencies that you must manually resolve.
+
+<div id="centos7" class="registered_link"></div>
+
+### On CentOS 7
+
+Before installing the OCL Connector, you must install the following prerequisite packages, and request credentials from EDB:
+
+Install the `epel-release` package:
+
+```shell
+yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+```
+
+> **Note**
+>
+> You may need to enable the `[extras]` repository definition in the `CentOS-Base.repo` file (located in `/etc/yum.repos.d`).
+
+You must also have credentials that allow access to the EDB repository. For information about requesting credentials, see [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/). Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+To set up the EDB repository:
+
+1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+2. Select the button that provides access to the EDB repository.
+3. Select the platform and software that you want to download.
+4. Follow the instructions for setting up the EDB repository.
+
+**Installing OCL Connector**
+
+```shell
+yum install edb-oci
+yum install edb-oci-devel
+```
+
+When you install an RPM package that is signed by a source that is not recognized by your system, yum may ask for your permission to import the key to your local server. If prompted, and you are satisfied that the packages come from a trustworthy source, enter `y`, and press `Return` to continue.
+
+During the installation, yum may encounter a dependency that it cannot resolve. If it does, it will provide a list of the required dependencies that you must manually resolve.
+
+<div id="centos8" class="registered_link"></div>
+
+### On Rocky Linux 8 or AlmaLinux 8
+
+Before installing the OCL Connector, you must install the following prerequisite packages, and request credentials from EDB:
+
+Install the `epel-release` package:
+
+```shell
+dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+```
+
+Enable the `PowerTools` repository:
+
+```shell
+dnf config-manager --set-enabled PowerTools
+```
+
+You must also have credentials that allow access to the EDB repository. For information about requesting credentials, see [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/). Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+To set up the EDB repository:
+
+1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+2. Select the button that provides access to the EDB repository.
+3. Select the platform and software that you want to download.
+4. Follow the instructions for setting up the EDB repository.
+
+**Installing OCL Connector**
+
+```shell
+dnf install edb-oci
+dnf install edb-oci-devel
+```
+
+When you install an RPM package that is signed by a source that is not recognized by your system, yum may ask for your permission to import the key to your local server. If prompted, and you are satisfied that the packages come from a trustworthy source, enter `y`, and press `Return` to continue.
+
+During the installation, yum may encounter a dependency that it cannot resolve. If it does, it will provide a list of the required dependencies that you must manually resolve.
+
+### Updating an RPM Installation
+
+If you have an existing `OCL Connector` RPM installation, you can refresh your repository configuration and update to a more recent product version using the EDB setup script.
+
+- On RHEL or CentOS 7:
+
+  1. Run the setup script to ensure your repository files are pointing to the correct EDB resources. Replace `<EDB_TOKEN>` with your actual EDB subscription token.
+
+     ```bash
+     curl -1sSLf "https://downloads.enterprisedb.com/<EDB_TOKEN>/standard/setup.rpm.sh" | sudo -E bash
+     ```
+
+  2. Upgrade the packages:
+
+     ```bash
+     yum upgrade edb-oci
+     yum upgrade edb-oci-devel
+     ```
+
+- On RHEL or Rocky Linux 8 or AlmaLinux 8:
+
+  1. Run the setup script to ensure your repository files are pointing to the correct EDB resources. Replace `<EDB_TOKEN>` with your actual EDB subscription token.
+
+     ```bash
+     curl -1sSLf "https://downloads.enterprisedb.com/<EDB_TOKEN>/standard/setup.rpm.sh" | sudo -E bash
+     ```
+
+  2. Upgrade the packages:
+
+     ```bash
+     dnf upgrade edb-oci
+     dnf upgrade edb-oci-devel
+     ```
+
+## Installing the Connector on an SLES 12 Host
+
+You can use the zypper package manager to install the connector on an SLES 12 host. zypper will attempt to satisfy package dependencies as it installs a package, but requires access to specific repositories that are hosted at EDB.
+
+You must have credentials that allow access to the EDB repository. For information about requesting credentials, see [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/). Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+To set up the EDB repository:
+
+1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+2. Select the button that provides access to the EDB repository.
+3. Select the platform and software that you want to download.
+4. Follow the instructions for setting up the EDB repository.
+
+Before installing the connector, you must also add SUSEConnect and the SUSE Package Hub extension to the SLES host, and register the host with SUSE, allowing access to SUSE repositories. Use the commands:
+
+```shell
+ zypper install SUSEConnect
+ SUSEConnect -r 'REGISTRATION_CODE' -e 'EMAIL'
+ SUSEConnect -p PackageHub/12.4/x86_64
+ SUSEConnect -p sle-sdk/12.4/x86_64
+```
+
+For detailed information about registering a SUSE host, visit the [SUSE website](https://www.suse.com/support/kb/doc/?id=7016626).
+
+Then, you can use the zypper utility to install the connector:
+
+```shell
+zypper install edb-oci
+zypper install edb-oci-devel
+```
+
+## Installing the Connector on a Debian or Ubuntu Host
+
+To install a DEB package on a Debian or Ubuntu host, you must have credentials that allow access to the EDB repository. For information about requesting credentials, see [Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/). Setting up the repository is a one-time task. If you already set up your repository, you don't need to perform this step.
+
+To set up the EDB repository:
+
+1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+
+2. Select the button that provides access to the EDB repository.
+
+3. Select the platform and software that you want to download.
+
+4. Follow the instructions for setting up the EDB repository.
+
+5. Update the repository metadata:
+
+   ```shell
+   apt-get update
+   ```
+
+6. Install the DEB package:
+
+   ```shell
+   apt-get install edb-oci
+   apt-get install edb-oci-dev
+   ```
+
+## Using the Graphical Installer to Install the Connector
+
+You can use the EDB Connectors Installation wizard to add the EDB OCL connector to your system; the wizard is available at the [EDB website](https://www.enterprisedb.com/software-downloads-postgres/).
+
+This section demonstrates using the Installation Wizard to install the Connectors on a Windows system. (Download the installer, and then, right-click on the installer icon, and select `Run As Administrator` from the context menu.)
+
+When the `Language Selection` popup opens, select an installation language and click `OK` to continue to the `Setup` window.
+
+![The OCL Connector Installation wizard](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/ocl_connector/13/images/ocl_installation_wizard.png)
+
+The OCL Connector Installation wizard
+
+Click `Next` to continue.
+
+![The Installation dialog](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/ocl_connector/13/images/ocl_installation_dialog.png)
+
+The Installation dialog
+
+Use the `Installation Directory` dialog to specify the directory in which the connector will be installed, and click `Next` to continue.
+
+![The Ready to Install dialog](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/ocl_connector/13/images/ready_to_install.png)
+
+The Ready to Install dialog
+
+Click `Next` on the `Ready to Install` dialog to start the installation; popup dialogs confirm the progress of the installation wizard.
+
+![The installation is complete](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/ocl_connector/13/images/ocl_installation_complete.png)
+
+The installation is complete
+
+When the wizard informs you that it has completed the setup, click the `Finish` button to exit the dialog.
+
+You can also use StackBuilder Plus to add or update the connector on an existing Advanced Server installation; to open StackBuilder Plus, select StackBuilder Plus from the Windows `Apps` menu.
+
+![Starting StackBuilder Plus](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/ocl_connector/13/images/starting_stackbuilder_plus.png)
+
+Starting StackBuilder Plus
+
+When StackBuilder Plus opens, follow the onscreen instructions. Select the `EnterpriseDB OCI Connector` option from the `Database Drivers` node of the tree control.
+
+![Selecting the Connectors installer](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/ocl_connector/13/images/selecting_the_connectors_installer.png)
+
+Selecting the Connectors installer
+
+Follow the directions of the onscreen wizard to add or update an installation of the EDB Connectors.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

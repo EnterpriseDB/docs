@@ -1,0 +1,99 @@
+---
+title: Migrations
+description: Learn about viewing migration details when performing database migrations in Hybrid Manager.
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migrate/migrations/
+lastModified: 2026-03-17T01:01:27Z
+---
+
+# Migrations
+
+Migrations are processes you can start in a Hybrid Manager (HM) project to move data from one database to another. These processes include migrating an external Oracle database to an HM-managed cluster and to an externally managed Postgres instance, among others.
+
+## Viewing existing migrations
+
+After you create one or more migrations, this view displays all the migrations in the project in a table format. The table contains the columns:
+
+- **Name** — Name you assigned to a migration.
+
+- **Source** — Name of the source, configured on the **Sources** page.
+
+- **Destination** — Name of the destination, either a database in an HM-managed cluster or a destination configured through the **Destinations** page.
+
+- **Status** — Current status of the migration.
+
+### Status
+
+HM can display the following statuses for a migration.
+
+| Status    | Description                                                                                                                                                                   |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Creating  | HM is creating resources required to perform a migration (for example, Kafka nodes).                                                                                          |
+| Starting  | The initial phase of execution started, where the EDB DMS agent connects to the source and/or destination databases.                                                          |
+| Running   | The migration is active and data is being transferred.                                                                                                                        |
+| Pausing   | The migration is being temporarily stopped.                                                                                                                                   |
+| Paused    | The migration was temporarily stopped and can be resumed.                                                                                                                     |
+| Error     | Unspecified problem. Under **Migrations**, select the name of the migration to open the details page. Look at the **Error log** section for more information about the cause. |
+| Completed | The migration finished successfully.                                                                                                                                          |
+| Failed    | The migration encountered an error and could not be completed. Look at HM console logs to understand the specific cause.                                                      |
+| Deleting  | The migration is being terminated.                                                                                                                                            |
+| Deleted   | The migration was successfully terminated and removed.                                                                                                                        |
+
+> **Note**
+>
+> You can't use a source or destination that's part of an active migration (in any state, including running or paused) for another migration. The existing migration must be completed or deleted before you can reuse the source or destination.
+
+### Migration details page
+
+For each migration that appears on this page, you can open a more detailed view by selecting the name of the migration.
+
+**Mark as Completed option**: If you selected the [**Snapshot + Streaming**](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/terminology/#snapshot--streaming-migration) option when [creating a migration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/creating_migration/), you can use **Mark as Completed** to stop the streaming procedure.
+
+**Overview tab**: The **Overview** tab contains additional information on the status of the migration, type of migration, source and destination database information, and error logs that can help you troubleshoot.
+
+**Tables tab**: The **Tables** tab displays a list of all tables selected for the migration. For each table, you can view the source and destination table names, schemas, the snapshot status, and the count of columns selected. The status reflects the overall migration state for snapshot-only jobs or the snapshot phase status for snapshot + streaming jobs. You can expand each row to view the detailed column-level mapping from the source to the destination.
+
+## Creating a migration
+
+To create migrations, select **Create Migration**. See [Creating migration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/creating_migration/) for an example.
+
+## Mapping schema, tables, and columns during a migration
+
+When you create a migration with the HM console, the Data Migration Service (DMS) allows you to map your source schema and table and column names to different destination schemas, tables, and columns. This is particularly useful for restructuring your database during a migration, so you can align table names with new naming conventions or improve clarity.
+
+### Prerequisites
+
+The DMS requires that all destination objects exist in the destination database before the data migration begins. Suppose you plan to restructure data by mapping a source object (schema, table, or column) to a different name in the destination (for example, source table `loc` to destination table `location`). Manually create or rename the destination object (`location`) in the destination database before starting data migration.
+
+- **Schema migration tools**: If you use a utility like Migration Toolkit or pg\_dump/pg\_restore for schema import, the objects are created with the same name as the source. You must then manually rename the objects in the destination to match your desired mapping. For example, you can use Migration Toolkit's offline option or pg\_dump to generate a SQL script, edit the object names directly in the script, and then apply the modified script to the destination.
+
+- **Manual/alternate creation**: If you create the destination objects manually, ensure the objects are defined with compatible data types for all mapped columns. While DMS can migrate data to objects with different names, the structure of the destination object must match the source data.
+
+### Object mapping
+
+1. In the HM console, select **Migrate > Migrations > Create Migration**. See [Creating migration](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_hm_managed/creating_migration/) for more details.
+
+2. In the **Create Migrations** window, select the **Tables** tab for your migration.
+
+3. To map a schema to a renamed destination schema:
+
+   1. Find a table in the list (`<schema>.<table>`) whose schema you want to rename.
+   2. Select the pen icon next to the `<schema>.<table>` name.
+   3. Enter the new name for the schema.
+
+4. To map a table to a renamed destination table:
+
+   1. Find table in the list (`<schema>.<table>`) that you want to rename.
+   2. Select the pen icon next to the `<schema>.<table>` name.
+   3. Enter the new name for the table.
+
+5. To map a column to a renamed destination column:
+
+   1. Expand one of the items from the list (`<schema>.<table>`).
+   2. Find the column you want to rename in the **Source Column** list.
+   3. Enter the new name for the column in the **Destination Column**.
+
+This process allows you to map schemas, tables, and columns as part of your migration definition.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

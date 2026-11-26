@@ -1,0 +1,394 @@
+---
+title: Configuring image discovery
+description: Configure the HM-internal beacon agent to automatically discover and register available Postgres container images from your private registry.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/image_discovery/
+lastModified: 2026-11-02T17:58:18+01:00
+---
+
+# Configuring image discovery
+
+**Related installation phase:** [Phase 4: Preparing the Environment](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/)
+
+### Prerequisites
+
+- [**Synced images to your local container registry**](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/sync_images/) (Completed) - You must have a private registry populated with EDB images.
+
+- **Registry Compliance:** Your registry must be [OCI compliant](https://github.com/opencontainers/distribution-spec).
+
+- **Permissions:** Access to configure IAM roles (AWS/GCP) or Registry Access Control (On-Prem).
+
+---
+
+## Overview
+
+**Image discovery** is a background process running within the **HM-internal beacon agent**.
+It connects to your private container registry, scans for available Postgres versions (tags), and registers them in the Hybrid Manager (HM).
+
+Image discovery ensures that when you sync new database versions to your registry, they automatically become available for your users to provision without manual intervention.
+
+## Configure image discovery
+
+To enable this feature, you must tell HM where your registry is and how to reach it.
+
+All of the container registry settings of a `HybridControlPlane` live under a single `spec.registry` block:
+
+- `spec.registry.url` and `spec.registry.imagePullSecrets` for pulling the HM images
+- `spec.registry.tls` for the trust used to reach the registry
+- `spec.registry.discovery` for image discovery itself
+
+Edit your `HybridControlPlane` CR to add the image discovery settings under `spec.registry`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  registry:
+    # The registry the HM images are pulled from. Image discovery scans this
+    # same registry unless you set spec.registry.discovery.url.
+    url: "<your-private-registry-uri>"
+    imagePullSecrets:
+      - name: edb-cred
+        namespace: edbpgai-bootstrap
+    discovery:
+      enabled: true
+      provider: "oci"
+      authenticationType: "token"
+      credentialsSecretName: "edb-cred"
+    tls:
+      # Optional: PEM-encoded CA certificate to verify a private-CA registry over HTTPS
+      caCerts: |
+        -----BEGIN CERTIFICATE-----
+        <your-private-CA-certificate>
+        -----END CERTIFICATE-----
+      # Keep false; to trust a private or internal CA, set caCerts above
+      dangerousSkipTLSVerify: false
+```
+
+Apply the updated CR:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+> **Note: Operator version**
+>
+> `spec.registry` requires HM operator 2.2.0 or later, which is the minimum operator version for this HM release. See the [operator compatibility matrix](https://www.enterprisedb.com/docs/hm-operator/latest/compatibility_matrix/).
+
+### Deprecated registry fields
+
+The registry fields that `spec.registry` replaces are deprecated. An existing manifest keeps working unchanged where the corresponding `spec.registry` value is unset, but applying it returns an admission warning naming the field to use instead. A future API version removes the deprecated fields. A value under `spec.registry` takes precedence over its older counterpart.
+
+| Deprecated field                                                               | Use instead                                     |
+| :----------------------------------------------------------------------------- | :---------------------------------------------- |
+| `spec.imageRegistry`                                                           | `spec.registry.url`                             |
+| `spec.imagePullSecrets`                                                        | `spec.registry.imagePullSecrets`                |
+| `spec.beaconAgent.provisioning.imageDiscovery`                                 | `spec.registry.discovery.enabled`               |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryURL`          | `spec.registry.discovery.url`                   |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryContainerRegistryProvider`     | `spec.registry.discovery.provider`              |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryAuthenticationType`            | `spec.registry.discovery.authenticationType`    |
+| `spec.componentsParameters.upm-beacon.image_discovery_credentials_secret_name` | `spec.registry.discovery.credentialsSecretName` |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryCACerts`                       | `spec.registry.tls.caCerts`                     |
+| `spec.componentsParameters.upm-beacon.imageset_discovery_ca_certs`             | `spec.registry.tls.caCerts`                     |
+| `spec.kappController.caCerts`                                                  | `spec.registry.tls.caCerts`                     |
+| `spec.beaconAgent.provisioning.imagesetDiscoveryAllowInsecureRegistry`         | `spec.registry.tls.dangerousSkipTLSVerify`      |
+| `spec.kappController.dangerousSkipTLSVerify`                                   | `spec.registry.tls.dangerousSkipTLSVerify`      |
+
+When you point at an [in-cluster registry](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/in_cluster_registry/) with `spec.hmRegistryRef`, the operator populates `spec.registry.url`, `spec.registry.tls.dangerousSkipTLSVerify`, and the `spec.registry.discovery` URL, provider, and authentication type for you.
+
+### discovery.enabled
+
+This boolean option enables or disables the image discovery feature.
+It defaults to `false`.
+
+### discovery.url
+
+This option specifies the URL of the container registry to scan for Postgres images.
+
+It's optional. When it's unset, discovery scans the registry that pulls the HM images (`spec.registry.url`). In the common case where both are the same registry, you declare the URL only once. Set it when discovery targets a different repository or host, or when `spec.registry.url` includes a path and your registry isn't EDB Repo 2.0 (see below).
+
+For most registries, use the host only, with no path, even if `spec.registry.url` uses one. Discovery calls a separate endpoint (`/v2/_catalog`) that lists the entire registry, and most providers support that call only at the root.
+
+| Registry provider                                                                               | Registry URL                                                           | Includes a path? | Example                                        |
+| :---------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------- | :--------------- | :--------------------------------------------- |
+| [EDB Repo 2.0](https://www.enterprisedb.com/docs/repos/)                                        | `docker.enterprisedb.com/pgai-platform` (`/pgai-platform` is the path) | Yes              | `docker.enterprisedb.com/pgai-platform`        |
+| [Azure Container Registry (ACR)](https://azure.microsoft.com/en-us/products/container-registry) | `<registry-name>.azurecr.io`                                           | No               | `myregistry.azurecr.io`                        |
+| [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/)                          | `<aws-account-id>.dkr.ecr.<aws-region-id>.amazonaws.com`               | No               | `123456079902.dkr.ecr.us-east-1.amazonaws.com` |
+| [Google Artifact Registry (GAR)](https://cloud.google.com/artifact-registry/docs)               | `<gcp-region-id>-docker.pkg.dev`                                       | No               | `us-east1-docker.pkg.dev`                      |
+| [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/)          | `registry.gitlab.com`                                                  | No               | `registry.gitlab.com`                          |
+| [Harbor Registry](https://goharbor.io/)                                                         | `<harbor-host>`                                                        | No               | `harbor.example.com`                           |
+| [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in)             | `localhost:32000`                                                      | No               | `localhost:32000`                              |
+
+> **Note: EDB Repo 2.0**
+>
+> When discovery targets EDB Repo 2.0, the catalog-listing call needs a path (`/v2/pgai-platform/_catalog`), so its discovery URL includes `/pgai-platform`. Other registries take the host only, even if `spec.registry.url` includes a path.
+
+If `spec.registry.url` uses a path (for example, a Harbor project path), pass only the registry host to `edbctl image-pull-secret create --registry` (for example `harbor.example.com`, not `harbor.example.com/<project>`). A host-only entry in your credentials secret works for both image pulls and discovery, while an entry that includes the path isn't found when the discovery URL is the host only.
+
+### discovery.provider
+
+This option defines the provider for the registry that discovery scans. It defaults to `oci`.
+
+| Provider | Description                                                                                                                                                                          |
+| :------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oci`    | Set this if your container registry provider is fully [OCI compliant](https://github.com/opencontainers/distribution-spec/blob/main/spec.md), including the `/v2/_catalog` endpoint. |
+| `gitlab` | Set this if your container registry provider is [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/).                                              |
+
+The recommended provider value per registry provider is as follows:
+
+| Registry provider                                                                               | Provider value |
+| :---------------------------------------------------------------------------------------------- | :------------- |
+| [EDB Repo 2.0](https://www.enterprisedb.com/docs/repos/)                                        | `oci`          |
+| [Azure Container Registry (ACR)](https://azure.microsoft.com/en-us/products/container-registry) | `oci`          |
+| [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/)                          | `oci`          |
+| [Google Artifact Registry (GAR)](https://cloud.google.com/artifact-registry/docs)               | `oci`          |
+| [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/)          | `gitlab`       |
+| [Harbor Registry](https://goharbor.io/)                                                         | `oci`          |
+| [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in)             | `oci`          |
+
+### discovery.authenticationType
+
+This option indicates the type of authentication to use when connecting to the registry during image discovery.
+
+The supported authentication types by registry provider are as follows:
+
+| Registry provider                                                                               | Supported              | Recommended            |
+| :---------------------------------------------------------------------------------------------- | :--------------------- | :--------------------- |
+| [EDB Repo 2.0](https://www.enterprisedb.com/docs/repos/)                                        | `token`                | `token`                |
+| [Azure Container Registry (ACR)](https://azure.microsoft.com/en-us/products/container-registry) | `token`, `basic`       | `token`                |
+| [Amazon Elastic Container Registry (ECR)](https://aws.amazon.com/ecr/)                          | `eks_managed_identity` | `eks_managed_identity` |
+| [Google Artifact Registry (GAR)](https://cloud.google.com/artifact-registry/docs)               | `token`, `basic`       | `basic`                |
+| [GitLab Container Registry](https://docs.gitlab.com/user/packages/container_registry/)          | `token`                | `token`                |
+| [MicroK8s Built-in Registry](https://canonical.com/microk8s/docs/registry-built-in)             | `none`                 | `none`                 |
+
+### discovery.credentialsSecretName
+
+This value is the name of the Kubernetes secret containing the credentials of the registry used for image discovery.
+Defaults to `edb-cred`.
+
+### tls.caCerts
+
+Use this option to have HM trust a container registry that's served with a certificate signed by a private or internal certificate authority (CA), without disabling certificate validation.
+
+Provide the CA as an inline, PEM-encoded certificate bundle. When this option is set and `dangerousSkipTLSVerify` is `false`, HM verifies the CA in addition to the system trust store, and the connection uses TLS 1.2 or later.
+
+This is the recommended way to reach a private-CA registry over HTTPS in regulated or air-gapped environments that must use HTTPS and can't enable insecure mode.
+
+You supply the CA once, and both consumers that contact the registry from inside HM use it: the beacon agent scanning for image tags, and kapp-controller pulling the HM component packages. Earlier releases required the same PEM bundle in two independent fields, which risked drifting out of sync.
+
+```yaml
+spec:
+  registry:
+    tls:
+      caCerts: |
+        -----BEGIN CERTIFICATE-----
+        <your-private-CA-certificate>
+        -----END CERTIFICATE-----
+      dangerousSkipTLSVerify: false
+```
+
+> **Note**
+>
+> `caCerts` and `dangerousSkipTLSVerify` solve the same problem in different ways. Prefer `caCerts`, which keeps certificate validation enabled. Enable `dangerousSkipTLSVerify` only when you can't supply a CA, because it disables validation entirely. If `dangerousSkipTLSVerify` is `true`, certificate validation is skipped and `caCerts` has no effect.
+
+#### Rotating the CA
+
+To rotate or replace the CA, replace the `spec.registry.tls.caCerts` value on the `HybridControlPlane` CR with the new CA certificate and apply it. You don't need to keep the old certificate alongside the new one. For image discovery, the change is applied automatically and **no beacon agent pod restart is required**:
+
+1. The `edb-hcp-operator` reconciles the updated CR and refreshes the ConfigMap that holds the CA certificate.
+2. Kubernetes syncs the updated certificate into the beacon agent pod's mounted volume (typically within about a minute).
+3. The beacon agent re-reads the certificate file on its next discovery cycle and uses the new CA from then on.
+
+The new CA typically takes effect within a couple of minutes. Removing the field reverts to the system trust store only, so a private-CA registry stops being trusted.
+
+> **Note**
+>
+> This option covers the connections HM makes to the registry — the beacon agent scanning it for available tags, and kapp-controller pulling component packages from it. It does **not** configure the trust that the Kubernetes nodes use when they pull the discovered images to provision a cluster.
+>
+> If the registry is served with a private CA, node image pulls fail independently — even when discovery succeeds — with an error such as `x509: certificate signed by unknown authority`. Trusting the private CA at the node level is the responsibility of your **Kubernetes cluster administrator**; it's outside the scope of Hybrid Manager configuration. The administrator must add the CA to each node's container runtime or operating system trust store, for example:
+>
+> - **containerd:** add the CA under the registry's `certs.d` directory (for example, `/etc/containerd/certs.d/<registry-host>/`).
+> - **Operating system:** install the CA into the node's system trust store (for example, `/etc/pki/ca-trust` or `/usr/local/share/ca-certificates`) and refresh it.
+>
+> Apply this configuration to every node that pulls images, and reapply it as nodes are added or replaced.
+
+### tls.dangerousSkipTLSVerify
+
+Enabling this option treats the registry as fully insecure: it disables certificate validation and permits a plaintext HTTP fallback.
+It defaults to `false`.
+
+Because both image discovery and kapp-controller image pulls read the same `spec.registry.tls` block, enabling this option makes both connections insecure.
+
+---
+
+## Configure registry permissions
+
+The HM-internal beacon agent requires specific permissions to scan your registry.
+
+It must be able to:
+
+- List repositories
+- List tags
+- Read tag manifests
+
+Select your platform below to configure the necessary permissions.
+
+### Generic / on-Premises (RKE2/OpenShift)
+
+If you are using a standard OCI registry (like Harbor, Quay, or Artifactory), ensure the username/password you provided when creating your [\*_Image Pull Secret_](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/environment_prep/#create-image-pull-secret)\* has `read` and `list` permissions on the target repositories.
+
+Refer to your registry's documentation (examples: [Quay.io Permissions](https://quay.io/)) to configure the service account.
+
+### Azure Container Registry (ACR)
+
+The ACR token used as a Kubernetes image pull secret must have the `_repositories_pull_metadata_read` scope-map.
+
+```bash
+az acr token create --name <token-name> --registry <registry-name> \
+    --scope-map "_repositories_pull_metadata_read"
+```
+
+### AWS Elastic Container Registry (ECR)
+
+When running on EKS with ECR, **EKS Managed Identity** is the required authentication method.
+
+You must create an IAM role with the `AmazonEC2ContainerRegistryReadOnly` policy and associate it with the Beacon's service account.
+
+**Run this script to configure the IAM Role and Pod Identity:**
+
+```bash
+# Configuration Variables
+EKS_CLUSTER_NAME="<eks_cluster_name>"
+EKS_CLUSTER_REGION="<eks_cluster_region>"
+IMAGE_DISCOVERY_IAM_ROLE_NAME="<iam_role_name>"
+
+# 1. Create Trust Policy
+cat <<EOF > ./image-discovery-trust.json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowEksAuthToAssumeRoleForPodIdentity",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "pods.eks.amazonaws.com"
+            },
+            "Action": [
+                "sts:AssumeRole",
+                "sts:TagSession"
+            ]
+        }
+    ]
+}
+EOF
+
+# 2. Create Role & Attach Policy
+aws iam create-role --role-name "${IMAGE_DISCOVERY_IAM_ROLE_NAME}" \
+    --assume-role-policy-document file://image-discovery-trust.json
+
+aws iam attach-role-policy --role-name "${IMAGE_DISCOVERY_IAM_ROLE_NAME}" \
+    --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+# 3. Associate with EKS Service Account
+IMAGE_DISCOVERY_IAM_ROLE_ARN=$(aws iam get-role --role-name ${IMAGE_DISCOVERY_IAM_ROLE_NAME} | jq -r '.Role.Arn')
+
+aws eks create-pod-identity-association --cluster-name "${EKS_CLUSTER_NAME}" \
+    --namespace upm-beacon \
+    --service-account upm-beacon-agent-k8s \
+    --role-arn "${IMAGE_DISCOVERY_IAM_ROLE_ARN}" \
+    --region "${EKS_CLUSTER_REGION}"
+```
+
+### Additional configuration for package installation
+
+To allow **package installation** for downloading and deploying packages, you must also grant ECR access to the **kapp-controller** component.
+
+The kapp-controller is responsible for pulling Helm charts and package manifests from ECR during application deployment.
+Without this configuration, package installations will fail with credential errors.
+
+Add Pod Identity association for kapp-controller:
+
+```bash
+# Use the same IAM role ARN from above
+aws eks create-pod-identity-association --cluster-name "${EKS_CLUSTER_NAME}" \
+    --namespace kapp-controller \
+    --service-account kapp-controller-sa \
+    --role-arn "${IMAGE_DISCOVERY_IAM_ROLE_ARN}" \
+    --region "${EKS_CLUSTER_REGION}"
+```
+
+### Google Artifact Registry (GAR)
+
+When running on GKE, the Service Account used by the Beacon must have permissions to list projects and read artifacts.
+
+**Required Roles:**
+
+- `roles/artifactregistry.reader` (to read images)
+- `roles/browser` (specifically `resourcemanager.projects.list` to find repositories)
+
+**Run this script to apply the IAM bindings:**
+
+```bash
+# Replace with your Project ID and Service Account Name
+PROJECT_ID="<your-project-id>"
+SERVICE_ACCOUNT_EMAIL="<service-account-name>@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# Grant Reader Role
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+    --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+    --role="roles/artifactregistry.reader"
+
+# Grant Browser Role (Required for discovery)
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+    --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+    --role="roles/browser"
+```
+
+### GitLab Container Registry
+
+The [Personal access token](https://docs.gitlab.com/user/profile/personal_access_tokens/) used as a Kubernetes image pull secret must have the following scopes:
+
+- `read_registry` — allows read-only access to container registry images on private projects.
+- `read_api` — allows read access to projects and container repositories.
+
+For more details, see the [GitLab Personal access token scopes](https://docs.gitlab.com/user/profile/personal_access_tokens/#personal-access-token-scopes).
+
+> **Note**
+>
+> Only `legacy` tokens are supported.
+
+---
+
+## Configure Kubernetes Secret
+
+The final step is ensuring HM knows which Kubernetes Secret contains the registry credentials (if not using Cloud Identity).
+
+Confirm or update the credentials secret name in your `HybridControlPlane` CR under `spec.registry.discovery`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  registry:
+    discovery:
+      credentialsSecretName: "edb-cred"
+    # ... your other registry settings
+```
+
+Apply the updated CR:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+**Verification:**
+
+After applying these changes, check the logs of the **HM-internal beacon agent** pod.
+You should see messages indicating that it is scanning the registry and discovering image tags.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

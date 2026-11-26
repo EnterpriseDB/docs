@@ -1,0 +1,21 @@
+---
+title: Troubleshooting your repositories and downloads
+description: How to troubleshoot your repositories and downloads when they don't work
+product: EDB repositories and downloading
+url: https://www.enterprisedb.com/docs/repos/getting_started/troubleshooting/
+lastModified: 2024-07-18T17:07:16-04:00
+---
+
+# Troubleshooting your repositories and downloads
+
+If your download doesn't work, you can try the following troubleshooting steps:
+
+- **Check your internet connection.** Make sure you're connected to the internet and that your connection is stable.
+
+- **Check for errors in the terminal.** If the curl command responded with an error or returns immediately with no output, there may be an issue with the command. Check the command and try again.
+
+- **Check for 404 errors.** If you see a 404 error, it's possible that your token doesn't entitle you to access the repository you've configured. Check the repository name and try again.
+
+If none of these steps work, contact [EDB Support](https://www.enterprisedb.com/support-center) for assistance.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

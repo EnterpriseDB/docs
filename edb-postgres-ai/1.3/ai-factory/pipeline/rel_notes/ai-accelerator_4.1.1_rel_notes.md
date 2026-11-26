@@ -1,0 +1,41 @@
+---
+title: AI Accelerator - Pipelines 4.1.1 release notes
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/rel_notes/ai-accelerator_4.1.1_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# AI Accelerator - Pipelines 4.1.1 release notes
+
+Released: 28 May 2025
+
+This is a minor release that includes bug fixes.
+Note: this release depends on the new PGFS version 2.0.2. If you're using PGFS together with AIDB, please update PGFS as well.
+
+## Highlights
+
+- Bug fixes and UX enhancements.
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Change the tracking of &quot;run IDs&quot; for volume knowledge bases from a PG sequence to a PG table column</summary><p>Knowledge bases with volume source need to assign an incrementing ID to each listing done on the source.
+This is necessary to detect when a listing is complete and recognize which previously seen objects were not encountered any more.
+In this release the method for tracking run IDs is changed to a table column since the Postgres sequence used before did not
+work on Postgres Distributed (PGD) clusters.</p>
+</details></td></tr>
+<tr><td><details><summary>Support AIDB volumes in arbitrary Postgres schemas</summary><p>Volumes for AIDB can be created in arbitrary schemas in Postgres either by exlicitly passing a schema to the create function, or by
+setting a &quot;current schema&quot; via the search path. When using volumes in AIDB pipelines, the volume reference needs to be stored.
+AIDB will now store and explicitly use a schema when later executing a pipeline. Previously, the search path was used to find volumes.</p>
+</details></td></tr>
+<tr><td><details><summary>Background worker dispatcher is no longer persistent</summary><p>When background workers are enabled for AIDB, a root-worker will start a database dispatcher for each database within the Postgres instance.
+This database dispatcher checks if AIDB is installed in the DB and if any pipelines need to be run in the background.
+The database dispatcher is now no longer a permanent process by default. When a database does not use AIDB, the database dispatcher
+exits and will be re-started to check for AIDB every 2 minutes.
+This avoids holding a permanent connection to the DB that would block e.g. &quot;drop table&quot; commands.
+If AIDB is installed in the DB, then the database dispatcher worker will keep running. Users can drop the extension in order to release the connection.</p>
+</details></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,2834 @@
+---
+title: Detailed breakdown of gathered data
+product: Lasso
+version: "4"
+url: https://www.enterprisedb.com/docs/lasso/latest/describe/
+lastModified: 2026-09-07T17:27:30+02:00
+---
+
+# Detailed breakdown of gathered data
+
+## GNU/Linux operating system
+
+### barman crontab/cron (`barman_crontab_cron`)
+
+Output from `crontab -l`, if running as barman. Content of
+`/etc/cron.d/barman`, if it exists.
+
+**Report output:**
+
+- File `/linux/barman_cron.data`: Content of `/etc/cron.d/barman`, if it exists
+- File `/linux/barman_crontab.data`: Output from `barman crontab -l`, if barman user
+
+**Depth:** Surface
+
+**Security impact:** Low —
+Might have entries in `crontab/cron` with sensitive data.
+
+### debug\_sources (`debug_sources`)
+
+Count files under `/usr/src/debug` to detect the applications whose
+source code is present in the system and facilitate live debugging.
+
+**Report output:**
+
+- File `/linux/debug_sources.data`: Sources for GNU debugger
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EFM CLI (`efm_cli`)
+
+Get output of `efm cluster-status` command.
+
+**Report output:**
+
+- File `/tools/efm/cli/cluster_status.out`: Output of `efm cluster-status cluster_name` command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EFM configuration (`efm_configuration`)
+
+EFM properties and nodes configuration files.
+
+**Report output:**
+
+- File `/tools/efm/config/efm.nodes`: EFM nodes file
+- File `/tools/efm/config/efm.properties`: EFM properties file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EFM systemctl (`efm_systemctl`)
+
+When EFM services are detected, collects status and cat of the
+corresponding services. Checks for any service whose name starts
+with `edb-efm-`.
+
+**Report output:**
+
+- File `/tools/efm/systemd/service_name_cat.data`: Output of `systemctl cat service_name`
+- File `/tools/efm/systemd/service_name_status.data`: Output of `systemctl status service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### etcd CLI (`etcd_cli`)
+
+Gathers the output of some `etcdctl` commands, if `etcdctl` is
+available in the server. The commands are `endpoint status` and
+`endpoint health`.
+
+**Report output:**
+
+- File `/tools/etcd/cli/endpoint_status.out`: Output of `etcdctl endpoint status` command
+- File `/tools/etcd/cli/endpoint_health.out`: Output of `etcdctl endpoint health` command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### etcd configuration (`etcd_configuration`)
+
+Collects `etcd` configuration file that's found in the server.
+
+**Report output:**
+
+- File `/tools/etcd/config/basename`: `etcd` configuration file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### etcd systemctl (`etcd_systemctl`)
+
+When etcd services are detected, collects status and cat of the
+corresponding services. Checks for any service whose name starts
+with `etcd`.
+
+**Report output:**
+
+- File `/tools/etcd/systemd/service_name_cat.data`: Output of 'systemctl cat service\_name
+- File `/tools/etcd/systemd/service_name_status.data`: Output of 'systemctl status service\_name
+
+**Depth:** Surface
+
+**Security impact:** low —
+No known security impact.
+
+### HARP CLI (`harp_cli`)
+
+Gathers output of a few `harpctl` command outputs using the
+`config.yml` file, which is found in the server. The commands are:
+`cluster`, `proxies`, `locations`, `nodes`, and `version`.
+
+**Report output:**
+
+- File `/tools/harp/cli/version.out`: Output of `harpctl -f conf_file_path version` command
+- File `/tools/harp/cli/proxies.out`: Output of `harpctl -f conf_file_path get proxies -o yaml` command
+- File `/tools/harp/cli/nodes.out`: Output of `harpctl -f conf_file_path get nodes -o yaml` command
+- File `/tools/harp/cli/locations.out`: Output of `harpctl -f conf_file_path get locations -o yaml` command
+- File `/tools/harp/cli/cluster.out`: Output of `harpctl -f conf_file_path get cluster -o yaml` command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### HARP configuration (`harp_configuration`)
+
+Collects HARP configuration file that's found in the server.
+
+**Report output:**
+
+- File `/tools/harp/config/harp.cluster.init.yml`: HARP bootstrap configuration file
+- File `/tools/harp/config/basename`: HARP configuration file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### HARP systemctl (`harp_systemctl`)
+
+When HARP services are detected, collects status and cat of the
+corresponding services. Checks for any service whose name starts
+with `harp`.
+
+**Report output:**
+
+- File `/tools/harp/systemd/service_name_cat.data`: Output of `systemctl cat service_name`
+- File `/tools/harp/systemd/service_name_status.data`: Output of `systemctl status service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Block devices layout (`linux_block_devices_layout`)
+
+Information on block devices layout from the `lsblk` command.
+
+**Report output:**
+
+- File `/linux/lsbk.data`: `lsbk` command output
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Processor governor (`linux_cpu_governor`)
+
+Processor scaling governor from the files in `/sys/devices/system/cpu`.
+
+**Report output:**
+
+- File `/linux/sys/energy_perf_bias.data`: Intel Performance and Energy Bias attributes
+- File `/linux/sys/intel_pstate.data`: Intel pstate configuration
+- File `/linux/sys/cpu_scaling_driver.data`: Available CPU scaling driver
+- File `/linux/sys/cpu_scaling_available_governors.data`: Available CPU scaling governors
+- File `/linux/sys/cpu_scaling_governor.data`: Active CPU scaling governor
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Mounted file systems and available space (`linux_devices_info`)
+
+List-mounted file systems through the `mount` command and free space
+using `df`.
+
+**Report output:**
+
+- File `/linux/diskspace.data`: Amount of available disk space
+- File `/linux/mount.data`: Output of the `mount` command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### File systems configuration (`linux_disk_configuration`)
+
+Disk configuration obtained through the `/etc/fstab` file.
+
+**Report output:**
+
+- File `/linux/fstab.data`: Contents of /etc/fstab
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### OS distribution, kernel, and device data (`linux_distro_collector`)
+
+Information about the Linux distribution currently in use returned
+by the `lsb_release` command.
+
+**Report output:**
+
+- File `/linux/release.data`: Linux distribution currently in use
+- File `/linux/release_source.data`: Name of the collected file or the executed command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Hardware (`linux_hardware_info`)
+
+Hardware info through `lspci`.
+
+**Report output:**
+
+- File `/linux/lspci.data`: Hardware info from `lspci`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### /etc/hosts configuration (`linux_hosts_configuration`)
+
+Hosts configuration in `/etc/hosts`.
+
+**Report output:**
+
+- File `/linux/hosts.data`: Contents of `/etc/hosts`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### HTTP(s) proxies in use for package downloads (`linux_http_proxy_configuration`)
+
+Gathers information about HTTP(s) proxies in use for package
+downloads. Passwords are redacted.
+
+**Report output:**
+
+- File `/linux/packages-yum-config-manager.data`: YUM configuration
+- File `/linux/packages-dnf-config-manager.data`: DNF configuration
+- File `/linux/etc_environment.data`: Contents of /etc/environment
+
+**Depth:** Surface
+
+**Security impact:** _Low_ —
+No known security impact.
+
+### Hypervisor (`linux_hypervisor_collector`)
+
+Information about the type of virtualization used, as returned by the
+`systemd-detect-virt` command.
+
+**Report output:**
+
+- File `/linux/hypervisor.data`: Name of the collected file or the executed command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Kernel (`linux_kernel_info`)
+
+Kernel info, transparent huge pages status, and disk scheduler
+configuration. Obtained by combining the output of the commands `uname`
+and `ipcs` with the contents of the `/proc` and `/sys` file systems.
+
+**Report output:**
+
+- File `/linux/read_ahead.data`: Info on the read ahead
+- File `/linux/schedulers.data`: Scheduler info from `/sys` dir
+- File `/linux/sys/kernel_mm_transparent_hugepage.data`: Transparent huge pages info
+- File `/linux/ipcs.data`: `ipcs` command output
+- File `/linux/uname.data`: `uname` command output
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Kernel limits (`linux_kernel_limits`)
+
+Configuration file for the `pam_limits` module.
+
+**Report output:**
+
+- File `/linux/limits.data`: Content of the `limits.conf` file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### ld.so configuration (`linux_ldso`)
+
+Dynamic linker configuration (overloads).
+
+**Report output:**
+
+- File `/linux/ldso/env_LD_AUDIT.data`: Current `$LD_AUDIT` variable
+- File `/linux/ldso/env_LD_PRELOAD.data`: Current `$LD_PRELOAD` variable
+- File `/linux/ldso/ld.so.conf.data`: Contents of all `ld.so` config files under `/etc/ld.so.conf*`
+- File `/linux/ldso/ld.so.preload.data`: Contents of `/etc/ld.so.preload` file
+- File `/linux/ldso/ldconfig-cache.data`: Output of `ldconfig --print-cache`
+
+**Depth:** Deep
+
+**Security impact:** Low —
+No known security impact.
+
+### Configured locale (`linux_locale`)
+
+Information about the system locale.
+
+**Report output:**
+
+- File `/linux/localectl.data`: Currently configured locale
+- File `/linux/locale--all-locales.data`: List of installed locales
+- File `/linux/locale.data`: Currently configured locale
+- File `/linux/locale-conf.data`: Currently configured locale
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Processor usage statistics (`linux_mpstat`)
+
+Processor statistics from the `mpstat` command.
+
+**Report output:**
+
+- File `/linux/mpstat.data`: Output from `mpstat -P ALL 1 10`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Network interfaces (`linux_network_interfaces`)
+
+Network interface information from the `ip` and `ifconfig` commands.
+
+**Report output:**
+
+- File `/linux/ifconfig.data`: Output from `ifconfig`
+- File `/linux/ip_address_list.data`: Output from `ip address list`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Installed packages via rpm or dpkg (`linux_packages_info`)
+
+Information about the system packages installed using `rpm` or `dpkg`.
+
+**Report output:**
+
+- File `/linux/packages-dpkg.data`: List of packages installed using `dpkg`
+- File `/linux/packages-rpm.data`: List of packages installed using `rpm`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Installed packages origins (`linux_packages_origin_info`)
+
+Information about the packages origins.
+
+**Report output:**
+
+- File `/linux/packages-apt_conf.data`: `apt` configuration
+- File `/linux/packages-apt-cache-policy.data`: `apt` configuration
+- File `/linux/packages-apt-list-installed.data`: Repositories that were used to install packages
+- File `/linux/packages-yum-repolist.data`: Repositories that are enabled in `yum`
+- File `/linux/packages-dnf-module-list.data`: Repositories that are enabled in `dnf`
+- File `/linux/packages-dnf-repolist.data`: Repositories that are enabled in `dnf`
+- File `/linux/packages-yum-list-installed.data`: Repositories that were used to install packages
+- File `/linux/packages-dnf-list-installed.data`: Repositories that were used to install packages
+
+**Depth:** Surface
+
+**Security impact:** _Low_ —
+No known security impact.
+
+### PostgreSQL disk layout (`linux_postgresql_disk_layout`)
+
+List all files in the PostgreSQL data directory using `find` for
+links and `ls` for files.
+
+**Report output:**
+
+- File `/linux/pg_ls.data`: List of files inside the data directory
+- File `/linux/pg_links.data`: List of links inside the data directory
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### SELinux (`linux_sestatus`)
+
+SELinux status from `sestatus`.
+
+**Report output:**
+
+- File `/linux/sestatus.data`: Output from `sestatus`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### OpenSSL version and configuration (`linux_ssl`)
+
+Collect OpenSSL version, enabled engines, and ciphers/configurations.
+
+**Report output:**
+
+- File `/linux/openssl/crypto-policies-isapplied.data`: Output of `update-crypto-policies --is-applied` RHEL tool
+- File `/linux/openssl/crypto-policies-show.data`: Output of `update-crypto-policies --show` RHEL tool
+- File `/linux/openssl/fips-mode-setup.data`: Output of `fips-mode-setup --check` RHEL tool
+- File `/linux/openssl/ciphers.data`: Output of `openssl ciphers`
+- File `/linux/openssl/engines.data`: Output of `openssl engine`
+- File `/linux/openssl/version.data`: Output of `openssl version`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### System identification (`linux_system_identity`)
+
+Collect hostname, network interfaces, system info (uname), system
+identifier, and release info.
+
+**Report output:**
+
+- File `/linux/id/system_release.data`: OS information from `/etc/system-release`
+- File `/linux/id/os_release.data`: OS information from `/etc/os-release`
+- File `/linux/id/machine_id.data`: Machine ID contained in `/etc/machine-id`
+- File `/linux/id/uname.data`: Information about the running kernel
+- File `/linux/id/hostname.data`: Fully qualified domain name
+- File `/linux/id/interfaces.data`: Network addresses of the host
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### dmesg and /proc information (`linux_system_info`)
+
+System info from the contents of the `/proc` filesystem and through
+the output of `dmesg` command.
+
+**Report output:**
+
+- File `/linux/lsmod.data`: `lsmod` output
+- File `/linux/dmesg_with_timestamp.data`: `Dmesg` output (human-readable timestamps)
+- File `/linux/dmesg.data`: `dmesg` output
+- File `/linux/proc/sys_net_ipv4.data`: Network info from `/proc`
+- File `/linux/proc/sys_vm.data`: VM info from `/proc`
+- File `/linux/proc/sys_kernel.data`: Kernel info from `/proc`
+- File `/linux/vmstat.data`: VM statistics from `/proc`
+- File `/linux/proc/mounts.data`: Mount points from `/proc`
+- File `/linux/proc/uptime.data`: Uptime info from `/proc`
+- File `/linux/proc/loadavg.data`: Load avg from `/proc`
+- File `/linux/proc/meminfo.data`: Memory info from `/proc`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### System status — device mapper devices (`linux_system_status_dmdevices`)
+
+Get information about device mapper devices.
+
+**Report output:**
+
+- File `/linux/lsdevmapper.data`: Information about `/dev/mapper` device mapper symlinks
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### System status — iostat (`linux_system_status_iostat`)
+
+System status from the `iostat` command.
+
+**Report output:**
+
+- File `/linux/iostat.data`: Info on I/O statistics
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### System status — nfsiostat (`linux_system_status_nfsiostat`)
+
+System status from the `nfsiostat` command.
+
+**Report output:**
+
+- File `/linux/nfsiostat.data`: nfs I/O statistics
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### System status — ps (`linux_system_status_ps`)
+
+System status from the `ps` command.
+
+**Report output:**
+
+- File `/linux/ps.data`: Active processes info
+
+**Depth:** Surface
+
+**Security impact:** Low —
+Some processes might contain sensitive data in their names.
+
+### System status — sar (`linux_system_status_sar`)
+
+System status from the `sar` command.
+
+**Report output:**
+
+- File `/linux/sar.data`: Actual `sar` info
+- File `/linux/sar-yesterday.data`: `sar` info from yesterday
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### System status — top (`linux_system_status_top`)
+
+System status from the `top` command.
+
+**Report output:**
+
+- File `/linux/top.data`: Process information
+
+**Depth:** Surface
+
+**Security impact:** Low —
+Some processes might contain sensitive data in their names.
+
+### System status — vmstat (`linux_system_status_vmstat`)
+
+System status from the `vmstat` command.
+
+**Report output:**
+
+- File `/linux/vmstat.data`: Info on processes, memory, paging, block IO, traps, disks, and CPU activity
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### systemctl units (`linux_systemctl_units`)
+
+Systemctl list-units on a `systemd` server.
+
+**Report output:**
+
+- File `/linux/systemd/list-units.data`: Output of `systemctl list-units`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### tuned (`linux_tuned`)
+
+Tuned status and profiles.
+
+**Report output:**
+
+- Directory `/linux/tuned/tune-profiles`: Files from `/etc/tune-profiles`
+- Directory `/linux/tuned/tuned`: Files from `/etc/tuned`
+- File `/linux/tuned/tuned.conf`: File `/etc/tuned.conf`
+- File `/linux/tuned/tuned-list.data`: Output from `tuned_adm list`
+- File `/linux/tuned/tuned-active.data`: Output from `tuned_adm active`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### PEM configuration (`pem_configuration`)
+
+PEM configuration files from PEM agent, PEM server, and PEM web server.
+
+**Report output:**
+
+- File `/tools/pem/config/edb-ssl-pem.conf`: PEM web server SSL configuration file
+- File `/tools/pem/config/edb-pem.conf`: PEM web server configuration file
+- File `/tools/pem/config/install-config`: PEM server configuration file (installation config file)
+- File `/tools/pem/config/config_setup.py`: PEM server setup configuration file
+- File `/tools/pem/config/pem.wsgi`: PEM server WSGI definition file
+- File `/tools/pem/config/agent.cfg`: PEM agent configuration file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### PEM systemctl (`pem_systemctl`)
+
+When PEM is detected, collects PEM agent and PEM web server status and
+content.
+
+**Report output:**
+
+- File `/tools/pem/systemd/service_name_cat.data`: Output of `systemctl cat service_name`
+- File `/tools/pem/systemd/service_name_status.data`: Output of `systemctl status service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### PgBouncer configuration (`pgbouncer_configuration`)
+
+PgBouncer configuration files.
+
+**Report output:**
+
+- File `/tools/pgbouncer/num/config/basename`: PgBouncer configuration file from instance num
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### PgBouncer systemctl (`pgbouncer_systemctl`)
+
+When PgBouncer services are detected, collects status and cat of the
+corresponding services. Checks for any service that contains any
+of the PgBouncer configuration files.
+
+**Report output:**
+
+- File `/tools/pgbouncer/num/systemd/service_name_cat.data`: Output of `systemctl cat service_name` from instance num
+- File `/tools/pgbouncer/num/systemd/service_name_status.data`: Output of `systemctl status service_name` from instance num
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### PGD Proxy configuration (`pgd_proxy_configuration`)
+
+Collects PGD Proxy configuration file that's found in the server.
+
+**Report output:**
+
+- File `/tools/pgd-proxy/config/basename`: PGD Proxy configuration file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### PGD Proxy systemctl (`pgd_proxy_systemctl`)
+
+When PGD Proxy services are detected, collects status and cat of the
+corresponding services. Checks for any service whose name starts
+with `pgd-proxy`.
+
+**Report output:**
+
+- File `/tools/pgd-proxy/systemd/service_name_cat.data`: Output of `systemctl cat service_name`
+- File `/tools/pgd-proxy/systemd/service_name_status.data`: Output of `systemctl status service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### postgres/enterprisedb crontab (`postgres_enterprisedb_crontab`)
+
+Output from `crontab -l`, if running as postgres or enterprisedb.
+
+**Report output:**
+
+- File `/linux/enterprisedb_crontab.data`: Output from `enterprisedb crontab -l`, if enterprisedb user
+- File `/linux/postgres_crontab.data`: Output from `postgres crontab -l`, if postgres user
+
+**Depth:** Surface
+
+**Security impact:** Low —
+Might have entries in crontab/cron with sensitive data.
+
+### PostgreSQL systemctl (`postgresql_systemctl`)
+
+Collects PostgreSQL service status and content.
+
+**Report output:**
+
+- File `/linux/systemd/service_name_cat.data`: Output of `systemctl cat service_name`
+- File `/linux/systemd/service_name_status.data`: Output of `systemctl status service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### repmgr CLI (`repmgr_cli`)
+
+Collects output of `repmgr cluster crosscheck` and `repmgr daemon status`
+using the `repmgr.conf` file, which is found in the server.
+
+**Report output:**
+
+- File `/tools/repmgr/cli/daemon_status.out`: Output of `repmgr daemon status -f conf_file_path` command
+- File `/tools/repmgr/cli/cluster_crosscheck.out`: Output of `repmgr cluster crosscheck -f conf_file_path` command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### repmgr configuration (`repmgr_configuration`)
+
+Collects repmgr configuration file that's found in the server.
+
+**Report output:**
+
+- File `/tools/repmgr/config/repmgr.conf`: repmgr configuration file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### repmgr systemctl (`repmgr_systemctl`)
+
+When repmgr services are detected, collects status and cat of the
+corresponding services. Checks for any service whose name starts
+with `repmgr`.
+
+**Report output:**
+
+- File `/tools/repmgr/systemd/service_name_cat.data`: Output of `systemctl cat service_name`
+- File `/tools/repmgr/systemd/service_name_status.data`: Output of `systemctl status service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### xDB CLI (`xdb_cli`)
+
+xDB output from several CLI commands, from the xDB publication and
+subscription server that are running.
+
+**Report output:**
+
+- Directory `/tools/xdb/cli`: xDB CLI print commands
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### xDB configuration (`xdb_configuration`)
+
+xDB configuration files.
+
+**Report output:**
+
+- File `/tools/xdb/config/xdbReplicationServer.config`: xDB startup configuration
+- File `/tools/xdb/config/edb-repl.conf`: xDB replication configuration
+- File `/tools/xdb/config/xdb_subserver.conf`: xDB subscription server configuration
+- File `/tools/xdb/config/xdb_pubserver.conf`: xDB publication server configuration
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### xDB systemctl (`xdb_systemctl`)
+
+When xDB services are detected, collects status and cat of `edb-
+xdbpubserver` and `edb-xdbsubserver`.
+
+**Report output:**
+
+- File `/tools/xdb/systemd/service_name_cat.data`: Output of `systemctl cat service_name`
+- File `/tools/xdb/systemd/service_name_status.data`: Output of `systemctl status service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+## Microsoft Windows operating system
+
+### PEM configuration — Windows (`pem_configuration_windows`)
+
+PEM configuration files from PEM agent, PEM server, and PEM web server
+in a Windows environment.
+
+**Report output:**
+
+- File `/tools/pem/config/edb-ssl-pem.conf`: PEM web server SSL configuration file
+- File `/tools/pem/config/edb-pem.conf`: PEM web server configuration file
+- File `/tools/pem/config/pem.wsgi`: PEM server WSGI definition file
+- File `/tools/pem/config/agent.cfg`: PEM agent configuration file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### PEM sc (`pem_sc`)
+
+When PEM is detected, collects PEM agent and PEM web server status and
+content
+
+**Report output:**
+
+- File `/tools/pem/sc/service_name_query.data`: Output of `sc query service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Disk information (`win_disk_information`)
+
+Disk and controller information from the system registry.
+
+**Report output:**
+
+- File `/windows/enum_ide.reg`: Local machine ide device settings
+- File `/windows/enum_scsi.reg`: Local machine scsi device settings
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Hosts file (`win_hosts`)
+
+Host files and network-related information.
+
+**Report output:**
+
+- File `/windows/services.data`: Windows `services` file
+- File `/windows/protocol.data`: Windows `protocol` file
+- File `/windows/networks.data`: Windows `networks` file
+- File `/windows/hosts.sam`: Windows `hosts.sam` file
+- File `/windows/hosts.data`: Windows `hosts` file
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### MsInfo (`win_msinfo`)
+
+`MsInfo32` report in `NFO` and `TXT` format.
+
+**Report output:**
+
+- File `/windows/msinfo_report.txt`: Information from the `MsInfo32` in textual format
+- File `/windows/msinfo_report.nfo`: Information from the `MsInfo32` in `NFO`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### ODBC/64 (`win_odbc32_info`)
+
+ODBC configuration from the 64-bit registry section.
+
+**Report output:**
+
+- File `/windows/user_odbc_wow64.reg`: User DSN list
+- File `/windows/localmachine_odbcinst_wow64.reg`: List of installed ODBC drivers
+- File `/windows/localmachine_odbc_wow64.reg`: System DSN list
+
+**Depth:** Surface
+
+**Security impact:** Medium —
+ODBC connection information could expose the presence of other
+databases or connection information to PostgreSQL that can be used to
+attack the system.
+
+### ODBC/32 (`win_odbc64_info`)
+
+ODBC configuration from the 32-bit registry section.
+
+**Report output:**
+
+- File `/windows/user_odbc.reg`: User DSN list
+- File `/windows/localmachine_odbcinst.reg`: list of installed ODBC drivers
+- File `/windows/localmachine_odbc.reg`: System DSN list
+
+**Depth:** Surface
+
+**Security impact:** Medium —
+ODBC connection information could expose the presence of other
+databases or connection information to PostgreSQL that can be used to
+attack the system.
+
+### systeminfo (`win_systeminfo`)
+
+Output of the `systeminfo` command.
+
+**Report output:**
+
+- File `/windows/systeminfo_report.txt`: Information from the `systeminfo` command
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Disk volumes (`win_volumes`)
+
+Volume list from `WMI`.
+
+**Report output:**
+
+- File `/windows/association_structure`: Association between drive letters and physical drives
+- File `/windows/volume_disk`: Volume list from the WMI subsystem
+- File `/windows/logical_disk_list`: Logical disk list from the WMI subsystem
+- File `/windows/disk_partition_list`: Disk partition list from the WMI subsystem
+- File `/windows/disk_drive_list`: Disk list from the WMI subsystem
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### xDB CLI — Windows (`xdb_cli_windows`)
+
+xDB output from several CLI commands, from the running xDB publication and
+subscription servers.
+
+**Report output:**
+
+- Directory `/tools/xdb/cli`: xDB CLI print commands
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### xDB configuration — Windows (`xdb_configuration_windows`)
+
+xDB configuration files.
+
+**Report output:**
+
+- File `/tools/xdb/config/xdbReplicationServer.config`: xDB startup configuration\`
+- File `/tools/xdb/config/edb-repl.conf`: xDB replication configuration\`
+- File `/tools/xdb/config/xdb_subserver.conf`: xDB subscription server configuration
+- File `/tools/xdb/config/xdb_pubserver.conf`: xDB publication server configuration
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### xDB sc (`xdb_sc`)
+
+When xDB is detected, collects xDB publication and subscription server
+status.
+
+**Report output:**
+
+- File `/tools/xdb/sc/service_name_query.data`: Output of `sc query service_name`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+## PostgreSQL/BDR3 instance
+
+### effective\_logging\_dest (`postgresql_actual_logdest`)
+
+Gather effective destination of log messages.
+
+**Report output:**
+
+- File `/postgresql/pg_log_file_path.out`: PostgreSQL log destination
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current archiver stats (`postgresql_archiver`)
+
+Statistics about the archiver process activity (from
+`pg_stat_archiver`).
+
+**Report output:**
+
+- File `postgresql/archiver.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Available extensions (`postgresql_available_extensions`)
+
+List of extensions available on the server.
+
+**Report output:**
+
+- File `postgresql/available_extensions.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current bg\_writer stats (`postgresql_bgwriter`)
+
+Statistics about the background writer process activity (from
+`pg_stat_bgwriter`).
+
+**Report output:**
+
+- File `postgresql/bgwriter.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Directory with binaries (`postgresql_bin_dir`)
+
+PostgreSQL binary directory.
+
+**Report output:**
+
+- File `/postgresql/postgresql_bin_path.data`: Path to the PostgreSQL bin directory
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current configuration (`postgresql_configuration`)
+
+PostgreSQL current configuration.
+
+**Report output:**
+
+- File `postgresql/configuration.out`
+
+**Depth:** Surface
+
+**Security impact:** Medium —
+`postgresql.conf` might contain bad security policies
+
+### Configuration files (`postgresql_configuration_files`)
+
+PostgreSQL configuration files and the data directory path. Passwords
+contained in well-known connection strings are redacted
+for information-security reasons.
+
+**Report output:**
+
+- File `/postgresql/pg_ident.conf`: PostgreSQL ident configuration file
+- File `/postgresql/pg_hba.conf`: PostgreSQL host-based authentication file
+- File `/postgresql/postgresql.auto.conf`: PostgreSQL auto configuration file
+- File `/postgresql/recovery.done`: PostgreSQL `recovery.done` file
+- File `/postgresql/recovery.conf`: PostgreSQL `recovery.conf` file
+- File `/postgresql/postgresql.conf`: PostgreSQL configuration file
+
+**Depth:** Surface
+
+**Security impact:** Medium —
+`pg_hba.conf` and `pg_ident.conf` might expose potential security
+holes, such as trusted connections.
+
+### Current rate of new connections established to the DB (`postgresql_conns_per_second`)
+
+Current rate of new connections established during 3s observation
+period.
+
+**Report output:**
+
+- File `postgresql/conns_per_second.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Databases (`postgresql_databases`)
+
+List of databases in the PostgreSQL node.
+
+**Report output:**
+
+- File `postgresql/databases.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### postgresql\_db\_bdr\_tables\_and\_views (`postgresql_db_bdr_tables_and_views`)
+
+Collect all the tables and views of the BDR extension, except for:
+
+- `bdr.apply_log`
+- `bdr.conflict_history`
+- `bdr.consensus_kv_data`
+- `bdr.internal_node_pre_commit`
+- `bdr.replication_status`
+- `bdr.state_journal`
+- `bdr.stat_activity`
+- `bdr.worker_errors`
+- `bdr.bdr_file_settings`
+- `bdr.stat_connection_manager_hba_file_rules`
+
+**Report output:**
+
+- File `/postgresql/dbs/dbname/bdr/*`: Content of all tables under the BDR schema
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### postgresql\_db\_pglogical\_tables\_and\_views (`postgresql_db_pglogical_tables_and_views`)
+
+Collect all the tables and views of the pglogical extension.
+
+**Report output:**
+
+- File `/postgresql/dbs/dbname/pglogical/*`: Content of all tables under the pglogical schema
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database/role setting (`postgresql_db_role_setting`)
+
+List of database/role settings in the PostgreSQL node.
+
+**Report output:**
+
+- File `postgresql/db_role_setting.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server resource group active use information (`postgresql_epas_edb_all_resource_groups`)
+
+Live view of the system at the moment of the collection, showing how
+many active backends are being constrained by the resource groups.
+
+**Report output:**
+
+- File `postgresql/epas_edb_all_resource_groups.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server user profile policies (`postgresql_epas_edb_profile`)
+
+Contains user profiles and password policies.
+
+**Report output:**
+
+- File `postgresql/epas_edb_profile.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server resource group information (`postgresql_epas_edb_resource_group`)
+
+EDB Postgres Advanced Server resource group names and limits.
+
+**Report output:**
+
+- File `postgresql/epas_edb_resource_group.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_hba\_file\_rules contents (`postgresql_hba_file_rules`)
+
+Summary of client authentication file contents.
+
+**Report output:**
+
+- File `postgresql/pg_hba_file_rules.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### postgresql\_logdirfiles (`postgresql_logdirfiles`)
+
+Log file names in PostgreSQL log directory.
+
+**Report output:**
+
+- File `/postgresql/pg_log_files.out`: Log dir list
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Node and snapshot data (`postgresql_node`)
+
+Information about the running PostgreSQL node.
+
+**Report output:**
+
+- File `postgresql/node.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### pg\_config (`postgresql_pg_config`)
+
+PostgreSQL `pg_config` command output.
+
+**Report output:**
+
+- File `/postgresql/pg_config.data`: `pg_config` command output
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### pg\_controldata (`postgresql_pg_controldata`)
+
+PostgreSQL `pg_controldata` information.
+
+**Report output:**
+
+- File `/postgresql/pg_controldata.data`: `pg_controldata` command output
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Version (`postgresql_pg_version`)
+
+PostgreSQL client and server version.
+
+**Report output:**
+
+- File `/postgresql/postgresql_server_version.data`: PostgreSQL server version
+- File `/postgresql/postgresql_client_version.data`: PostgreSQL client version
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_prepared\_xacts contents (`postgresql_prepared_xacts`)
+
+Status of prepared xacts (from `pg_prepared_xacts`)
+
+**Report output:**
+
+- File `postgresql/prepared_xacts.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_replication\_origin\_status contents (`postgresql_replication_origin`)
+
+Status of replication origins (from `pg_replication_origin_status`)
+
+**Report output:**
+
+- File `postgresql/replication_origins.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_replication\_slots contents (`postgresql_replication_slots`)
+
+Replication slots (from `pg_replication_slots`).
+
+**Report output:**
+
+- File `postgresql/replication_slots.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Roles (`postgresql_roles`)
+
+Database roles from `pg_roles`.
+
+**Report output:**
+
+- File `postgresql/roles.out`
+
+**Depth:** Shallow
+
+**Security impact:** Medium —
+`pg_roles` might contain bad security policies.
+
+### Current activity stats (`postgresql_running_activity`)
+
+Information related to the current activity on running processes (from
+`pg_stat_activity`).
+
+**Report output:**
+
+- File `postgresql/running_activity.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+Queries in `pg_stat_activity` could contain user names and application
+names.
+
+### Age of current oldest running backend/transaction/query in the cluster (`postgresql_running_activity_oldestage`)
+
+Age of current oldest running backend/transaction/query in the cluster.
+
+**Report output:**
+
+- File `postgresql/running_activity_maxage.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Active locks (`postgresql_running_locks`)
+
+List of active locks.
+
+**Report output:**
+
+- File `postgresql/running_locks.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### pg\_server\_limits (`postgresql_server_limits`)
+
+Real effective kernel OS limits for the postmaster PID.
+
+**Report output:**
+
+- File `/postgresql/pg_server_limits_PORT.data`: `prlimit` for postmaster PID
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_shmem\_allocations contents (`postgresql_shmem_allocations`)
+
+Status of shared memory allocations (from `pg_shmem_allocations`).
+
+**Report output:**
+
+- File `postgresql/shmem_allocations.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_stat\_progress\_analyze contents (`postgresql_stat_progress_analyze`)
+
+`ANALYZE` progress.
+
+**Report output:**
+
+- File `postgresql/pg_stat_progress_analyze.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_stat\_progress\_basebackup contents (`postgresql_stat_progress_basebackup`)
+
+`BASEBACKUP` progress.
+
+**Report output:**
+
+- File `postgresql/pg_stat_progress_basebackup.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_stat\_progress\_copy contents (`postgresql_stat_progress_copy`)
+
+`COPY` progress.
+
+**Report output:**
+
+- File `postgresql/pg_stat_progress_copy.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_stat\_progress\_vacuum contents (`postgresql_stat_progress_vacuum`)
+
+`VACUUM` progress.
+
+**Report output:**
+
+- File `postgresql/pg_stat_progress_vacuum.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Current pg\_stat\_replication contents (`postgresql_stat_replication`)
+
+Replication connections (from `pg_stat_replication`).
+
+**Report output:**
+
+- File `postgresql/replication.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Simple LRU (least recently used) cache statistics (`postgresql_stat_slru`)
+
+Stats from `pg_stat_slru`.
+
+**Report output:**
+
+- File `postgresql/pg_stat_slru.out`
+
+**Depth:** Surface
+
+**Security Impact:** Low —
+No known security impact.
+
+### Server subscription statistics (`postgresql_subscription_statistics`)
+
+Statistics of subscriptions.
+
+**Report output:**
+
+- File `postgresql/subscription_statistics.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Server subscriptions (`postgresql_subscriptions`)
+
+List of subscriptions.
+
+**Report output:**
+
+- File `postgresql/subscriptions.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Tablespaces (`postgresql_tablespaces`)
+
+Tablespaces information and location.
+
+**Report output:**
+
+- File `postgresql/tablespaces.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Workload characteristics using waits (`postgresql_waits_stats`)
+
+PostgreSQL workload characterization using built-in wait events.
+
+**Report output:**
+
+- File `postgresql/running_waits_sample.out`: Workload characterization using built-in wait events
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+## Details for every PostgreSQL/BDR3 database
+
+### BDR1 replication slots (`postgresql_db_bdr1_replication_slots`)
+
+List of replication slots with 9.6 format for BDR1.
+
+**Report output:**
+
+- File `bdr1_replication_slots.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR2 replication slots (`postgresql_db_bdr2_replication_slots`)
+
+List of replication slots with 9.6 format for BDR2.
+
+**Report output:**
+
+- File `bdr2_replication_slots.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR conflict\_history\_summary aggregation (`postgresql_db_bdr3_conflict_history_summary_agg`)
+
+Collect aggregate count for all types of conflicts.
+
+**Report output:**
+
+- File `bdr_conflict_history_summary_agg.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR current activity stats (`postgresql_db_bdr3_stat_activity`)
+
+Information related to the current activity on running processes (from
+`bdr.stat_activity`).
+
+**Report output:**
+
+- File `bdr_stat_activity.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+Queries in `bdr.stat_activity` could contain user names and
+application names.
+
+### BDR sequences (`postgresql_db_bdr_sequences`)
+
+List of the BDR sequences.
+
+**Report output:**
+
+- File `bdr_sequences.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR version (`postgresql_db_bdr_version`)
+
+Currently used version of BDR.
+
+**Report output:**
+
+- File `bdr_version.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR get\_decoding\_worker\_stat (`postgresql_db_decoding_worker_stats`)
+
+Single decoding worker status.
+
+**Report output:**
+
+- File `bdr_get_decoding_worker_stat.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states database settings (`postgresql_db_edb_wait_states_database_settings`)
+
+Shows information on database settings.
+
+**Report output:**
+
+- File `edb_wait_states/database_settings.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states load profile (`postgresql_db_edb_wait_states_load_profile`)
+
+Average load profile of transactions.
+
+\*_Report output:_
+
+- File `edb_wait_states/load_profile.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states operating system information (`postgresql_db_edb_wait_states_operating_system_information`)
+
+Information about the operating system.
+
+**Report output:**
+
+- File `edb_wait_states/operating_system_information.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states server information — part 1 (`postgresql_db_edb_wait_states_server_information_1`)
+
+Information about the Postgres server — part 1.
+
+**Report output:**
+
+- File `edb_wait_states/server_information_1.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states server information — part 2 (`postgresql_db_edb_wait_states_server_information_2`)
+
+Information about the Postgres server — part 2.
+
+**Report output:**
+
+- File `edb_wait_states/server_information_2.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states shared buffers statistics (`postgresql_db_edb_wait_states_shared_buffers_stats`)
+
+Shows statistics in terms of buffer hits and misses.
+
+**Report output:**
+
+- File `edb_wait_states/shared_buffers_stats.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states temp file statistics (`postgresql_db_edb_wait_states_temp_file_stats`)
+
+Shows statistics about temp files usage.
+
+**Report output:**
+
+- File `edb_wait_states/temp_file_stats.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states top 10 SQL statements by cputime (`postgresql_db_edb_wait_states_top_sql_statements_cputime`)
+
+Shows which SQL statements are taking more CPU time.
+
+**Report output:**
+
+- File `edb_wait_states/top_sql_statements_cputime.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states top 10 SQL statements by dbtime (`postgresql_db_edb_wait_states_top_sql_statements_dbtime`)
+
+Shows which SQL statements are taking more database time.
+
+**Report output:**
+
+- File `edb_wait_states/top_sql_statements_dbtime.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states top 10 SQL statements by waittime (`postgresql_db_edb_wait_states_top_sql_statements_waittime`)
+
+Shows which SQL statements are waiting for more time.
+
+**Report output:**
+
+- File `edb_wait_states/top_sql_statements_waittime.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states top 10 wait events (`postgresql_db_edb_wait_states_top_wait_events`)
+
+Shows which events are taking more time on the cluster.
+
+**Report output:**
+
+- File `edb_wait_states/top_wait_events.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states transactions statistics (`postgresql_db_edb_wait_states_transaction_stats`)
+
+Shows statistics in terms of commits and rollbacks.
+
+**Report output:**
+
+- File `edb_wait_states/transaction_stats.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states tuple statistics (`postgresql_db_edb_wait_states_tuple_stats`)
+
+Shows statistics in terms of tuple reads and writes.
+
+**Report output:**
+
+- File `edb_wait_states/tuple_stats.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states user sessions (`postgresql_db_edb_wait_states_user_sessions`)
+
+Shows information about user sessions.
+
+**Report output:**
+
+- File `edb_wait_states/user_sessions.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### edb\_wait\_states WAL statistics (`postgresql_db_edb_wait_states_wal_stats`)
+
+Shows statistics in terms of WAL writes.
+
+**Report output:**
+
+- File `edb_wait_states/wal_stats.out`
+
+**Depth:** Shallow
+
+### Database extensions (`postgresql_db_extensions`)
+
+List of extensions in the database.
+
+**Report output:**
+
+- File `extensions.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database indexes (`postgresql_db_indexes`)
+
+List of indexes in the database.
+
+**Report output:**
+
+- File `indexes.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database procedural languages (`postgresql_db_languages`)
+
+Procedural languages in the database.
+
+**Report output:**
+
+- File `language.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR monitor\_group\_raft (`postgresql_db_monitor_group_raft`)
+
+Check the raft status in the BDR cluster.
+
+**Report output:**
+
+- File `bdr_monitor_group_raft.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR monitor\_group\_versions (`postgresql_db_monitor_group_versions`)
+
+Check the version of all BDR nodes.
+
+**Report output:**
+
+- File `bdr_monitor_group_versions.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR monitor\_local\_replslots (`postgresql_db_monitor_local_replslots`)
+
+Check all the replication slot status.
+
+**Report output:**
+
+- File `bdr_monitor_local_replslots.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Database operators (`postgresql_db_operators`)
+
+Operators in the database.
+
+**Report output:**
+
+- File `operator.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database partitioned tables (`postgresql_db_partitioned_tables`)
+
+Information about partitioned tables (using declarative partitioning).
+
+**Report output:**
+
+- File `partitioned_table.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database child partition tables (`postgresql_db_partitions`)
+
+Information about child partition tables (using declarative
+partitioning).
+
+**Report output:**
+
+- File `partitions.out`
+
+**Depth:** Shallow
+
+**Security Impact:** Low —
+No known security impact.
+
+### Database PEM pem.agent table tuples (`postgresql_db_pem_agent`)
+
+Data from metatable `pem.agent`.
+
+**Report output:**
+
+- File `pem_agent.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.agent\_config table tuples (`postgresql_db_pem_agent_config`)
+
+Data from metatable `pem.agent_config`.
+
+**Report output:**
+
+- File `pem_agent_config.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.agent\_heartbeat table tuples (`postgresql_db_pem_agent_heartbeat`)
+
+Data from metatable `pem.agent_heartbeat`.
+
+**Report output:**
+
+- File `pem_agent_heartbeat.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.agent\_server\_binding table tuples (`postgresql_db_pem_agent_server_binding`)
+
+Data from metatable `pem.agent_server_binding`.
+
+**Report output:**
+
+- File `pem_agent_server_binding.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.config table tuples (`postgresql_db_pem_config`)
+
+Data from metatable `pem.config`.
+
+**Report output:**
+
+- File `pem_config.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.email\_group table tuples (`postgresql_db_pem_email_group`)
+
+Data from metatable `pem.email_group`.
+
+**Report output:**
+
+- File `pem_email_group.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.email\_group\_option table tuples (`postgresql_db_pem_email_group_option`)
+
+Data from metatable `pem.email_group_option`.
+
+**Report output:**
+
+- File `pem_email_group_option.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.probe table tuples (`postgresql_db_pem_probe`)
+
+Data from metatable `pem.probe`.
+
+**Report output:**
+
+- File `pem_probe.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.probe\_schedule table tuples (`postgresql_db_pem_probe_schedule`)
+
+Data from metatable `pem.probe_schedule`.
+
+**Report output:**
+
+- File `pem_probe_schedule.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.schema\_version() output (`postgresql_db_pem_schema_version`)
+
+Output from function `pem.schema_version()`.
+
+**Report output:**
+
+- File `pem_schema_version.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.server table tuples (`postgresql_db_pem_server`)
+
+Data from metatable `pem.server`.
+
+**Report output:**
+
+- File `pem_server.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.server\_heartbeat table tuples (`postgresql_db_pem_server_heartbeat`)
+
+Data from metatable `pem.server_heartbeat`.
+
+**Report output:**
+
+- File `pem_server_heartbeat.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.smtp\_spool table tuples (`postgresql_db_pem_smtp_spool`)
+
+Data from metatable `pem.smtp_spool`.
+
+**Report output:**
+
+- File `pem_smtp_spool.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database PEM pem.snmp\_spool table tuples (`postgresql_db_pem_snmp_spool`)
+
+Data from metatable `pem.snmp_spool`.
+
+**Report output:**
+
+- File `pem_snmp_spool.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Pglogical subscription status (`postgresql_db_pglogical_subscription_status`)
+
+List of tables replicated by pglogical.
+
+**Report output:**
+
+- File `pglogical_subscription_status.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Database functions (`postgresql_db_pkgs`)
+
+Database packages/functions/procedures with arguments.
+
+**Report output:**
+
+- File `pkgs.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database functions (`postgresql_db_procs`)
+
+Functions in the database.
+
+**Report output:**
+
+- File `proc.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database publication tables (`postgresql_db_publication_tables`)
+
+List of tables of publications of the database.
+
+**Report output:**
+
+- File `publication_tables.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database publications (`postgresql_db_publications`)
+
+List of publications of the database.
+
+**Report output:**
+
+- File `publications.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database repmgr repmgr.events table tuples (`postgresql_db_repmgr_events`)
+
+Data from metatable `repmgr.events`.
+
+**Report output:**
+
+- File `repmgr/events.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database repmgr repmgr.monitoring\_history table tuples (`postgresql_db_repmgr_monitoring_history`)
+
+Data from metatable `repmgr.monitoring_history`.
+
+**Report output:**
+
+- File `repmgr/monitoring_history.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database repmgr repmgr.nodes table tuples (`postgresql_db_repmgr_nodes`)
+
+Data from metatable `repmgr.nodes`.
+
+**Report output:**
+
+- File `repmgr/nodes.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database repmgr repmgr.replication\_status table tuples (`postgresql_db_repmgr_replication_status`)
+
+Data from metatable `repmgr.replication_status`.
+
+**Report output:**
+
+- File `repmgr/replication_status.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database repmgr repmgr.show\_nodes table tuples (`postgresql_db_repmgr_show_nodes`)
+
+Data from metatable `repmgr.show_nodes`.
+
+**Report output:**
+
+- File `repmgr/show_nodes.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database schema (`postgresql_db_schemas`)
+
+List of schemas in the database.
+
+**Report output:**
+
+- File `schemas.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database statistics (`postgresql_db_statistics`)
+
+Statistics of the database.
+
+**Report output:**
+
+- File `statistics.out`
+
+**Depth:** Deep
+
+**Security impact:** Low —
+No known security impact.
+
+### Database subscription tables (`postgresql_db_subscription_tables`)
+
+List of tables of subscriptions of the database.
+
+**Report output:**
+
+- File `subscription_tables.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database tables (`postgresql_db_tables`)
+
+List of tables in the database.
+
+**Report output:**
+
+- File `tables.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Tables close to wraparound (`postgresql_db_tables_wraparound`)
+
+Collect the list of worst offender tables in terms of transaction
+wraparound.
+
+**Report output:**
+
+- File `tables_wraparound.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low\* —
+No known security impact.
+
+### Database triggers (`postgresql_db_triggers`)
+
+Triggers in the database.
+
+**Report output:**
+
+- File `triggers.out`
+
+**Depth:** Shallow
+
+**Security Impact:** Low —
+No known security impact.
+
+### Database types (`postgresql_db_types`)
+
+Types in the database.
+
+**Report output:**
+
+- File `type.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR wal\_sender\_stats (`postgresql_db_wal_sender_stats`)
+
+WAL sender processes status.
+
+**Report output:**
+
+- File `bdr_wal_sender_stats.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.xdb\_mmr\_pub\_group table tuples (`postgresql_db_xdb_mmr_pub_group`)
+
+Data from metatable `_edb_replicator_pub.xdb_mmr_pub_group`.
+
+**Report output:**
+
+- File `xdb_mmr_pub_group.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.xdb\_pub\_database table tuples (`postgresql_db_xdb_pub_database`)
+
+Data from metatable `_edb_replicator_pub.xdb_pub_database`.
+
+**Report output:**
+
+- File `xdb_pub_database.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.xdb\_pub\_replog table tuples (`postgresql_db_xdb_pub_replog`)
+
+Last 50 rows from metatable `_edb_replicator_pub.xdb_pub_replog`.
+
+**Report output:**
+
+- File `xdb_pub_replog.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.xdb\_publication\_subscriptionstable tuples (`postgresql_db_xdb_publication_subscriptions`)
+
+Data from metatable `_edb_replicator_pub.xdb_publication_subscriptions`.
+
+**Report output:**
+
+- File `xdb_publication_subscriptions.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.xdb\_publications table tuples (`postgresql_db_xdb_publications`)
+
+Data from metatable `_edb_replicator_pub.xdb_publications`.
+
+**Report output:**
+
+- File `xdb_publications.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.rrep\_mmr\_pub\_group table tuples (`postgresql_db_xdb_rrep_mmr_pub_group`)
+
+Data from metatable `_edb_replicator_pub.rrep_mmr_pub_group`.
+
+**Report output:**
+
+- File `xdb_rrep_mmr_pub_group.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.rrep\_mmr\_txset table tuples (`postgresql_db_xdb_rrep_mmr_txset`)
+
+Last 10 rows from metatable `_edb_replicator_pub.rrep_mmr_txset`.
+
+**Report output:**
+
+- File `xdb_rrep_mmr_txset.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.rrep\_properties table tuples (`postgresql_db_xdb_rrep_properties`)
+
+Data from from metatable `_edb_replicator_pub.rrep_properties`.
+
+**Report output:**
+
+- File `xdb_rrep_properties.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.rrep\_publication\_tablestable tuples (`postgresql_db_xdb_rrep_publication_tables`)
+
+Data from from metatable `_edb_replicator_pub.rrep_publication_tables`.
+
+**Report output:**
+
+- File `xdb_rrep_publication_tables.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Database xDB \_edb\_replicator\_pub.rrep\_txset table tuples (`postgresql_db_xdb_rrep_txset`)
+
+Data from metatable `_edb_replicator_pub.rrep_txset`.
+
+**Report output:**
+
+- File `xdb_pub_rrep_txset.out`
+
+**Depth:** Shallow
+
+**Security impact:** Low —
+No known security impact.
+
+### Oracle-compatibile partitioning key view (`postgresql_epas_all_part_key_columns`)
+
+Provides partitioning key details (`all_part_key_columns`, EDB Postgres Advanced Server
+specific).
+
+**Report output:**
+
+- File `epas_all_part_key_columns.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Oracle-compatibile all partitioned table view (`postgresql_epas_all_part_tables`)
+
+All partitioned tables view (from `all_part_tables`, EDB Postgres Advanced Server specific).
+
+**Report output:**
+
+- File `epas_all_part_tables.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Oracle-compatibile subpartitioning key view (`postgresql_epas_all_subpart_key_columns`)
+
+Provides subpartitioning key details (`all_subpart_key_columns`, EDB Postgres Advanced Server
+specific).
+
+**Report output:**
+
+- File `epas_all_subpart_key_columns.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Oracle-compatibile all table partitions view (`postgresql_epas_all_tab_partitions`)
+
+All partitions of all partitioned tables view (`all_tab_partitions`,
+EDB Postgres Advanced Server specific).
+
+**Report output:**
+
+- File `epas_all_tab_partitions.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Oracle-compatibile all table subpartitioning view (`postgresql_epas_all_tab_subpartitions`)
+
+All subpartitions of all partitioned tables view
+(`all_tab_subpartitions`, EDB Postgres Advanced Server specific).
+
+**Report output:**
+
+- File `epas_all_tab_subpartitions.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server-specific dblink information (`postgresql_epas_dblink`)
+
+Current EDB Postgres Advanced Server dblink information from `edb_dblink`.
+
+**Report output:**
+
+- File `epas_dblink.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server directories (`postgresql_epas_edb_dir`)
+
+Oracle-compatible directories used as destination for packages to read
+and write.
+
+**Report output:**
+
+- File `epas_edb_dir.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server security policies (`postgresql_epas_edb_policy`)
+
+Contains the security policies (Oracle-style RLS).
+
+**Report output:**
+
+- File `epas_edb_policy.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server redaction policies per column (`postgresql_epas_edb_redaction_column`)
+
+Contains the redaction policies per column.
+
+**Report output:**
+
+- File `epas_edb_readaction_column.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server redaction policies (`postgresql_epas_edb_redaction_policy`)
+
+Contains the redaction policies of each table.
+
+**Report output:**
+
+- File `epas_edb_readaction_policy.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server extended pg\_namespace view (`postgresql_epas_pg_namespace`)
+
+EDB Postgres Advanced Server has extended pg\_namespace, which provides additional information.
+
+**Report output:**
+
+- File `epas_pg_namespace.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server-specific queue information (`postgresql_epas_queue`)
+
+Current EDB Postgres Advanced Server queue information from `edb_queue`.
+
+**Report output:**
+
+- File `epas_edb_queue.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server-specific queue callback information (`postgresql_epas_queue_callback`)
+
+Current EDB Postgres Advanced Server queue callback information from `edb_queue_callback`.
+
+**Report output:**
+
+- File `epas_edb_queue_callback.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### EDB Postgres Advanced Server-specific queue table information (`postgresql_epas_queue_table`)
+
+Current EDB Postgres Advanced Server queue table information from `edb_queue_table`.
+
+**Report output:**
+
+- File `epas_edb_queue_table.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+## Barman (Backup and Recovery Manager)
+
+### Barman check (`barman_check`)
+
+Collect the status of the Barman `check` framework for all configured
+servers.
+
+**Report output:**
+
+- File `/barman/barman_check.data`: Output of `barman check`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Barman diagnose (`barman_diagnose`)
+
+Collect the Barman diagnosis information.
+
+**Report output:**
+
+- File `/barman/diagnose.data`: Output from `barman diagnose`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Barman executable location (`barman_executable`)
+
+Collect the `barman` executable location.
+
+**Report output:**
+
+- File `/barman/barman_location.data`: The path of the main barman executable
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Barman module location (`barman_modules_path`)
+
+Collect the location of the Barman Python modules.
+
+**Report output:**
+
+- File `/barman/barman_python_verbose.data`: The list of Barman Python modules
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Databases checksums (`postgresql_databases_checksums`)
+
+List checksum failures in the PostgreSQL node.
+
+**Report output:**
+
+- File `postgresql/databases_checksums.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### Blocking locks (`postgresql_blocking_locks`)
+
+List blocking locks.
+
+**Report output:**
+
+- File `postgresql/blocking_locks.out`
+
+**Depth:** Surface
+
+**Security Impact:** Low —
+No known security impact.
+
+### Current checkpointer stats (`postgresql_checkpointer`)
+
+Statistics about the checkpointer process activity (from
+`pg_stat_checkpointer`).
+
+**Report output:**
+
+- File `postgresql/checkpointer.out`
+
+**Depth:** Surface
+
+**Security impact:** Low —
+No known security impact.
+
+### BDR worker\_errors (`postgresql_db_bdr_worker_errors`)
+
+List all `bdr.worker_errors` entries in `error_time ASC` order.
+
+**Report output:**
+
+- File `bdr/worker_errors.data`
+
+**Depth:** Surface
+
+**Security Impact:** Low —
+No known security impact.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

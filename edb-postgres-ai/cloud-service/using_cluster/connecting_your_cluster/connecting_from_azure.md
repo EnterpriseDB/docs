@@ -1,0 +1,256 @@
+---
+title: Connecting from Azure
+description: Connect to your cluster from Azure.
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/connecting_from_azure/
+lastModified: 2025-04-24T09:25:05+05:30
+---
+
+# Connecting from Azure
+
+Three different methods enable you to connect to your cluster from your application's virtual network in Azure. Each method offers different levels of accessibility and security. We recommend the Azure private endpoint method. It's the most commonly used.
+
+## Azure private endpoint (recommended)
+
+Azure private endpoint is a network interface that securely connects a private IP
+address from your Azure virtual network (VNet) to an external service. You grant access only to a single cluster instead of the entire Cloud Service resource virtual network, thus ensuring maximum network isolation. Other advantages include:
+
+- You need to configure the Private Link only once. Then you can use multiple private endpoints to connect applications from many different VNets.
+- There's no risk of IP address conflicts.
+
+Private endpoints are the same mechanism used by first-party Azure services such as CosmosDB for private VNet connectivity. For more information, see [What is a private endpoint?](https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-overview). Private Links (required by private endpoints) aren't free, however. See [Azure Private Link pricing](https://azure.microsoft.com/en-us/pricing/details/private-link/#pricing) for information on the costs associated with Private Links (required by private endpoints).
+
+> **Note**
+>
+> If you set up a private endpoint and want to change to a public network, you must remove the private endpoint resources before making the change.
+
+### Using your Azure account
+
+#### Example
+
+This example shows how to connect your cluster using Azure private endpoint.
+
+Assume that your cluster is on a subscription called `development` and is being accessed from a Linux client VM on another subscription called `test`. It has the following properties:
+
+- Cluster:
+  - Subscription: `development`
+  - Cluster ID: `p-mckwlbakq5`
+  - Account ID: `brcxzr08qr7rbei1`
+  - Project ID: `brcxzr08qr7rbei1`
+  - Region: `Japan East`
+  - Organization's domain name: `biganimal.io`
+
+- Linux client VM called `vm-client`:
+  - Subscription: `test`
+  - Resource group: `rg-client`
+  - Virtual network: `vnet-client`
+  - Virtual network subnet: `snet-client`
+
+#### Prerequisites
+
+To walk through an example in your own environment, you need:
+
+- Your cluster URL. You can find the URL in the **Connect** tab of your cluster instance in the BigAnimal portal.
+- The IP address of your cluster. You can find the IP address of your cluster using the following command:
+
+  ```shell
+  dig +short p-mckwlbakq5.brcxzr08qr7rbei1.biganimal.io
+  ```
+
+  ```output title="Output"
+  10.240.1.218
+  ```
+- A Postgres client, such as [psql](https://www.postgresql.org/download/), installed on your client VM.
+
+> **Note**
+>
+> BigAnimal automatically provisions an Azure Private Link service for every private Postgres cluster. You can easily find this managed Private Link service by looking for the one that has the Cluster ID in its name, like `p-mckwlbakq5-rw-internal-lb`.
+
+In this example, you create an Azure private endpoint in your client VM's virtual network. After you create the private endpoint, you can use its private IP address to access the Postgres cluster. You must perform this procedure for every virtual network you want to connect from.
+
+#### Step 1: Create an Azure private endpoint
+
+Create an Azure private endpoint in each client virtual network that needs to connect to your BigAnimal cluster. You can create the private endpoint using either the [Azure portal](#using-the-azure-portal) or the [Azure CLI](#using-the-azure-cli).
+
+##### Using the Azure portal
+
+1. If you prefer to create the private endpoint using the Azure portal, on the upper-left side of the screen, select **Create a resource > Networking > Private Link**. Alternatively. in the search box enter `Private Link`.
+
+2. Select **Create**.
+
+3. In Private Link Center, select **Private endpoints** in the menu on the left.
+
+4. In Private endpoints, select **Add**.
+
+5. Enter the details for the private endpoint in the **Basics** tab:
+
+   ![](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/images/create_private_endpoint.png)
+
+   - Subscription — Select the subscription where your vm-client resides. In this case, it's `test`.
+
+   - Resource group — Select a resource group in the same region where your vm-client resides. This exanple uses `rg-client`.
+
+   - Name — Use a unique name for the private endpoint. For example, enter `vnet-client-private-endpoint`, where `vnet-client` is the client VNet ID.
+
+   - Network Interface Name — This takes the name of the private endpoint and appends it with `-nic`.
+
+   - Region — The private endpoint must be in the same region as your VNet. In this case, it's `(Asia Pacific) Japan East`.
+
+   > **Note**
+   >
+   > In a later step, you need the private endpoint's name to get its private IP address.
+
+6. On the **Resource** tab, connect the private endpoint to the Private Link service that
+   you created by entering the following details:
+
+   ![](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/images/create_private_endpoint_resource.png)
+
+   - Connection Method — Select **Connect to an Azure resource in my directory**.
+
+   - Subscription — Select the subscription in which the target BigAnimal Postgres cluster resides. In this example, it's `development`.
+
+   - Resource type — Select **Microsoft.Network/privateLinkServices**. This is the type of resource you want to connect to using this private endpoint.
+
+   - Resource — Select the Private Link service resource whose name starts with the cluster ID. In this case, it's **p-mckwlbakq5-rw-internal-lb**.
+
+     > **Note**
+     >
+     > BigAnimal creates the Private Link service in a resource group managed by Azure Kubernetes Service in the corresponding project/region. Its name follows this pattern: `MC_dp-PROJECT_ID-REGION-counter_REGION`. In this example, it's `MC_dp-brcxzr08qr7rbei1-japaneast-1_japaneast`.
+
+7. On the **Virtual Network** tab, enter the client VM’s Virtual Network details:
+
+   ![](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/images/create_private_endpoint_virtual_network.png)
+
+   - Virtual Network — Enter the VM client’s virtual network. In this case, it's `vnet-client`.
+
+   - Subnet — To deploy the private endpoint, you must select a virtual network subnet to receive the private IP address assignment. In this example, the snet client subnet was already defined and will be assigned the private IP address. However, if a subnet isn't yet defined, you can select the default subnet, and a private IP address will be assigned.
+
+   - Private IP Configuration — This option defaults to **Dynamically allocate IP address**. This example uses the default.
+
+   - Application security group — You can leave this blank, or you can create or assign an Application Security Group. In this example, it's blank.
+
+8. You can either skip or configure both **DNS** and **Tags** as you need and then go to **Review + Create**.
+
+9. Select **Create**.
+
+10. Proceed to [Accessing the cluster](#accessing-the-cluster).
+
+##### Using the Azure CLI
+
+If you prefer to create the private endpoint using the Azure CLI, either use your local terminal with an Azure CLI profile already configured or open a new Azure Cloud Shell using the Azure portal.
+
+Use the following Azure CLI command to create the private endpoint by setting these parameters:
+
+```shell
+az network private-endpoint create \
+    --connection-name p-mckwlbakq5-rw-internal-lb \
+    --name vnet-client-private-endpoint \
+    --private-connection-resource-id "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/mc_dp-brcxzr08qr7rbei1-japaneast-1_japaneast/providers/Microsoft.Network/privateLinkServices/p-mckwlbakq5-rw-internal-lb" \
+    --resource-group rg-client \
+    --subnet snet-client \
+    --vnet-name vnet-client \
+    --subscription test
+```
+
+- `connection-name` needs to be the Private Link service name, like `p-mckwlbakq5-rw-internal-lb`.
+
+- `name` is the private endpoint name, like `vnet-client-private-endpoint`.
+
+- `private-connection-resource-id` is the Azure Resource Manager path of the Private Link Service.
+
+- `resource-group` is the resource group in which to create the private endpoint.
+
+- `subnet` is the Azure VNet subnet in which to create the private endpoint.
+
+- `vnet-name` is the Azure VNet name in which to create the private endpoint.
+
+- `subscription` is the Azure subscription in which to create the private endpoint.
+
+#### Accessing the cluster
+
+You have successfully built a tunnel between your client VM's virtual network and the cluster. You can now access the cluster from the private endpoint in your client VM. The private endpoint's private IP address is associated with an independent virtual network NIC. Get the private endpoint's private IP address using the following commands:
+
+```shell
+NICID=$(az network private-endpoint show -n vnet-client-private-endpoint -g rg-client --query "networkInterfaces[0].id" -o tsv)
+az network nic show -n ${NICID##*/} -g rg-client --query "ipConfigurations[0].privateIPAddress" -o tsv
+```
+
+```output title="Output"
+100.64.111.5
+```
+
+From the client VM `vm-client`, access the cluster by using the private IP address:
+
+```shell
+psql -h 100.64.111.5 -U edb_admin
+```
+
+```output title="Output"
+Password for user edb_admin :
+
+psql (13.4 (Ubuntu 13.4-1.pgdg20.04+1), server 13.4.8 (Debian 13.4.8-1+deb10))
+WARNING : psql major version 13, server major version 13. Some psql features might not work.
+SSL connection (protocol : TLSV1.3, cipher : TLS_AES_256_GCM_SHA384, bits : 256, compression : off) Type "help" for help.
+
+edb_admin=>
+
+```
+
+#### Step 2: Create an Azure Private DNS Zone for the private endpoint
+
+EDB strongly recommends using a [private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone) with the private endpoint to establish a connection with a cluster. You can't validate TLS certificates using `verify-full` when connecting to an IP address.
+
+With a private DNS zone, you configure a DNS entry for your cluster's public hostname. Azure DNS ensures that all requests to that domain name from your VNet resolve to the private endpoint's IP address instead of the cluster's IP address.
+
+> **Note**
+>
+> You need to create a single private Azure DNS zone for each VNet, even if you're connecting to multiple clusters. If you already created a DNS zone for this VNet, you can skip to step 6.
+
+1. In the Azure portal, search for `Private DNS Zones`.
+
+2. Select **Private DNS zone**.
+
+3. Select **Create private DNS zone**.
+
+4. Create a private DNS zone using your organization's domain name as an apex domain. The organization's domain name must be unique to your BigAnimal organization. For example, use `biganimal.io`.
+
+   ![](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/images/image6.png)
+
+5. Select the **Virtual network** link on the Private DNS Zone page of `brcxzr08qr7rbei1.biganimal.io`, and link the private DNS Zone to the client VM's virtual network `vnet-client`.
+
+   ![](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/images/image10.png)
+
+6. Add a record for the private endpoint. The address is a private IP address, the one created with the private endpoint in the previous step.
+
+7. You can now access your cluster with this private domain name.
+
+   ```shell
+   dig +short p-mckwlbakq5.brcxzr08qr7rbei1.biganimal.io
+   psql -h p-mckwlbakq5.brcxzr08qr7rbei1.biganimal.io -U edb_admin
+   ```
+
+   ```output title="Output"
+   10.240.1.123
+   Password for user edb_admin:
+
+   psql (13.4 (Ubuntu 13.4-1.pgdg28.84+1), server 13.4.8 (Debian 13.4.8-1+deb10))
+   WARNING : psql major version 13, server major version 13. Some psql features might not work.
+   SSL connection (protocol : TLSV1.3cipherTLS_AES_256_GCM_SHA384, bits : 256, compression : off) Type "help" for help.
+
+   edb_admin=>
+
+   ```
+
+   > **Tip**
+   >
+   > You might need to flush your local DNS cache to resolve your domain name to the new private IP address after adding the private endpoint.
+
+## Other methods
+
+- [Virtual network peering](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/connecting_from_azure/02_virtual_network_peering/)
+- [Azure VNet-VNet connection](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/connecting_from_azure/03_vnet_vnet/)
+
+* [Virtual network peering example](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/connecting_from_azure/02_virtual_network_peering/): Virtual network peering connects two Azure virtual networks, allowing traffic to be freely routed between the two. Once peered, the two virtual networks act as one with respect to connectivity. Network security group rules are still observed. Virtual network peering is simple and easy to set up, but the limitation is that the IP ranges of two peered virtual networks can't overlap. See pricing for virtual network peering for the associated cost.
+* [VNet-VNet example](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/connecting_your_cluster/connecting_from_azure/03_vnet_vnet/): VNet-VNet connections use VPN gateways to send encrypted traffic between Azure virtual networks. Advantages include:
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

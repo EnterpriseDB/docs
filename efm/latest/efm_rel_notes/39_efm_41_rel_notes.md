@@ -1,0 +1,27 @@
+---
+title: Failover Manager 4.1 release notes
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/efm_rel_notes/39_efm_41_rel_notes/
+lastModified: 2025-03-28T09:18:45-04:00
+---
+
+# Failover Manager 4.1 release notes
+
+Released: 11 Dec 2021
+
+Enhancements, bug fixes, and other changes in EFM 4.1 include:
+
+| Type        | Description                                                                                                              | Addresses |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------ | --------- |
+| Enhancement | Support added for HA architecture with EFM and Pgpool deployment with Azure Network Load Balancer.                       |           |
+| Enhancement | Standby agents attempt to resume health monitoring when local database connectivity is recovered.                        |           |
+| Enhancement | New option automatically increases `num_sync` when synchronous standbys are added to a cluster or they rejoin a cluster. |           |
+| Bug Fix     | Can increase `num_sync` when synchronous standys are added.                                                              | 1092053   |
+| Bug Fix     | Can't start agent with certain properties not present.                                                                   | 1087362   |
+| Bug Fix     | Upgraded JDBC driver due to security vulnerabilities.                                                                    | 1052383   |
+| Bug Fix     | ‘arping’ now called after acquiring VIP in non-sudo mode.                                                                | 1039625   |
+
+See [The Cluster Properties File](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/) for more information on the new properties.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

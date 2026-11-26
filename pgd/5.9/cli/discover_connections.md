@@ -1,0 +1,100 @@
+---
+title: Discovering connection strings
+description: How to obtain the correct connection strings for your PGD-powered deployment.
+product: EDB Postgres Distributed (PGD)
+version: 5.9.5
+url: https://www.enterprisedb.com/docs/pgd/5.9/cli/discover_connections/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Discovering connection strings
+
+You can install PGD CLI on any system that can connect to the PGD cluster. To use PGD CLI, you need a user with PGD superuser privileges or equivalent. The PGD user with superuser privileges is the [bdr\_superuser role](https://www.enterprisedb.com/docs/pgd/5.9/security/). An example of an equivalent user is edb\_admin on an EDB Cloud Service distributed high-availability cluster.
+
+## PGD CLI and database connection strings
+
+You might not need a database connection string. For example, when Trusted Postgres Architect installs the PGD CLI on a system, it also configures the connection to the PGD cluster. This means that PGD CLI can connect to the cluster when run.
+
+## Getting your database connection string
+
+Because of the range of different configurations that PGD supports, every deployment method has a different way of deriving a connection string for it. Generally, you can obtain the required information from the configuration of your deployment. You can then assemble that information into connection strings.
+
+### For a TPA-deployed PGD cluster
+
+Because TPA is so flexible, you have to derive your connection string from your cluster configuration file (`config.yml`).
+
+- You need the name or IP address of a host with the role pgd-proxy listed for it. This host has a proxy you can connect to. Usually the proxy listens on port 6432. (Check the setting for `default_pgd_proxy_options` and `listen_port` in the config to confirm.)
+- The default database name is `bdrdb`. (Check the setting `bdr_database` in the config to confirm.)
+- The default PGD superuser is enterprisedb for EDB Postgres Advanced Server and postgres for PostgreSQL and EDB Postgres Extended Server.
+
+You can then assemble a connection string based on that information:
+
+```
+"host=<hostnameOrIPAddress> port=<portnumber> dbname=<databasename> user=<username> sslmode=require"
+```
+
+To illustrate this, here are some excerpts of a `config.yml` file for a cluster:
+
+```yaml
+...
+cluster_vars:
+  ...
+  bdr_database: bdrdb
+  ...
+  default_pgd_proxy_options:
+    listen_port: 6432
+  ...
+
+instances:
+- Name: kaboom
+  backup: kapok
+  location: dc1
+  node: 1
+  role:
+  - bdr
+  - pgd-proxy
+  networks:
+  - ipv4_address: 192.168.100.2
+    name: tpanet
+...
+```
+
+The connection string for this cluster is:
+
+```
+"host=192.168.100.2 port=6432 dbname=bdrdb user=enterprisedb sslmode=require"
+```
+
+> **Note: Host name versus IP address**
+>
+> The example uses the IP address because the configuration is from a Docker TPA install with no name resolution available. Generally, you can use the host name as configured.
+
+### For an EDB Cloud Service distributed high-availability cluster
+
+1. Log in to the [Cloud Service clusters](https://portal.biganimal.com/clusters) view.
+2. In the filter, set **Cluster Type** to **Distributed High Availability** to show only clusters that work with PGD CLI.
+3. Select your cluster.
+4. In the view of your cluster, select the **Connect** tab.
+5. Copy the read/write URI from the connection info. This is your connection string.
+
+### For a cluster deployed with EDB PGD for Kubernetes
+
+As with TPA, EDB PGD for Kubernetes is very flexible, and there are multiple ways to obtain a connection string. It depends, in large part, on the configuration of the deployment's [services](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/connectivity/#services):
+
+- If you use the Node Service Template, direct connectivity to each node and proxy service is available.
+- If you use the Group Service Template, there's a gateway service to each group.
+- If you use the Proxy Service Template, a single proxy provides an entry point to the cluster for all applications.
+
+Consult your configuration file to determine this information.
+
+Establish a host name or IP address, port, database name, and username. The default database name is `bdrdb`. The default username is enterprisedb for EDB Postgres Advanced Server and postgres for PostgreSQL and EDB Postgres Extended Server.
+
+You can then assemble a connection string based on that information:
+
+```
+"host=<hostnameOrIPAddress> port=<portnumber> dbname=<databasename> user=<username>"
+```
+
+If the deployment's configuration requires it, add `sslmode=<sslmode>`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

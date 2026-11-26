@@ -1,0 +1,23 @@
+---
+title: About Parallel Data Loading
+product: WarehousePG
+version: 6.27.6
+url: https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/intro/about_loading/
+lastModified: 2026-08-11T09:07:15Z
+---
+
+# About Parallel Data Loading
+
+This topic provides a short introduction to WarehousePG data loading features.
+
+In a large scale, multi-terabyte data warehouse, large amounts of data must be loaded within a relatively small maintenance window. WarehousePG supports fast, parallel data loading with its external tables feature. Administrators can also load external tables in single row error isolation mode to filter bad rows into a separate error log while continuing to load properly formatted rows. Administrators can specify an error threshold for a load operation to control how many improperly formatted rows cause WarehousePG to cancel the load operation.
+
+By using external tables in conjunction with WarehousePG's parallel file server (`gpfdist`), administrators can achieve maximum parallelism and load bandwidth from their WarehousePG cluster.
+
+![External Tables Using WarehousePG Parallel File Server (gpfdist)](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/warehousepg/6/images/external_tables.png "External Tables Using WarehousePG Parallel File Server (gpfdist)")
+
+Another WarehousePG utility, `gpload`, runs a load task that you specify in a YAML-formatted control file. You describe the source data locations, format, transformations required, participating hosts, database destinations, and other particulars in the control file and `gpload` runs the load. This allows you to describe a complex task and run it in a controlled, repeatable fashion.
+
+**Parent topic:** [WarehousePG Concepts](https://www.enterprisedb.com/docs/warehousepg/6/admin_guide/intro/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

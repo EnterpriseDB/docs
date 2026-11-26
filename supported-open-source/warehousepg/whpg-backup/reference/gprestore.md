@@ -1,0 +1,357 @@
+---
+title: gprestore
+description: Command reference for the gprestore utility, including all options and examples.
+product: WarehousePG Backup and Restore
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gprestore/
+lastModified: 2026-09-28T09:14:24+01:00
+---
+
+# gprestore
+
+Restore a WarehousePG backup set that was created using the `gpbackup` utility. By default `gprestore` will read the metadata and DDL files located in the Coordinator host data directory, and will load the CSV formatted table data stored locally on each segment hosts.
+
+## Synopsis
+
+```
+gprestore --timestamp <YYYYMMDDHHMMSS>
+   [--backup-dir <directory>]
+   [--copy-queue-size <int>]
+   [--create-db]
+   [--data-only]
+   [--debug]
+   [--exclude-extension <extension_name> [--exclude-extension <extension_name> ...]]
+   [--exclude-schema <schema_name> [--exclude-schema <schema_name> ...]]
+   [--exclude-schema-file <file_name>]
+   [--exclude-table <schema.table> [--exclude-table <schema.table> ...]]
+   [--exclude-table-file <file_name>]
+   [--help]
+   [--ignore-plugin-config]
+   [--include-schema <schema_name> [--include-schema <schema_name> ...]]
+   [--include-schema-file <file_name>]
+   [--include-table <schema.table> [--include-table <schema.table> ...]]
+   [--include-table-file <file_name>]
+   [--incremental]
+   [--jobs <int>]
+   [--metadata-only]
+   [--on-error-continue]
+   [--plugin-config <config_file_location>]
+   [--quiet]
+   [--redirect-db <database_name>]
+   [--redirect-schema <schema_name>]
+   [--report-dir]
+   [--resize-cluster]
+   [--run-analyze]
+   [--timestamp <YYYYMMDDHHMMSS>]
+   [--truncate-table]
+   [--verbose]
+   [--version]
+   [--with-globals]
+   [--with-stats]
+
+
+gprestore --help
+```
+
+`gpbackup` [reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gpbackup/)
+
+## Description
+
+To restore from a backup set, run `gprestore` with the `--timestamp` option to specify the exact timestamp (`YYYYMMDDHHMMSS`) of the backup set to restore. If the backup used a custom `--backup-dir`, include the same option here to locate the files. For a full walkthrough, see [Backing up and restoring your tables](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/).
+
+> **Note**
+>
+> - If you're restoring an incremental backup, you need the complete backup set. See [Restoring incremental backup sets](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/incremental/#restoring-incremental-backup-sets).
+> - If the target database already exists and contains a table being restored, the restore operation fails. Include `--create-db` if the target database doesn't exist, or `--redirect-db` to restore into a different one.
+> - Leaf partition filtering affects what gets restored. See [Filtering backups by leaf partition](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#filtering-backups-by-leaf-partition).
+> - On completion, `gprestore` returns a status code. See [Return codes](#return-codes).
+> - `gprestore` can send status email notifications after it completes. See [Setting up email alerts](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/#setting-up-email-alerts).
+> - This utility uses SSH connections between hosts, with the same considerations as [gpbackup](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gpbackup/#description).
+
+## Options
+
+### --timestamp YYYYMMDDHHMMSS
+
+Required. Specifies the timestamp of the `gpbackup` backup set to restore. By default `gprestore` tries to locate metadata files for the timestamp on the WarehousePG Coordinator host in the $COORDINATOR\_DATA\_DIRECTORY/backups/YYYYMMDD/YYYYMMDDhhmmss/ directory, and CSV data files in the `<seg_dir>/backups/YYYYMMDD/YYYYMMDDhhmmss/` directory of each segment host.
+
+### --backup-dir directory
+
+Optional. Sources all backup files (metadata files and data files) from the specified directory. You must specify directory as an absolute path (not relative). If you do not supply this option, `gprestore` tries to locate metadata files for the timestamp on the WarehousePG Coordinator host in the $COORDINATOR\_DATA\_DIRECTORY/backups/YYYYMMDD/YYYYMMDDhhmmss/ directory. CSV data files must be available on each segment in the `<seg_dir>/backups/YYYYMMDD/YYYYMMDDhhmmss/` directory. Include this option when you specify a custom backup directory with `gpbackup`.
+
+You cannot combine this option with the option `--plugin-config`.
+
+### --copy-queue-size int
+
+Optional. Specifies the number of `COPY` commands `gprestore` should enqueue when restoring a backup set. This option optimizes restore performance by reducing the amount of time spent initializing `COPY` commands. If you do not set this option to 2 or greater, `gprestore` enqueues 1 `COPY` command at a time.
+
+### --create-db
+
+Optional. Creates the database before restoring the database object metadata.
+
+The database is created by cloning the empty standard system database `template0`.
+
+You cannot combine this option with `--data-only`.
+
+### --data-only
+
+Optional. Restores table data from a backup created with the `gpbackup` utility, without creating the database tables. This option assumes the tables exist in the target database. To restore data for a specific set of tables from a backup set, you can specify an option to include tables or schemas or exclude tables or schemas. Specify the `--with-stats` option to restore table statistics from the backup.
+
+You cannot combine this option with `--with-globals` or `--create-db`. Global metadata is not backed up in table-filtered or data-only backups.
+
+The backup set must contain the table data to be restored. For example, a backup created with the `gpbackup` option `--metadata-only` does not contain table data.
+
+`SEQUENCE` values are updated to match the values taken at the time of the backup.
+
+To restore only database tables, without restoring the table data, see the option `--metadata-only`.
+
+### --debug
+
+Optional. Displays verbose and debug log messages during a restore operation.
+
+### --exclude-extension extension\_name
+
+Optional. Skip restoring the specified extension. You can specify this option multiple times to exclude multiple extensions. Use this option when, for example, the extension's control file isn't installed on the target cluster.
+
+If the extension owns a schema of the same name in the backup set, `gprestore` also excludes that schema, since the schema exists only as a side effect of creating the extension. You cannot combine this option with `--redirect-schema`.
+
+### --exclude-schema schema\_name
+
+Optional. Specifies a database schema to exclude from the restore operation. You can specify this option multiple times. You cannot combine this option with the option `--include-schema`, `--include-schema-file`, or a table filtering option such as `--include-table`.
+
+### --exclude-schema-file file\_name
+
+Optional. Specifies a text file containing a list of schemas to exclude from the backup. Each line in the text file must define a single schema. The file must not include trailing lines. If a schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes. You cannot combine this option with the option `--include-schema` or `--include-schema-file`, or a table filtering option such as `--include-table`.
+
+### --exclude-table schema.table
+
+Optional. Specifies a table to exclude from the restore operation. You can specify this option multiple times. The table must be in the format `<schema-name>.<table-name>`. If a table or schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes. You can specify this option multiple times. If the table is not in the backup set, the restore operation fails. You cannot specify a leaf partition of a partitioned table.
+
+You cannot combine this option with the option `--exclude-schema`, `--exclude-schema-file`, or another a table filtering option such as `--include-table`.
+
+### --exclude-table-file file\_name
+
+Optional. Specifies a text file containing a list of tables to exclude from the restore operation. Each line in the text file must define a single table using the format `<schema-name>.<table-name>`. The file must not include trailing lines. If a table or schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes. If a table is not in the backup set, the restore operation fails. You cannot specify a leaf partition of a partitioned table.
+
+You cannot combine this option with the option `--exclude-schema`, `--exclude-schema-file`, or another a table filtering option such as `--include-table`.
+
+### --help
+
+Displays the online help.
+
+### --ignore-plugin-config
+
+Optional. Restore from the local filesystem instead of the plugin recorded in the backup, for backups where the files are already reachable directly (for example, through a BoostFS mount). You cannot combine this option with `--plugin-config`.
+
+### --include-schema schema\_name
+
+Optional. Specifies a database schema to restore. You can specify this option multiple times. If you specify this option, any schemas that you specify must be available in the backup set. Any schemas that are not included in subsequent `--include-schema` options are omitted from the restore operation.
+
+If a schema that you specify for inclusion exists in the database, the utility issues an error and continues the operation. The utility fails if a table being restored exists in the database.
+
+You cannot use this option if objects in the backup set have dependencies on multiple schemas.
+
+### --include-schema-file file\_name
+
+Optional. Specifies a text file containing a list of schemas to restore. Each line in the text file must define a single schema. The file must not include trailing lines. If a schema name uses any character other than a lowercase letter, number, or an underscore character, then you must include that name in double quotes.
+
+The schemas must exist in the backup set. Any schemas not listed in this file are omitted from the restore operation.
+
+You cannot use this option if objects in the backup set have dependencies on multiple schemas.
+
+### --include-table schema.table
+
+Optional. Specifies a table to restore. The table must be in the format `<schema-name>.<table-name>`. You can specify this option multiple times. You cannot specify a leaf partition of a partitioned table.
+
+You can also specify the qualified name of a sequence, a view, or a materialized view.
+
+If you specify this option, the utility does not automatically restore dependent objects. You must also explicitly specify the dependent objects that are required. For example if you restore a view or a materialized view, you must also restore the tables that the view or the materialized view uses. If you restore a table that uses a sequence, you must also restore the sequence. The dependent objects must exist in the backup set.
+
+You cannot combine this option with a schema filtering option such as `--include-schema`, or another table filtering option such as `--exclude-table-file`.
+
+### --include-table-file file\_name
+
+Optional. Specifies a text file containing a list of tables to restore. Each line in the text file must define a single table using the format `<schema-name>.<table-name>`. The file must not include trailing lines. Any tables not listed in this file are omitted from the restore operation. You cannot specify a leaf partition of a partitioned table.
+
+You can also specify the qualified name of a sequence, a view, or a materialized view.
+
+If you specify this option, the utility does not automatically restore dependent objects. You must also explicitly specify dependent objects that are required. For example, if you restore a view or a materialized view, you must also specify the tables that the view or the materialized uses. If you specify a table that uses a sequence, you must also specify the sequence. The dependent objects must exist in the backup set.
+
+For a materialized view, the data is not restored. To populate the materialized view with data, you must use `REFRESH MATERIALIZED VIEW` and the tables that are referenced by the materialized view definition must be available.
+
+If you use the `--include-table-file` option, `gprestore` does not create roles or set the owner of the tables. The utility restores table indexes and rules. Triggers are also restored but are not supported in WarehousePG.
+
+### --incremental
+
+Optional. Requires the `--data-only` option. Restores only the table data in the incremental backup specified by the `--timestamp` option. Table data is not restored from previous incremental backups in the backup set.
+
+> **Warning**
+>
+> This is a beta feature and isn't supported in a production environment.
+
+An incremental backup contains the following table data that can be restored.
+
+- Data from all heap tables.
+- Data from append-optimized tables that have been modified since the previous backup.
+- Data from leaf partitions that have been modified from the previous backup.
+
+When this option is specified, `gprestore` restores table data by truncating the table and reloading data into the table. `SEQUENCE` values are then updated to match the values taken at the time of the backup.
+
+Before performing the restore operation, `gprestore` ensures that the tables being restored exist. If a table does not exist, `gprestore` returns an error and exits. If the `--on-error-continue` option is specified, `gprestore` logs missing tables and attempts to complete the restore operation.
+
+> **Warning**
+>
+> When this option is specified, `gprestore` assumes that no changes have been made to the table definitions of the tables being restored, such as adding or removing columns.
+
+### --jobs int
+
+Optional. Specifies the number of parallel connections to use when restoring table data and metadata. By default, `gprestore` uses 1 connection. Increasing this number can improve the speed of restoring data. **Note:** If you used the `gpbackup --single-data-file` option to combine table backups into a single file per segment, you cannot set `--jobs` to a value higher than 1 to perform a parallel restore operation.
+
+### --metadata-only
+
+Optional. Creates database tables from a backup created with the `gpbackup` utility, but does not restore the table data. This option assumes the tables do not exist in the target database. To create a specific set of tables from a backup set, you can specify an option to include tables or schemas or exclude tables or schemas. Specify the option `--with-globals` to restore the WarehousePG system objects.
+
+The backup set must contain the DDL for tables to be restored. For example, a backup created with the `gpbackup` option `--data-only` does not contain the DDL for tables.
+
+### --on-error-continue
+
+Optional. Specify this option to continue the restore operation if an SQL error occurs when creating database metadata (such as tables, roles, or functions) or restoring data. If another type of error occurs, the utility exits. The default is to exit on the first error.
+
+When this option is included, the utility displays an error summary and writes error information to the `gprestore` log file and continues the restore operation. The utility also creates text files in the backup directory that contain the list of tables that generated SQL errors.
+
+- Tables with metadata errors - `gprestore_<backup-timestamp>_<restore-time>_error_tables_metadata`
+- Tables with data errors - `gprestore_<backup-timestamp>_<restore-time>_error_tables_data`
+
+### --plugin-config config-file\_location
+
+Specify the location of the `gpbackup` plugin configuration file, a YAML-formatted text file. The file contains configuration information for the plugin application that `gprestore` uses during the restore operation.
+
+If you specify the `--plugin-config` option when you back up a database, you must specify this option with configuration information for a corresponding plugin application when you restore the database from the backup.
+
+See [Using the S3 storage plugin](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/s3-plugin/) or [Backing up to Dell Data Domain](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/ddboost-plugin/) for information about using a storage plugin.
+
+You cannot combine this option with the option `--backup-dir` or `--ignore-plugin-config`.
+
+### --quiet
+
+Optional. Suppress all non-warning, non-error log messages.
+
+### --redirect-db database\_name
+
+Optional. Restore to the specified database\_name instead of to the database that was backed up.
+
+### --redirect-schema schema\_name
+
+Optional. Restore data in the specified schema instead of the original schemas. The specified schema must already exist. If the data being restored is in multiple schemas, all the data is redirected into the specified schema.
+
+This option must be used with an option that includes tables or schemas: `--include-table`, `--include-table-file`, `--include-schema`, or `--include-schema-file`.
+
+You cannot use this option with an option that excludes schemas or tables, such as `--exclude-schema`, `--exclude-table`, or `--exclude-extension`.
+
+You can use this option with the `--metadata-only` or `--data-only` options.
+
+### --report-dir /path/to/report
+
+Optional. The absolute path of the directory to which restore report and error tables will be written.
+
+### --resize-cluster
+
+Optional. Invoke this option to enable restoring data to a cluster that has a different number of segments than the cluster from which the data was backed up.
+
+> **Note**
+>
+> In order to enable the `--resize-cluster` feature for `gprestore`, the backup set must have been taken using `gpbackup` 1.26 or later.
+
+### --run-analyze
+
+Optional. Run `ANALYZE` on the tables that are restored. For a partitioned table, `ANALYZE` is run on the root partitioned table. If `--with-stats` was specified for the backup, those statistics are ignored. You cannot use this option with `--with-stats`.
+
+If the backup being restored used the `gpbackup` option `--leaf-partition-data`, `gprestore` runs `ANALYZE` only on the individual leaf partitions that are restored, not the root partitioned table.
+
+Depending on the tables being restored, running `ANALYZE` on restored tables might increase the duration of the restore operation.
+
+### --truncate-table
+
+Optional. Truncate data from a set of tables before restoring the table data from a backup. This option lets you replace table data with data from a backup. Otherwise, table data might be duplicated.
+
+You must specify at least one of `--include-table`, `--include-table-file`, or `--data-only`. You cannot combine this option with `--metadata-only` or `--incremental`.
+
+You can use this option with the `--redirect-db` option. You cannot use this option with `--redirect-schema`.
+
+### --verbose
+
+Optional. Displays verbose log messages during a restore operation.
+
+### --version
+
+Optional. Print the version number and exit.
+
+### --with-globals
+
+Optional. Restores WarehousePG system objects in the backup set, in addition to database objects.
+
+You cannot combine this option with `--data-only`.
+
+### --with-stats
+
+Optional. Restore query plan statistics from the backup set. If the backup set was not created with the `--with-stats` option, an error is returned. Restored tables will only have statistics from the backup. You cannot use this option with `--run-analyze`.
+
+To collect current statistics for the restored tables during the restore operation, use the `--run-analyze` option. As an alternative, you can run the `ANALYZE` command on the tables after the tables are restored.
+
+## Return codes
+
+One of these codes is returned after `gprestore` completes.
+
+- 0 -- Restore completed with no problems.
+- 1 -- Restore completed with non-fatal errors. See log file for more information.
+- 2 -- Restore failed with a fatal error. See log file for more information.
+
+## Examples
+
+Restore all schemas and tables in the backup set for the specified timestamp, creating the target database:
+
+```
+gprestore --timestamp 20250515182209 --create-db
+```
+
+Restore the backup set into the `customer` database instead of the database that was backed up:
+
+```
+gprestore --timestamp 20250515182209 --redirect-db customer
+```
+
+Restore global WarehousePG metadata and query plan statistics in addition to the database objects:
+
+```
+gprestore --timestamp 20250515182209 --create-db --with-globals --with-stats
+```
+
+Restore using backup files from a custom directory, with 8 parallel connections:
+
+```
+gprestore --backup-dir /mnt/nfs/whpg_backups/ --timestamp 20250515182209 --create-db --jobs 8
+```
+
+Restore only the `emea_customer` schema included in the backup set:
+
+```
+gprestore --include-schema emea_customer --backup-dir /mnt/nfs/whpg_backups/ --timestamp 20250515182209 --create-db
+```
+
+If you restore from an incremental backup set, every earlier backup in the set must be available to `gprestore`. For example, this backup set has a full backup on Sunday and six incremental backups through Saturday:
+
+```
+20250518010000 (full backup, Sunday 1am)
+20250519020000 (incremental backup, Monday 2am)
+20250520030000 (incremental backup, Tuesday 3am)
+20250521040000 (incremental backup, Wednesday 4am)
+20250522050000 (incremental backup, Thursday 5am)
+20250523060000 (incremental backup, Friday 6am)
+20250524070000 (incremental backup, Saturday 7am)
+```
+
+Restoring the Wednesday timestamp requires the Monday and Tuesday incremental backups and the Sunday full backup to also be available:
+
+```
+gprestore --timestamp 20250521040000 --redirect-db customer_incr --create-db
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

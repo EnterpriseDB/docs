@@ -1,0 +1,33 @@
+---
+title: Monitoring EDB Postgres Distributed
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/monitoring_BDR_nodes/
+lastModified: 2026-06-22T21:47:06+05:30
+---
+
+# Monitoring EDB Postgres Distributed
+
+EDB Postgres Distributed provides multi-master replication and data distribution with advanced conflict management, data-loss protection, and [throughput up to 5X faster than native logical replication](https://www.enterprisedb.com/blog/performance-improvements-edb-postgres-distributed), and enables distributed PostgreSQL clusters with high availability up to five 9s. Before you monitor nodes in a EDB Postgres Distributed cluster through the PEM console, you must first deploy a EDB Postgres Distributed cluster and ensure that your database nodes are up and running. For more information on installing EDB Postgres Distributed see [EDB Postgres Distributed](https://www.enterprisedb.com/docs/pgd/latest/).
+
+You can configure PEM to display status information about one or more EDB Postgres Distributed database nodes using dashboards in PEM version 8.1.0 and EDB Postgres Distributed version 3.7.9 and later.
+
+To configure PEM to monitor EDB Postgres Distributed database nodes, use the PEM web client to create a server definition. Use the tabs on the [New Server Registration](https://www.enterprisedb.com/docs/pem/latest/registering_database_server/#manually-registering-a-database-server) dialog box to specify general connection properties for the EDB Postgres Distributed database node with the following exceptions:
+
+- Specify the EDB Postgres Distributed-enabled database name in the **Database** field of the **PEM Agent** tab.
+
+- Specify the user having the pgd\_monitor or pgd\_superuser role in the **username** field of the **PEM Agent** tab.
+
+After saving the server definition, the EDB Postgres Distributed database node is included in the list of servers under the PEM server directory in the PEM client object browser tree. You can monitor the nodes from EDB Postgres Distributed (PGD) dashboards.
+
+To include monitoring information on the EDB Postgres Distributed (PGD) dashboards, you must enable the relative probes for each EDB Postgres Distributed group. See the complete list of EDB Postgres Distributed [probes](https://www.enterprisedb.com/docs/pem/latest/monitoring_performance/probes/system_probes/#postgres-distributed-pgd-probes).
+
+To enable a probe, right-click the node name, and select **Management > Manage Probes**.
+
+> **Note**
+>
+> The _PGD Node Replication Rates_ probe relies on PGD lag-tracking, a feature available only on EDB Postgres Advanced Server (EPAS) and EDB Postgres Extended (PGE). This probe isn't supported on community PostgreSQL. When run against a PGD cluster on community PostgreSQL, the `apply_rate` and `catchup_interval` metrics are unavailable and the agent log reports `lag tracking is not supported with this variant of Postgres`. This limitation affects only the metrics report. Replication continues normally. Basic replication-lag metrics (`replay_lag`, `replay_lag_bytes`) are available via the _PGD Node Slots_ probe on all PostgreSQL variants.
+
+To monitor the EDB Postgres Distributed database node, right-click the name of the node in the object browser tree. From the **Dashboards** menu, select the PGD Admin, PGD Group Monitoring, or PGD Node Monitoring dashboard.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

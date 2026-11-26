@@ -1,0 +1,332 @@
+---
+title: Performing a minor upgrade
+product: WarehousePG
+version: 6.27.6
+url: https://www.enterprisedb.com/docs/warehousepg/6/install_guide/minor_upgrade/
+lastModified: 2026-11-18T15:10:10Z
+---
+
+# Performing a minor upgrade
+
+Perform a minor version upgrade to 6.x. Because minor versions are binary-compatible, this process replaces the software binaries without requiring a full data migration.
+
+An upgrade involves stopping the WHPG cluster, updating the software binaries across all nodes, and restarting the services.
+
+> **Note**
+>
+> Starting from WarehousePG 6.27.4, the installation directory has been consolidated to `/usr/edb/whpg6`. For backward compatibility, the system automatically maintains a symbolic link at `/usr/local/greenplum-db` and `/usr/local/greenplum-db-clients`.
+
+In this guide:
+
+- `6.origin` refers to your current version.
+- `6.target` refers to the version you are upgrading to.
+
+## Process overview
+
+The following high-level steps summarize the upgrade lifecycle:
+
+1. [Prepare for maintenance:](#preparing-for-maintenance) Isolate the cluster and secure a full backup.
+2. [Clear automation:](#clearing-automation-and-system-handover) Disable scheduled tasks and coordinate infrastructure snapshots.
+3. [Validate baseline:](#establishing-a-pre-upgrade-baseline) Verify current software versions and run smoke tests.
+4. [Quiesce the database:](#quiescing-the-database) Stop peripheral services and the WHPG cluster.
+5. [Replace binaries:](#replacing-binaries-and-restarting-whpg) Install the new software package across all cluster nodes.
+6. [Restore services:](#restoring-services-and-finalizing-the-upgrade) Restart the cluster and verify health.
+7. [Re-establish connectivity:](#restoring-automation-and-connectivity) Restore automation, connection pooling, and federation.
+8. [Hand back:](#handing-back-the-system) Resume normal business operations and monitoring.
+
+## Preparing for maintenance
+
+These steps isolate the cluster from external traffic and automated scripts before the system handover.
+
+1. Stop all monitoring applications: Shut down all monitoring agents to prevent false alerts during the maintenance window.
+
+2. Stop scheduled tasks: Disable external schedulers that trigger jobs against the database.
+
+3. Stop applications: Notify users and shut down application servers, web services, and BI tools. Ensure no new connections are being initiated.
+
+4. Perform a backup of all databases: Execute a full backup. This is your final safety point before modifying the environment.
+
+   ```bash
+   gpbackup --leaf-partition-data
+   ```
+
+## Clearing automation and system handover
+
+Once data is secure and traffic has ceased, prepare the operating system environment.
+
+1. Hand over the for infrastructure maintenance: Coordinate with your Infrastructure or Platform team to perform any required pre-upgrade safety measures. This may include creating environment snapshots, initiating virtual machine checkpoints, or performing hardware-level health checks to ensure the underlying platform is stable.
+
+2. Save and remove crontab entries: Perform these steps as the `root` user on coordinator and standby nodes to prevent maintenance scripts from firing during the binary swap.
+
+   1. Back up your `gpadmin` tasks from both the coordinator and standby nodes:
+
+      ```bash
+      crontab -l -u gpadmin > /home/gpadmin/crontab_backup_$(date +%F) 
+      ```
+
+   2. Check for other user crontabs:
+
+      ```bash
+      crontab -u <username> -l
+      for user in $(cut -f1 -d: /etc/passwd); do echo $user; crontab -u $user -l; done >crontab_all 2>crontab_all_no_cron
+      ```
+
+   3. Remove current entries:
+
+      ```bash
+      crontab -r
+      ```
+
+   4. Verify the list is empty (should return `no crontab for gpadmin`):
+
+      ```bash
+      crontab -l
+      ```
+
+## Establishing a pre-upgrade baseline
+
+Before beginning the update, capture the current state of your environment. This baseline serves as a reference point to ensure that all software versions, configurations, and connectivity are restored correctly once the update is complete.
+
+1. Inventory installed packages: Document the exact versions of the WHPG packages currently running on the coordinator and segments.
+
+   - For RHEL 8, RHEL 9: `sudo rpm -qa | grep whpg`
+
+   - For RHEL 7: `sudo yum list installed | grep whpg`
+
+2. Record component versions: Document the versions of any additionally installed components, such as PXF, or PgBouncer. For example:
+
+   - Check PXF version: `pxf --version`
+
+   - Check pgBouncer version: Connect to the admin console with `psql -p 6543 -U pgbouncer -d pgbouncer` and run `SHOW VERSION;`.
+
+3. Perform a PXF smoke test: Ensure pre-upgrade connectivity is functional to confirm any connectivity issues found after the upgrade were not pre-existing. For example:
+
+   ```bash
+   psql -x demo -c 'SELECT * FROM public.jsonb_events LIMIT 2;'
+   ```
+
+## Quiescing the database
+
+Perform a final cleanup of the running database instance.
+
+1. Stop exernal services: Shut down the PXF service on all nodes and stop the PgBouncer connection pooler.
+
+   - Stop PXF: `pxf cluster stop`
+
+   - Stop pgBouncer: Connect to the admin console with `psql -p 6543 -U pgbouncer -d pgbouncer` and run `SHUTDOWN;`.
+
+   - Stop any other WarehousePG components you use. See [External components](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/modules/external_components/) for the list of available components. For example:
+
+     - Stop [WarehousePG Enterprise Manager (WEM)](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/): `sudo systemctl stop wem`
+
+     - Stop [FlowServer](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/flowserver/): Stop your jobs, then stop the `flowserver` process on every host where it runs.
+
+       ```bash
+       flowcli stop --all
+       pkill flowserver
+       ```
+
+2. Terminate sessions and check queries: Ensure no active user queries remain. Forcefully terminate any remaining client backends.
+
+   ```bash
+   # View active queries
+   psql -d postgres -c "SELECT * FROM pg_stat_activity where backend_type = 'client backend' and state <> 'idle';"
+   # Terminate a specific PID
+   psql -d postgres -c 'SELECT pg_cancel_backend(<procpid>);'
+   ```
+
+3. Verify segment health: Run `gpstate -m`. All segments must be in `Synchronized` status. If not, run `gprecoverseg -a` and wait for completion.
+
+4. Stop the WHPG cluster:
+
+   ```bash
+   gpstop -a -M fast
+   ```
+
+## Replacing binaries and restarting WHPG
+
+Perform the following steps as the `gpadmin` user. When upgrading from a version earlier than 6.27.4, the package manager removes the old files in `/usr/local/greenplum-db-<version>` and installs the new files to `/usr/edb/whpg6`. When upgrading from 6.27.4 or later, the package manager replaces the files in `/usr/edb/whpg6`.
+
+> **Warning: Upgrading to 6.27.8: Behavior changes to review**
+>
+> WarehousePG 6.27.8 changes the following behavior, which can require action on your part. Review each item before you upgrade. For all the changes in this release, see the [6.27.8 release notes](https://www.enterprisedb.com/docs/warehousepg/6/release_notes/#warehousepg-6278-whpg).
+>
+> - `amcheck` now sets a safe `search_path` while it runs index expressions and opclass support functions as the table owner, for [CVE-2026-14673](https://www.cve.org/CVERecord?id=CVE-2026-14673). Btree opclass support functions written in SQL or PL/pgSQL that rely on the caller's `search_path` may now fail during `amcheck` verification. Update those functions so they don't depend on the caller's `search_path`, by schema-qualifying the objects they use.
+> - `USAGE` privilege is now required on types used by stored expressions, by `CREATE TYPE ... AS RANGE`, and by `ALTER TABLE ... OF`, for [CVE-2026-6470](https://www.cve.org/CVERecord?id=CVE-2026-6470). Grant `USAGE` on those types to roles that need to use them.
+> - Only superusers can now create a function with a `DESCRIBE` callback. Have a superuser create any such functions.
+> - `orafce` `UTL_FILE` now rejects paths that still contain `..` after canonicalization. Update applications that use such paths.
+
+> **Warning: Upgrading to 6.27.7: Behavior changes to review**
+>
+> WarehousePG 6.27.7 changes the following behavior. Review each item before you upgrade.
+>
+> - `gp_expand_lock_catalog()`, `gp_expand_bump_version()`, and `gp_add_master_standby()` now require superuser privileges and fail with a `must be superuser` or `can only be run by a superuser` error otherwise. `gpexpand` and `gpinitstandby` run as the superuser and are unaffected. No post-upgrade step is required because the check is inside the functions, so existing clusters are protected as soon as the new binaries are running.
+> - External tables that use the `gpfdists://` and `s3://` protocols now require the remote endpoint to support TLS 1.2 or later. An S3-compatible store that only supports TLS 1.0 or 1.1 stops working.
+
+> **Warning: Upgrading to 6.27.6: Behavior changes to review**
+>
+> WarehousePG 6.27.6 changes the following behavior. Review each item before you upgrade.
+>
+> - Plain-text output from [`pg_dump`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/utility_guide/reference/pg_dump/), [`pg_dumpall`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/utility_guide/reference/pg_dumpall/), and [`pg_restore`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/utility_guide/reference/pg_restore/) now begins with `\restrict <key>` and ends with `\unrestrict <key>`. Tooling that parses dump output needs adjusting for the new markers. Both the dumper and [`psql`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/utility_guide/reference/psql/) used to restore the dump need to be on this version or later for the protection to apply.
+> - [`CREATE OPERATOR`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/sql_commands/CREATE_OPERATOR/) with a non-built-in `RESTRICT` or `JOIN` estimator now requires superuser privileges.
+> - SQL-level calls to functions that take or return the `internal` type, and casts to and from `internal`, are rejected.
+> - [`psql`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/utility_guide/reference/psql/) now consumes in-line `COPY ... FROM STDIN` data even when the `COPY` command fails. Scripts must terminate in-line data with `\.`.
+> - `pgcrypto` [PGP encryption](https://www.enterprisedb.com/docs/warehousepg/6/security-guide/Encryption/#encpgp) now returns an error when the cipher operation fails, instead of writing effectively unencrypted data. Use the new [`ignore-cipher-failure`](https://www.enterprisedb.com/docs/warehousepg/6/security-guide/Encryption/#recovering-data-encrypted-before-the-cve-2026-14663-fix) decryption option to read back data written by an affected build.
+> - `tsvectorrecv()` now rejects empty lexemes and enforces the total-length limit consistently.
+> - The new [`restrict_nonsystem_relation_kind`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/config_params/guc-list/#restrict_nonsystem_relation_kind) configuration parameter defaults to empty, so it causes no behavior change unless you set it.
+
+1. On the coordinator, back up old WHPG binaries:
+
+   - If `6.origin` is 6.27.4 or later, the binaries are in `/usr/edb/whpg6`:
+
+     ```bash
+     sudo cp -R /usr/edb/whpg6 /usr/edb/whpg6_save
+     sudo chown -R gpadmin /usr/edb/whpg6_save
+     ```
+
+   - If `6.origin` is earlier than 6.27.4, the binaries are in `/usr/local/greenplum-db-6.origin-WHPG`:
+
+     ```bash
+     sudo cp -R /usr/local/greenplum-db-6.origin-WHPG /usr/local/greenplum-db-6.origin-WHPG_save
+     sudo chown -R gpadmin /usr/local/greenplum-db-6.origin-WHPG_save
+     ```
+
+2. Download your `6.target` package. See [Downloading the WarehousePG Server Software](https://www.enterprisedb.com/docs/warehousepg/6/install_guide/install_whpg/) for details on how to download the packages. From your jump host, copy the new package to the coordinator:
+
+   ```bash
+   scp <warehouse-pg-6.target.rpm> gpadmin@coordinator_host:/tmp
+   scp <warehouse-pg-6.target-clients.rpm> gpadmin@coordinator_host:/tmp
+   ```
+
+   Where `<warehouse-pg-6.target.rpm>` is the package of the WarehousePG version to install.
+
+3. On the coordinator, create a file `hostfile_without_coord` that lists all hosts in the cluster except the coordinator. For example:
+
+   ```ini
+   scdw
+   sdw1
+   sdw2
+   sdw3
+   ```
+
+4. From the coordinator, create a directory for the binaries on all hosts and transfer the new package:
+
+   ```bash
+   gpssh -f hostfile_without_coord -e "mkdir -p /tmp/binary"
+   gpsync -f hostfile_without_coord <warehouse-pg-6.target.rpm> =:/tmp/binary
+   ```
+
+5. Install WHPG `6.target` on the coordinator:
+
+   > **Warning: Important**
+   >
+   > Starting with WarehousePG 6.27.4 the `warehouse-pg-6-clients` package is mandatory and must be installed alongside the server package.
+
+   - For RHEL 8, RHEL 9:
+
+     ```bash
+     sudo rpm -U <warehouse-pg-6.target.rpm> -v
+     sudo chown -R gpadmin. /usr/edb/whpg6
+     ```
+
+   - For RHEL 7:
+
+     ```bash
+     sudo yum install -y <warehouse-pg-6.target.rpm>
+     sudo chown -R gpadmin. /usr/edb/whpg6
+     ```
+
+6. Install WHPG `6.target` on segments: From the coordinator, run:
+
+   - For RHEL 8, RHEL 9:
+
+     ```bash
+     source /home/gpadmin/.bashrc
+     gpssh -f hostfile_without_coord -e "sudo rpm -U <warehouse-pg-6.target.rpm> -v"    
+     gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin:gpadmin /usr/edb/whpg6"
+     ```
+
+   - For RHEL 7:
+
+     ```bash
+     source /home/gpadmin/.bashrc
+     gpssh -f hostfile_without_coord -e "sudo yum install -y <warehouse-pg-6.target.rpm>"    
+     gpssh -f hostfile_without_coord -e "sudo chown -R gpadmin:gpadmin /usr/edb/whpg6"  
+     ```
+
+7. Verify symbolic links: Ensure `/usr/local/greenplum-db` and `/usr/local/greenplum-db-clients` point to `/usr/edb/whpg6` across the cluster and that `gpadmin` is the owner of the installation directories:
+
+   ```bash
+   ll /usr/local/'| grep 'greenplum-db ->' | sort
+   gpssh -f hostfile_without_coord  -e "ll /usr/local/'| grep 'greenplum-db ->' | sort"
+   ```
+
+## Restoring services and finalizing the upgrade
+
+Start the WHPG cluster on the target version. After the cluster is back online, restart the extension services and restore the operational environment.
+
+1. Update environment: Ensure `/home/gpadmin/.bashrc` on coordinator and standby points to the new path, then reload:
+
+   ```bash
+   source /home/gpadmin/.bashrc
+   ```
+
+2. Start WHPG:
+
+   ```bash
+   gpstart -a
+   ```
+
+3. Perform system health check: Run `gpstate -f` and `gpstate -m` to ensure all segments are up and mirrors are synchronized.
+
+4. Verify the installed version:
+
+   ```bash
+   psql -d postgres -c "select version();"
+   psql -d postgres -c "select distinct  version() from gp_dist_random('gp_id');"
+   ```
+
+## Restoring automation and connectivity
+
+Once the core database services are back online, re-establish the secondary layers to return the cluster to a full operational state.
+
+1. Restore crontabs: Reload the saved files for `gpadmin` on coordinator and standby hosts. For example:
+
+   ```bash
+   crontab -u gpadmin /home/gpadmin/crontab_backup_YYYY-MM-DD
+   ```
+
+2. Start PXF and re-run the smoke test query:
+
+   ```bash
+   pxf cluster start
+   psql -x demo -c 'SELECT * FROM public.jsonb_events LIMIT 2;'
+   ```
+
+3. Start PgBouncer: Restart the connection pooler and verify client connections.
+
+   ```bash
+   pgbouncer -d /data/gpdata/pgbouncer/pgbouncer.ini
+   psql -p 6543 -U pgbouncer -d pgbouncer -c "SHOW CLIENTS;"
+   ```
+
+4. Start any other WarehousePG components you stopped before the upgrade. For example:
+
+   - Start [WarehousePG Enterprise Manager (WEM)](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/): `sudo systemctl start wem`
+
+   - Start [FlowServer](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/flowserver/): Start the `flowserver` process on each host where it ran, then resubmit and start your jobs. FlowServer doesn't persist job definitions across restarts.
+
+     ```bash
+     nohup ./flowserver -c /path/flow_server.json &
+     ```
+
+## Handing back the system
+
+With the upgrade verified and the infrastructure services restored, the final phase involves transitioning the environment back to the end-users and resuming normal business operations.
+
+1. Applications: Re-enable application traffic and BI tools.
+2. Schedules: Re-enable external schedulers.
+3. Monitoring: Resume all monitoring agents.
+4. Handover: Formally notify the Infrastructure or Platform teams that the cluster is stable on version `6.target`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

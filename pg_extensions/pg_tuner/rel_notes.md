@@ -1,0 +1,24 @@
+---
+title: Postgres Tuner release notes
+product: EDB Postgres Tuner
+url: https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/rel_notes/
+lastModified: 2025-12-18T09:30:51+01:00
+---
+
+# Postgres Tuner release notes
+
+The Postgres Tuner documentation describes the latest version of Postgres Tuner,
+including minor releases and patches. These release notes
+cover what was new in each release. For new functionality introduced
+in a minor or patch release, there are also indicators in the content
+about the release that introduced the feature.
+
+| Version                                                                                               | Release Date |
+| ----------------------------------------------------------------------------------------------------- | ------------ |
+| [1.3.2](https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/rel_notes/pg_tuner_1.3.2_rel_notes/) | 12 Dec 2025  |
+| [1.3.1](https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/rel_notes/pg_tuner_1.3.1_rel_notes/) | 15 May 2025  |
+| [1.3.0](https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/rel_notes/pg_tuner_1.3.0_rel_notes/) | 10 Sep 2024  |
+| [1.1.0](https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/rel_notes/pg_tuner_1.1.0_rel_notes/) | 10 Feb 2023  |
+| [1.0.0](https://www.enterprisedb.com/docs/pg_extensions/pg_tuner/rel_notes/pg_tuner_1.0.0_rel_notes/) | 30 Nov 2022  |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

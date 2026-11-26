@@ -1,0 +1,1884 @@
+---
+title: Release Notes for BDR3
+product: EDB Postgres Distributed (PGD)
+version: 3.7.26
+url: https://www.enterprisedb.com/docs/pgd/3.7/bdr/release-notes/
+lastModified: 2025-05-22T14:13:07+01:00
+---
+
+# Release Notes for BDR3
+
+## BDR 3.7.26-ELS(2025 May 22)
+
+This is an Extended Lifetime release for BDR 3.7 that includes bug fixes for
+issues identified in previous versions.
+
+### Resolved issues
+
+- [CVE-2025-2506](https://www.enterprisedb.com/docs/security/advisories/cve20252506/): An issue was discovered in BDR 3.7.25 and earlier that could enable a user with CONNECT access to obtain read access to replicated tables.
+
+## BDR 3.7.25-ELS(2024 Oct 15)
+
+This is an Extended Lifetime release for BDR 3.7 that includes bug fixes for
+issues identified in previous versions.
+
+### Resolved issues
+
+- bdr\_consensus: Add GUCs to control automatic Raft vacuum (BDR-5424, RT40412)
+  Aggressive HARP proxy settings may face issues due to
+  increased bloat on consensus request and response journals.
+  This patch adds GUCs to control frequency of automatic vacuum on said
+  catalogs. The `bdr.raft_vacuum_interval` GUC controls how frequently the
+  tables are checked for VACUUM and ANALYZE. The Autovacuum GUCs and table
+  reloptions are used to determine whether VACUUM/ANALYZE is needed or
+  not.
+  The `bdr.raft_vacuum_full_interval`  triggers VACUUM FULL on the tables.
+  The user can disable VACUUM FULL if normal VACUUM is sufficient to keep
+  the bloat in control.
+
+- Delete older logs if we get a snapshot that's already applied
+  The follower doesn't need the older logs once a snapshot is applied. If
+  we keep those around, the duplicate request id issue may keep happening.
+  So clear the logs a bit more aggressively once we know they are not
+  needed.
+
+- Handling duplicate requests in RAFT preventing protocol breakage (RT37735, BDR-4091, BDR-5285)
+  When processing RAFT entries, it's crucial to handle duplicate requests
+  properly to prevent Raft protocol issues. Duplicate requests can occur when
+  a client retries a request that has already been accepted and applied by the
+  Raft leader. The problem arose when the leader failed to detect the duplicate
+  request due to historical evidence being pruned.
+
+- Handling Raft Snapshots: Consensus Log (BDR-5285, RT37725)
+  When installing or importing a Raft snapshot, discard the
+  consensus log unless it contains an entry matching the
+  snapshot's last included entry and term.
+
+- Fix an infinite loop in consensus worker which results in high cpu
+  consumption (BDR-5307)
+
+## BDR 3.7.24-ELS(2024 Jun 19)
+
+This is an Extended Lifetime release for BDR 3.7 that includes bug fixes for
+issues identified in previous versions.
+
+### Resolved issues
+
+- Fix a memory leak in BDR where a variable is kept beyond its utility. (RT101647, BDR-4755)
+  We have resolved a memory leak issue in the walsender process. This update
+  ensures that the walsender process now correctly releases memory, preventing
+  any increase in memory usage over time. This enhancement improves system
+  stability and performance.
+
+- Fix a segfault during the edge case where the query over bdr.group\_versions\_details
+  does not return any rows. (RT102290, BDR-4807)
+  We have resolved an issue that previously caused a segmentation fault when the
+  function bdr.monitor\_group\_versions() was called and the query returned no rows.
+  This edge case is now properly managed, resulting in fewer disruptions and more
+  predictable performance.
+
+- Run ANALYZE on internal Raft tables to keep dead tuple size down. (RT97735, RT102018, BDR-4209)
+  We have implemented a fix to our database maintenance routines by regularly
+  running the Postgres ANALYZE command on several tables, including global\_consensus\_journal
+  and local\_consensus\_snapshot. Previously, these tables were excluded from the standard
+  Postgres command ANALYZE due to frequent truncation by PGD. ANALYZE needs to be run
+  regularly in order to collect statistics about the contents of tables within a database;
+  otherwise, there is a risk of inefficient query execution and, in the case of PGD,
+  an additional impact on the performance of raft and the overall cluster.
+
+- Improve local node connection failure logging in bdr\_init\_physical . (RT99369, BDR-4540)
+  Previously, bdr\_init\_physical appeared to hang when encountering connection
+  issues without throwing any logs. Now, PGD emits a log every 30 seconds to
+  provide information on the status of the connection it attempts to use.
+
+- Fix debug logging for bdr\_init\_physicall, allowing underneath pg\_ctl output to be captured. (BDR-4546, RT99369)
+  bdr\_init\_physical accepts the "-v" parameter to increase logging verbosity.
+  With this fix, we also enhance the verbosity of the underlying pg\_ctl command
+  by not passing the --silent parameter to display more information on any
+  issues it might have.
+
+- Increase default bdr.raft\_keep\_min\_entries to 1000. (BDR-4367)
+  In a PGD cluster, the Raft leader periodically prunes the global\_consensus\_journal
+  and global\_consensus\_response\_journal tables. This pruning process does not
+  occur simultaneously across all replicas.
+  Previously, Raft journal pruning was based on the journal size as set by the
+  bdr.raft\_keep\_min\_entries configuration option. However, because Raft requests
+  are retried using the same origin and request ID for every attempt, a situation
+  could arise where the Raft journal on the leader is pruned while a retried command
+  is sent to a replica that has yet to prune its journal. This discrepancy could
+  lead to duplicate primary keys in the consensus table, causing the consensus
+  worker to crash as it cannot insert new entries.
+  To address this issue, the default value of bdr.raft\_keep\_min\_entries has been
+  increased to 1000. This adjustment ensures more consistent and reliable pruning
+  across replicas, preventing duplicate primary keys and maintaining the stability
+  of the consensus worker.
+
+- Ensure that consensus connections are handled correctly, fixing high CPU usage from the BDR consensus process. (RT97649, BDR-4333)
+  Previously, PGD triggered the consensus process when a connection registered
+  and required a poll of the nodes to confirm their state. In addition, the
+  connection establishment state machine for PGD sometimes failed to progress,
+  due to the omission of the connection socket in the wait events, leading to
+  stalled connection attempts and potential network connectivity issues. Both
+  issues can lead to frequently waking up the consensus process and thus high
+  CPU consumption, in direct proportion to the number of nodes within a cluster.
+
+- Fix a memory leak in long-running SQL function bdr.run\_on\_all\_nodes. (RT99231, RT99853, RT95314, BDR-4334)
+  Previously, while running monitoring queries using the SQL function bdr.run\_on\_all\_nodes,
+  the leader node in a PGD cluster opened connections to other nodes and fetched
+  results over libpq connections, resulting in a memory leak since the function
+  did not free memory allocation, resulting in increased memory usage over time.
+  Now, memory is freed correctly, improving management and system stability.
+
+- PART\_CATCHUP is now more resilient to replication slot and node\_catchup\_info conflict. (RT103510, RT101055, BDR-4860)
+  In a PGD cluster, sometimes removing a node is necessary when upgrading a
+  cluster or if the node has gone offline. Previously, the node being removed
+  could be left in the PART\_CATCHUP node state, meaning they could not be
+  successfully removed since the data from the soon-to-be-removed node had not
+  fully synchronized with the remaining nodes in the PGD cluster. With this fix,
+  the catch-up infos are  cleaned up during PART\_CATCHUP, ensuring there is no
+  conflict between replication slots and the SQL view node\_catchup\_info.
+
+- Restart the replication connection for bdr\_init\_physical in the case of a slow connection. (RT102828, BDR-4897)
+  Previously, in the case of a slow connection, the replication connection for
+  bdr\_init\_physical was dropped, causing the bdr\_init\_physical process to break.
+  With this fix instead of waiting for the copy of the upstream data, PGD opens
+  and closes the connection only when needed, as determined by bdr\_init\_physical.
+
+- Ensure RAFT status queries in multi-version clusters function correctly. (RT104094, BDR-4926)
+  PGD does not support clusters with multiple versions outside of upgrades.
+  When running a cluster with multiple versions of PGD, there may be discrepancies
+  between different aspects of the system. In this case, the catalog version between
+  these versions differed. Since raft status queries depend on the catalog underneath,
+  queries that interrogate raft were updated to know what to look for in older
+  catalog versions.
+
+## BDR 3.7.23 (2023 Nov 14)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Also check the release notes for [pglogical 3.7.23](https://www.enterprisedb.com/docs/pgd/3.7/pglogical/release-notes/#pglogical-3723) for resolved issues
+that affect BDR as well.
+
+### Resolved issues
+
+### Improvements
+
+- Add support for BDR 3.7.22 and above in bdr\_pg\_upgrade v1.2.0
+
+### Upgrades
+
+## BDR 3.7.22 (2023 Aug 31)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Also check the release notes for [pglogical 3.7.22](https://www.enterprisedb.com/docs/pgd/3.7/pglogical/release-notes/#pglogical-3722) for resolved issues
+that affect BDR as well.
+
+### Resolved issues
+
+- Changed `bdr.autopartition_drop_partition()` signature to use text.
+
+- Autopartition: Drop partition if it exists
+  It will help in recover from the cases when duplicate drop\_partition workitems are created.
+
+- Fixed memory leak in `bdr.sequence_alloc` by modifying the missing catalog signature.
+
+- Prevented superuser check when GUC was specified on PG command line.
+
+- Fixed check for malformed connection string tp prevent failure in `bdr.create_node()`. (RT95453)
+
+- Backport `bdr.accept_connections` GUC.
+
+- Fixed a memory leak in `bdr.sequence_alloc`.
+
+- Remove txn\_config entry from ReorderBuffer hash table
+
+- Ignore global\_lock check from repset\_func when SDW enabled
+
+- Added check for conflicting node names.
+
+- Fixed an issue whereby a crash occurred when BDR extension is used with pgaudit.
+
+- Fixed an issue by allowing a logical join of node if there are foreign key constraints violations. (RT91745)
+
+### Improvements
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.21 (2023 May 16)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Also check the release notes for [pglogical 3.7.21](https://www.enterprisedb.com/docs/pgd/3.7/pglogical/release-notes/#pglogical-3721) for resolved issues
+that affect BDR as well.
+
+### Resolved issues
+
+- Fixed memory leak in consensus process (RT91830).
+  The memory consumed by the node is just 32 bytes, but when the
+  consensus worker handles hundreds of requests per second, sustained for
+  hours, the memory builds up. We saw 47% of memory consumed
+  by consensus worker when used with HARP, which executes
+  `bdr.consensus_kv_fetch()` at a rate of 600 times per second.
+
+- Fixed issue where a node can be inconsistent with the group after rejoining.
+  If a node was part of a subgroup, parted, and then rejoined to the
+  group, it might be inconsistent with the group. The changes from some nodes
+  of the group would be replayed from a wrong starting point, resulting in
+  potential data loss.
+
+- Fixed join and replication when SDW and standby\_slot\_names are set (RT89702, RT89536).
+
+- Fixed upgrades for nodes with CRDTs.
+
+- Fixed replication for subscriber-only node (RT89814).
+
+- Fixed WARNING message in `bdr.raft_leadership_transfer()` (RT92180).
+
+- Fixed segfault where a conflict\_slot was being used (RT76439, RT92180)
+  while using `synchronize_structures='none'` during the join.
+  Prevent reuse of the slot after release during multi-insert (COPY).
+
+### Improvements
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.20 (2023 Feb 14)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for pglogical 3.7.20 for resolved issues
+that affect BDR as well.
+
+> **Note**
+>
+> This version is required for EDB Postgres Advanced Server versions 12.14.18, 13.10.14, and later.
+
+### Resolved issues
+
+- Fix watermark handling on clusters with multiple sub-groups
+  Watermark is used to ensure data consistency during join.
+  Previously, this didn't work correctly in the presence of
+  multiple data sub-groups.
+
+### Improvements
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.19 (2022 Dec 13)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for [pglogical 3.7.19](https://www.enterprisedb.com/docs/pgd/3.7/pglogical/release-notes/#pglogical-3719) for resolved issues
+that affect BDR as well.
+
+### Resolved issues
+
+- Fix timeout issue related to global lock handling (BDR-2836)
+  Correctly lock Raft maintained tables when needed.
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.18 (2022 Nov 16)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for pglogical 3.7.18 for resolved issues
+that affect BDR as well.
+
+### Resolved issues
+
+- Don't wait for ADD CONSTRAINT progress if DDL replication is off (BDR-2645, RT86043)
+  The constraint validation from all nodes is not needed if we don't replicate
+  the DDL or from any node that is PARTED or STANDBY.
+
+- Fix raft snapshot read/write routines for sequences (BDR-2666, RT86246)
+  Adjust joining to older BDR 3.6 version nodes while using galloc sequences.
+
+- Fix rare segfault for bdr.drop\_node()
+  Check for null values in the result from all the other nodes
+  when trying to drop a node.
+
+- Fix hangs in multiple concurrent joins (RT82977)
+  Various lock corrections for functons and raft requests that reduces
+  the probability of distributed deadlocks.
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.17 (2022 Aug 23)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also the [release notes for pglogical 3.7.17](https://www.enterprisedb.com/docs/pgd/3.7/pglogical/release-notes/#pglogical-3717) for resolved issues
+that affect BDR as well.
+
+### Resolved issues
+
+- Fix spurious segmentation faults when conflicts are logged to bdr.conflict\_history  (BDR-2403, RT83436, RT83928)
+  When conflicts are logged to the catalog bdr.conflict\_history, the pglogical
+  writer process may crash because of a segmentation fault due to an invalid
+  pointer being used. Fix this usage.
+
+- Clean up the replication slot when bdr\_init\_physical fails (BDR-2364, RT74789)
+  If bdr\_init\_physical aborts without being able to join the node, it will
+  leave behind an inactive replication slot. Remove such a replication slot
+  when it is inactive before an irregular exit.
+
+### Improvements
+
+- Allow consumption of the reserved galloc sequence slot (BDR-2367, RT83437, RT68255)
+  The galloc sequence slot reserved for future use by background allocator can
+  be consumed in the presence of consensus failure.
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.16 (2022 May 17)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for pglogical 3.7.16 for resolved issues
+that affect BDR as well.
+
+### Resolved issues
+
+- Make ALTER TABLE lock the underlying relation only once (RT80204)
+  This avoids the ALTER TABLE operation falling behind in the queue
+  when it released the lock in between internal operations. With this
+  fix, concurrent transactions trying to acquire the same lock after
+  the ALTER TABLE command will properly wait for the ALTER TABLE to
+  finish.
+
+- Show a proper wait event for CAMO / Eager confirmation waits (BDR-1899, RT75900)
+  Show correct "BDR Prepare Phase"/"BDR Commit Phase" in `bdr.stat_activity`
+  instead of the default “unknown wait event”.
+
+- Correct `bdr.monitor_local_replslots` for down nodes (BDR-2080)
+  This function mistakenly returned an okay result for down nodes
+  before.
+
+- Reduce log for bdr.run\_on\_nodes (BDR-2153, RT80973)
+  Don't log when setting `bdr.ddl_replication` to off if it's
+  done with the "run\_on\_nodes" variants of function. This eliminates
+  the flood of logs for monitoring functions.
+
+- Correct an SDW decoder restart edge case (BDR-2109)
+  Internal testing revealed a possible error during WAL decoder
+  recovery about mismatch between confirmed\_flush LSN of WAL decoder
+  slot also stating: "some LCR segments might be missing". This could
+  happen before in case the WAL decoder exited immediately after
+  processing a "Standby" WAL record other than "RUNNING\_XACTS" and
+  would lead to a halt of replication with the decoder processes
+  continuing to restart.
+
+### Improvements
+
+- Use 64 bits for calculating lag size in bytes (BDR-2215)
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.15 (2022 Feb 15)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for pglogical 3.7.15 for resolved issues
+that affect BDR as well.
+
+### Improvements
+
+- Performance of COPY replication including the initial COPY during join has
+  been greatly improved for partitioned tables (BDR-1479)
+  For large tables this can improve the load times by order of magnitude or
+  more.
+
+- Back-port `bdr.run_on_nodes()` and `bdr.run_on_group()` from BDR 4.0 (BDR-1433)
+  These functions behave same as `bdr.run_on_all_nodes()` but allow running SQL
+  on specific group or set of nodes rather than all nodes.
+
+- Add execute\_locally option to bdr.replicate\_ddl\_command (RT73533)
+  This allows optional queueing of ddl commands for replication to other groups
+  without executing it locally.
+
+- Don't ERROR on consensus issue during JOIN
+  The reporting of these transient errors was confusing as they are shown in
+  bdr.worker\_errors. These are now changed to WARNINGs.
+
+### Resolved issues
+
+- WAL decoder confirms end LSN of the running transactions record (BDR-1264)
+  Confirm end LSN of the running transactions record processed by WAL
+  decoder so that the WAL decoder slot remains up to date and WAL senders
+  get the candidate in timely manner.
+
+- Improve handling of node name reuse during parallel join (RT74789)
+  Nodes now have a generation number so that it's easier to identify the name
+  reuse even if the node record is received as part of a snapshot.
+
+- Fix locking and snapshot use during node management in the BDR manager
+  process (RT74789)
+  When processing multiple actions in the state machine, we make sure reacquire
+  the lock on the processed node and update the snapshot to make sure any updates
+  happening through consensus are taken into account.
+
+- Improve cleanup of catalogs on local node drop
+  Drop all groups, not only the primary one and drop all the node state
+  history info as well.
+
+- Don't wait for autopartition tasks to complete on parting nodes (BDR-1867)
+  When a node has started parting process, it makes no sense to wait for
+  autopartition tasks on such nodes to finish since it's not part of the group
+  anymore.
+
+- Ensure loss of CAMO partner connectivity switches to Local Mode immediately
+  This prevents disconnected partner from being reported as CAMO ready.
+
+- Fix the cleanup of `bdr.node_pre_commit` for async CAMO configurations (BDR-1808)
+  Previously, the periodic cleanup of commit decisions on the CAMO
+  partner checked the readiness of it's partner, rather than the
+  origin node.  This is the same node for symmetric CAMO
+  configurations, so those were not affected.  This release corrects
+  the check for asymmetric CAMO pairings.
+
+- Improve error checking for join request in bdr\_init\_physical
+  Previously bdr\_init\_physical would simply wait forever when there was any issue
+  with the consensus request, now we do same checking as the logical join does.
+
+- Improve handling of various timeouts and sleeps in consensus
+  This reduces amount of new consensus votes needed when processing many consensus
+  requests or time consuming consensus requests, for example during join of a
+  new node.
+
+### Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.14 (2021 Dec 15)
+
+This is a maintenance release for BDR 3.7 that includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for pglogical 3.7.14 for resolved issues
+that affect BDR as well.
+
+### Improvements
+
+- Reduce frequency of CAMO partner connection attempts (EE)
+  In case of a failure to connect to a CAMO partner to verify its
+  configuration and check the status of transactions, do not retry
+  immediately (leading to a fully busy pglogical manager process), but
+  throttle down repeated attempts to reconnect and checks to once per
+  minute.
+
+- Ensure CAMO configuration is checked again after a reconnect (EE)
+
+- Add dummy CAMO configuration catalogs and Raft support (BDR-1676)
+  This is just to ease rolling upgrades from BDR 3.7 to 4.0.x on CAMO enabled
+  installations.
+
+- Avoid unnecessary LCR segment reads (BDR-1426)
+  We'll now only attempt to read new LCR segments when there are some available.
+  This should reduce I/O load when decoding worker is enabled.
+
+### Resolved issues
+
+- Switch from CAMO to Local Mode only after timeouts (EE, RT74892)
+  Do not use the `catchup_interval` estimate when switching from CAMO
+  protected to Local Mode, as that could induce inadvertent switching
+  due to load spikes.  Use the estimate only when switching from Local
+  Mode back to CAMO protected (to prevent toggling forth and back due
+  to lag on the CAMO partner).
+
+- Prevent duplicate values generated locally by galloc sequence in high
+  concurrency situations when the new chunk is used (RT76528)
+  The galloc sequence could have temporarily produce duplicate value when
+  switching which chunk is used locally (but not across nodes) if there were
+  multiple sessions waiting for the new value. This is now fixed.
+
+- Ensure that the group slot is moved forward when there is only one node in
+  the BDR group
+  This prevents disk exhaustion due to WAL accumulation when the group is left
+  running with just single BDR node for prolonged period of time. This is not
+  recommended setup but the WAL accumulation was not intentional.
+
+- Advance Raft protocol version when there is only one node in the BDR group
+  Single node clusters would otherwise always stay on oldest support protocol
+  until another node was added. This could limit available feature set on that
+  single node.
+
+### Other changes
+
+- Add CAMO configuration infrastructure needed for upgrade to BDR4 (BDR-1676)
+  Add dummy CAMO configuration infrastructure bdr.camo\_pairs table
+  and bdr.add/remove\_camo\_pair() functions to be able to upgrade a
+  CAMO enabled cluster to BDR4
+
+### Upgrades
+
+This release supports upgrading from following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.29 and higher
+
+## BDR 3.7.13.1 (2021 Nov 19)
+
+This is a hotfix release for BDR 3.7.13.
+
+### Resolved issues
+
+- Fix potential FATAL error when using global DML locking with CAMO (BDR-1675, BDR-1655)
+
+- Fix lag calculation for CAMO local mode delay (BDR-1681)
+
+## BDR 3.7.13
+
+This is a maintenance release for BDR 3.7 that includes minor improvements
+as well as fixes for issues identified in previous versions.
+
+Check also release notes for pglogical 3.7.13 for resolved issues that affect
+BDR as well.
+
+### Improvements
+
+- Use a separate replication origin for the BDR consensus process (BDR-1613)
+  For Eager transactions that need to COMMIT PREPARED from the consensus
+  process, use a dedicated replication origin, this way
+  the consensus does not conflict with writer origins.
+
+- Improve documentation of the backup/restore procedure (RT72503, BDR-1340)
+  Recommend against dropping the extension with cascade because
+  it may drop user columns that are using CRDT types and break
+  the sequences. It's better to use `drop_node` function instead.
+
+- Add function `bdr.get_decoding_worker_stat()` (BDR-1302)
+  If the Decoding Worker is enabled, this function shows information
+  about the state of the Decoding Worker associated with the current
+  database. This also provides more granular information about
+  Decoding Worker progress than is available via `pg_replication_slots`.
+
+### Resolved issues
+
+- Fix a subscriber-side memory leak when bulk-inserting into a partitioned table (BDR-1473)
+  This improves memory usage during node join when there are
+  partitioned tables present.
+
+- Fix `bdr.alter_sequence_set_kind` to accept a bigint as a start value (RT74294)
+  The function was casting the value to an `int` thus getting bogus values
+  when `bigint` was used.
+
+- Fix memory leak from consensus worker of Raft leader (RT74769)
+  The tracing context was leaked causing growing memory usage from the consensus,
+  on BDR groups with many nodes, this could cause memory exhaustion.
+
+- Enable async conflict resolution for explicit 2PC (BDR-1666, RT71298)
+  Continue applying the transaction using the async conflict resolution
+  for explicit two phase commit.
+
+- Fix potential crash if `bdr.receive_lcr` is "false" (BDR-1620)
+  Adust Single Decoding Worker feature to automatically disable
+  itself if the `bdr.receive_lcr` is "false". This prevents crash
+  situation when starting replication from a peer in the
+  cluster(on restart, or new join) with `bdr.receive_lcr` disabled
+  and `enable_wal_decoder` enabled.
+
+### Other changes
+
+- Add deprecation hint for `bdr.group_max_connections` (BDR-1596)
+  Allow `bdr.group_max_connections` option, but make sure it's properly marked
+  as deprecated in favor of `bdr.raft_group_max_connections`. This GUC will
+  be removed in BDR 4.0.
+
+### Upgrades
+
+This release supports upgrading from following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.28
+
+## BDR 3.7.12 (2021 Sep 21)
+
+This is a maintenance release for BDR 3.7 that includes minor improvements
+as well as fixes for issues identified in previous versions.
+
+Check also release notes for pglogical 3.7.12 for resolved issues that affect
+BDR as well.
+
+### Improvements
+
+- Tweak Single Decoding performance by caching and better locking (BDR-1311, BDR-1312)
+  Add caching for BDR-internal catalog information about the Decoding
+  Worker.  Split a single global lock into multiple locks (one per WAL
+  sender) for access to internal status information of the WAL sender.
+  This improves performance especially with many concurrent WAL sender
+  processes.
+
+- Add a new view bdr.replication\_status (BDR-1412)
+  This is similar to the view `pglogical.replication_status` and shows
+  information about the replication status of the local node with
+  respect to all other BDR nodes in the cluster.
+
+- Add function bdr.wal\_sender\_stats()
+  This provides information about whether the WAL sender is using LCRs emitted
+  by a Decoding Worker, and if so the name of the LCR file currently being read
+  from.
+
+- Prevent CAMO to be used in combination with Decoding Worker (BDR-792)
+  These features cannot currently work in combination.  This release
+  prevents enabling them both in many cases.  This is just a
+  best-effort strategy to prevent mis-configuration.
+
+- Allow to specify a postgresql.auto.conf file for `bdr_init_physical` (RT72989, BDR-1400)
+  Add a command line argument to `bdr_init_physical` allowing to
+  provide a custom file to be used for `postgresql.auto.conf`.
+
+### Resolved issues
+
+- Fix a potential data loss issue with bdr\_init\_physical (RT71888)
+  When reusing a slot name, previous state was not properly cleaned up
+  in all cases.  This has caused potential data loss during physical
+  join as the slot is created ahead of time by `bdr_init_physical`
+  with the same name.  The transition from physical to logical
+  replication could miss part of the replication stream, as this drops
+  and recreates the slot.  This release properly cleans slot
+  information when dropped and thereby prevents data loss.
+
+- Fix `bdr.camo_local_mode_delay` to really kick in (BDR-1352)
+  This artificial delay allows throttling a CAMO node that is not
+  currently connected to its CAMO partner to prevent it from producing
+  transactions faster than the CAMO partner can possibly apply.  In
+  previous versions, it did not properly kick in after
+  `bdr.global_commit_timeout` amount of lag, but only 1000 times
+  later (due to erroneously comparing seconds to milliseconds).
+
+- Prevent segfault in combination with third-party output plugins (BDR-1424, RT72006)
+  Adjust handling of logical WAL messages specific to BDR's Eager All
+  Node Replication mode for output plugins unrelated to BDR.  This
+  allows for example Debezium's decoderbufs output plugin to work
+  alongside BDR.
+
+- Improve compatibility with Postgres 13 (BDR-1396)
+  Adjust to an API change in ReplicationSlotAcquire that may have led
+  to unintended blocking when non-blocking was requestend and vice
+  versa.  This version of PGLogical eliminates this potential problem,
+  which has not been observed on production systems so far.
+
+- Fix serialization of Raft snapshots including commit decisions (CAMO, BDR-1454)
+  A possible mismatch in number of tuples could lead to serialization
+  or deserialization errors for a Raft snapshot taken after
+  transactions using CAMO or Eager All Node replication were used
+  recently and stored their commit decisions.
+
+- Fix `--recovery-conf` option in `bdr_init_physical`
+
+### Upgrades
+
+This release supports upgrading from following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.27
+
+## BDR 3.7.11 (2021 Aug 18)
+
+This is a maintenance release for BDR 3.7 that includes minor improvements
+as well as fixes for issues identified in previous versions.
+
+Check also release notes for pglogical 3.7.11 for resolved issues that affect
+BDR as well.
+
+### Improvements
+
+- Reduce debug logging of decoding worker (BDR-1236, BDR-1239)
+
+- Allow configuration of maximum connections for consensus (BDR-1005)
+  This allows for setting up very large clusters.
+
+### Resolved issues
+
+- Fix snapshot handling in autopatition and executor
+  For compatibility with latest version of PostgreSQL
+
+- Fix deadlock handling in CAMO
+  This solves issue with extremely slow resolution of conflicts in cross-CAMO
+  setup.
+
+- Get copy of slot tuple when logging conflict (BDR-734)
+  Otherwise we could materialize the row early causing wrong update in presence
+  of additional columns on the downstream.
+
+- Improve LCR segment removal logic (BDR-1180, BDR-1183, BDR-993, BDR-1181)
+  Make sure we keep LCR segments for all the LSN that is the smaller between
+  group slot LSN and the decoding worker slot LSN.
+
+- Fix handling of concurrent attach to the internal connection pooler while
+  the pool owner (consesus worker) is restating (BDR-1113)
+
+### Upgrades
+
+This release supports upgrading from following versions of BDR:
+
+- 3.7.9 and higher
+- 3.6.27
+
+## BDR 3.7.10 (2021 Jul 20)
+
+This is a maintenance release for BDR 3.7 that includes minor improvements
+as well as fixes for issues identified in previous versions.
+
+### Improvements
+
+- Check raft quorum in `bdr.monitor_group_raft()` (BDR-960)
+  Return "CRITICAL" status in `bdr.monitor_group_raft()` if at least
+  half of the voting nodes are unreachable.
+
+- Allow `bdr_monitor` role to read additional informational views. (BDR-732)
+  - `bdr.group_camo_details`
+  - `bdr.group_versions_details`
+  - `bdr.group_raft_details`
+  - `bdr.group_replslots_details`
+  - `bdr.group_subscription_summary`
+
+- Add `is_decoder_slot` to `bdr.node_slots` to differentiate slots used by the
+  Decoder Worker
+
+### Resolved issues
+
+- Make the consensus worker always exit if postmaster dies (BDR1063, RT70024)
+
+- Fix starting LSN of Decoding Worker after a restart
+  When the Decoding Worker restarts, it scans the existing LCR segments to find
+  the LSN, transactions upto which, are completely decoded. If this LSN is
+  higher than the slot's confirmed LSN, it updates the slot before decoding any
+  transactions. This avoids transactions being decoded and replicated multiple
+  times. (BDR-876, RT71345)
+
+- Do not synchronize Decoding Worker's replication slot on a physical standby
+  When the WAL decoder starts the first time, the Decoding Worker's slot needs
+  to be behind all the WAL sender slots so that it decodes the WAL required by
+  the WAL senders. But the slot on primary has moved ahead of all WAL senders
+  so synchronizing it is not useful. It is created anew after the physical
+  standby is promoted. (BDR-738)
+
+- Improve join performance when Decoding Worker is enabled
+  When `fsync` = `on`, joining a new node to a cluster takes much longer with
+  Decoding Worker enabled. Also WAL buildup is observed on the node used as the
+  source of join. This was because the Decoding Worker synced the LCR segments
+  too frequently. Fixed the issue by reducing the frequency. (BDR-1160,
+  RT71345)
+
+- Fix TOAST handling for UPDATE/UPDATE conflicts when Decoding Worker is used
+
+- Fix filtering of additional origins when Decoding Worker is used
+  This mostly affects mixing BDR with Decoding Worker and a separate pglogical
+  replication.
+
+- Eliminate potential hang in `bdr.raft_leadership_transfer` (BDR-1039)
+  In combination with `wait_for_completion`, the best effort approach led
+  to an infinite loop in case the original request was submitted properly,
+  but the actual leadership transfer still failed.
+
+- Do not throw an error when PGL manager can not start a worker (RT71345)
+  If PGL manager throws an error, it is restarted. Since it's responsible
+  for maintaining the node states and other BDR management tasks
+  restarting it on such errors affects the EDB Postgres Distributed cluster's health.
+  Instead log a WARNING.
+
+- Make the repset configuration handling during join more deterministic (RT71021)
+  The `autoadd_tables` option might not be respected in all cases before.
+
+- Deprecate `pub_repsets` and `sub_repsets` in bdr.node\_summary (BDR-702, RT70743)
+  They now always show `NULL` rather than bogus info, will be removed completely
+  in next major version.
+
+- Show node and group info in `bdr.node_slots` when origin and target node are in
+  different groups.
+
+- Make sure `bdr.monitor_local_replslots()` understands standby nodes and
+  subscriber-only group configuration and does not check for slots that are
+  not needed in these situations (BDR-720)
+
+- Fix internal connection pooler potentially not reusing free connect slots (BDR-1068)
+
+- Fix reported schema name in the missing column error message (BDR-759)
+
+## BDR 3.7.9 (2021 Jun 15)
+
+### Improvements
+
+- Add `bdr.local_group_slot_name()` function which returns the group slot
+  name (BDR-931)
+  Useful primarily for monitoring.
+
+- Add `bdr.workers` view which show additional information about BDR workers
+  (BDR-725)
+  Helps with monitoring of BDR specific activity. Useful especially when joined
+  with `bdr.stat_activity`.
+
+- Allow Parallel Apply on logical standbys for forwarded transaction (BDR-852)
+  Previously, parallel apply would could be used only for changes replicated
+  directly from the upstream of the logical standby, but not for any changes
+  coming from another node.
+
+- Introduce `bdr.batch_inserts` configuration variable (RT71004, RT70727)
+  This sets after how many `INSERT`s into same table in a row (in same transaction)
+  BDR will switch to multi insert strategy.
+
+  This normally improves performance of replication of large data loads, be it
+  via `INSERT`s or the `COPY` command. However BDR 3.7.8 would try to use
+  this strategy always which would result in performance degradation in workloads
+  that do many single row inserts only.
+
+### Resolved issues
+
+- Destroy WAL decoder infra on node part/drop (BDR-1107)
+  This enures that the WAL decoder infra is removed when a node is
+  parted from the cluster. We remove the LCR directory as well as the
+  decoder slot. This allows the node to cleanly join the cluster again
+  later, if need be.
+
+- Do not start WAL decoder on subscriber-only node (BDR-821)
+  The subscriber-only node doesn't send changes to any other nodes in
+  the cluster. So it doesn't require WAL decoder infra and the WAL decoder
+  process itself. Fixing this also ensures that the subscriber-only
+  nodes do not hold back WAL because of an unused slot.
+
+- Start WAL decoder only after reaching PROMOTE state (BDR-1051)
+  We used to create WAL decoder infra when a node starts the join
+  process. That's too early and can lead to WAL accumulation for
+  logical standbys. Instead, we now create the WAL decoder infra
+  only when the node reaches PROMOTE state. That's the state when other
+  nodes may start connecting to the node and hence need WAL decoder.
+
+- Fix group slot advance on subscriber-only nodes (BDR-916, BDR-925, RT71182)
+  This solves excessive WAL log retention on subscriber-only nodes.
+
+- Use correct slot name when joining subscriber-only node using
+  `bdr_init_physical` (BDR-895, BDR-898, RT71124)
+  The `bdr_init_physical` used to create wrong slot, which resulted in 2 slots
+  existing on the join source node when subscriber-only node was joined using
+  this method. This would result in excessive WAL retention on the join source
+  node.
+
+- Fix group monitoring view to allow more than one row per node (BDR-848)
+  Group monitoring views would previously truncate the information from any node
+  reporting more than one row of information. This would result in for example
+  slots missing in `bdr.group_replslots_details`.
+
+- Correct commit cancellation for CAMO (BDR-962()
+  This again corrects CAMO behaviour when a user cancels a query.
+
+- Restore global lock counters state after receiver restart (BDR-958)
+  We already restored locks themselves but not the counters which could cause
+  deadlocks during global locking when using parallel apply.
+
+- Fix handling of `skip_transaction` conflict resolver when there are multiple
+  changes in the transaction after the one that caused the `skip_transaction` (BDR-886)
+
+- Fix Raft snapshot creation for autopartitioned tables (RT71178, BDR-955)
+  Previously the Raft snapshot didn't take into account state of autopartition
+  tasks on all nodes when writing the information. This could result in some
+  nodes skipping partition creation after prolonged period of downtime.
+
+- Adjust transaction and snapshot handling in autopartition (BDR-903)
+  This ensures valid snapshot is used during autopartition processing at all
+  times. The previous approach would cause problem in the future point release
+  of PostgreSQL.
+
+- Fix KSUUID column detection in autopartition
+
+- Fix misreporting of node status by `bdr.drop_node()` function
+
+- Ensure that correct sequence type is always set in the global galloc
+  sequence state.
+
+- Fix DDL replication and locking management of several commands (BDR-874)
+  `ANALYZE`, `CHECKPOINT`, `CLUSTER`, `PREPARE`/`COMMIT`/`ABORT` `TRANSACTION`,
+  `MOVE`, `RELEASE`, `ROLLBACK` were documented as replicated and some of these
+  even tried to take DDL lock which they should not.
+
+- Reduce logging of some unreplicated utility commands (BDR-874)
+  `PREPARE` and `EXECTUE` don't need to spam about not being replicated as nobody
+  expects that they would be.
+
+- Fix global locking of `ALTER TABLE ... SET` (BDR-653)
+  It should not take global DML lock.
+
+- Fix documentation about how `TRUNCATE` command is replicated (BDR-874)
+  While `TRUNCATE` can acquire global locks, it's not replicated the way other
+  DDL commands are, it's replicated like DML, according to replication set
+  settings.
+
+- Document that CAMO and Eager currently don't work with Decoding Worker (BDR-584)
+
+- Multiple typo and grammar fixes in docs.
+
+## BDR 3.7.8 (2021 May 18)
+
+This is first stable release of the BDR 3.7. It includes both new major
+features and fixes for problems identified in 3.7.7.
+
+### Important notes
+
+BDR 3.7 introduces several major new features as well as architectural changes
+some of which affect backward compatibility with existing applications.
+See [Upgrades](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/) for details.
+
+Upgrades are supported from BDR 3.6.25 and 3.7.7 in this release.
+
+### The highlights of BDR 3.7
+
+- Support for PostgreSQL 11, 12 and 13
+
+- Support EDB Advanced Server
+  Both Standard Edition and Enterprise Edition are now available to use with
+  EDB Advanced Server
+
+- Parallel Apply
+  Allows configuring number of parallel writers that apply the replication
+  stream. This is feature is supported in Enterprise Edition only.
+
+- AutoPartition
+  Allows automatic management of partitioned tables, with automated creation,
+  automated cleanup with configurable retention periods and more.
+
+- Introduce option to separate BDR WAL decoding worker
+  This allows using single decoding process on each node, regardless of number
+  of subscriptions connected to it.
+  The decoded information is stored in logical change record (LCR) files which
+  are streamed to the other nodes in similar way traditional WAL is.
+  Optional separation of decoding from walsender.
+  This is feature is supported in Enterprise Edition only.
+
+- Implement the concept of `subscriber-only` nodes
+  These are wholly joined nodes, but they don't ever send replication
+  changes to other BDR nodes in the cluster. But they do receive changes
+  from all nodes in the cluster (except, of course the other subscriber-only
+  nodes). They do not participate in the Raft voting protocol, and hence
+  their presence (or absence) does not determine Raft leader election.
+  We don't need to create any replication slots on these nodes since they
+  don't send replication changes. Similarly, we don't need to create any
+  subscriptions for these nodes on other BDR nodes.
+
+- Support `CREATE TABLE ... AS` and `SELECT INTO` statement
+  This feature is now supported in Enterprise Edition only.
+
+- New ability to define BDR sub-groups in order to better represent physical
+  configuration of the EDB Postgres Distributed cluster.
+  This also simplifies configurations where the EDB Postgres Distributed cluster is spread over
+  multiple data centers and only part of the database is replicated across
+  data centers as each subgroup will automatically have new default replication
+  set assigned to it.
+
+- Multiple new monitoring views
+  Focused primarily on group level monitoring and in-progress monitoring on
+  the apply side.
+
+- Conflicts are now logged by default to `bdr.conflict_history`
+  Logging to a partitioned table with row level security to allow easier
+  access to conflicts for application users.
+
+- New conflict types `multiple_unique_conflicts` and `apply_error_ddl`
+  Allows continuing replication in more edge case situations
+
+- Reduced lock levels for some DDL statements
+  Also, documented workarounds that help with reducing lock levels for
+  multiple other DDL statements.
+
+- Use best available index when applying update and delete
+  This can drastically improve performance for `REPLICA IDENTITY FULL` tables
+  which don't have primary key.
+
+Following are changes since 3.7.7.
+
+### Improvements
+
+- Support Parallel Apply in EDB Advanced Server (EE)
+
+- Increase progress reporting frequency when needed (BDR-436, BDR-522)
+  This helps speed up the performance of  VALIDATE CONSTRAINT without DML
+  locking.
+
+- Change all BDR configuration options that are settable from SQL session to be
+  settable by `bdr_superuser` rather than only Postgres superuser.
+
+- Set bdr.ddl\_replication to off in `bdr.run_on_all_nodes()` (BDR-445)
+  It's usually not desirable to replicate any DDL executed using the
+  `bdr.run_on_all_nodes()` function as it already runs it on all nodes.
+
+- Improve monitoring of transactions that are in progress on apply side
+  (BDR-690, BDR-691)
+  Add query to pg\_stat\_activity when applying DDL and several additional
+  fields to `bdr.subscription_summary` view which show LSN of latest received
+  change, LSN of latest received commit, applied commit LSN, flushed LSN and
+  applied timestamp.
+
+  This helps monitoring of replication progress, especially when it comes to
+  large transactions.
+
+- Add view `bdr.stat_activity`, similar to `pg_stat_activity` but shows BDR
+  specific wait states.
+
+- Allow batching inserts outside of the initial data sync
+  Improves performance of big data loads into existing BDR Group.
+
+- Reduce the global lock level obtained by DROP INDEX from DML Global Lock to
+  DDL Global Lock (BDR-652)
+
+### Resolved issues
+
+- Fix replication settings of several DDL commands
+  In general make sure that actual behavior and documented behavior for
+  what's allowed, what's replicated and what locks are held during DDL
+  replication match.
+
+  For example TABLESPACE related commands should not be replicated.
+
+- Fix a race condition in concurrent join. (BDR-644, BDR-645)
+  Always create initially enabled subscription if the local node has already
+  crossed the PROMOTING state.
+
+- Set group leader for already held lock (BDR-418, BDR-291)
+  This solves "canceling statement due to global lock timeout" during some
+  DDL operations when the writer already had open table before. This was
+  especially problem when partitioning or parallel apply is involved.
+
+- Progress WAL sender's slot based on WAL decoder input (BDR-567)
+  Without this, server could eventually stop working with single decoding worker.
+
+- Switch to TEMPORARY replication slots in `bdr_init_physical` (BDR-191)
+  This ensures they are properly cleaned up after `bdr_init_physical` is done.
+
+- Clean up XID progress records that are no longer required (BDR-436, BDR-532)
+  Reduces the size of the xid progress snapshot.
+
+- Track applied\_timestamp correctly in BDR Writer (BDR-609)
+  It was not updated in 3.7.7
+
+- Fix creation of BDR Stream triggers on EPAS (BDR-581)
+  They used to be created as wrong trigger type.
+
+- Improve error handling when options stored in LCR file and passed to walsender
+  differ (BDR-551)
+
+- Enable WAL decoder config only for top node group (BDR-566)
+  We only allow group configuration changes for top node group in general.
+
+- Use "C" collation or "name" type for specific BDR catalog columns (BDR-561)
+  This solves potential index collation issues for BDR catalogs.
+
+- Correct commit cancellation for CAMO
+  This fixes CAMO behavior when user cancels a query.
+
+- Fix autopartition handling of tables with already existing partitions (BDR-668)
+
+- Don't cache relation with no remote id in BDRWrite (BDR-620)
+  Fixes replication breakage after some forms of TRUNCATE command.
+
+- Craft upstream decoder slot name considering upstream dbname in wal decoder (BDR-460)
+  Fixes slot names used by wal decoder.
+
+- Use correct BDR output options used by WAL decoder and WAL sender using LCR (BDR-714)
+
+- Fix crash of monitor functions on a broken cluster. (BDR-580, BDR-696)
+
+- Don't show nonexisting slots for PARTED in bdr.node\_slots view
+
+- Drop Stream Trigger when dropping node (BDR-692)
+  This enables use of `bdr_init_physical` with Stream Triggers.
+
+- Ensure we don't segfault while handling a SIGUSR2 signal
+  Signals can come at any point in process lifetime so don't make any
+  assumptions about the current state.
+
+- Handle concurrent drop of the table which can lead to missing autopartition
+  rule
+
+- Make sure we don't crash when we get ERROR during handing of different ERROR
+
+- Don't send global xid to client if we are in background worker
+  There is nobody to send this.
+
+### Other changes
+
+- Allow session-level bdr.xact\_replication = off when bdr.permit\_unsafe\_commands is on
+  Helps when using `pg_restore` to manually populate the database.
+
+- Various larger documentaion improvements
+
+- Throw nicer error when removing table from replication set if the table is
+  not in the repset already (BDR-562)
+
+- Allow `check_constraints` option again, but make sure it's properly marked
+  as deprecated (BDR-26)
+  Will be removed in BDR 4.0.
+
+- Move the management of WAL senders when WAL decoder is enabled/disabled to
+  manager process (BDR-612)
+  Managing them in consensus worker could negatively affect responsiveness of
+  consensus subsystem.
+
+- Check for interrups in more places
+  Should reduce chance of runaway loops
+
+## BDR 3.7.7 (2021 Apr 08)
+
+This is a beta release of the BDR 3.7. It includes both new major features and
+fixes for problems identified in 3.7.6.
+
+### Important notes
+
+BDR 3.7 introduces several major new features as well as architectural changes
+some of which affect backward compatibility with existing applications.
+See [Upgrades](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/) for details.
+
+Beta software is not supported in production - for application test only
+
+Upgrades are supported from BDR 3.6.25 and 3.7.6 in this release.
+
+### Improvements
+
+- Support Enterprise Edition features on EDB Advanced Server
+  This notably excludes CAMO and Eager replication.
+
+- Support most of the EDB Advanced Server DDL commands (EBC-45)
+  Note that DDL related to queues is replicated, but the contents of queues
+  are not replicated.
+
+- Adjust DDL replication handling to follow more on command level rather than
+  internal representation (BDR-275)
+  This mainly makes filtering and documentation easier.
+
+- Allow SELECT INTO statement in Enterprise Edition (BDR-306)
+
+- Handle BDR sequences in COPY FROM (BDR-466)
+  COPY FROM does it's own processing of column defaults which
+  does not get caught by query planner hook as it only uses
+  expression planner. Sadly, expression planner has no hook
+  so we need to proccess the actual COPY FROM command itself.
+
+- Improve bdr.run\_on\_all\_nodes(BDR-326, BDR-303)
+  Change return type to jsonb, always return status of each command,
+  Improve error reporting by returning the actual error message received from
+  remote server.
+
+- Add more info to conflict\_history (BDR-440)
+  This adds couple new fields to the conflict history table for easier
+  identification of tuples without having to look at the actual data.
+
+  First one is origin\_node\_id which points to origin of the change which
+  can be different than origin of the subscription because in some
+  situations we forward changes from different original nodes.
+
+  Second one is change\_nr which represents the number of change (based on
+  counter) in the transaction. One change represents one row, not one
+  original command.
+
+  These are also added to the conflict history summary table.
+
+  Add local\_time into bdr.conflict\_history\_summary
+  local\_time is the partition key of bdr.conflict\_history,
+  which we need to allow monitoring queries to execute efficiently.
+
+- Add --node-group-name option to bdr\_init\_physical
+  Same as node\_group\_name in bdr.join\_node\_group - allows joining
+  sub-group of a node.
+
+- Store LCRs under directory named after WAL decoder slot (BDR-60)
+  Pglogical stores LCR in a directory named after the replication slot
+  used to produce those.
+
+- Various improvements in WAL decoder/sender coordination (BDR-232, BDR-335,
+  BDR-342)
+  We now expose the information about WALDecoder waitlsn and let WALSender
+  use that information to wait and signal the WALDecoder when the required
+  WAL is available. This avoids the unnecessary polling and improves
+  coordinator between the two.
+
+- Single Decoder Worker GUC Option Changes. (BDR-222)
+  Changed `bdr.receive_logical_change_records` to `bdr.receive_lcr` and
+  `bdr.logical_change_records_cleanup_interval` to `bdr.lcr_cleanup_interval`
+
+- Move most of the CAMO/Eager code into BDR (BDR-330)
+  Makes CAMO and Eager All Node less dependent on Postgres patches.
+
+- Support the parallelization of initial sync.
+  When parallel apply is enabled, the initial sync during logical join will
+  be paralellized as well.
+
+- Deprecate bdr.set\_ddl\_replication and bdr.set\_ddl\_locking.
+
+### Resolved issues
+
+- Fix logic in `bdr_stop_wal_decoder_senders()` (BDR-232)
+  Increase the period for which bdr\_stop\_wal\_decoder\_senders() should wait
+  before checking status of WAL sender again.
+
+- Disallow running ALTER TABLE..ADD FOREIGN KEY in some cases (EBC-38,BDR-155)
+  If the current user does not have permissions to read the
+  referenced table, disallow the ALTER TABLE ADD FOREIGN KEY
+  to such a table
+
+- Improve detection of queries which mix temporary and permanent objects
+  These need to be disallowed otherwise they could break replication.
+
+- Fix EXPLAIN statement when using INTO TABLE clause.
+
+- Fix bdr.run\_on\_all\_nodes() crash on mixed utility commands and DMLs (BDR-305)
+
+- Fix CTAS handling on older minor versions of EPAS
+
+- Consolidate table definition checks (BDR-24)
+  This fixes several hidden bugs where we'd miss the check or creation
+  of extra object
+
+- Fix REINDEX and DROP index on an invalid index (BDR-155, EBC-41)
+  REINDEX throws error if index is invalid. Users can drop invalid
+  indexes using DROP index if\_exists.
+
+- Improve checks for local node group membership (BDR-271)
+  Couple of functions, namely `bdr_wait_for_apply_queue` and
+  `bdr_resynchronize_table_from_node` didn't do this check,
+  potentially causing a crash.
+
+- Corrected misleading CTAS ERROR
+  In case of underlying un-supported or non-replicated utility, we
+  should error out and should mention the underlying utility.
+
+- Fixes and improvements around enabling WAL decoder (BDR-272, BDR-427)
+
+- Fix pglogical manager's WAL decoder infrastructure removal (BDR-484)
+
+## BDR 3.7.6 (2021 Feb 23)
+
+This is a beta release of the BDR 3.7. It includes both new major features and
+fixes for problems identified in 3.7.5.
+
+### Important notes
+
+BDR 3.7 introduces several major new features as well as architectural changes
+some of which affect backward compatibility with existing applications.
+See [Upgrades](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/) for details.
+
+Beta software is not supported in production - for application test only
+
+Upgrades are supported from BDR 3.6.25 in this release.
+
+### Improvements
+
+- Introduce option to separate BDR WAL decoding worker
+  (RM18868, BDR-51, BDR-58)
+  This allows using single decoding process on each node, regardless of number
+  of subscriptions connected to it.
+  The decoded information is stored in logical change record (LCR) files which
+  are streamed to the other nodes in similar way traditional WAL is.
+
+- Enable parallel apply for CAMO and Eager (RM17858)
+
+- Rework relation caching in BDRWriter
+  This fixes missed invalidations that happened between our cache lookup
+  and table opening.
+  We also reduced the amount of hash table lookups (improving performance).
+
+- Don't allow mixing temporary and permanent object in single DDL command
+  (BDR-93)
+  It's important to not try to replicate DDLs that work with temporary objects
+  as such DDL is sure to break replication.
+
+- Add bdr.alter\_subscription\_skip\_changes\_upto() (BDR-76)
+  Allows skipping replication changes up to given LSN for a specified
+  subcription. Similar function already exists in pglogical.
+
+- Make the snapshot entry handler lookup more robust (BDR-86)
+  This should make it harder to introduce future bugs with consensus snapshot
+  handling.
+
+- Add bdr.consensus\_snapshot\_verify() (BDR-124)
+  Can be used to verify that consensus snapshot provided is correct before
+  passing it to bdr.consensus\_snapshot\_import().
+
+- Add support for most DDL commands that are specific to
+  EDB Postgres Advanced Server (EBC-39, EBC-40)
+
+- Reduce WARNING spam on non-replicated commands that are not expected to be
+  replicated in the first place (like VACUUM)
+
+- Improve warnings and hints around CAMO configuration
+
+### Resolved issues
+
+- Make sure we have xid assigned before opening relation in writer
+  This should improve deadlock detection for parallel apply
+
+- Check table oid in function drop\_trigger (BDR-35)
+  Fixes crash when invalid oid was passed to the function.
+
+- Fix application of older consensus snapshots (BDR-231)
+  We used to not handle missing group UUID correctly resulting in 3.7 node
+  not being able to join 3.6 cluster.
+
+- Readjust default truncate handling (BDR-25)
+  Don't take lock by default. While this can cause potential out of order
+  truncation, it presents better backwards compatibility.
+
+- Fix crash when OPTION clause is used in CREATE FOREIGN TABLE statement
+  (EBC-37)
+
+- Ensure that we don't send extra data while talking to node with old
+  consensus protocol (BDR-135)
+
+- Read kv\_data part of consensus snapshot in mixed version group (BDR-130)
+  Both BDR 3.6. and 3.7 write this part of consensus snapshot but BDR 3.7
+  would only read it if the snapshot was also written by 3.7.
+
+- Move bdr.constraint to EE script (EBC-36)
+  It's Enterprise Edition only feature so the catalog should only be installed
+  with Enterprise Edition.
+
+- Don't try to replicate GRANT/REVOKE commands on TABLESPACE and Large
+  Objects
+  These objects are not replicated so trying to replicate GRANT and REVOKE would
+  break replication.
+
+- Make sure CAMO does not block replay progress (RT69493)
+
+- Fix failed CAMO connection handling (RT69493, RM19924)
+  Correct the state machine to properly cleanup and recover from this
+  failure and reset to the UNUSED & IDLE state.
+
+- Don't accept Raft request from unknown nodes
+  Consensus leader should not accept raft request from nodes it does not know.
+
+- Don't try to negotiate consensus protocol on unknown node progress (RT69779)
+  When node is forcefully dropped, we might still receive progress message from
+  it. This has to gracefully ignore such message otherwise consensus could break
+  in such situation.
+
+### Other changes
+
+- Remove code unsupported consensus protocols (BDR-86)
+
+## BDR 3.7.5 (2021 Jan 19)
+
+This is a beta release of the BDR 3.7. It includes both new major features and
+fixes for problems identified in 3.7.4.
+
+### Important notes
+
+BDR 3.7 introduces several major new features as well as architectural changes
+some of which affect backward compatibility with existing applications.
+See [Upgrades](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/) for details.
+
+Beta software is not supported in production - for application test only
+
+Upgrades are supported from BDR 3.6.22 in this release.
+
+### Improvements
+
+- Reduce "now supports consensus protocols" log spam. (RT69557)
+
+- Extend `bdr.drop_node` with a `node_state` check. (RM19280)
+  Adds a new argument 'force' to `bdr.drop_node`, defaulting to false,
+  in which case the following additional check is performed:
+  Via `bdr.run_on_all_nodes`, the current `node_state` of the node to
+  be dropped is queried.  If the node to be parted is not fully
+  parted on all nodes, this now yields an error.
+  The force argument allows to ignore this check.
+  This feature also removes the "force" behavior that `cascade` had before,
+  now we have two distinct options, one to skip sanity checks (force) and
+  one to cascade to dependent objects (cascade).
+
+- Deprecate `pg2q.enable_camo` (RM19942, RT69521)
+  The parameter has been changed in 3.7 to the new `bdr.enable_camo`.
+
+- Add new parameter `detector_args` to `bdr.alter_table_conflict_detection`
+  (RT69677)
+  Allow additional parameters for individual detectors.
+  Currently just adds atttype for row\_version which allows using
+  smallint and bigint, not just the default integer for the column
+  type.
+
+- Add `bdr.raft_leadership_transfer` (RM20159)
+  Promote a specific node as the Raft leader.
+  Per Raft paper, transferring leadership to a specific node can be done by
+  the following steps:
+
+  - the current leader stops accepting new requests
+  - the current leader sends all pending append entries to the designated
+    leader
+  - the current leader then forces an election timeout on the designated
+    leader, giving it a better chance to become the next leader
+
+  The feature pretty much follows that outline. Instead of sending append
+  entries just to the designated leader, we send it to all nodes as that
+  also acts as a heartbeat. That should ensure that no other node times
+  out while the current leader delegating power to the designated node. We
+  also check status of the designated node and don't accept the request if
+  the node is not an active node or if it doesn't have voting rights.
+
+- Implement the concept of `subscriber-only` nodes
+  These are wholly joined nodes, but they don't ever send replication
+  changes to other BDR nodes in the cluster. But they do receive changes
+  from all nodes in the cluster (except, of course the other subscriber-only
+  nodes). They do not participate in the Raft voting protocol, and hence
+  their presence (or absence) does not determine Raft leader election.
+  We don't need to create any replication slots on these nodes since they
+  don't send replication changes. Similarly, we don't need to create any
+  subscriptions for these nodes on other BDR nodes.
+  We implement this by defining a new type of BDR node group, called
+  "subscriber-only" group. Any node supposed to be a subscriber-only node
+  should join this node group instead of the top level BDR group. Of course,
+  someone needs to create the subscriber-only BDR nodegroup first. The
+  feature does not attempt to create it automatically.
+
+- Improve DDL replication support for PostgreSQL 13
+  The `ALTER STATISTICS` and `ALTER TYPE ... SET` commands are now supported.
+
+### Resolved issues
+
+- Relax the safety check in `bdr.drop_node`. (RT69639)
+  If a node is already dropped on any peer node, that peer does not
+  know the status of the node to drop.  It must still be okay to
+  drop that node.
+
+- Do not re-insert a deleted autopartition rule.
+  When an autopartition rule is dropped by one node and while the action is
+  being replicated on some other node, if the other node executes one or
+  more pending tasks for the table, we might accidentally re-insert the
+  rule just being dropped. That leads to problems as where we fail to drop
+  the table on the remote node because the dependency check on autopartition
+  rules fails.
+
+- Fix definition of `node_summary` and `local_node_summary` views (RT69564)
+  While the underlying pglogical catalogs support multiple interfaces per
+  node, BDR will only ever use one, the one that's named same as the node.
+  These views didn't reflect that and shown wrong information - if the
+  node had multiple interfaces the node\_summary view would show multiple
+  results and the local\_node\_summary would not necessarily pick the
+  correct one from those either.
+
+- Fix `bdr.node_log_config` (RM20318)
+  Adjust the view `bdr.node_log_config` to return correctly the
+  conflict resolution.
+
+- Fix table access statistics reporting inside the writer
+  This should fix PostgreSQL monitoring views that show access and I/O
+  statistics for tables which was broken in previous betas.
+
+- Fix the partitioning of `bdr.conflict_history` after upgrade from 3.6
+  Previously we'd keep the 3.6 definition, now we do the automatic
+  partitioning same way as fresh 3.7 installs.
+
+- Fix node name reuse for nodes that get initialized from snapshot (RM20111)
+  These nodes previously missed initial state info which could cause catchup
+  phase of join process to be skipped, with the new node missing concurrently
+  written data as a result. This now works correctly.
+
+- Fix potential crash on table rewrite (`VACUUM FULL`) on Standard Edition
+  (EBC-34)
+  Check for triggers on Standard Edition could cause crash on table rewrite
+  previously.
+
+- Don't try to drop Enterprise Edition objects when removing node in Standard
+  Edition (RM19581)
+
+- Improve documentation language
+
+## BDR 3.7.4 (2020 Nov 05)
+
+This is a beta release of the BDR 3.7. It includes both new major features and
+fixes for problems identified in 3.7.3.
+
+### Important notes
+
+BDR 3.7 introduces several major new features as well as architectural changes
+some of which affect backward compatibility with existing applications.
+See [Upgrades](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/) for details.
+
+Beta software is not supported in production - for application test only
+
+Upgrades are supported from BDR 3.6.22 in this release.
+
+### Improvements
+
+- Add support for PostgreSQL 13
+
+- Extend `bdr.get_node_sub_receive_lsn` with an optional `committed` argument
+  The default behaviour has been corrected to return only the last
+  received LSN for a committed transaction to apply (filtered), which
+  is the original intent and use of the function (e.g. by HARP).
+  Passing a `false` lets this function return the unfiltered most
+  recent LSN received, matching the previous version's behavior.  This
+  change is related to the hang in `bdr.wait_for_apply_queue`
+  mentioned below.
+
+- Error out if INCREMENT BY is more than galloc chunk range (RM18519)
+  The smallint, int and bigint galloc sequences get 1000, 1000000,
+  1000000000 values allocated in each chunk respectively. We error out if
+  the INCREMENT value is more than these ranges.
+
+- Add support for validating constraints without a global DML lock (RM12646)
+  The DDL operation ALTER TABLE ... ADD CONSTRAINT can take quite some
+  time due to the validation to be performed.  BDR now allows
+  deferring the validation and running the ALTER TABLE ... VALIDATE
+  CONSTRAINT part without holding the DML lock during the lengthy
+  validation period.
+
+  See the section "Adding a CONSTRAINT" in the "DDL Replication"
+  chapter of the documentation for more details.
+
+- ALTER TABLE ... VALIDATE CONSTRAINTS waits for completion
+  Instead of expecting the user to explicitly wait for completion of
+  this DDL operation, BDR now checks progress and waits for completion
+  automatically.
+
+- Add new conflict kind `apply_error_ddl` and resolver `skip_transaction` (RM19351)
+  Can be used to skip transactions where DDL replication would cause `ERROR`.
+  For example when same DDL was applied manually on multiple nodes.
+
+- Add new statistics to `bdr.stat_subscription` (RM18548)
+  - nabort - how many aborts did writer get
+  - how many errors the writer seen (currently same as above)
+  - nskippedtx - how many txes did the writer skip (using the
+    `skip_transaction` conflict resolver)
+  - nretries - how many times writer did retry without restart/reconnect
+
+- Improve SystemTAP integration, especially for global locking.
+
+### Resolved issues
+
+- Correct a hang in `bdr.wait_for_apply_queue` (RM11416, also affects CAMO)
+  Keepalive messages possibly move the LSN forward.  In an otherwise
+  quiescent system (without any transactions processed), this may have
+  led to a hang in `bdr.wait_for_apply_queue`, because there may not
+  be anything to apply for the corresponding PGL writer, so the
+  `apply_lsn` doesn't ever reach the `receive_lsn`.  A proper CAMO
+  client implementation uses `bdr.logical_transaction_status`, which
+  in turn uses the affected function internally.  Thus a CAMO switch-
+  or fail-over could also have led to a hang.  This release prevents
+  the hang by discarding LSN increments for which there is nothing to
+  apply on the subscriber.
+
+- Allow consensus protocol version upgrades despite parted nodes (RM19041)
+  Exclude already parted nodes from the consensus protocol version
+  negotiation, as such nodes do not participate in the consensus
+  protocol any more.  Ensures the newest protocol version among the
+  set of active nodes is used.
+
+- Numerous fixes for galloc sequences (RM18519, RM18512)
+  The "nextval" code for galloc sequences had numerous issues:
+  - Large INCREMENT BY values (+ve or -ve) were not working correctly
+  - Large CACHE values were not handled properly
+  - MINVAL/MAXVAL not honored in some cases
+    The crux of the issue was that large increments or cache calls would
+    need to make multiple Raft fetch calls. This caused the loop retry code
+    to be invoked multiple times. The various variables to track the loops
+    needed adjustment.
+
+- Fix tracking of the last committed LSN for CAMO and Eager transactions (RM13509)
+  The GUC `bdr.last_committed_lsn` was only updated for standard
+  asynchronous BDR transactions, not for CAMO or Eager ones.
+
+- Fix a problem with NULL values in `bdr.ddl_epoch` catalog (RM19046, RM19072)
+  Release 3.7 added a new `epoch_consumed_lsn` column to
+  `bdr.ddl_epoch` catalog. Adding a new column would set the column
+  value to NULL in all existing rows in the table. But the code failed to
+  handle the NULL values properly. This could lead to reading garbage
+  values or even memory access errors. The garbage values can potentially
+  lead to global lock timeouts as a backend may wait on a LSN which is far
+  into the future.
+
+  We fix this by updating all NULL values to '0/0' LSN, which is an
+  invalid value representation for LSN. The column is marked NOT NULL
+  explicitly and the code is fixed to never generate new NULL values for
+  the column.
+
+- Corrections for upgrading from BDR 3.6.22
+  Properly migrate subscription writer and conflict handlers from
+  PGLogical, where this information used to be with BDR 3.6.  Ensure
+  bdr.conflict\_history is handled properly after an upgrade.
+
+- Fix `JOINING` state handling on consensus request timeout (RT69076)
+  The timeoud during `JOINING` state handling could result in node unable to
+  join the BDR group. The retry logic now handles this state correctly.
+
+- Validate inputs to replication\_set\_remove\_table (RT69248, RM19620)
+
+- Handle missing column gracefully for `ALTER COLUMN TYPE` (RM19389, RT69114)
+  Throw the standard ERROR rather than crashing when this happens.
+
+- Fix memory handling of a tuple slot during conflict lookup (RM18543)
+  No longer crashes when the found tuple is logged into conflict log table.
+
+- Fix local node cache invalidation handling (RM13821)
+  Previously BDR might not notice node creation or node drop due to race
+  conditions, and would chose wrong behavior inside user backend.
+
+## BDR 3.7.3 (2020 Aug 06)
+
+This is a beta release of the BDR 3.7. It includes both new major features and
+fixes for problems indentified in 3.7.2.
+
+### Important notes
+
+BDR 3.7 introduces several major new features as well as architectural changes
+some of which affect backward compatibility with existing applications.
+See [Upgrades](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/) for details.
+
+Beta software is not supported in production - for application test only
+
+Upgrade from 3.6 is not supported in this release, yet.
+
+### Improvements
+
+- Parallel Apply (RM6503)
+  Using the new infrastructure in pglogical 3.7.3, add support for parallel
+  writers.
+  The defaults are controlled by same pglogical configuration options (and
+  hence this feature is currently off by default)
+  The number of parallel writers can be changed per group using the
+  `num_writers` parameter of the `bdr.alter_node_group_config()` administration
+  interface.
+
+- `resynchronize_table_from_node()` works with the generated columns (RM14876)
+  It copies all the columns except the generated columns from remote node
+  and computes the generated column values locally.
+
+- `resynchronize_table_from_node()` `freezes` the table on target node (RM15987)
+  When we use this function the target table is truncated first and then copied
+  into on the destination node.  This activity additionally FREEZEs the tuples
+  when the resync happens.  This avoids a ton of WAL activity which could
+  potentially happen when hint bit related I/O+WAL would come into the picture
+  in the future on this destination node.
+
+- Allow use of CRDTs on databases with BDR extension installed but without any
+  node (RM17470).
+  Earlier restoring CRDT values on a node with BDR extension, but without any
+  node, would have failed with an ERROR as the CRDT data type queries for the
+  node identifier. It is now fixed by storing an `InvalidOid` value when the
+  node identifier is not available. If the node is subsequently added to a BDR
+  cluster and when the CRDT value is updated, `InvalidOid` will be replaced by
+  a proper node identifier as part of the UPDATE operation.
+
+- Add consistent KV Store implementation for the use by the HARP project (RM17825)
+  This is not meant for direct user consumption, but enables the HARP to work
+  with BDR without additional consensus setup.
+
+### Resolved issues
+
+- Re-add the "local\_only" replication origin (RT68021)
+  Using `bdr_init_physical` may have inadvertently removed it due to a
+  bug that existing up until release 3.6.19.  This release ensures to
+  recreate it, if it's missing.
+
+- Handle NULL arguments to bdr.alter\_node\_set\_log\_config() gracefully (RT68375, RM17994)
+  The function caused segmentation fault when the first argument to this
+  function is NULL. It is now fixed to provide an appropriate error message
+  instead.
+
+- Fix MAXVALUE and MINVALUE with galloc sequences (RM14596)
+  While fetching values in advance, we could have reached the limit. Now we
+  use only the values that we fetched before reaching the limit.
+
+- Optionally wait for replication changes triggered by prior epoch (RM17594, RM17802)
+  This improves handling of multiple concurrent DDL operations across the BDR
+  Group which would previously result in global lock timeout, but now are
+  allowed to pass as long as the replication lag between nodes is not too large.
+
+- `resynchronize_table_from_node()` now correctly checks membership of the
+  resynchronized table in replication sets subscribed by the target node (RM17621)
+  This is important in order to not allow unprivileged users to copy tables
+  that they don't have otherwise ability to access.
+
+- Allow new group creation request to work after previous attempt has failed (RM17482)
+  Previously, the new requests would always fail in some setups until BDR was
+  completely removed from the node and reinstalled if the initial group creation
+  has failed.
+
+- Lower the CPU consumption of consensus worker when Autopartition feature is
+  used (RM18002)
+
+- Fix memory leak during initial data synchronization (RM17668)
+
+- Fix `update_recently_deleted` conflict detection (RM16471)
+  This conflict was not detected correctly in 3.7.2.
+
+- Check the options when altering a galloc sequence (RM18301, RT68470)
+  Galloc sequences do not accept some modifications, warn the user in case
+  not allowed options are used.
+
+- Make sure `bdr_wait_slot_confirm_lsn` is waiting for all slots (RM17478)
+  This function used to skip some of the slots when checking if downstream
+  has replicated everything.
+
+- Improve `PART_CATCHUP` node state handling (RM17418)
+  Resolves cases where node state would stay `PART_CATCHUP` forever due to
+  race condition between nodes.
+
+- Make the consensus process more resilient when there are missing parted nodes
+  Don't fail when trying to update a node's state to `PARTED` and the node no
+  longer exists.
+
+- Remove `--recovery-conf` argument from `bdr_init_physical` (RM17196)
+  It didn't work previously anywa and PostgreSQL12 does not longer have
+  `recovery.conf`.
+
+### Other improvements
+
+- Enable `bdr.truncate_locking` by default
+  This is needed for TRUNCATE operations to always produce consistent results
+  when there is concurrent DML happening in the BDR Group.
+  This was missed by previous beta.
+
+- Create a virtual sequence record on other nodes RM16008
+  If we create a galloc sequence and try to use its value in the same
+  transaction block, then because it does not exist yet on other nodes, it
+  used to error out with "could not fetch next sequence chunk" on the other
+  nodes.  We solve this by creating a virtual record on the other nodes.
+
+- Significant improvements to the language in documentation.
+
+## BDR 3.7.2 (2020 Jun 01)
+
+This is a beta release of the BDR 3.7.
+
+### Important notes
+
+BDR 3.7 introduces several major new features as well as architectural changes
+some of which affect backward compatibility with existing applications.
+See [Upgrades](https://www.enterprisedb.com/docs/pgd/3.7/bdr/upgrades/) for details.
+
+Beta software is not supported in production - for application test only
+
+Upgrade from 3.6 is not supported in this release, yet.
+
+### The highlights of BDR 3.7
+
+- Parallel Apply
+  Allows configuring number of parallel writers that apply the replication
+  stream.
+
+- AutoPartition
+  See [AutoPartition](https://www.enterprisedb.com/docs/pgd/3.7/bdr/scaling/) for details.
+
+- Support `CREATE TABLE ... AS` statement (RM9696)
+  This feature is now supported in Enterprise Edition only.
+
+- New ability to define BDR sub-groups in order to better represent physical
+  configuration of the EDB Postgres Distributed cluster.
+  This also simplifies configurations where the EDB Postgres Distributed cluster is spread over
+  multiple datacenters and only part of the database is replicated across
+  datacenters as each subgroup will automatically have new default replication
+  set assigned to it.
+
+- Conflicts are now logged by default to `bdr.conflict_history`
+  Logging to a partitioned table with row level security to allow easier
+  access to conflicts for application users.
+
+- New conflict type `multiple_unique_conflicts`
+  Allows resolution of complex conflicts involving multiple UNIQUE
+  constraints for both INSERT and UPDATE.
+
+- Merge views `bdr.node_replication_rates` and `bdr.node_estimate` into
+  `bdr.node_replication_rates`. `bdr.node_estimate` has been removed (RM13523)
+
+- Don't replicate REINDEX command, now treated as a maintenance command
+
+- Various other changes to default settings
+
+### Other improvements
+
+- Optional monitoring tables for describing node connections and geographical
+  distribution
+
+- Add bdr.resynchronize\_table\_from\_node function (RM13565, RM14875)
+  This function resynchronizes the relation from a remote node. This
+  acquires a global DML lock on the relation, truncates the relation
+  locally, and copies data into it from the remote note. The relation must
+  exist on both nodes with the same name and definition.
+
+- Add a function bdr.trigger\_get\_origin\_node\_id to be used in
+  conflict triggers(RM15105, RT67601)
+  This will enable users to define their conflict triggers such that a
+  trusted node will always win in case of DML conflicts.
+
+- Extend `bdr.wait_for_apply_queue` to wait for a specific LSN (RM11059, RT65827)
+
+- Add committed LSN reporting via `bdr.last_committed_lsn` (RM11059, RT65827)
+
+- BDR now accepts also URI in connection strings (RM14588)
+  We can now specify also the format URI "postgresql://... " for the
+  connection string.
+
+### Resolved issues
+
+- Resilience against `idle_in_transaction_session_timeout` (RM13649, RT67029, RT67688)
+  Set `idle_in_transaction_session_timeout` to 0 so we avoid any user setting
+  that could close the connection and invalidate the snapshot.
+
+- Correct parsing of BDR WAL messages (RT67662)
+  In rare cases a DDL which is replicated across a EDB Postgres Distributed cluster and requires
+  a global lock may cause errors such as "invalid memory alloc request size"
+  or "insufficient data left in message" due to incorrect parsing of direct
+  WAL messages. The code has been fixed to parse and handle such WAL
+  messages correctly.
+
+- Fix locking in ALTER TABLE with multiple sub commands (RM14771)
+  Multiple ALTER TABLE sub-commands should honor the locking
+  requirements of the overall set. If one sub-command needs the locks,
+  then the entire ALTER TABLE command needs it as well.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,789 @@
+---
+title: Settings
+product: LiveCompare
+version: "2"
+url: https://www.enterprisedb.com/docs/livecompare/2/settings/
+lastModified: 2024-06-03T20:51:14+01:00
+---
+
+# Settings
+
+## General settings
+
+- `logical_replication_mode`: Affects how the program interprets connections and table filter settings and also the requirements to check for in the connections before starting the comparison. Currently the possible values are:
+
+  - `off`: Assumes there's no logical replication between the databases.
+
+  - `native`: Assumes there's native logical replication between the databases. Enables the use of the `Table Filter -> publications` setting to specify the list of tables to use. Requires PostgreSQL 10+ on all databases.
+
+  - `pglogical`: Assumes there's pglogical replication between the databases. Enables the use of the `Table Filter -> replication_sets` setting to specify the list of tables to use. Also enables the use of `node_name` to specify the data connections, which requires setting the `Initial Connection` that's used to retrieve DSN information of the nodes. Requires the `pglogical` extensions to be installed on all databases.
+
+  - `bdr`: Assumes all data connections are nodes from the same PGD cluster.
+    Enables use of the `Table Filter -> replication_sets` setting to specify the list
+    of tables to use. Also enables the use of `node_name` to
+    specify the data connections, which requires setting the `Initial Connection`
+    that's used to retrieve DSN information of the nodes. Requires `pglogical`
+    and `bdr` extensions installed on all databases.
+
+- `all_bdr_nodes`: If `logical_replication_mode` is set to `bdr`, then you can specify only the Initial Connection and let LiveCompare
+  build the connection list based on the current list of active PGD nodes.
+  Default: `off`.
+
+- `max_parallel_workers`: Number of parallel processes to consider. Each
+  process works on a table from the queue. Default: `2`.
+
+  > **Important**
+  >
+  > Each process keeps N+1 open connections: one to each data connection and another one to the output database.
+
+- `buffer_size`: Number of rows to retrieve from the tables on every data
+  fetch operation. Default: `4096`.
+
+- `log_level`: Verbosity level in the log file. Possible values: `debug`,
+  `info`, `warning`, or `error`. Default: `info`.
+
+- `data_fetch_mode`: Affects how LiveCompare fetches data from the database.
+
+  - `prepared_statements`: Uses prepared statements (a query with `LIMIT`) for
+    data fetch. Only a very small amount of data (`buffer_size = 4096` rows by
+    default) is fetched each time, so it has the smallest impact of all three modes,
+    and for the same reason it's the safer fetch mode. Allows asynchronous data
+    fetch (defined by `parallel_data_fetch`). For the general use case, this
+    fetch method provides good performance, but a performance decrease can be
+    felt for large tables. This is the default and strongly recommended when
+    server load is medium-high.
+
+  - `server_side_cursors_with_hold`: Uses server-side cursors `WITH HOLD` for
+    data fetch. As table data is retrieved in a single transaction, it holds
+    back `xmin` and can cause bloat and replication issues and also prevent
+    `VACUUM` from running well. Also, the `WITH HOLD` clause tells Postgres to
+    materialize the query (workers can hang for a few seconds waiting for the
+    data to materialize), so the whole table data consumes RAM and can be
+    stored on Postgres side disk as temporary files. You can reduce all that impact
+    by using `parallel_chunk_rows` (disabled by default), and improve
+    speed by increasing `buffer_size` a little. Allows
+    asynchronous data fetch (defined by `parallel_data_fetch`). For the general
+    use case, this fetch method doesn't provide any benefits when compared to
+    `prepared_stataments`, but for multiple small tables it's faster. However,
+    this mode is recommended only when load is very low, for example, on tests
+    and migration scenarios.
+
+  - `server_side_cursors_without_hold`: Uses server-side cursors
+    `WITHOUT HOLD` for data fetch. As `server_side_cursors_with_hold`, this
+    mode can also hold back `xmin`, thus it potentially can cause bloat, `VACUUM`,
+    and replication issues on Postgres. However, such impact is higher because
+    `WITHOUT HOLD` cursors require an open transaction for the whole comparison
+    session (this requirement will be lifted in later versions). As the snapshot is held
+    for the whole comparison session, comparison results might be helpful
+    depending on your use case. As the query isn't materialized, memory usage
+    and temp file generation remains low. Asynchronous data fetch isn't
+    allowed. In terms of performance, this mode is slower for the general use
+    case, but for large tables it can be the faster. We recommend it when load
+    on the database is low-medium.
+
+> **Important**
+>
+> The choice of the right `data_fetch_mode` for the right scenario
+> is very important. Using prepared statements has the smallest footprint on the
+> database server, so it's the safest approach, and it's good for the general use
+> case. Another point is that prepared statements allow LiveCompare to always see
+> the latest version of the rows, which might not happen when using server-side
+> cursors on a busy database. So we recommend using `prepared_statements` for
+> production, high-load servers and either `server_side_cursors_*` setting for
+> testing, migration scenarios, and low-load servers. The best strategy
+> probably mixes `server_side_cursors_without_hold` for very large tables and
+> `prepared_statements` for the remaining tables. The following table shows
+> a comparison of the cost/benefit ratio.
+
+|                    | prepared\_statements | server\_side\_cursors\_with\_hold | server\_side\_cursors\_without\_hold |
+| ------------------ | :------------------: | :-------------------------------: | :----------------------------------: |
+| xmin hold          |       very low       |               medium              |                 high                 |
+| xmin released per  |        buffer        |               chunk               |       whole comparison session       |
+| temp files         |       very low       |             very high             |                  low                 |
+| memory             |       very low       |                high               |                  low                 |
+| allows async conns |          yes         |                yes                |                  no                  |
+| fastest for        |        general       |            small tables           |             large tables             |
+| recommended load   |         high         |              very low             |              low-medium              |
+
+> **Note: Note about Oracle**
+>
+> For Oracle, the `data_fetch_mode` setting is completely
+> ignored, and data is always fetched from Oracle using a direct query.
+> Data is taken in chunks of `buffer_size` through the client-side cursor.
+
+- `parallel_chunk_rows`: Minimum number of rows required to consider splitting a
+  table into multiple chunks for parallel comparison. A hash is used to fetch
+  data, so workers don't clash with each other. Each table chunk has no more
+  than `parallel_chunk_rows` rows. Setting it to any value <1 disables table
+  splitting. Default: `0` (disabled).
+
+> **Important**
+>
+> While table splitting can help multiple workers to compare a large table in
+> parallel, performance for each worker can be affected by
+> the hash condition being applied to all rows. Depending on the Postgres
+> configuration (especially with the default of `random_page_cost = 4`, which can
+> be considered too conservative for modern hard drives), the Postgres query
+> planner can incorrectly prefer bitmap heap scans. If the database is
+> running on SSD, disabling bitmap heap scan on LiveCompare can significantly
+> improve the comparison performance. You can do this per connection using the
+> `start_query` setting:
+>
+> ```ini
+> start_query = set enable_bitmapscan = off
+> ```
+
+- `parallel_data_fetch`: Specifies whether data fetch is performed in parallel (that is,
+  using async connections to the databases). Improves performance of multi-way
+  comparison. If any data connections aren't PostgreSQL, then this setting is
+  automatically disabled. It's allowed only when
+  `data_fetch_mode = prepared_statements` or
+  `data_fetch_mode = server_side_cursors_with_hold`.
+  Default: `on`.
+
+- `comparison_algorithm`: Affects how LiveCompare works through table rows to
+  compare data. Using hashes is faster than full-row comparison. It can assume one
+  of the following values:
+
+  - `full_row`: Disables row comparison using hashes. Full comparison, in this
+    case, is performed by comparing the row column by column. For
+    comparisons involving Oracle 10g database, `full_row` is the only valid value for the
+    `comparison_algorithm` parameter.
+
+  - `row_hash`: Enables row comparison using hashes and enables table
+    splitting. Tables are split so each worker compares a maximum of
+    `parallel_chunk_rows` per table. Data row is hashed in PostgreSQL, so the
+    comparison is faster than `full_row`. However, if the hash for a specific row
+    doesn't match, then for that specific row, LiveCompare falls back
+    to the `full_row` algorithm (that is, compare row by row). If any data connection
+    isn't PostgreSQL, then LiveCompare uses a row hash that's defined as the MD5
+    hash of the concatenated column values of the row being considered, a
+    _common hash_ among the database technologies being compared.
+
+  - `block_hash`: Works the same as `row_hash`, but instead of comparing row
+    by row, LiveCompare builds a _block hash_, that is, a hash of the hashes of all
+    rows in the data buffer that was just fetched (maximum of `buffer_size`
+    rows). Conceptually it works like a two-level Merkle tree. If the block hash
+    matches, then LiveCompare advances the whole block, which is why this
+    comparison algorithm is faster than `row_hash`. If block hash doesn't
+    match, then LiveCompare falls back to `row_hash` and performs the comparison row
+    by row in the buffer to find the divergent rows. This is the default value.
+
+- `min_time_between_heart_beats`: Time in seconds to wait before logging a
+  _heart beat_ message to the log. Each worker tracks it separately per round
+  part being compared. Default: 30 seconds.
+
+- `min_time_between_round_saves`: Time in seconds to wait before updating each
+  round state when the comparison algorithm is in progress. A round save can
+  happen only during a heart beat, so `min_time_between_round_saves` must be greater
+  than or equal to `min_time_between_heart_beats`. When the round
+  finishes, LiveCompare always updates the round state for that table.
+  Default: 60 seconds.
+
+  > **Important**
+  >
+  > If you cancel execution of LiveCompare by pressing **Ctrl-C**
+  > and start it again, then LiveCompare resumes the round for that table,
+  > starting from the point where the round state was saved.
+
+- `comparison_cost_limit`: If > 0, corresponds to a number of rows each worker
+  processes before taking a nap of `comparison_cost_delay` seconds. Defaults
+  to 0, meaning that each worker processes rows without taking a nap.
+
+- `comparison_cost_delay`: If `comparison_cost_limit > 0`, then this setting
+  specifies how long each worker sleeps. Default: `0.0`.
+
+- `stop_after_time`: Time in seconds after which LiveCompare
+  stop as if you press **Ctrl-C**. You can resume the comparison session that was
+  interrupted, if not finished yet, by passing the session
+  ID as an argument in the command line. Default: `stop_after_time = 0`, which
+  means that automatic interruption is disabled.
+
+- `consensus_mode`: Consensus algorithm used by LiveCompare to determine which
+  data connections are divergent. Possible values are `simple_majority`,
+  `quorum_based`, or `source_of_truth`. If `consensus_mode = source_of_truth`, then
+  `difference_sources_of_truth` must be filled. Default: `simple_majority`.
+
+- `difference_required_quorum`: If `consensus_mode = quorum_based`, then this
+  setting specifies the minimum quorum required to decide which connections are
+  divergent. Must be a number between 0.0 and 1.0. 0.0 means no connection is
+  required, and 1.0 means all connections are required. Both cases are extreme
+  and we don't recommend using them. The default value is 0.5, and we recommend using a
+  value close to that.
+
+- `difference_sources_of_truth`: Comma-separated list of connections names (or
+  node names, if `logical_replication_mode = bdr` and `all_bdr_nodes = on`) to
+  consider as the source of truth. It's used only when `consensus_mode =
+  source_of_truth`. For example: `difference_sources_of_truth = node1,node2`. In
+  this example, either the sections `node1 Connection` and `node2 Connection`
+  must be defined in the `.ini` file or `all_bdr_nodes = on` and only the `Initial
+  Connection` is defined, while `node1` and `node2` must be valid PGD node
+  names.
+
+- `difference_tie_breakers`: Comma-separated list of connection names (or node
+  names, if `logical_replication_mode = bdr` and `all_bdr_nodes = on`) to
+  be considered as tie breakers whenever the consensus algorithm finds a tie
+  situation. For example: `difference_tie_breakers = node1,node2`. In this
+  example, either the sections `node1 Connection` and `node2 Connections` must
+  be defined in the `.ini` file or `all_bdr_nodes = on` and only the `Initial
+  Connection` is defined, while `node1` and `node2` must be valid PGD node
+  names. Default: Don't consider any connection as tie breaker.
+
+- `difference_statements`: Controls the kind of DML statements for
+  LiveCompare to generate. The value of `difference_statements` can
+  be one of:
+
+  - `all` (default)
+  - `inserts`
+  - `updates`
+  - `deletes`
+  - `inserts_updates`
+  - `inserts_deletes`
+  - `updates_deletes`
+
+- `difference_allow_null_updates`: Determines whether commands like `UPDATE SET
+  col = NULL` are allowed in the difference report. Default:
+  `on`.
+
+- `difference_statement_order`: Controls order of DML statements that
+  LiveCompare generates. The value of `difference_statement_order`
+  can be one of:
+
+  - `delete_insert_update`
+  - `delete_update_insert` (default)
+  - `insert_update_delete`
+  - `insert_delete_update`
+  - `update_insert_delete`
+  - `update_delete_insert`
+
+- `difference_fix_replication_origin`: When working with PGD databases, for
+  difference, LiveCompare creates a specific replication origin if it doesn't
+  exist yet. It then uses the replication origin to create an apply script with DML
+  fixes. The setting `difference_fix_replication_origin` specifies the name of
+  the replication origin used by LiveCompare. If you don't set any value
+  for this setting, then LiveCompare sets
+  `difference_fix_replication_origin = bdr_local_only_origin`. The
+  replication origin that LiveCompare creates isn't dropped to allow verification
+  after the comparison. However, if needed, you can manually drop the replication origin
+  later. Requires `logical_replication_mode = bdr`.
+
+> **Important**
+>
+> PGD 3.6.18 introduced the new pre-created `bdr_local_only_origin` replication origin to use for applying local-only transactions. So if LiveCompare is connected to PGD 3.6.18, it doesn't create this replication origin, and we recommend you don't try to drop this replication origin.
+
+- `difference_fix_start_query`: Arbitrary query that's executed at the
+  beginning of the apply script generated by LiveCompare. Additionally, if a PGD comparison
+  is being performed and the `difference_fix_start_query` is empty, then
+  LiveCompare also automatically does the following:
+
+  - If the divergent connection is PGD 3.6.7, adds
+    `SET LOCAL bdr.xact_replication = off;`
+  - Adds commands that set up transaction to use the replication origin
+    specified in `difference_fix_replication_origin`
+
+- `show_progress_bars`: Determines whether to show progress bars
+  in the console output. Disabling this setting might be useful for batch
+  executions. Default: `on`.
+
+- `output_schema`: In the output connection, the schema where the comparison
+  report tables are created. Default: `livecompare`.
+
+- `hash_column_name`: Every data fetch contains a specific column that's
+  the hash of all actual columns in the row. This setting specifies the name of
+  this column. Default: `livecompare_hash`.
+
+- `rownumber_column_name`: Some fetches need to use the `row_number()` function
+  value inside a query column. This setting specifies the name of this column.
+  Default: `livecompare_rownumber`.
+
+- `fetch_row_origin`: When this setting is enabled, LiveCompare fetches the
+  origin name for each divergent row, which might be useful for debugging
+  purposes. To be enabled, requires `logical_replication_mode` set
+  to `pglogical` or `bdr`. Default: `off`.
+
+- `column_intersection`: When this setting is enabled, for a given table that's
+  being compared, LiveCompare works only on the intersection of columns from
+  the table on all connections, ignoring extra columns that might exist on any of
+  the connections. When this setting is disabled, LiveCompare checks if
+  columns are equivalent on the table on all connections and aborts the comparison
+  of the table if there are any column mismatches. Default: `off`.
+
+> **Important**
+>
+> If a table has PK, then the PK columns aren't allowed to be different, even if `column_intersection = on`.
+
+- `ignore_nullable`: For a specific table comparison, if LiveCompare is using a
+  comparison key different from the primary key, then LiveCompare requires all
+  columns to be `NOT NULL` if `ignore_nullable` is enabled (default). You can override
+  that behavior by setting `ignore_nullable = off`, which
+  allows LiveCompare to consider null-able columns in the comparison, which in some
+  corner cases can produce false positives.
+
+- `check_uniqueness_enforcement`: If LiveCompare is using a user-defined
+  comparison key or using all columns in the table as a comparison key, then
+  LiveCompare checks for table uniqueness on the comparison key if setting
+  `check_uniqueness_enforcement` is enabled (default).
+
+- `oracle_ignore_unsortable`: When enabled, tells LiveCompare to ignore columns
+  with Oracle unsortable data types (BLOB, CLOB, NCLOB, BFILE) if column isn't
+  part of the table PK. If enabling this setting, we recommend also enabling
+  `column_intersection`.
+
+- `oracle_user_tables_only`: When enabled, tells LiveCompare to fetch table
+  metadata only from the Oracle logged-in user. This approach is faster because it reads,
+  for example, from `sys.user_tables` and `sys.user_tab_columns` instead of
+  `sys.all_tables` and `sys.all_tab_columns`. Default: `off`.
+
+- `oracle_fetch_fk_metadata`: When enabled, tells LiveCompare to fetch foreign-key
+  metadata, which can be a slow operation. Overrides the value of the setting
+  `fetch_fk_metadata` on the Oracle connection. Default: `off`.
+
+- `schema_qualified_table_names`: Table names are treated as schema qualified
+  when this setting is enabled. Disabling it allows comparing tables without
+  using schema-qualified table names. On Oracle x Postgres comparisons, it
+  requires also enabling `oracle_user_tables_only`. On Postgres x Postgres,
+  it allows for comparisons of tables that are under different schemas, even in
+  the same database. Also, when `schema_qualified_table_names` is enabled,
+  `Table Filter -> tables`, `Row Filter`, and `Column Filter` allow table name
+  without the schema name. Default: `on`.
+
+- `force_collate`: When set to a value other than `off` and to a valid collation
+  name, forces the specified collation name in `ORDER BY` operations in all
+  Postgres databases being compared. Useful when comparing Postgres databases with
+  different collation or when comparing Oracle and Postgres databases. (In this
+  case, set `force_collate = C`.) Assumes value `C` if comparing
+  mixed technologies (like Oracle versus PostgreSQL) and no collation is specified.
+  Default: `off`.
+
+- `work_directory`: Path to the `LiveCompare` working directory. The session
+  folder containing output files is created in this directory. Default:
+  `.` (current directory).
+
+- `abort_on_setup_error`: When enabled, if LiveCompare encounters any error when
+  trying to set up a table comparison round, the whole comparison session is
+  aborted. Default: `off`.
+
+> **Important**
+>
+> Setting `abort_on_setup_error` is considered only during `compare` mode. In `recheck` mode, LiveCompare always aborts at the first error in setup.
+
+- `custom_dollar_quoting_delimiter`: When LiveCompare finds differences, it
+  outputs the DML using dollar quoting on strings. The default behavior is to create
+  a random string to compose it. If you want by any means to use a custom one, you
+  can set this parameter as the delimiter to use. You need to set only the
+  constant, not the `$` symbols around the constant. Default: `off`, which
+  means LiveCompare uses an `md5` hash of the word `LiveCompare`.
+
+- `session_replication_role_replica`: When enabled, LiveCompare uses the
+  `session_replication_role` PostgreSQL setting  as `replica` in the output apply
+  scripts. That's useful if you want to prevent firing triggers and rules while
+  applying DML in the nodes with divergences. Enabling it requires a PostgreSQL
+  superuser. Otherwise, it has no effect. Default: `off`.
+
+- `split_updates`: When enabled, LiveCompare splits `UPDATE` divergences.
+  That is, instead of generating an `UPDATE` DML, it generates corresponding
+  `DELETE` and `INSERT` in the apply script. Default: `off`.
+
+- `float_point_round`: An integer to specify decimal digits that LiveCompare
+  rounds when comparing float-point values coming from the database. Default:
+  `-1`, which disables float-point rounding.
+
+## Initial Connection
+
+The initial connection is used only when `logical_replication_mode` is set to
+`pglogical` or `bdr`. If you set data connections to use only the `node_name`
+setting, it's used when the program starts to fetch DSN
+from node names.
+
+- `technology`: RDBMS technology. Currently the only possible value is
+  `postgresql`.
+- `dsn`: PostgreSQL connection string. If `dsn` is set, then `host`, `port`,
+  `dbname`, and `user` are ignored. The `dsn` setting can also have all other
+  [parameter key words allowed by libpq](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS).
+- `host`: Server address. Leave empty to use the Unix socket connection.
+- `port`: Port. Default: `5432`.
+- `dbname`: Database name. Default: `postgres`.
+- `user`: Database user. Default: `postgres`.
+- `application_name`. Application name. Can be used even if you set `dsn`
+  instead of all other connection information. Default: `livecompare_initial`.
+
+## Output Connection
+
+The output connection specifies where LiveCompare creates the comparison
+report tables.
+
+- `technology`: RDBMS technology. Currently the only possible value is
+  `postgresql`.
+- `dsn`: PostgreSQL connection string. If `dsn` is set, then `host`, `port`,
+  `dbname`, and `user` are ignored. The `dsn` setting can also have all other
+  [parameter key words allowed by libpq](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS).
+- `host`: Server address. Leave empty to use the Unix socket connection.
+- `port`: Port. Default: `5432`.
+- `dbname`: Database name. Default: `postgres`.
+- `user`: Database user. Default: `postgres`.
+- `application_name`. Application name. Can be used even if you set `dsn`
+  instead of all other connection information. Default: `livecompare_output`.
+
+## Data Connection
+
+A data connection is a connection section similar to `Initial Connection`
+and `Output Connection`, but LiveCompare effectively fetches and compares
+data on the data connections.
+
+Similar to the `Initial Connection` and `Output Connection`, a data
+connection is defined in a named section. The section name is of the
+form `<Name> Connection`, with `<Name>` being any single-word string starting with an
+alphabetic character. In this case, whatever you use as `Name` is called
+the _connection ID_ of the data connection. Each data
+connection must also have a unique connection ID in the list of data connections.
+
+If `logical_replication_mode = bdr` and `all_bdr_nodes = on`, then you don't need
+to specify any data connection. LiveCompare builds the
+data connection list by fetching PGD metadata from the `Initial Connection`.
+
+- `technology`: RDBMS technology. Currently possible values are `postgresql` or
+  `oracle`.
+- `node_name`: Name of the node in the cluster. Requires
+  `logical_replication_mode` set to `pglogical` or `bdr` and also requires that
+  the `Initial Connection` is filled. If `node_name` is set, then `dsn`, `host`,
+  `port`, `dbname`, and `user` settings are all ignored.
+- `dsn`: PostgreSQL connection string. If `dsn` is set, then `host`, `port`,
+  `dbname`, and `user` are ignored. The `dsn` setting can also have all other
+  [parameter key words allowed by libpq](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS).
+- `host`: Server address. Leave empty to use the Unix socket connection.
+- `port`: Port. Default: `5432`.
+- `dbname`: Database name. Default: `postgres`.
+- `service`: Service name, used in Oracle connections. Default: `XE`.
+- `user`: Database user. Default: `postgres`.
+- `password`: Plain text password. We don't recommend using this. However, it might be required
+  in some legacy connections.
+- `application_name`. Application name. Can be used even if you set `dsn`
+  or `node_name` instead of all other connection information. Default:
+  `livecompare_<Connection ID>`.
+- `start_query`: Arbitrary query that's executed each time a connection to a
+  database is open.
+- `fetch_fk_metadata`: Specifies whether LiveCompare gathers metadata about foreign keys
+  on the connection. Default: `on`.
+
+## Table Filter
+
+If omitted or left empty, this section from the `.ini` file means that
+LiveCompare executes against all tables in the first database.
+
+If you want LiveCompare to execute against a specific set of tables, there
+are different ways to specify this:
+
+- `publications`: You can filter specific publications, and LiveCompare uses
+  only the tables associated with those publications. You can use the variable
+  `publication_name` to build the conditional expression, for example:
+
+  ```ini
+  publications = publication_name = 'livepub'
+  ```
+
+  Requires `logical_replication_mode = native`.
+
+- `replication_sets`: When using pglogical or PGD, you can filter specific
+  replication sets, and LiveCompare works only on the tables associated with
+  those replication sets. You can use the variable `set_name` to build the
+  conditional expression, for example:
+
+  ```ini
+  replication_sets = set_name in ('default', 'bdrgroup')
+  ```
+
+  Requires `logical_replication_mode = pglogical` or
+  `logical_replication_mode = bdr`.
+
+- `schemas`: You can filter specific schemas, and LiveCompare works only on
+  the tables that belong to those schemas. You can use the variable `schema_name`
+  to build the conditional expression, for example:
+
+  ```ini
+  schemas = schema_name != 'badschema'
+  ```
+
+- `tables`: The variable `table_name` can help you build a conditional
+  expression to filter only the tables you want LiveCompare to work on, for
+  example:
+
+  ```ini
+  tables = table_name not like '%%account'
+  ```
+
+  In any conditional expression, escape the `%` character as `%%`.
+
+The table name must be schema-qualified, unless `schema_qualified_table_names`
+is disabled. For example, you can filter only a specific list of
+tables:
+
+```
+tables = table_name in ('myschema1.mytable1', 'myschema2.mytable2')
+```
+
+If you disable the general setting `schema_qualified_table_names`, then you
+must also set an appropriate `search_path` for Postgres in the connection
+`start_query` setting, for example:
+
+```
+[General Setting]
+...
+schema_qualified_table_names = off
+
+[My Connection]
+...
+start_query = SET search_path TO myschema1, myschema2
+
+[Table Filter]
+tables = table_name in ('mytable1', 'mytable2')
+```
+
+> **Important**
+>
+> If two or more schemas that were set on `search_path` contain a table with the same name, just the first one found is considered in the comparison.
+
+The `Table Filter` section can have a mix of `publications`, `replication_sets`,
+`schemas`, and `tables` filters. LiveCompare considers the set of tables
+that are in the intersection of all filters you specified. For example:
+
+```ini
+[Table Filter]
+publications = publication_name = 'livepub'
+replication_sets = set_name in ('default', 'bdrgroup')
+schemas = schema_name != 'badschema'
+tables = table_name not like '%%account'
+```
+
+The table filter is applied in the first database to
+build the table list. If a table exists in the first database and is being
+considered in the filter, but it doesn't exist in any other database, then you
+something like this is added to the logs, and the comparison for that specific
+table is skipped:
+
+```text
+2019-06-17 11:52:41,403 - ERROR - live_table.py - 55 - GetMetaData - P1: livecompare_second_1: Table public.test does not exist
+2019-06-17 11:52:41,410 - ERROR - live_round.py - 201 - Initialize - P1: Table public.test does not exist on second connection. Aborting comparison
+```
+
+Similarly, if a table exists in any other database but doesn't exist in the
+first database, then it isn't considered in the comparison, even if you
+didn't apply any table filter.
+
+A comparison for a specific table is also skipped if the table column names
+aren't exactly the same (unless `column_intersection` is enabled), and in the
+same order. An appropriate message is added to the log file as well.
+
+Currently LiveCompare doesn't check if data types or constraints are the same
+on both tables.
+
+> **Important**
+>
+> `conflicts` mode doesn't make use of the table filter.
+
+## Row Filter
+
+In this section, you can apply a row-level filter to any table, so LiveCompare
+works only on the rows that satisfy the row filter.
+
+You can write a list of tables under this section, one table per line. All
+table names must be schema qualified unless `schema_qualified_table_names` is
+disabled. For example:
+
+```ini
+[Row Filter]
+public.table1 = id = 10
+public.table2 = logdate >= '2000-01-01'
+```
+
+In this case, for the table `public.table1`, LiveCompare works only in the
+rows that satisfy the clause `id = 10`. For the table `public.table2`,
+only rows that satisfy `logdate >= '2000-01-01` are considered in the
+comparison.
+
+If you disable the general setting `schema_qualified_table_names`, then you
+must also set an appropriate `search_path` for Postgres in the connection
+`start_query` setting, for example:
+
+```
+[General Setting]
+...
+schema_qualified_table_names = off
+
+[My Connection]
+...
+start_query = SET search_path TO public
+
+[Row Filter]
+table1 = id = 10
+table2 = logdate >= '2000-01-01'
+```
+
+Any kind of SQL condition (same as you put in the `WHERE` clause) is
+accepted in the same line as the table row filter. For example, if you have a
+large table and want to compare only a specific number of IDs, you can
+create a temporary table with all the IDs. Then you can use an `IN` clause to
+emulate a `JOIN`, like this:
+
+```
+[Row Filter]
+public.large_table = id IN (SELECT id2 FROM temp_table)
+```
+
+If a row filter is written incorrectly, then LiveCompare tries to apply the
+filter but fails. So the comparison for this specific table is skipped,
+and an exception is written to the log file.
+
+If a table is listed in the `Row Filter` section but somehow got filtered out
+by the `Table Filter`, then the row filter for this table is silently
+ignored.
+
+> **Important**
+>
+> `conflicts` mode doesn't make use of the row filter.
+
+### Using current timestamp in Row Filter
+
+The `Row Filter` is applied differently depending on the `data_fetch_mode`:
+
+- On Postgres, setting `data_fetch_mode` to `server_side_cursors_with_hold` or
+  `server_side_cursors_without_hold` causes the `Row Filter` to be applied
+  only at the beginning of the table comparison, when the query is executed. This
+  means that using a server-side cursor to fetch data ensures the data is seen as
+  a snapshot of how it was beginning of the comparison.
+- On Postgres, setting `data_fetch_mode` to `prepared_statements` (the default)
+  includes the `Row Filter` in the prepared query, which is then
+  executed at every data buffer that's fetched. This means that, if the query
+  uses `now()`, `CURRENT_TIMESTAMP`, or `SYSDATE` (on EDB Postgres Advanced Server) on the `Row Filter`,
+  then when the prepared statement executes, Postgres reevaluates the
+  current timestamp.
+
+So, suppose you're using `now()`, `CURRENT_TIMESTAMP`, or `SYSDATE` on the `Row Filter`,
+for example:
+
+```
+[Row Filter]
+public.table3 = logdate < CURRENT_TIMESTAMP
+```
+
+In this case, you must also use a server-side cursor to ensure the current
+timestamp is evaluated only at the beginning of the queries. In other words,
+`data_fetch_mode` must be set to a value different from
+`prepared_statements`.
+
+On Oracle, the `data_fetch_mode` setting is ignored, and
+the query is executed at the beginning. Then data is fetched by way of the client-side
+cursor. This approach ensures data is seen as a snapshot of how it was at the beginning
+of the comparison. This is a client-side cursor, but the behavior is similar to
+using a server-side cursor in Postgres.
+
+## Column Filter
+
+In this section, you can apply a column-level filter to any table, so LiveCompare
+works only on the columns that aren't part of the column filter.
+
+You can write a list of tables under this section, one table per line. All
+table names must be schema qualified unless `schema_qualified_table_names` is
+disabled. For example, suppose that both `public.table1` and `public.table2` have
+the columns `column1`, `column2`, `column3`, `column4`, and `column5`:
+
+```ini
+[Column Filter]
+public.table1 = column1, column3
+public.table2 = column1, column5
+```
+
+In this case, for the table `public.table1`, LiveCompare works only in the
+columns `column2`, `column4`, and `column5`, filtering out `column1` and `column3`.
+For the table `public.table2`, only the columns `column2`, `column3`, and
+`column4` are considered in the comparison, filtering out `column1` and `column5`.
+
+If you disable the general setting `schema_qualified_table_names`, then you
+must also set an appropriate `search_path` for Postgres in the connection
+`start_query` setting, for example:
+
+```
+[General Setting]
+...
+schema_qualified_table_names = off
+
+[My Connection]
+...
+start_query = SET search_path TO public
+
+[Column Filter]
+table1 = column1, column3
+table2 = column1, column5
+```
+
+If absent column names are given in the column filter, that is, the column doesn't
+exist in the given table, then LiveCompare logs a message about the missing columns
+and ignores them. It uses just the valid ones, if any.
+
+If a table is listed in the `Column Filter` section but somehow got filtered
+out by the `Table Filter`, then the column filter for this table is
+silently ignored.
+
+> **Important**
+>
+> If a column specified in a `Column Filter` is part of the table PK, then it isn't ignored in the comparison. LiveCompare logs that and ignores the filter of such a column.
+
+> **Important**
+>
+> `conflicts` mode doesn't make use of the column filter.
+
+## Comparison Key
+
+> **Tip: New feature**
+>
+> LiveCompare comparison key support is available in LiveCompare version 2.0 and later.
+
+Similar to the `Column Filter`, in this section you can also specify a list
+of columns per table. These columns are considered as a comparison key for
+the specific table, even if the table has a primary key or `UNIQUE` constraint.
+
+For example:
+
+```ini
+[Comparison Key]
+public.table1 = col_a, col_b
+public.table2 = c1, c2
+```
+
+In this example, for table `public.table1`, the comparison key is
+columns `col_a` and `col_b`. For table `public.table2`, columns `c1` and `c2` are
+considered as a comparison key.
+
+The same behavior about missing columns or filtered out or missing tables that
+are explained in [Column Filter](#column-filter), also apply to the comparison
+key. Similarly, the `Comparison Key` section is ignored in `conflicts` mode.
+
+## Conflicts Filter
+
+In this section, you can specify a filter to use in `--conflicts` mode while
+fetching conflicts from PGD nodes. You can build any SQL conditional expression
+and use these fields in the expression:
+
+- `origin_node`: The upstream node of the subscription.
+- `target_node`: The downstream node of the subscription.
+- `local_time`: The timestamp when the conflict occurred in the node.
+- `conflict_type`: The type of conflict.
+- `conflict_resolution`: The resolution that was applied.
+- `nspname`: Schema name of the involved relation.
+- `relname`: Relation name of the involved relation.
+
+You must use the `conflicts` attribute under the section. For example:
+
+```
+[Conflicts Filter]
+conflicts = conflict_type = 'update_missing' AND nspname = 'my_schema'
+```
+
+If you add this piece of configuration to your `.ini` file, LiveCompare fetches
+only conflicts that are of type `update_missing` and related to tables under
+the schema `my_schema` while querying for conflicts in each of the PGD nodes.
+
+> **Important**
+>
+> This section is exclusively for `--conflicts` mode.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

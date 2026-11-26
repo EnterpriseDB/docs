@@ -1,0 +1,477 @@
+---
+title: Troubleshooting
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/trouble_shooting/
+lastModified: 2026-09-16T09:00:14-07:00
+---
+
+# Troubleshooting
+
+In this page, you can find some basic information on how to troubleshoot
+EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC) in your Kubernetes cluster deployment.
+
+> **Tip: Hint**
+>
+> As a Kubernetes administrator, you should have the
+> [`kubectl` Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/) page
+> bookmarked!
+
+## Before you start
+
+### Kubernetes environment
+
+What can make a difference in a troubleshooting activity is to provide
+clear information about the underlying Kubernetes system.
+
+Make sure you know:
+
+- the Kubernetes distribution and version you are using
+- the specifications of the nodes where PostgreSQL is running
+
+### Useful utilities
+
+On top of the mandatory `kubectl` utility, for troubleshooting, we recommend the
+following plugins/utilities to be available in your system:
+
+- [`cnp` plugin](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/kubectl-plugin/) for `kubectl`, which
+  could be used to talk with each individual node (PG4K cluster)
+- [`jq`](https://stedolan.github.io/jq/), a lightweight and flexible command-line JSON processor
+- [`grep`](https://www.gnu.org/software/grep/), searches one or more input files
+  for lines containing a match to a specified pattern. It is already available in most \*nix distros.
+  If you are on Windows OS, you can use [`findstr`](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/findstr) as an alternative to `grep` or directly use [`wsl`](https://docs.microsoft.com/en-us/windows/wsl/)
+  and install your preferred \*nix distro and use the tools mentioned above.
+
+## Logs
+
+All resources created and managed by CNPG-GC log to standard output in
+accordance with Kubernetes conventions, using [JSON format](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/logging/).
+
+While logs are typically processed at the infrastructure level and include
+those from CNPG-GC and EDB Postgres for Kubernetes,
+accessing logs directly from the command line interface is critical during troubleshooting.
+You have three primary options for doing so:
+
+- Use the `kubectl logs` command to retrieve logs from a specific resource, and
+  apply `jq` for better readability.
+- Use the [`kubectl cnp logs` command](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/kubectl-plugin/#logs) for
+  EDB Postgres for Kubernetes-specific logging, this is useful to collecting logs node by node.
+- Leverage specialized open-source tools like
+  [stern](https://github.com/stern/stern), which can aggregate logs from
+  multiple resources (e.g., all pods in a PGDGroup by selecting the
+  `k8s.pgd.enterprisedb.io/group` label), filter log entries, customize output formats,
+  and more.
+
+> **Note**
+>
+> The following sections provide examples of how to retrieve logs for various
+> resources when troubleshooting CNPG-GC.
+
+## Operator information
+
+There are two operators for managing resources within a PGDGroup:
+
+- CNPG-GC (PGD4K operator)
+  Manages the PGDGroup and resources directly created by it.
+- EDB Postgres for Kubernetes (PG4K operator)
+  Manages PG4K clusters, which are used as nodes within a PGDGroup.
+
+By default, the PGD4K operator is installed in the `pgd-operator-system`
+namespace as a `Deployment`. (Refer to the ["Details about the deployment" section](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/installation_upgrade/#details-about-the-deployment) section for more information.)
+
+To list the operator pods, run:
+
+```shell
+kubectl get pods -n pgd-operator-system
+```
+
+> **Note**
+>
+> Under normal circumstances, you should have one pod where the operator is
+> running, identified by a name starting with `pgd-operator-controller-manager-`.
+> In case you have set up your operator for high availability, you should have more entries.
+> Those pods are managed by a deployment named `pgd-operator-controller-manager`.
+
+Collect the relevant information about the operator that is running in pod
+`<POD>` with:
+
+```shell
+kubectl describe pod -n pgd-operator-system <POD>
+```
+
+Then get the logs from the same pod by running:
+
+```shell
+kubectl logs -n pgd-operator-system <POD>
+```
+
+### Gather more information about the PGD4K operator
+
+Get logs from all pods in CNPG-GC operator Deployment
+(in case you have a multi operator deployment) by running:
+
+```shell
+kubectl logs -n pgd-operator-system \
+  deployment/pgd-operator-controller-manager --all-containers=true
+```
+
+> **Tip**
+>
+> You can add `-f` flag to above command to follow logs in real time.
+
+Save logs to a JSON file by running:
+
+```shell
+kubectl logs -n pgd-operator-system \
+  deployment/pgd-operator-controller-manager --all-containers=true | \
+  jq -r . > pgd_logs.json
+```
+
+### Gather more information about the PG4K operator
+
+As PGD4K operator leverages the PG4K operator to manage each node, we also need
+to collect the PG4K operator logs. Please visit [Operator Information](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/troubleshooting/#operator-information)
+to collect logs for the PG4K operator.
+
+## PGDGroup information
+
+You can check the status of the `pgd-sample` PGDGroup in the `NAMESPACE`
+namespace with:
+
+```shell
+kubectl get pgdgroup -n <NAMESPACE> pgd-sample
+```
+
+Output:
+
+```shell
+NAME         DATA INSTANCES   WITNESS INSTANCES   PHASE                AGE
+pgd-sample   2                1                   PGDGroup - Healthy   3h1m
+```
+
+The above example describes a healthy PGDGroup cluster consisting of 2 data nodes
+and 1 witness node.
+
+A PGDGroup is composed of multiple nodes, where each node is a single-instance PG4K cluster.
+To view all nodes, you can retrieve the cluster information and filter by the label
+`k8s.pgd.enterprisedb.io/group`. Each node is named following the format: `<group name>-<number>`.
+
+```shell
+kubectl -n pgd get cluster -l k8s.pgd.enterprisedb.io/group=pgd-sample -A
+```
+
+Output:
+
+```shell
+NAME           AGE    INSTANCES   READY   STATUS                     PRIMARY
+pgd-sample-1   3h2m   1           1       Cluster in healthy state   pgd-sample-1-1
+pgd-sample-2   179m   1           1       Cluster in healthy state   pgd-sample-2-1
+pgd-sample-3   176m   1           1       Cluster in healthy state   pgd-sample-3-1
+```
+
+## PGD Node pod information
+
+Each PGD node is a single-instance PG4K cluster running on Kubernetes.
+To retrieve the list of instances belonging to a specific PGDGroup, use the following command:
+
+with:
+
+```shell
+kubectl get pod -l k8s.pgd.enterprisedb.io/group=pgd-sample -A
+```
+
+Output:
+
+```shell
+NAMESPACE   NAME                 READY   STATUS    RESTARTS   AGE    ROLE
+pgd         pgd-sample-1-1       1/1     Running   0          57m    primary
+pgd         pgd-sample-2-1       1/1     Running   0          61m    primary
+pgd         pgd-sample-3-1       1/1     Running   0          65m    primary
+pgd         pgd-sample-proxy-0   1/1     Running   0          3h
+pgd         pgd-sample-proxy-1   1/1     Running   0          179m
+```
+
+You can check if/how a pod is failing by running:
+
+```shell
+kubectl get pod -n <NAMESPACE> -o yaml <GROUP>-<N>-1
+```
+
+You can get all the logs for a given pgd with:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1
+```
+
+If you want to limit the search to the PostgreSQL process only, you can run:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq 'select(.logger=="postgres") | .record.message'
+```
+
+The following example also adds the timestamp:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r 'select(.logger=="postgres") | [.ts, .record.message] | @csv'
+```
+
+If the timestamp is displayed in Unix Epoch time, you can convert it to a user-friendly format:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r 'select(.logger=="postgres") | [(.ts|strflocaltime("%Y-%m-%dT%H:%M:%S %Z")), .record.message] | @csv'
+```
+
+### Gather and filter extra information about PostgreSQL pods
+
+Check logs from a specific pod that has crashed:
+
+```shell
+kubectl logs -n <NAMESPACE> --previous <GROUP>-<N>-1
+```
+
+Get FATAL errors from a specific PostgreSQL pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r '.record | select(.error_severity == "FATAL")'
+```
+
+Output:
+
+```json
+{
+  "log_time": "2021-11-08 14:07:44.520 UTC",
+  "user_name": "streaming_replica",
+  "process_id": "68",
+  "connection_from": "10.244.0.10:60616",
+  "session_id": "61892f30.44",
+  "session_line_num": "1",
+  "command_tag": "startup",
+  "session_start_time": "2021-11-08 14:07:44 UTC",
+  "virtual_transaction_id": "3/75",
+  "transaction_id": "0",
+  "error_severity": "FATAL",
+  "sql_state_code": "28000",
+  "message": "role \"streaming_replica\" does not exist",
+  "backend_type": "walsender"
+}
+```
+
+Filter PostgreSQL DB error messages in logs for a specific pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | jq -r '.err | select(. != null)'
+```
+
+Output:
+
+```shell
+dial unix /controller/run/.s.PGSQL.5432: connect: no such file or directory
+```
+
+Get messages matching `err` word from a specific pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | jq -r '.msg' | grep "err"
+```
+
+Output:
+
+```shell
+2021-11-08 14:07:39.610 UTC [15] LOG:  ending log output to stderr
+```
+
+Get all logs from PostgreSQL process from a specific pod:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1| \
+  jq -r '. | select(.logger == "postgres") | select(.msg != "record") | .msg'
+```
+
+Output:
+
+```shell
+2021-11-08 14:07:52.591 UTC [16] LOG:  redirecting log output to logging collector process
+2021-11-08 14:07:52.591 UTC [16] HINT:  Future log output will appear in directory "/controller/log".
+2021-11-08 14:07:52.591 UTC [16] LOG:  ending log output to stderr
+2021-11-08 14:07:52.591 UTC [16] HINT:  Future log output will go to log destination "csvlog".
+```
+
+Get pod logs filtered by fields with values and join them separated by `|` running:
+
+```shell
+kubectl logs -n <NAMESPACE> <GROUP>-<N>-1 | \
+  jq -r '[.level, .ts, .logger, .msg] | join(" | ")'
+```
+
+Output:
+
+```shell
+info | 1636380469.5728037 | wal-archive | Backup not configured, skip WAL archiving
+info | 1636383566.0664876 | postgres | record
+```
+
+## ScheduledBackup and Backup information
+
+You can list the scheduled backups for the pgdgroup-backup label filter using the following command:
+
+```shell
+kubectl get scheduledbackup -l k8s.pgd.enterprisedb.io/group=pgdgroup-backup -A
+```
+
+Output:
+
+```shell
+NAME                           AGE     CLUSTER             LAST BACKUP
+pgdgroup-backup-1-pgd-barman   9m27s   pgdgroup-backup-1   9m27s
+pgdgroup-backup-1-pgd-vol      9m26s   pgdgroup-backup-1   9m26s
+```
+
+The scheduled backup is named with the format `<cluster>-pgd-<backup method>`.
+The `<cluster>` is the node name chosen as the backup target.
+If the backup is properly configured, WAL archiving occurs on all nodes, but backup is only taken on
+the selected node.
+
+You can also list the backups that have been created with:
+
+```shell
+kubectl get backup -l k8s.pgd.enterprisedb.io/group=pgdgroup-backup -A
+```
+
+Output:
+
+```
+NAMESPACE   NAME                                          AGE   CLUSTER             METHOD              PHASE       ERROR
+pgd         pgdgroup-backup-1-pgd-barman-20250731094444   18m   pgdgroup-backup-1   barmanObjectStore   completed
+pgd         pgdgroup-backup-1-pgd-vol-20250731094445      18m   pgdgroup-backup-1   volumeSnapshot      completed
+```
+
+## More troubleshooting knowledge
+
+You can reference [Before you start in CloudNativePG cluster](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/troubleshooting/#before-you-start)
+for more information about Kubernetes troubleshooting knowledge.
+
+## Some known issues
+
+These known issues and limitations are in the current release of CNPG-GC.
+
+## Switching between global Routing and local Routing
+
+PGD supports the PGD Proxy routing to global write lead and local write lead. This can be achieved by setting the `spec.pgd.globalRouting`
+field in the `PGDGroup` object to `true` or `false`. The change of this setting will update the PGD Proxy configuration, you can see the
+`node_group_name` for the corresponding proxy from table `bdr.proxy_config_summary`, Or run the `pgd show-proxies` command in the PGD proxy pod.
+
+There is a corner case once you switched the routing method, the PGD Proxy still routes to the old write lead (global or local), in this case, we can
+rolling restart the PGD Proxy pods to have PGD Proxy force refreshed.
+
+```shell
+kubectl rollout restart statefulset <PGD_GROUP_NAME>-proxy -n <NAMESPACE>
+```
+
+## Postgres major version upgrades
+
+This version of CNPG-GC release (v1.1.2) supports the major version upgrade with
+following restrictions:
+
+- PGD4K Operator v1.1.2 or higher
+- PG4K Operator v1.26.0 or higher
+- PGD Operand 5.8 or greater
+
+## Physical join
+
+Since release v1.1.1 and operand PGD 5.7, the operator supports node physical joins to other ready nodes.
+
+If a physical join job is fails:
+
+```shell
+> kubectl get job -n <NAMESPACE>
+NAME                                     STATUS   COMPLETIONS   DURATION   AGE
+pgdgroup-backup-barman-2-physical-join   Failed   0/1           10m        10m
+```
+
+If the `BackoffLimit` is reached and the physical join job is failed before non-retriable step, you can delete the
+job to trigger the physical join again:
+
+```shell
+kubectl delete job pgdgroup-backup-barman-2-physical-join -n <NAMESPACE>
+```
+
+If the `BackoffLimit` is reached and the physical join job is failed in non-retriable step, the node data may be
+left in an inconsistent state, we need to delete the node to recreate the node again:
+
+```shell
+kubectl delete cluster pgdgroup-backup-barman-2 -n <NAMESPACE>
+```
+
+Physical join failed before the non-retriable step
+
+> **Note**
+>
+> We can check the logs of the physical join job to determine whether the failure happened before or in the
+> non-retriable step. If the failure happened in the non-retriable step, the physical join may already started
+> the data copying, simply recreating the job alone is not enough, because the retry is intentionally blocked to
+> avoid re-running the non-idempotent join step on partially initialized data. In that case recreate the data node
+> so it starts from a fresh volume.
+
+One key pre-condition for a physical join is the establishment of a global Raft consensus.
+If a physical join job is pending, you can use the PGD function `bdr.monitor_group_raft` to verify whether this
+pre-condition has been satisfied.
+
+## Data migration
+
+This version of CNPG-GC doesn't support declarative import of data from other Postgres databases.
+To migrate schemas and data, you can use traditional Postgres migration tools such as [EDB\*Loader](https://www.enterprisedb.com/docs/pgd/5.9/data_migration/edbloader/) or [Migration Toolkit](https://www.enterprisedb.com/docs/migration_toolkit/latest/)/[Replication Server](https://www.enterprisedb.com/docs/eprs/latest/).
+You can also use `pg_dump ...` on the source database and pipe the command's output to your target database with `psql -c`.
+
+## Connectivity with PgBouncer
+
+CNPG-GC **doesn't support** using [PgBouncer](https://www.enterprisedb.com/docs/pgbouncer/latest/) to pool client connection requests.
+This limitation applies to both the open-source and EDB versions of PgBouncer.
+
+## Backup operations
+
+To configure an CNPG-GC environment, you must apply a `PGDGroup` YAML object to each Kubernetes cluster. Applying this object
+creates all necessary services for implementing a distributed architecture.
+
+If you added a `spec.backup` section to this `PGDGroup` object with the goal of setting up a backup configuration,
+the backup will fail unless you also set the `spec.backup.schedulers` value.
+
+Error output example:
+
+```
+The PGDGroup "region-a" is invalid: spec.backup.schedulers: Invalid value: "": Empty spec string
+```
+
+### Workaround
+
+To work around this issue, add a `spec.backup.schedulers` section with a schedule that meets your requirements, for example:
+
+```yaml
+spec:
+  instances: 3
+  pgd:
+    parentGroup:
+      create: true
+      name: world
+  backup:
+    configuration:
+      barmanObjectStore:
+        ...
+    schedulers:
+      - method: barmanObjectStore
+        immediate: true
+        schedule: "0 */5 * * * *"
+```
+
+## Known issues and limitations in EDB Postgres Distributed
+
+All issues and limitations known for the EDB Postgres Distributed version that you include in your deployment also affect
+your CNPG-GC instance.
+
+For example, if the EDB Postgres Distributed version you're using is 5.x, your CNPG-GC
+instance will be affected by these [5.x known issues](https://www.enterprisedb.com/docs/pgd/5.9/known_issues/) and [5.x limitations](https://www.enterprisedb.com/docs/pgd/5.9/known_issues/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,540 @@
+---
+title: Known issues
+description: Review the known issues in Hybrid Manager's Innovation Releases.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/overview/known_issues/
+lastModified: 2026-11-20T19:53:06+05:30
+---
+
+# Known issues
+
+These are the currently known issues and limitations identified in the Hybrid Manager (HM) Innovation Releases. Workarounds can sometimes help you mitigate the impact of these issues. These issues are actively tracked and will be resolved in a future release.
+
+## Multi-DC
+
+### Cluster creation fails on AWS multi-datacenter deployments with TDE enabled
+
+> **Tip**
+>
+> Resolved in HM versions 2026.8 and later.
+
+**Description:** In AWS multi-datacenter environments, creating the primary and replica clusters together with Transparent Data Encryption (TDE) enabled returns an error, and cluster creation fails.
+
+**Workaround:** Create the primary cluster with TDE enabled first. After the primary cluster is up and running, add the replica cluster with TDE enabled.
+
+[UPM-86370]: #
+
+## Core platform and resources
+
+### Cross-stream upgrade issues for OpenShift users
+
+> **Tip**
+>
+> Resolved in HM versions 1.4.0 and later.
+
+**Description**: Due to the OpenShift Operator Lifecycle Manager (OLM) enforcing strict semantic versioning, date-based versions (like `2026.1`) are interpreted as being significantly "higher" than standard versions (like `1.4`). This can prevent the OLM from recognizing a move to an LTS version as an upgrade.
+
+**Workaround**: There is no workaround available for this issue. We are currently decoupling the Operator versions from the HM application versions to resolve this.
+
+[UPM-73981]: #
+
+### IdP configuration fails after upgrade to version 2026.2
+
+[UPM-78482, limitation]: #
+
+**Description:** In some cases, upgrading from version 2026.1 to 2026.2 can cause your Identity Provider (IdP) configuration to display the **Expiring Soon** status in the HM console. This is caused by a race condition during the migration process. While this issue doesn't occur in every environment, it prevents users from successfully authenticating via their IdP provider if triggered.
+
+**Workaround:** To resolve this state and allow the configuration to restore correctly, a cluster administrator must manually update the internal application database.
+
+Execute the following SQL statement on the internal `app-db` database **before** attempting to re-setup the IdP integration in the HM console:
+
+```sql
+UPDATE upm_api_admin.idp SET deleted_at = NOW() WHERE deleted_at IS NULL;
+```
+
+### No `kapp-controller` support in Hybrid Manager app to pull images
+
+**Description:** The `kapp-controller` doesn't support Managed Identity/IAM Roles for pulling images.
+
+**Workaround:** Users must manually configure the `PackageRepository` using a `SecretRef` (Kubernetes Secret) for registry authentication, as cloud-native managed identities are currently not supported.
+
+### Image discovery fails for registries whose URL includes a path component
+
+> **Tip**
+>
+> Resolved in HM versions 2026.10 and later.
+
+[UPM-139513, UPM-139518]: #
+
+**Description:** In HM 2026.9, image discovery could fail with `404 Not Found` errors when the configured container registry's URL included a path component (for example, `docker.enterprisedb.com/pgai-platform`) rather than just a hostname. Registries configured with a hostname-only URL weren't affected. This occurred because of a change in how HM constructed the path used to query the registry for available images.
+
+**Workaround:** Upgrade to HM 2026.10 or later to resolve this issue. If you're already on an affected version and image discovery is failing, the upgrade process itself may also be affected. In that case, contact [EDB Support](https://support.enterprisedb.com) for guidance before attempting to upgrade.
+
+### `edbctl --verify-signature` fails when syncing images
+
+> **Tip**
+>
+> Resolved in HM versions 2026.10 and later. To use `--verify-signature` in these versions, you must use edbctl version 1.10 or later.
+
+[UPM-139946]: #
+
+**Description:** The `edbctl image sync-to-local-registry --verify-signature` option fails when used with edbctl versions 1.8.1 and 1.9.0. These versions expect the signed image identity in `image:tag` format, but EDB release images now carry signatures with the identity recorded as `image` only (without a tag), following a change in the underlying `cosign` signing tool. As a result, running `--verify-signature` returns an error and the image sync fails.
+
+**Workaround:** Upgrade to edbctl version 1.10 or later, which correctly handles the updated signature identity format.
+
+### SPIRE agent fails to start on RKE2 with SELinux enabled
+
+[UPM-87538]: #
+
+**Description:** On RKE2 clusters running on RHEL (or other Linux distributions with SELinux in enforcing mode), the SPIRE agent pod enters a `CrashLoopBackOff` state with the error `create UDS listener: listen unix /tmp/spire-agent/public/spire-agent.sock: bind: permission denied`. This occurs because SELinux blocks the container process from creating a Unix domain socket on the `HostPath` volume `/run/spire/agent-sockets`. Environments without SELinux (such as Ubuntu-based RKE2 clusters) aren't affected.
+
+**Workaround:** Disable SELinux on all RKE2 cluster nodes. For this, set `SELINUX=disabled` in `/etc/selinux/config` and reboot the nodes. After reboot, verify that `getenforce` shows `Disabled`. The SPIRE agent pods will recover automatically, though pods already in `CrashLoopBackOff` state may take several minutes due to the backoff timer.
+
+### HM uninstall hangs waiting to remove the ClickHouse Keeper's persistent volume claim
+
+> **Tip**
+>
+> Resolved in HM versions 2026.11 and later.
+
+[UPM-140287]: #
+
+**Description:** Uninstalling HM can hang indefinitely while removing the `upm-clickhouse` component. The ClickHouse Keeper's persistent volume claim (PVC), created by the Keeper's StatefulSet, isn't removed automatically when the component is deleted, so the uninstall process waits on it without finishing.
+
+**Workaround:** Manually delete the ClickHouse Keeper PVC in the `edb-observability` namespace to let the uninstall complete:
+
+```shell
+kubectl -n edb-observability delete pvc data-clickhouse-keeper-0
+```
+
+## Database cluster engine
+
+### Failure to create 3-node PGD cluster when `max_connections` is non-default
+
+**Description:** Creating a 3-data-node PGD cluster fails if the configuration parameter `max_connections` is set to a non-default value during initial cluster provisioning.
+
+**Workaround:** Create the PGD 3-data-node cluster using the default `max_connections` value. Update the value after the cluster is successfully provisioned.
+
+[UPM-67733, backlog]: #
+
+### HA clusters use `verify-ca` instead of `verify-full` for streaming replication certificate authentication
+
+**Description:** Replica clusters use the less strict `verify-ca` setting for streaming replication authentication instead of the recommended, most secure `verify-full`. This is currently necessary because the underlying CloudNativePG (CNP) clusters don't support IP subject alternative names (IP SANs), which are required for `verify-full` in certain environments (like GKE load balancers).
+
+**Workaround:** None. A fix depends on the underlying CNP component supporting IP SANs.
+
+[UPM-67365, blocked due to CNP dependency]: #
+
+### EDB Postgres Distributed (PGD) cluster with 2 data groups and 1 witness group not healthy
+
+> **Tip**
+>
+> Resolved in HM versions 1.4.0 and later.
+
+**Description:** PGD clusters provisioned with the topology of two data groups and one witness group may fail to reach a healthy state upon creation. This failure is caused by an underlying conflict between the bdr extension (used for replication) and the edb\_wait\_states extension. The combination of these two extensions in this particular topology prevents the cluster from initializing successfully.
+
+[UPM-73217, backlog]: #
+
+### CNPG operator enters an infinite reconcile loop when bootstrap `Job` creation is interrupted
+
+[UPM-91096]: #
+
+**Description:** If a cluster reconciliation is interrupted after the PVC is created but before the bootstrap `Job` is created — for example, due to an optimistic locking conflict — subsequent reconciles enter an infinite loop. The operator waits for the PVC to reach a `Ready` status, but this can never occur without the `Job`, causing the loop to continue indefinitely.
+
+**Workaround:** Delete the affected PVC to allow the operator to recreate it and break the loop. Because this issue only affects newly created PVCs, the PV won't contain any data yet and it's safe to delete.
+
+```shell
+kubectl delete pvc <pvc-name> -n <cluster-namespace>
+```
+
+## Backup and recovery
+
+### Volume snapshot restoration is limited to the same region
+
+**Description:** While HM automatically handles cross-region data synchronization for replica clusters using the internal backup mechanism, manual restoration of a cluster from a volume snapshot doesn't support cross-region operations. If you attempt to restore a cluster to a location in a different region using a volume snapshot, the operation will fail because snapshots are geographically restricted to their source region.
+
+**Workaround:** To restore data to a location in a different region, use a Barman backup instead of a volume snapshot. Barman backups are accessible across regions.
+
+[UPM-78346]: #
+
+### WAL archiving is slow due to default parallel configuration
+
+**Description:** The default setting for `wal.maxParallel` is too restrictive, which slows down WAL archiving during heavy data loads. This can cause a backlog of ready-to-archive WAL files, potentially leading to disk-full conditions. This parameter isn't yet configurable on the HM console.
+
+**Workaround:** Manually edit the `objectstores.barmancloud.cnpg.io` Kubernetes resource for the specific backup object store and increase the `wal.maxParallel` value (for example, to 20) to accelerate archiving.
+
+[UPM-65033, backlog]: #
+
+### `transporter-db` disaster recovery (DR) process may fail due to WAL gaps
+
+> **Tip**
+>
+> Resolved in HM versions 1.4.0 and later.
+
+**Description:** The DR process for the internal `transporter-db` service may fail when restoring from the latest available backup. This occurs in low-activity scenarios where a backup was completed, but no subsequent write-ahead log (WAL) file was archived immediately following that backup. This gap prevents the restore process from successfully completing a reliable point-in-time recovery.
+
+**Workaround:** To ensure a successful restore, select an older backup to restore that has at least one archived WAL file immediately following it. This makes the needed transactional logs available for the recovery process.
+
+[ET-4092, backlog]: #
+
+### Cluster backup schedule field accepts an unsupported 5-element cron format
+
+> **Tip**
+>
+> Resolved in HM versions 2026.8 and later.
+
+[UPM-126024]: #
+
+**Description:** The backup schedule field in the HM console accepts both 5-element and 6-element cron expressions, but CloudNativePG (the underlying operator) only supports the 6-element format. Entering a 5-element cron expression is accepted without an error, but results in an unexpected backup frequency — for example, a backup running every hour instead of once a day.
+
+**Workaround:** When setting a custom backup schedule, always use the 6-element cron format (seconds, minutes, hours, day of month, month, day of week) expected by CloudNativePG. After saving, verify the resulting backup frequency matches what you intended.
+
+## Agent Factory and model management
+
+> **Note**
+>
+> The `ai` scenario isn't available in Hybrid Manager 2026.10.1 and later. The issues in this section are kept for historical reference. For details, see the [2026.10.1 release notes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.10.1_rel_notes/#ai-factory).
+
+### Failure to deploy `nim-nvidia-nvclip` model with profile cache
+
+**Description:** Model creation for the `nim-nvidia-nvclip` model fails in the Agent Factory when the profile cache is used during the deployment process.
+
+**Workaround:** An administrator must manually download the necessary model profile from the NVIDIA registry to a local machine. They must then upload the profile files directly to HM's object storage path. Then they deploy the model by patching the Kubernetes InferenceService YAML with a specific environment variable to force it to use the pre-cached files instead of attempting a failed network download.
+
+[UPM-67298, ticket says blocked, dependency on nvidia]: #
+
+<details>
+
+<summary>
+
+Workaround details
+
+</summary>
+
+1. Log in to the NVIDIA Container Registry (nvcr.io) using your NGC API key:
+
+   ```shell
+   docker login nvcr.io -u '$oauthtoken' -p $NGC_API_KEY
+   ```
+
+2. Pull the Docker image to your local machine:
+
+   ```shell
+   docker pull nvcr.io/nim/nvidia/nvclip:latest
+   ```
+
+3. Prepare a local directory for the downloaded profiles:
+
+   ```shell
+   mkdir -p ./model-cache
+   chmod -R a+w ./model-cache
+   ```
+
+4. Select the profile for your target GPU.
+
+   For example, A100 GPU profile: `9367a7048d21c405768203724f863e116d9aeb71d4847fca004930b9b9584bb6`
+
+5. Run the container to download the profile. The container is run in CPU-only mode (`NIM\_CPU\_ONLY=1`) to prevent GPU-specific initialization issues on the download machine.
+
+   ```shell
+   export NIM_MANIFEST_PROFILE=9367a7048d21c405768203724f863e116d9aeb71d4847fca004930b9b9584bb6
+   export NIM_CPU_ONLY=1
+
+   docker run -v ./model-cache:/opt/nim/.cache -u $(id -u) -e NGC_API_KEY -e NIM_CPU_ONLY -e NIM_MANIFEST_PROFILE --rm nvcr.io/nim/nvidia/nvclip:latest
+   ```
+
+   This container doesn't exit. You must manually stop the run (Ctrl+C) after you see the line `Health method called` in the logs, which confirms the profile download is complete.
+
+6. Upload the profiles from your local machine to the object storage bucket used by your HM deployment:
+
+   ```shell
+   gcloud storage cp -r ./model-cache gs://uat-gke-edb-object-storage/model-cache/nim-nvidia-nvclip
+   ```
+
+   > **Note**
+   >
+   > Adjust the `gs://` path to match your deployment's configured object storage location.
+
+7. Create the model `nim-nvidia-nvclip` using the HM console, specifying the **Model Profiles Path** field as the previous location (for example, `/model-cache/nim-nvidia-nvclip`). The deployment will initially fail or become stuck.
+
+8. Export the InferenceService YAML from the HM Kubernetes cluster.
+
+9. Add the necessary environment variable, `NIM_IGNORE_MODEL_DOWNLOAD_FAIL`, to the env section of the `spec.predictor.model` block in the exported YAML. This flag tells the NIM container to use the locally available cache (the files you uploaded) and ignore the network download failure.
+
+   ```YAML
+   # --- Snippet of the modified InferenceService YAML ---
+   spec:
+     predictor:
+       minReplicas: 1
+       model:
+         modelFormat:
+           name: nim-nvidia-nvclip
+         name: ""
+         env:
+         - name: NIM_IGNORE_MODEL_DOWNLOAD_FAIL  # <-- ADD THIS LINE
+           value: "1"                         # <-- ADD THIS LINE
+         resources:
+           # ... resource requests/limits ...
+         runtime: nim-nvidia-nvclip
+         storageUri: gs://uat-gke-edb-object-storage/model-cache/nim-nvidia-nvclip
+   # ---------------------------------------------------
+   ```
+
+10. Apply the modified YAML using kubectl to force the deployment to use the pre-downloaded profiles:
+
+    ```shell
+    kubectl apply -f <modified-inference-service-file.yaml> -n <model-cluster-namespace>
+    ```
+
+The pods now start successfully, using the model profiles you manually provided using object storage.
+
+</details>
+
+<br/>
+
+### Missing aidb\_users role on PGD witness node prevents AI functionality
+
+**Description:** The `aidb_users` role (necessary for Agent Factory functionality) and its related extension aren't being successfully replicated to the witness node of a PGD cluster during cluster initialization. This issue is specific to PGD clusters that use a single witness node (as opposed to a witness group) and results in the Agent Factory encountering errors due to the missing required role.
+
+**Workaround:** To manually install the necessary role and allow the Agent Factory to function, execute the following SQL commands directly on the PGD witness node:
+
+```sql
+begin;
+set local bdr.ddl_replication = off;
+SET LOCAL bdr.commit_scope = 'local';
+create user aidb_users;
+commit;
+```
+
+[UPM-71454, blocked]: #
+
+### External cloud-hosted OCR models fail to register via the HM console
+
+[AID-2055]: #
+
+**Description:** The `aidb.sync_hcp_models` function automatically appends a `/v1/infer` suffix to all model URLs during synchronization. While this suffix is required for local containerized NIM models, it breaks connectivity for external cloud-hosted models such as NVIDIA's PaddleOCR (which uses a URL path like `.../cv/baidu/paddleocr`). As a result, external OCR models cannot be successfully configured or used via the HM console.
+
+**Workaround:** Bypass the HM console registration flow and register the model directly in the database using SQL via the `aidb.create_model` function, providing the correct URL explicitly.
+
+Option 1 — use the built-in default URL for remote NVIDIA models:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
+```
+
+Option 2 — explicitly set a custom full URL:
+
+```sql
+SELECT aidb.create_model(
+    'my_ocr_model',
+    'nim_paddle_ocr',
+    config => '{"url":"https://ai.api.nvidia.com/v1/cv/baidu/paddleocr"}'::JSONB,
+    credentials => jsonb_build_object('api_key', current_setting('aidb.nvidia_nim_api_key', true)),
+    replace_credentials => true
+);
+```
+
+## Analytics and tiered tables
+
+### PGAA causes a server crash (SIGSEGV) when executing JOIN queries with constant result relations in PostgreSQL 17
+
+> **Tip**
+>
+> Resolved in HM versions 1.4.0 and later.
+
+[BEAC-1439]: #
+
+**Description:** When the Postgres Analytics Accelerator (PGAA) extension is loaded, executing a `JOIN` query where one side is a constant result relation — for example, `SELECT aaa FROM v_dual LEFT JOIN bbb` or `SELECT aaa FROM (SELECT 1) d LEFT JOIN bbb` — causes a SIGSEGV crash. This issue is due to a type-confusion bug in PostgreSQL 17, where three different path subtypes share the same `T_Result` pathtype.
+
+**Workaround:** Disable join and aggregate pushdown in PGAA:
+
+```sql
+ALTER DATABASE <your_database> SET pgaa.enable_join_pushdown    = off;
+ALTER DATABASE <your_database> SET pgaa.enable_groupby_pushdown = off;
+```
+
+If you're using a Distributed High Availability (PGD) cluster, replicate the settings to all nodes:
+
+```sql
+SELECT bdr.run_on_all_nodes($$
+ALTER DATABASE <your_database> SET pgaa.enable_join_pushdown    = off;
+ALTER DATABASE <your_database> SET pgaa.enable_groupby_pushdown = off;
+$$);
+```
+
+## HM console and observability
+
+### GUC settings aren't applied until after a restart
+
+> **Tip**
+>
+> Resolved in HM versions 1.4.0 and later.
+
+[UPM-87281]: #
+
+**Description:** GUC settings configured in the HM console, such as `shared_preload_libraries`, aren't applied immediately. The settings remain in their previous state until at least one restart has been performed.
+
+**Workaround:** After applying GUC changes in the HM console, trigger a restart to ensure the new settings take effect.
+
+### Metabase fails to deploy when using an EPAS cluster as its database backend
+
+[UPM-92303]: #
+
+**Description:** Deploying Metabase from the **OSS Library** fails when the selected database cluster is an EDB Postgres Advanced Server (EPAS) instance. Metabase enters a `CrashLoopBackOff` state with a Liquibase migration error: `ERROR: syntax error at or near "$"`. This occurs because Liquibase identifies EDB Postgres Advanced Server as a different database type than community PostgreSQL. As a result, property definitions scoped to `dbms="postgresql"` (such as `${TEXT.TYPE}` and `${TIMESTAMP_TYPE}`) are skipped, while dependent changesets still execute with unresolved placeholders, causing the SQL syntax error.
+
+**Workaround:** Use a community PostgreSQL cluster as Metabase's database backend instead of EDB Postgres Advanced Server. EDB Postgres Advanced Server clusters can still be connected to Metabase as data sources for analytics after deployment.
+
+### OSS Library apps pgAdmin4 and Apache Superset fail to deploy on RHOS
+
+> **Tip**
+>
+> This issue was resolved for Apache Superset in HM versions 1.4.0 and later. And for pgAdmin4 in HM versions 1.4.1 and later.
+
+[UPM-88301, UPM-91744]: #
+
+**Description:** In Red Hat OpenShift (RHOS) environments, deploying the pgAdmin4 and Apache Superset OSS Library applications failed due to OpenShift Security Context Constraint (SCC) violations. The upstream images for these apps ran as specific user IDs (for example, `5050` for pgAdmin4 and `0` for Apache Superset's init container) that fell outside the allowed UID ranges enforced by OpenShift's restricted SCC policies.
+
+**Workaround:** In versions before HM 1.4.1, avoid deploying pgAdmin4 or Apache Superset in RHOS environments. Upgrade to HM 1.4.1 or later to resolve the issue.
+
+### Superset deployment fails with `DuplicateTable` error
+
+[UPM-91925, limitation]: #
+
+**Description:** Deploying Superset from the OSS Library may fail with a `DuplicateTable` error: `psycopg2.errors.DuplicateTable: relation "idx_user_id" already exists`. This occurs when the selected backend database already contains tables from a previous Superset deployment, or is shared with another app.
+
+**Workaround:** Use a dedicated database for each app you deploy from the OSS Library, rather than sharing one database across multiple apps. See [OSS Library apps](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/hm_overview/oss_library_apps/) for guidance on deploying apps correctly.
+
+### OSS Library app CPU and memory metrics include failed and completed pod states
+
+> **Tip**
+>
+> Resolved in HM versions 1.4.0 and later.
+
+[UPM-91745]: #
+
+**Description:** The CPU and memory usage metrics displayed for OSS Library apps include pods in `Failed` or `Completed` states, such as pods spawned by jobs. These metrics are only available during the app's startup phase, so the displayed figures may not accurately reflect the app's current resource usage until the metrics stabilize.
+
+**Workaround:** Wait 30 minutes after app startup for the metrics to stabilize and reflect the correct state.
+
+### OSS Library apps may get stuck pending on RHOS when storage classes differ
+
+> **Tip**
+>
+> Resolved in HM versions 2026.8 and later.
+
+[UPM-108622]: #
+
+**Description:** On Red Hat OpenShift (RHOS) environments where the cluster default storage class differs from the `spec.globalParameters.storage_class` value — for example, where the default is `lvms-vm` (backed by control-plane nodes) but the configured storage class is `lvms-bm` (backed by worker nodes) — OSS Library apps that require persistent volumes, such as pgAdmin4, may get stuck in a `Pending` state indefinitely. This occurs because the app's PVC inherits the cluster default storage class, which may not have capacity available on the nodes where app pods can be scheduled.
+
+**Workaround:** On environments where an app deployment gets stuck, delete the pending PVC in the app namespace and recreate it with `storageClassName` set to the value from `hcp.spec.globalParameters.storage_class`. Alternatively, change the cluster default StorageClass to match `hcp.spec.globalParameters.storage_class` so all new PVCs automatically use the correct storage.
+
+### OSS Library app deployment fails on GKE ARM64 when the requested storage size is less than 4Gi
+
+**Description:** On GKE node pools running the `arm64` `n4a` (Google Axion) machine family, legacy Persistent Disks are unsupported, requiring a switch to a `hyperdisk-balanced` StorageClass. This transition introduces a strict Google Cloud infrastructure constraint: a hard minimum volume size of `4Gi` is enforced on all `hyperdisk-balanced` provisions.
+
+If you deploy an OSS Library app (for example pgBadger, pgAdmin 4 etc.) and request a persistent volume smaller than 4Gi, provisioning fails at the storage layer. The following happens:
+
+- The app's `PersistentVolumeClaim` (PVC) stays in a `Pending` state indefinitely.
+- The app never reaches the `Ready` status in **Estate > Apps**.
+- Describing the PVC (`kubectl describe pvc <pvc-name> -n <app-namespace>`) shows a `ProvisioningFailed` event with an error similar to:
+
+  ```output
+  failed to provision volume with StorageClass "hyperdisk-balanced":
+  rpc error: code = InvalidArgument desc = ... requested size ... is less than the minimum required size 4Gi
+  ```
+
+This issue only affects GKE node pools running the `arm64` `n4a` (Google Axion) machine family with `hyperdisk-balanced` storage class. AMD64 (`x86_64`) node pools and other cloud providers aren't affected.
+
+**Workaround:** Before deploying an OSS Library app on a GKE ARM64 cluster, set the app's persistent volume size parameter to `4Gi` or larger:
+
+If a deployment has already failed because of this issue, delete the app and redeploy it with a storage size of `4Gi` or greater.
+
+### HammerDB app doesn't become healthy on GKE ARM64 due to missing ARM64 toleration
+
+> **Tip**
+>
+> Resolved in HM versions 2026.9 and later.
+
+[UPM-118869/UPM-124726]: #
+
+**Description:** On Google Kubernetes Engine (GKE) clusters that use `arm64` node pools, the HammerDB OSS Library app couldn't be scheduled onto ARM64 worker nodes. GKE ARM64 nodes are tainted (typically with `kubernetes.io/arch=arm64:NoSchedule`) so that only pods that explicitly tolerate ARM64 architecture are scheduled onto them. The HammerDB pod spec shipped with the OSS Library package didn't include this toleration.
+
+As a result, deploying HammerDB on a GKE ARM64 cluster had these symptoms:
+
+- The HammerDB pod stayed in a `Pending` state.
+- The HammerDB app never reached the `Ready` status in **Estate > Apps**.
+- Running `kubectl describe pod <hammerdb-pod> -n <app-namespace>` showed a scheduling event similar to:
+
+  ```output
+  0/N nodes are available: N node(s) had untolerated taint {kubernetes.io/arch: arm64}. 
+  preemption: 0/N nodes are available: N Preemption is not helpful for scheduling.
+  ```
+
+This behavior was specific to GKE ARM64 clusters. Other OSS Library apps and other architectures (AMD64/`x86_64`) weren't affected.
+
+> **Note**
+>
+> HM 2026.7 briefly added this ARM64 toleration, but because the HammerDB image itself didn't support ARM64 (see [HammerDB app image doesn't support ARM64 architecture](#hammerdb-app-image-doesnt-support-arm64-architecture) below), scheduling the pod onto an ARM64 node only produced a broken deployment. HM 2026.8 reverted the toleration and instead raised a clear preflight error when no `amd64` node was available in the cluster. HM 2026.9 ships a working `arm64` HammerDB image along with the toleration, resolving both issues together.
+
+**Workaround:** Not applicable. Upgrade to HM 2026.9 or later to run the HammerDB OSS Library app on GKE ARM64 clusters.
+
+### HammerDB app image doesn't support ARM64 architecture
+
+> **Tip**
+>
+> Resolved in HM versions 2026.9 and later.
+
+[UPM-124726]: #
+
+**Description:** The HammerDB OSS Library app image was built for the `amd64` (`x86_64`) architecture only. On clusters that use `arm64` node pools, HammerDB couldn't run because no `arm64` build of the image existed. This was a separate, deeper issue than the ARM64 scheduling problem described above: even once a HammerDB pod could be scheduled onto an `arm64` node, the image itself wasn't able to execute there. The limitation stemmed from an upstream HammerDB dependency that didn't support building for `arm64`.
+
+**Workaround:** Not applicable. Upgrade to HM 2026.9 or later to run HammerDB on `arm64` node pools.
+
+## Clusters and upgrades
+
+### Upgrade to version 2026.4 fails due to immutable `fluent-bit-k8s-events` StatefulSet
+
+[UPM-88315, limitation]: #
+
+**Description:** When upgrading to HM 2026.4, the upgrade process may fail with a `Failed to install component` error for `upm-fluent-bit`. This occurs because the upgrade attempts to modify an immutable field in the `fluent-bit-k8s-events` StatefulSet spec, which the Kubernetes API server rejects. The error message is: `StatefulSet.apps "fluent-bit-k8s-events" is invalid: spec: Forbidden: updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden`.
+
+**Workaround:** Before upgrading to 2026.4, manually delete the `fluent-bit-k8s-events` StatefulSet in the `edb-observability` namespace. The operator will recreate it with the correct configuration during the upgrade:
+
+```shell
+kubectl delete statefulset fluent-bit-k8s-events -n edb-observability
+```
+
+## Agent Factory
+
+> **Note**
+>
+> The `ai` scenario isn't available in Hybrid Manager 2026.10.1 and later. The issues in this section are kept for historical reference. For details, see the [2026.10.1 release notes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/release_notes/hm_2026.10.1_rel_notes/#ai-factory).
+
+### Knowledge base data isn't replicated to non-primary nodes on PGD clusters
+
+> **Tip**
+>
+> Resolved in HM versions 1.4.0 and later.
+
+[AID-1235]: #
+
+**Description:** When using Agent Factory with AIDB 7.3.0 on a PGD cluster, knowledge base data (visible via the `aidb.knowledge_bases_v6` view) is only present on the primary node and isn't automatically replicated to other nodes. This occurs because the `aidb.knowledge_base_registry` and `aidb.knowledge_base_pipeline` tables, introduced in AIDB 7, weren't included in the PGD setup script.
+
+**Workaround:** Before creating any knowledge bases, manually run the following SQL commands on the PGD cluster:
+
+```sql
+SELECT bdr.alter_sequence_set_kind('aidb.knowledge_base_registry_id_seq'::regclass, 'galloc', 1);
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_registry');
+SELECT bdr.replication_set_add_table('aidb.knowledge_base_pipeline');
+```
+
+## Migrations
+
+Known issues pertaining to the HM Migration Portal, data migration workflows, and schema ingestion workflows are maintained on a dedicated page in the [Migrating databases](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/) documentation. See [Known issues, limitations, and notes](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/limitations/) for a complete list.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

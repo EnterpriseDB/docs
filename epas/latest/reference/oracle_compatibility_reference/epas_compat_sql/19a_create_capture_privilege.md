@@ -1,0 +1,69 @@
+---
+title: CREATE CAPTURE PRIVILEGES POLICY
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_sql/19a_create_capture_privilege/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# CREATE CAPTURE PRIVILEGES POLICY
+
+EDB Postgres Advanced Server includes extra syntax not offered by Oracle with the `CREATE CAPTURE PRIVILEGES POLICY` SQL command.
+
+## Name
+
+`CREATE CAPTURE PRIVILEGES POLICY` — Create a new capture privilege policy.
+
+## Synopsis
+
+Use `CREATE CAPTURE PRIVILEGES POLICY` to define a new policy to capture privileges:
+
+```sql
+## Create a policy on database
+CREATE CAPTURE PRIVILEGES POLICY <name> [ WHERE ( <expression> ) ];
+
+## Create a policy on a ROLE/USER
+CREATE CAPTURE PRIVILEGES POLICY <name> ON { ROLE | USER } <role_names> [ WHERE ( <expression> ) ];
+```
+
+## Description
+
+The `CREATE CAPTURE PRIVILEGES POLICY` command allows a database superuser or any user with the system-defined `CAPTURE_ADMIN` privilege to create a policy in the database.
+
+If the name of the policy is schema-qualified, the policy is created in the specified schema. If the `CREATE CAPTURE PRIVILEGES POLICY` command doesn't include a schema, the policy is created in the current schema.
+
+Use `DROP CAPTURE PRIVILEGES POLICY` to remove a capture policy.
+
+## Parameters
+
+`name`
+
+The name optionally schema-qualified of the capture privilege policy to create.
+
+`expression`
+
+Boolean expression containing up to 4000 characters.
+
+`role_names`
+
+The roles whose privileges are to be analyzed.
+
+## Examples
+
+This command creates a capture privilege policy named `sampledb_p1` on the database:
+
+```sql
+CREATE CAPTURE PRIVILEGES POLICY sampledb_p1;
+```
+
+This command creates a capture privilege policy named `sampledb_p2` on role `sampledb_role1` and `sampledb_user1`:
+
+```sql
+CREATE CAPTURE PRIVILEGES POLICY sampledb_p2 ON ROLE sampledb_role1,sampledb_user1;
+```
+
+## See also
+
+[ALTER CAPTURE PRIVILEGE POLICY](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_sql/01_alter_capture_privilege/), [DROP CAPTURE PRIVILEGE POLICY](https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_sql/44a_drop_capture_privilege/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

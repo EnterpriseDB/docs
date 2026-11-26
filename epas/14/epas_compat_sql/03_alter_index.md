@@ -1,0 +1,95 @@
+---
+title: ALTER INDEX
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_sql/03_alter_index/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# ALTER INDEX
+
+<div id="alter_index" class="registered_link"></div>
+
+## Name
+
+`ALTER INDEX` — Modify an existing index.
+
+## Synopsis
+
+EDB Postgres Advanced Server supports three variations of the `ALTER INDEX` command compatible with Oracle databases. Use the first variation to rename an index:
+
+```text
+ALTER INDEX <name> RENAME TO <new_name>
+```
+
+Use the second variation of the `ALTER INDEX` command to rebuild an index:
+
+```text
+ALTER INDEX <name> REBUILD
+```
+
+Use the third variation of the `ALTER INDEX` command to set the `PARALLEL` or `NOPARALLEL` clause:
+
+```text
+ALTER INDEX <name> { NOPARALLEL | PARALLEL [ <integer> ] }
+```
+
+## Description
+
+`ALTER INDEX` changes the definition of an existing index. The `RENAME` clause changes the name of the index. The `REBUILD` clause reconstructs an index, replacing the old copy of the index with an updated version based on the index's table.
+
+The `REBUILD` clause invokes the PostgreSQL `REINDEX` command. For more information about using the `REBUILD` clause, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/static/sql-reindex.html).
+
+The `PARALLEL` clause sets the degree of parallelism for an index that can be used to parallelize rebuilding an index.
+
+The `NOPARALLEL` clause resets parallelism to use default values. `reloptions` shows the `parallel_workers` parameter as `0`.
+
+`ALTER INDEX` has no effect on stored data.
+
+## Parameters
+
+`name`
+
+The name (possibly schema-qualified) of an existing index.
+
+`new_name`
+
+New name for the index.
+
+`PARALLEL`
+
+Include the `PARALLEL` clause to specify a degree of parallelism. Set the `parallel_workers` parameter equal to the degree of parallelism for rebuilding an index. If you specify `PARALLEL` but don't provide a degree of parallelism, the default parallelism is used.
+
+`NOPARALLEL`
+
+Specify `NOPARALLEL` to reset parallelism to default values.
+
+`integer`
+
+The `integer` indicates the degree of parallelism, that is, the number of `parallel_workers` used when rebuilding an index.
+
+## Examples
+
+To change the name of an index from `name_idx` to `empname_idx`:
+
+```text
+ALTER INDEX name_idx RENAME TO empname_idx;
+```
+
+To rebuild an index named `empname_idx`:
+
+```text
+ALTER INDEX empname_idx REBUILD;
+```
+
+This example sets the degree of parallelism on an `empname_idx` index to 7:
+
+```text
+ALTER INDEX empname_idx PARALLEL 7;
+```
+
+## See also
+
+[CREATE INDEX](https://www.enterprisedb.com/docs/epas/14/epas_compat_sql/24_create_index/), [DROP INDEX](https://www.enterprisedb.com/docs/epas/14/epas_compat_sql/48_drop_index/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

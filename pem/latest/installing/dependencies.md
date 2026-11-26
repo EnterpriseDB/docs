@@ -1,0 +1,140 @@
+---
+title: Dependencies of the PEM Server and Agent on Linux
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/installing/dependencies/
+lastModified: 2026-09-29T20:22:46+05:30
+---
+
+# Dependencies of the PEM Server and Agent on Linux
+
+The PEM Server and Agent packages for Linux have dependencies on various system libraries.
+These dependencies are detailed below for reference.
+
+> **Note**
+>
+> A PEM Agent is always installed alongside PEM Server, so all dependencies must be present on hosts where PEM Server (either the database or the web application) is installed.
+
+Typically, PEM is built against the latest version of each dependency available from the vendor repository for a given platform and architecture.
+In some cases, PEM requires a newer version of a library than is available in the vendor repository.
+In these cases a newer version of the package, prefixed with `edb-` is sourced from EDB's repositories.
+
+> **Note**
+>
+> This information is provided for reference. Packages from vendor repositories are not supported or patched by EDB.
+> Refer to your operating system documentation or support provider for details of these packages.
+>
+> Because these dependencies are updated frequently, the tables below are valid only for the latest patch release of PEM.
+
+## Python 3 and mod\_wsgi
+
+Python 3 is required for PEM Server. If Apache HTTPD is used as the web server, then the mod\_wsgi module is also required.
+
+| Platform  | Architecture | Python/mod\_wsgi package               | Python version | Python path                              |
+| --------- | ------------ | -------------------------------------- | -------------- | ---------------------------------------- |
+| RHEL 8    | ppc64le      | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+|           | s390x        | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+|           | x86\_64      | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+| RHEL 9    | x86\_64      | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+|           | ppc64le      | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+|           | s390x        | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+|           | arm64        | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+| SLES 15   | x86\_64      | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+|           | ppc64le      | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+|           | s390x        | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+| Ubuntu 22 | amd64        | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+| Ubuntu 24 | amd64        | `python312/libapache2-mod-wsgi-py3`    | 3.12           | `/usr/bin/python3`                       |
+| Debian 12 | amd64/arm64  | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+| Debian 13 | amd64/arm64  | `edb-python312/edb-python312-mod-wsgi` | 3.12           | `/usr/libexec/edb-python312/bin/python3` |
+
+## OpenSSL
+
+The PEM Server and Agent require OpenSSL.
+
+| Platform  | Architecture | package-version  |
+| --------- | ------------ | ---------------- |
+| RHEL 8    | x86\_64      | `openssl-1.1.1k` |
+|           | ppc64le      | `openssl-1.1.1k` |
+|           | s390x        | `openssl-1.1.1k` |
+| RHEL 9    | x86\_64      | `openssl-3.2.2`  |
+|           | ppc64le      | `openssl-3.2.2`  |
+|           | s390x        | `openssl-3.2.2`  |
+|           | arm64        | `openssl-3.2.2`  |
+| RHEL 10   | x86\_64      | `openssl-3.5.1`  |
+| SLES 15   | x86\_64      | `openssl-3.2.3`  |
+|           | ppc64le      | `openssl-3.2.3`  |
+|           | s390x        | `openssl-3.2.3`  |
+| Ubuntu 22 | amd64        | `openssl-3.0.2`  |
+| Ubuntu 24 | amd64        | `openssl-3.0.13` |
+| Debian 12 | amd64/arm64  | `openssl-3.0.17` |
+| Debian 13 | amd64/arm64  | `openssl-3.5.6`  |
+
+## Libcurl
+
+The PEM Agent requires libcurl.
+
+| Platform  | Architecture | package-version                         |
+| --------- | ------------ | --------------------------------------- |
+| RHEL 8    | x86\_64      | `libcurl-7.61.1`                        |
+|           | ppc64le      | `libcurl-7.61.1`                        |
+|           | s390x        | `libcurl-7.61.1`                        |
+| RHEL 9    | x86\_64      | `libcurl-7.76.1/libcurl-minimal-7.76.1` |
+|           | ppc64le      | `libcurl-7.76.1/libcurl-minimal-7.76.1` |
+|           | s390x        | `libcurl-7.76.1/libcurl-minimal-7.76.1` |
+|           | arm64        | `libcurl-7.76.1/libcurl-minimal-7.76.1` |
+| RHEL 10   | x86\_64      | `libcurl-8.12.1`                        |
+| SLES 15   | x86\_64      | `libcurl4-8.14.1`                       |
+|           | ppc64le      | `libcurl4-8.14.1`                       |
+|           | s390x        | `libcurl4-8.14.1`                       |
+| Ubuntu 22 | amd64        | `libcurl4-7.81.0`                       |
+| Ubuntu 24 | amd64        | `libcurl4t64-8.5.0`                     |
+| Debian 12 | amd64/arm64  | `libcurl4-7.88.1`                       |
+| Debian 13 | amd64/arm64  | `libcurl4-8.14.1`                       |
+
+## SNMP++
+
+The PEM Agent requires SNMP++.
+
+| Platform  | Architecture | package-version      |
+| --------- | ------------ | -------------------- |
+| RHEL 8    | x86\_64      | `edb-snmp++36-3.6.3` |
+|           | ppc64le      | `edb-snmp++36-3.6.3` |
+|           | s390x        | `edb-snmp++36-3.6.3` |
+| RHEL 9    | x86\_64      | `edb-snmp++40-4.0.0` |
+|           | ppc64le      | `edb-snmp++40-4.0.0` |
+|           | s390x        | `edb-snmp++40-4.0.0` |
+|           | arm64        | `edb-snmp++40-4.0.0` |
+| RHEL 10   | x86\_64      | `edb-snmp++40-4.0.0` |
+| SLES 15   | x86\_64      | `edb-snmp++40-4.0.0` |
+|           | ppc64le      | `edb-snmp++40-4.0.0` |
+|           | s390x        | `edb-snmp++40-4.0.0` |
+| Ubuntu 22 | amd64        | `edb-snmp++40-4.0.0` |
+| Ubuntu 24 | amd64        | `edb-snmp++40-4.0.0` |
+| Debian 12 | amd64/arm64  | `edb-snmp++40-4.0.0` |
+| Debian 13 | amd64/arm64  | `edb-snmp++40-4.0.0` |
+
+RHEL 8 stays on the SNMP++ 3.x line because SNMP++ 4.0.0 and later require OpenSSL 3.x, and RHEL 8 ships OpenSSL 1.x. The package name encodes the major version — `edb-snmp++36` on RHEL 8, `edb-snmp++40` on every other platform — so EDB's repositories can carry both versions without conflict.
+
+## Boost libraries
+
+The PEM Agent requires the Boost libraries.
+
+| Platform  | Architecture | package-version                    |
+| --------- | ------------ | ---------------------------------- |
+| RHEL 8    | x86\_64      | `boost169-system-1.69.0`           |
+|           | ppc64le      | `boost-system-1.66.0`              |
+|           | s390x        | `boost-system-1.66.0`              |
+| RHEL 9    | x86\_64      | `boost-system-1.75.0`              |
+|           | ppc64le      | `boost-system-1.75.0`              |
+|           | s390x        | `boost-system-1.75.0`              |
+|           | arm64        | `boost-system-1.75.0`              |
+| RHEL 10   | x86\_64      | `boost-system-1.83.0`              |
+| SLES 15   | x86\_64      | `libboost_filesystem1_66_1-1.66.0` |
+|           | ppc64le      | `libboost_filesystem1_66_1-1.66.0` |
+|           | s390x        | `libboost_filesystem1_66_1-1.66.0` |
+| Ubuntu 22 | amd64        | `libboost-system1.74.0-1.74.0`     |
+| Ubuntu 24 | amd64        | `libboost-system1.74.0-1.74.0`     |
+| Debian 12 | amd64/arm64  | `libboost-system1.74.0-1.74.0`     |
+| Debian 13 | amd64/arm64  | `libboost-system1.83.0-1.83.0`     |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,44 @@
+---
+title: CLOSE_CONNECTION
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/utl_tcp/close_connection/
+lastModified: 2026-03-03T16:14:30+05:30
+---
+
+# CLOSE\_CONNECTION
+
+The `CLOSE_CONNECTION` procedure terminates an active network session and releases all associated resources, such as memory buffers and network sockets.
+
+```sql
+CLOSE_CONNECTION (
+  c IN OUT connection
+);
+```
+
+### Parameters
+
+`c`
+
+The connection handle of the session to be closed. This is the handle originally returned by the `OPEN_CONNECTION` function.
+
+### Notes
+
+- **Resource management:** It is critical to call `CLOSE_CONNECTION` for every connection opened to prevent "hanging" sockets or memory leaks in the database process.
+
+- **State reset:** Because the parameter is defined as `IN OUT`, the procedure typically sets the connection handle to `NULL` upon successful execution to prevent accidental reuse of the stale handle.
+
+- **Error handling:** If the connection is already closed or the handle is invalid, the procedure may raise an error.
+
+## Example
+
+```sql
+DECLARE
+  c      UTL_TCP.CONNECTION;
+BEGIN   
+  c := UTL_TCP.OPEN_CONNECTION('mail-arts.enterprisedb.com', 25);
+  UTL_TCP.CLOSE_CONNECTION(c);
+END;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

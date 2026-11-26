@@ -1,0 +1,260 @@
+---
+title: Performing a Postgres major upgrade
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-postgres/major-upgrade/
+lastModified: 2026-11-24T10:07:19Z
+---
+
+# Performing a Postgres major upgrade
+
+Move a cluster to a new Postgres major version, without changing your PGD version, using one of three
+approaches: [full downtime](#upgrading-with-full-downtime), a [rolling upgrade in
+place](#upgrading-with-a-rolling-upgrade-in-place), or a [rolling upgrade that replaces
+nodes](#upgrading-with-a-rolling-upgrade-by-replacing-nodes) one at a time.
+
+> **Note**
+>
+> If you're also upgrading PGD to a new minor version at the same time, see [Upgrading Postgres and PGD
+> together](https://www.enterprisedb.com/docs/pgd/latest/upgrades/upgrading-postgres-and-pgd/minor-upgrade/) instead.
+
+> **Warning**
+>
+> Moving EDB Postgres Extended or EDB Postgres Advanced Server to a major version whose earliest
+> minor is 14.24, 15.19, 16.15, 17.11, 18.6, or later requires PGD 6.5.0 or later. This requirement
+> doesn't apply to community Postgres. See [PGD
+> compatibility](https://www.enterprisedb.com/docs/pgd/latest/overview/compatibility/#pgd-compatibility-with-postgres-versions).
+
+> **Warning**
+>
+> If the community Postgres major version you're moving to already includes the
+> `output_plugin_libraries` parameter on its earliest minor, add `bdr` to it before the new cluster
+> is first started, or PGD's replication slots stop working. This step isn't needed for the
+> [replace-nodes approach](#upgrading-with-a-rolling-upgrade-by-replacing-nodes), since [`pgd node
+> setup`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) adds `bdr` automatically.
+
+## Upgrading with full downtime
+
+Choose this approach when a maintenance window is acceptable and finishing quickly matters more than
+staying online. See [Choosing between a rolling and full-downtime
+upgrade](https://www.enterprisedb.com/docs/pgd/latest/upgrades/planning_upgrade/#choosing-between-a-rolling-and-full-downtime-upgrade) for
+the trade-offs against the two rolling approaches described below.
+
+Disconnect applications from the cluster, then on each node, run the same steps as [upgrading with a
+rolling upgrade, in place](#upgrading-with-a-rolling-upgrade-in-place) below, except you can skip checking
+or switching the write leader and fencing or unfencing the node, since nothing is serving traffic during
+the upgrade. Once every node is upgraded, confirm each one is running the new Postgres version and healthy,
+then reconnect applications.
+
+## Upgrading with a rolling upgrade, in place
+
+Plan your upgrade order across the cluster, one node at a time, upgrading each group's write leader last.
+Disconnect applications from the old Postgres cluster, or redirect them to another node in the PGD cluster.
+
+Use the command-line utility [pgd node upgrade](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/) to
+upgrade a node in place. It wraps the standard [pg\_upgrade](https://www.postgresql.org/docs/current/pgupgrade.html),
+adding PGD-specific steps around it so replication slots and origins carry over correctly.
+
+For each node, one at a time:
+
+1. Install the new major version's PGD packages alongside the existing ones:
+
+   ### Debian/Ubuntu
+
+   ```shell
+   sudo apt install -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### CentOS/RHEL
+
+   ```shell
+   sudo dnf install -y edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   ### SLES
+
+   ```shell
+   sudo zypper -n install edb-pgd6-expanded-<distribution><postgres_version>
+   ```
+
+   Replace `<distribution>` with `pg` for community Postgres, `pgextended` for EDB Postgres Extended, or
+   `epas` for EDB Postgres Advanced Server. For example, the package for EDB Postgres Advanced Server 17 is
+   `edb-pgd6-expanded-epas17`. For details on package naming, see [Installing the database and
+   PGD](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/installing-database-and-pgd/).
+
+   Package managers install each Postgres major version to its own path, so the old binaries are
+   untouched.
+
+2. Create a fresh, empty data directory for the new cluster using the new version's
+   [`initdb`](https://www.postgresql.org/docs/current/app-initdb.html), matching the old cluster's checksum
+   and locale settings. Leave this new cluster shut down.
+
+3. Copy the old cluster's [`postgresql.conf` and
+   `postgresql.auto.conf`](https://www.postgresql.org/docs/current/config-setting.html),
+   [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html), and `conf.d` directory
+   (if present) into the new data directory, adjusting for any configuration parameters that changed between
+   Postgres major versions.
+
+   > **Note**
+   >
+   > Remove or rename parameters that the new major version no longer supports, or the new server won't
+   > start. To find them ahead of time, read the [Postgres release
+   > notes](https://www.postgresql.org/docs/current/release.html) of each major version between your old and
+   > new version. For example, `operator_precedence_warning` was removed in Postgres 14, and
+   > `wal_keep_segments` was removed in Postgres 13 and replaced by `wal_keep_size`.
+   >
+   > If the new server fails to start, for example during `pgd node upgrade --check`, its log reports
+   > `unrecognized configuration parameter` with the name of the parameter. If `log_destination` is set to
+   > `syslog`, the `pg_upgrade` log doesn't show this message, so check the system log instead.
+
+4. If the new major version already includes the `output_plugin_libraries` parameter and the
+   copied configuration doesn't already list `bdr` in it, add it now, while the new cluster is
+   still shut down:
+
+   ```
+   output_plugin_libraries = 'pgoutput, test_decoding, bdr'
+   ```
+
+   See [Postgres configuration](https://www.enterprisedb.com/docs/pgd/latest/reference/postgres-configuration/#postgres-settings) for
+   details.
+
+5. Check whether the node you're upgrading is the write leader for its group:
+
+   ```shell
+   pgd group <group_name> show --summary
+   ```
+
+   If it is, switch leadership to another node first, since `pgd node upgrade` doesn't manage this switch
+   for you:
+
+   ```shell
+   pgd group <group_name> set-leader <new_leader_node_name>
+   ```
+
+6. Fence the node so it can't become the write leader again while it's being upgraded:
+
+   ```shell
+   pgd node <node_name> set-option route_fence true
+   ```
+
+7. Make sure the old cluster is running. `pgd node upgrade` starts it if it's shut down.
+
+8. Run `pgd node upgrade` with the `--check` option first to validate the upgrade without making changes:
+
+   ```shell
+   pgd node <node_name> upgrade --check \
+     --old-bindir <old_bindir> \
+     --new-bindir <new_bindir> \
+     --old-datadir <old_datadir> \
+     --new-datadir <new_datadir> \
+     --database <database_name> \
+     --username <install_user>
+   ```
+
+   `--old-bindir` and `--new-bindir` are the old and new Postgres installation's `bin` directories.
+   `--old-datadir` and `--new-datadir` are the old cluster's data directory and the empty new data
+   directory you created earlier. `--database` is the PGD-enabled database name, and `--username` is the
+   cluster's install user. `--check` runs the PGD-specific validation and `pg_upgrade --check`, without
+   modifying either cluster. See [Modes of
+   operation](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/#modes-of-operation) for what running with
+   `--check` validates.
+
+   If your old cluster doesn't use the defaults, add the `--old-port` and `--socketdir` options. The
+   defaults are port 5432 and the `/var/run/postgresql` socket directory, which doesn't exist on RHEL.
+   EDB Postgres Advanced Server listens on port 5444 by default. For example, on RHEL with EDB Postgres
+   Advanced Server, add `--socketdir /tmp --old-port 5444`. Use the same options when you run the upgrade
+   without `--check`.
+
+9. Run `pgd node upgrade` again without `--check` to perform the upgrade, using the same options:
+
+   ```shell
+   pgd node <node_name> upgrade \
+     --old-bindir <old_bindir> \
+     --new-bindir <new_bindir> \
+     --old-datadir <old_datadir> \
+     --new-datadir <new_datadir> \
+     --database <database_name> \
+     --username <install_user>
+   ```
+
+10. Unfence the node:
+
+    ```shell
+    pgd node <node_name> set-option route_fence false
+    ```
+
+11. Confirm the node is healthy and running the new Postgres version before moving on:
+
+    ```shell
+    pgd nodes list --versions
+    ```
+
+12. Move to the next node in your planned upgrade order, upgrading write leaders last in each group.
+
+For the full set of options and flags, see the [`pgd node upgrade`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/) command reference.
+
+#### Example
+
+Upgrade the node `kaolin` from Postgres 16 to Postgres 17:
+
+```shell
+pgd node kaolin upgrade \
+  --old-bindir /usr/lib/postgresql/16/bin \
+  --new-bindir /usr/lib/postgresql/17/bin \
+  --old-datadir /var/lib/postgresql/16/main \
+  --new-datadir /var/lib/postgresql/17/main \
+  --database bdrdb
+```
+
+See the [command reference](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/upgrade/#examples) for more examples,
+including hard links, file cloning, and Transparent Data Encryption (TDE).
+
+## Upgrading with a rolling upgrade, by replacing nodes
+
+Instead of upgrading a node in place, join a new node that already has the new Postgres version installed,
+then drop one of the existing nodes running the old version. This approach avoids `pg_upgrade` entirely, at the cost
+of a full data transfer to the new node.
+
+1. [Provision a new machine, or a new instance,](https://www.enterprisedb.com/docs/pgd/latest/deploying/deploy-manual/installing-database-and-pgd/)
+   with the new Postgres major version and the same PGD version as the rest of the cluster already
+   installed.
+
+2. Join the new node to the cluster using a logical join:
+
+   ```shell
+   pgd node <node_name> setup --dsn "<new_node_dsn>" --cluster-dsn "<existing_node_dsn>" -D <pg_data>
+   ```
+
+   > **Note**
+   >
+   > Don't use `bdr_init_physical`, it requires the source and joining node to run the same Postgres major
+   > version, so it can't be used across a major version change.
+
+   See the [`pgd node setup`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/node/setup/) command reference for the full set of options.
+
+3. Wait for the new node to catch up with the cluster before routing traffic to it.
+
+4. Confirm the new node is healthy and running the new Postgres version:
+
+   ```shell
+   pgd nodes list --versions
+   ```
+
+5. Update your application's connection configuration, or the Connection Manager, to include the new node.
+
+6. Disconnect applications from the old node before parting it, or redirect them to another node in the PGD cluster.
+
+7. Part the old node, then decommission it:
+
+   ```shell
+   pgd node <node_name> part
+   ```
+
+8. Repeat for each remaining old node, one at a time, until the whole cluster is on the new version.
+
+> **Note**
+>
+> While nodes are on mixed Postgres major versions, avoid using any feature or DDL syntax that's only available
+> in the newer version, until every node has been replaced.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,53 @@
+---
+title: FORMTEXTAREA and FORMTEXTAREA2
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/htp_and_htf/formtextarea_and_formtextarea2/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# FORMTEXTAREA and FORMTEXTAREA2
+
+These functions and procedures generate the `<TEXTAREA>` tag, which creates a text field that has no predefined text in the text area. This field allows the user to enter several lines of text.
+
+## Syntax
+
+The following is the syntax for HTP:
+
+```
+HTP.FORMTEXTAREA (
+   cname          IN       VARCHAR2
+   nrows          IN       INTEGER
+   ncolumns       IN       INTEGER
+   calign         IN       VARCHAR2   DEFAULT NULL
+   cattributes    IN       VARCHAR2   DEFAULT NULL);
+
+HTP.FORMTEXTAREA2 (
+   cname          IN       VARCHAR2
+   nrows          IN       INTEGER
+   ncolumns       IN       INTEGER
+   calign         IN       VARCHAR2   DEFAULT NULL
+   cwrap          IN       VARCHAR2   DEFAULT NULL
+   cattributes    IN       varchar2   DEFAULT NULL);
+```
+
+The following is the syntax for HTF:
+
+```
+HTF.FORMTEXTAREA (cname, nrows, ncolumns, calign, cattributes) RETURN VARCHAR2;
+
+HTF.FORMTEXTAREA2 (cname, nrows, ncolumns, calign, cwrap, cattributes) RETURN VARCHAR2;
+```
+
+## Parameters
+
+| Parameter   | Purpose                                      |
+| ----------- | -------------------------------------------- |
+| cname       | The value for the NAME attribute             |
+| nrows       | The integer value for the ROWS attribute     |
+| ncolumns    | The integer value for the COLS attribute     |
+| calign      | The value for the ALIGN attribute            |
+| cwrap       | The value for the WRAP attribute             |
+| cattributes | Other attributes to include as is in the tag |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

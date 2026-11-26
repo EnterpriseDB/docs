@@ -1,0 +1,28 @@
+---
+title: Supported Java platforms
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/supported_platforms/
+lastModified: 2026-11-16T16:28:48+01:00
+---
+
+# Supported Java platforms
+
+Replication Server is certified to work with the following Java platforms:
+
+| Operating systems          | JDK versions                                 |
+| -------------------------- | -------------------------------------------- |
+| SLES 15                    | OpenJDK 17                                   |
+| RHEL 9                     | Red Hat OpenJDK 11 <br /> Red Hat OpenJDK 17 |
+| RHEL 10                    | Red Hat OpenJDK 21                           |
+| Rocky Linux 9 /AlmaLinux 9 | Red Hat OpenJDK 11                           |
+| PPCLE RHEL 9               | Red Hat OpenJDK 11                           |
+| PPCLE RHEL 10              | Red Hat OpenJDK 21                           |
+| Windows Server 2022        | Oracle JDK 8                                 |
+| Debian 12                  | OpenJDK 17                                   |
+| Debian 13                  | OpenJDK 21                                   |
+| Ubuntu 24                  | OpenJDK 21                                   |
+
+See [Product Compatibility](https://www.enterprisedb.com/platform-compatibility#eprs) for more information on operating system support.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

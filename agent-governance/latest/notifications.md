@@ -1,0 +1,157 @@
+---
+title: Receiving notifications
+description: Configure a webhook to get notified when an agent's denial pattern changes or aidb blocks a privilege escalation in EDB Agent Governance.
+product: EDB Agent Governance
+version: "1"
+url: https://www.enterprisedb.com/docs/agent-governance/latest/notifications/
+lastModified: 2026-11-25T20:55:56+05:30
+---
+
+# Receiving notifications
+
+Use notifications to find out when an agent's denial pattern changes, without watching the [Agents](https://www.enterprisedb.com/docs/agent-governance/latest/agents/) page. EDB Agent Governance posts a message to a webhook when `aidb` blocks an agent's attempt to switch role. It also posts a message when an agent starts or stops getting denied repeatedly. You get one message for each change in state, not one for every denied action.
+
+You configure one webhook URL for each Postgres (aidb\_otel) instance. Slack incoming webhooks work as-is. Any HTTPS endpoint that accepts a JSON `POST` works too, so you can also send signals to your own incident or ticketing tools.
+
+## Before you begin
+
+Confirm the following before you configure a webhook:
+
+- You're signed in as an administrator. Only administrators can configure notifications.
+- The chart values `bff.aidbOtelEnabled` and `bff.governanceDecisionsEnabled` are both `true`, which is the default. See [Configuration values](https://www.enterprisedb.com/docs/agent-governance/latest/installing/#configuration-values).
+- You've registered a Postgres (aidb\_otel) instance. See [Connecting an aidb database](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/).
+- You have a webhook URL. For Slack, create an incoming webhook for the channel that receives the messages.
+
+## Configuring a webhook
+
+Configure a webhook on each instance you want to send notifications:
+
+1. Open the Configure Instances page and select the bell icon on the instance row.
+
+2. Enter the Webhook URL. The dashboard encrypts the URL and later shows only its host name.
+
+3. Choose which signals to send:
+
+   - Escalation blocked — On by default. `aidb` refused an attempt by the agent to switch role, for example `SET ROLE`.
+   - Repeated denials — Off by default. The agent's denial rate over the last hour reached the threshold. Set the threshold (default 20%) and the minimum number of governed actions before the rate counts (default 10). These defaults match the Repeated signal on the Behavior tab. See [Reviewing agent behavior](https://www.enterprisedb.com/docs/agent-governance/latest/agents/#reviewing-agent-behavior).
+
+4. Choose whether to turn on Send a recovery message. It's on by default and sends one message when a signal clears.
+
+5. Select Send test notification to post a sample message to the URL in the field, and confirm that it arrives.
+
+6. Select Save.
+
+## Reviewing delivery history
+
+Use the Recent notifications table to check which messages the backend delivered. It lists the last deliveries with their time, agent, signal, and HTTP status. History is kept for 30 days.
+
+## Understanding signal evaluation
+
+Review how the backend evaluates signals so you know when to expect a message. Every five minutes, the backend evaluates the agents of each instance that has a webhook. It uses the same rollup as the Behavior tab, over the last hour. For each agent and signal:
+
+- When the signal appears, the backend sends one message.
+- While the signal persists, the backend sends nothing.
+- When the signal clears, the backend sends one recovery message, if Send a recovery message is on.
+
+Switching a signal off closes it silently, without a recovery message. The backend records a failed delivery in the history and doesn't retry it. The next change of state sends again.
+
+## Reading the message format
+
+Slack displays the `text` field of the JSON `POST`. A custom receiver can use the following fields to process the event:
+
+| Field      | Meaning                                                                                                                                                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`     | Slack-formatted message with the signal and instance name. Agent notifications include a second line with the agent name and evidence. A dashboard link appears on its own line when available. |
+| `event`    | Always `denial_pattern.changed`, including for test messages.                                                                                                                                   |
+| `instance` | `id` and `name` of the instance.                                                                                                                                                                |
+| `agent`    | Agent `name`. An active alert also includes `purpose` when available. For a test, `name` is an empty string.                                                                                    |
+| `signal`   | `escalation`, `repeated`, `recovered`, or `test`.                                                                                                                                               |
+| `active`   | `true` for an active alert and `false` for a recovery or test.                                                                                                                                  |
+| `sentAt`   | Time the backend sent the message, in UTC ([RFC 3339](https://www.rfc-editor.org/rfc/rfc3339)).                                                                                                 |
+| `since`    | Time the backend first detected the signal, in the same format. Recovery messages retain that time. Test messages omit this field.                                                              |
+| `evidence` | Human-readable detail about the alert, the signal that cleared, or the test.                                                                                                                    |
+| `counts`   | Active alerts include `allowed`, `denied`, and `escalations` for the evaluation window. Recovery and test messages omit this field.                                                             |
+| `url`      | Included when `publicBaseURL` is configured. Opens the instance activity view, filtered to the agent for alerts and recoveries.                                                                 |
+
+The message includes no SQL text and no database object names.
+
+### Example: a blocked privilege escalation
+
+Use this example to see the message sent when `aidb` blocks an agent's attempt to switch role:
+
+```json
+{
+  "text": ":red_circle: Role escalation blocked · Production aidb\n*support-assistant*: 1 role escalation attempt(s) blocked by the engine.\n<https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant|Open in Governance Dashboard>",
+  "event": "denial_pattern.changed",
+  "instance": {"id": "3f2c1a9e", "name": "Production aidb"},
+  "agent": {"name": "support-assistant", "purpose": "customer_support"},
+  "signal": "escalation",
+  "active": true,
+  "sentAt": "2026-11-23T09:15:01Z",
+  "since": "2026-11-23T09:15:00Z",
+  "evidence": "1 role escalation attempt(s) blocked by the engine.",
+  "counts": {"allowed": 42, "denied": 3, "escalations": 1},
+  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant"
+}
+```
+
+### Example: a signal clearing
+
+Use this example to see the message sent when a signal clears and Send a recovery message is on. The `signal` is `recovered` and `active` is `false`:
+
+```json
+{
+  "text": ":large_green_circle: Recovered · Production aidb\n*support-assistant*: No longer escalation (was since 09:15 UTC).\n<https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant|Open in Governance Dashboard>",
+  "event": "denial_pattern.changed",
+  "instance": {"id": "3f2c1a9e", "name": "Production aidb"},
+  "agent": {"name": "support-assistant"},
+  "signal": "recovered",
+  "active": false,
+  "sentAt": "2026-11-23T10:15:01Z",
+  "since": "2026-11-23T09:15:00Z",
+  "evidence": "No longer escalation (was since 09:15 UTC).",
+  "url": "https://governance.example.com/clusters/aidb-3f2c1a9e?agent=support-assistant"
+}
+```
+
+### Example: routing messages from a custom receiver
+
+Use this example to route messages to an incident system. It opens an incident when an escalation alert arrives, and it adds a note when a recovery arrives:
+
+```python
+def handle(message):
+    key = (message["instance"]["id"], message["agent"]["name"])
+
+    if message["signal"] == "test":
+        return  # Ignore test messages.
+
+    if message["signal"] == "escalation" and message["active"]:
+        open_incident(key, summary=message["evidence"])
+
+    elif message["signal"] == "recovered":
+        # A recovery names the cleared signal only in the human-readable
+        # evidence field, so don't close the incident automatically.
+        add_note(key, message["evidence"])
+```
+
+Both escalation and repeated denials can be active for the same agent and instance. A recovery names the cleared signal only in the human-readable `evidence` field. Closing an incident on `agent.name` and `instance.id` alone can close the wrong incident.
+
+## Understanding webhook security
+
+Understand how the backend protects your webhook URL and the data it sends:
+
+- The backend encrypts the webhook URL and doesn't return it to the browser. The dashboard shows only its host name.
+- The backend sends the request with the same egress rules as instance connections, controlled by `bff.blockPrivateEgress`. See [Securing your deployment](https://www.enterprisedb.com/docs/agent-governance/latest/administration/#securing-your-deployment).
+- The backend doesn't follow redirects.
+- The backend never logs the URL path, where Slack keeps its token.
+- Messages contain no SQL text and no database object names.
+
+## Troubleshooting
+
+Use these checks if notifications don't arrive as expected:
+
+- The Recent notifications table shows an HTTP status other than 2xx — Check the webhook URL and that the receiver accepts a JSON `POST`. If the receiver is on a private address, check `bff.blockPrivateEgress`.
+- Send test notification works but no messages arrive — A message is sent only when a signal appears or clears. For Repeated denials, check that the agent has reached the minimum number of governed actions and that the rate has reached the threshold.
+- You don't see the bell icon — Check that you're signed in as an administrator, that the instance is a Postgres (aidb\_otel) instance, and that `bff.aidbOtelEnabled` and `bff.governanceDecisionsEnabled` are `true`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

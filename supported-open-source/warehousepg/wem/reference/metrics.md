@@ -1,0 +1,168 @@
+---
+title: Metrics
+description: A complete reference of all metrics exposed and collected by WarehousePG Enterprise Manager, including their descriptions and types.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/metrics/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Metrics
+
+WarehousePG Enterprise Manager (WEM) collects metrics through two separate channels. An OTel Collector pipeline gathers WHPG cluster and host hardware metrics and stores them in ClickHouse, where the WEM interface queries them directly. Two separate endpoints can also expose these metrics directly, in Prometheus format. WEM exposes its own internal metrics, serving WEM's own state only, at `/prom/metrics`. The OTel gateway collector separately exposes WHPG cluster and host metrics at `<host>:<port>/metrics`, for an external Prometheus instance to scrape directly, when you set `OTEL_PROMETHEUS_SCRAPE_ENDPOINT` in `wem.conf`. See [Configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#otel-collector).
+
+> **Note**
+>
+> Earlier WEM versions collected cluster metrics with a standalone SQL exporter that pushed `warehousepg_observability_*` metrics to Prometheus via remote write. That pipeline was removed and replaced with the OTel Collector/ClickHouse pipeline described below. If you have external tooling or dashboards built against the old `warehousepg_observability_*` metric names, they need to be rebuilt against the metric names in this section.
+
+## WHPG cluster and host metrics
+
+The OTel Collector running on each cluster node gathers these metrics and writes them to ClickHouse. Metrics carry a `whpg_host` attribute identifying the node (and, for per-device or per-state breakdowns, additional attributes as noted). The WEM interface queries these from ClickHouse. Set `OTEL_PROMETHEUS_SCRAPE_ENDPOINT` to also expose them on a Prometheus scrape endpoint for an external Prometheus instance.
+
+### Cluster connectivity
+
+| Metric                   | Type  | Description                                                                            |
+| ------------------------ | ----- | -------------------------------------------------------------------------------------- |
+| `whpg.cluster.connected` | Gauge | Indicates whether the database connection is valid (`1`=connected, `0`=not connected). |
+
+### Coordinator and segment status
+
+| Metric                                | Type  | Description                                         |
+| ------------------------------------- | ----- | --------------------------------------------------- |
+| `whpg.coordinator.active_up_count`    | Gauge | Number of active coordinator nodes currently up.    |
+| `whpg.coordinator.active_down_count`  | Gauge | Number of active coordinator nodes currently down.  |
+| `whpg.coordinator.standby_up_count`   | Gauge | Number of standby coordinator nodes currently up.   |
+| `whpg.coordinator.standby_down_count` | Gauge | Number of standby coordinator nodes currently down. |
+| `whpg.segment.total_primary_count`    | Gauge | Total number of primary segments in the cluster.    |
+| `whpg.segment.total_mirror_count`     | Gauge | Total number of mirror segments in the cluster.     |
+| `whpg.segment.primary_down_count`     | Gauge | Number of primary segments currently down.          |
+| `whpg.segment.mirror_down_count`      | Gauge | Number of mirror segments currently down.           |
+| `whpg.segment.status`                 | Gauge | Per-segment up/down status (`1`=up, `0`=down).      |
+
+### Monitoring query and connection states
+
+| Metric                             | Type  | Description                                                         |
+| ---------------------------------- | ----- | ------------------------------------------------------------------- |
+| `whpg.queries.total`               | Gauge | Total number of connections.                                        |
+| `whpg.queries.active`              | Gauge | Number of connections with active queries.                          |
+| `whpg.queries.idle`                | Gauge | Number of idle connections.                                         |
+| `whpg.queries.idle_in_transaction` | Gauge | Number of connections idle inside an open transaction.              |
+| `whpg.queries.blocked`             | Gauge | Number of queries blocked waiting for locks.                        |
+| `whpg.queries.long_running_120s`   | Gauge | Number of queries that have been running for more than 120 seconds. |
+| `whpg.queries.in_wait`             | Gauge | Number of queries currently in a wait state.                        |
+| `whpg.query.max_duration_seconds`  | Gauge | Duration of the longest-running query currently active, in seconds. |
+| `whpg.transactions.total_executed` | Gauge | Total number of queries executed.                                   |
+
+### Tracking database sizes and skew
+
+| Metric              | Type  | Description                                                                              |
+| ------------------- | ----- | ---------------------------------------------------------------------------------------- |
+| `whpg.db.size`      | Gauge | Size of each database in bytes.                                                          |
+| `whpg.data_skew.cv` | Gauge | Coefficient of variation of data distribution across segments, used to detect data skew. |
+
+### Collecting host hardware metrics
+
+These metrics reflect the physical resources of each cluster host, collected by the OTel Collector's host metrics receiver using OpenTelemetry semantic-convention names.
+
+| Metric                        | Type    | Description                                                                                                                                     |
+| ----------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `system.cpu.time`             | Counter | Cumulative CPU time, broken out by the `state` attribute (`user`, `system`, `idle`, `iowait`, `nice`, `softirq`, `steal`, `interrupt`, `wait`). |
+| `system.memory.usage`         | Gauge   | Memory usage in bytes, broken out by the `state` attribute (`used`, `free`, `cached`, `buffered`, `slab_reclaimable`, `slab_unreclaimable`).    |
+| `system.memory.limit`         | Gauge   | Total physical memory on the host, in bytes.                                                                                                    |
+| `system.cpu.load_average.1m`  | Gauge   | 1-minute load average.                                                                                                                          |
+| `system.cpu.load_average.5m`  | Gauge   | 5-minute load average.                                                                                                                          |
+| `system.cpu.load_average.15m` | Gauge   | 15-minute load average.                                                                                                                         |
+| `system.disk.io`              | Counter | Cumulative bytes read from or written to disk, broken out by the `direction` (`read`, `write`) and `device` attributes.                         |
+| `system.network.io`           | Counter | Cumulative bytes received or transmitted over the network, broken out by the `direction` (`receive`, `transmit`) and `device` attributes.       |
+| `system.filesystem.usage`     | Gauge   | Filesystem usage in bytes, broken out by the `state` (`used`, `free`, `reserved`), `mountpoint`, `type`, and `device` attributes.               |
+
+## Querying the ClickHouse tables directly
+
+WEM's interface queries the metrics and logs above from ClickHouse through its own API, so you don't need direct ClickHouse access for day-to-day use. If you want to query them directly instead, for example from a BI tool or a custom Grafana panel, this section documents the underlying tables.
+
+These tables are created and populated by the OTel Collector's own ClickHouse exporter, using that exporter's default schema, not a schema WEM defines itself — column names follow OTel Collector conventions rather than WEM's own naming. They live in the database set by [`CLICKHOUSE_DB`](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#clickhouse) (default `acp_observability`).
+
+### Metrics tables
+
+| Table                | Description                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `otel_metrics_gauge` | Point-in-time metrics, for example connection counts, load averages, and segment status. |
+| `otel_metrics_sum`   | Cumulative counter metrics, for example CPU time and disk and network I/O.               |
+
+WEM's own queries read these columns from both tables:
+
+| Column       | Description                                                                                                                                                                                                                                                                         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MetricName` | The metric name, matching the names listed under [WHPG cluster and host metrics](#whpg-cluster-and-host-metrics) above (for example `whpg.queries.active`, `system.cpu.time`).                                                                                                      |
+| `Value`      | The metric's numeric value.                                                                                                                                                                                                                                                         |
+| `TimeUnix`   | Timestamp the sample was collected.                                                                                                                                                                                                                                                 |
+| `Attributes` | Map of string labels for the sample. WEM's own queries rely on the `whpg_host` key (the reporting node), plus metric-specific keys such as `state`, `direction`, `device`, `mountpoint`, and `type` — see the metric descriptions above for which attributes apply to which metric. |
+
+> **Note**
+>
+> The OTel Collector's ClickHouse exporter also creates `otel_metrics_histogram`, `otel_metrics_exponential_histogram`, and `otel_metrics_summary` tables by default, and WEM doesn't currently query any of them. Confirm with engineering whether these tables are actually populated in a WEM deployment.
+
+### Logs table
+
+| Table       | Description                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------- |
+| `otel_logs` | WHPG log entries collected from each node. This replaced WEM's earlier Loki-based log pipeline. |
+
+WEM's own queries read these columns:
+
+| Column               | Description                                                                                                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Timestamp`          | When the log line was collected.                                                                                                                                              |
+| `ServiceName`        | The OTel service name of the collecting node.                                                                                                                                 |
+| `Body`               | The raw log line.                                                                                                                                                             |
+| `TraceId`            | Trace ID associated with the log entry, if any.                                                                                                                               |
+| `ResourceAttributes` | Map of resource-level attributes, such as the reporting host.                                                                                                                 |
+| `LogAttributes`      | Map of per-log attributes parsed from the WHPG CSV log. WEM's **Logs** panel filters and summary counts rely on the `severity`, `log_user`, and `database` keys specifically. |
+
+> **Note**
+>
+> By default, ClickHouse retains OTel-collected metrics and logs indefinitely. To change the retention policy, edit the internal tables in `CLICKHOUSE_DB`, `otel_logs` for logs, and each `otel_metrics_*` table (such as `otel_metrics_gauge`) for the metric types you collect:
+>
+> ```sql
+> ALTER TABLE acp_observability.<table_name> MODIFY TTL <timestamp_column> + INTERVAL <retention_days> DAY;
+> ```
+>
+> Substitute `<table_name>` and `<retention_days>` with your values, and `<timestamp_column>` with that table's own timestamp column, `Timestamp` for `otel_logs`, `TimeUnix` for `otel_metrics_*` tables.
+
+## WEM internal metrics
+
+These metrics describe the health and behavior of WEM itself. Prometheus scrapes them directly from the `/prom/metrics` endpoint, which is unauthenticated. All WEM internal metrics use the prefix `wem_`.
+
+### Monitoring canary checks
+
+Each canary metric carries a `check_name` label identifying the canary check it belongs to.
+
+| Metric                          | Type    | Description                                                                          |
+| ------------------------------- | ------- | ------------------------------------------------------------------------------------ |
+| `wem_canary_duration_ms`        | Gauge   | Execution time of the most recent canary check run, in milliseconds.                 |
+| `wem_canary_status`             | Gauge   | Result of the most recent canary check run (`0`=success, `1`=warning, `2`=critical). |
+| `wem_canary_last_run_timestamp` | Gauge   | Unix timestamp of the most recent canary check execution.                            |
+| `wem_canary_row_count`          | Gauge   | Row count returned by the most recent canary check query.                            |
+| `wem_canary_checks_total`       | Counter | Total number of canary check executions since WEM started.                           |
+| `wem_canary_failures_total`     | Counter | Total number of canary check executions that returned a warning or critical result.  |
+
+### Tracking WEM system state
+
+| Metric                    | Type  | Description                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wem_up`                  | Gauge | Indicates whether the WEM process is running (`1`=running).                                                                                                                                                                                                                                           |
+| `wem_scheduler_lock_held` | Gauge | Indicates whether this WEM instance currently holds the shared scheduler lock used by canary checks and resource-usage collection (`1`=held). WEM's alert evaluator, query scan, and Safeguard config-drift sync run under their own separate locks, which aren't currently reflected in this metric. |
+| `wem_build_info`          | Gauge | Static build metadata for this WEM instance, with `version`, `commit`, and `go_version` labels. Always `1`.                                                                                                                                                                                           |
+
+### Monitoring connection pools
+
+Each pool metric carries a `pool_name` label (for example `whpg-main`, `wem-state`, or `query-editor`) identifying the connection pool it describes. Because the Query Editor opens a pool per session, `pool_name` values for it are dynamic and unbounded in cardinality.
+
+| Metric                         | Type  | Description                                                                 |
+| ------------------------------ | ----- | --------------------------------------------------------------------------- |
+| `wem_pool_total_conns`         | Gauge | Total number of connections in the pool (idle and acquired).                |
+| `wem_pool_idle_conns`          | Gauge | Number of idle connections available in the pool.                           |
+| `wem_pool_acquired_conns`      | Gauge | Number of connections currently in use.                                     |
+| `wem_pool_max_conns`           | Gauge | Maximum number of connections configured for the pool.                      |
+| `wem_pool_utilization_percent` | Gauge | Pool utilization expressed as a percentage of the maximum connection limit. |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

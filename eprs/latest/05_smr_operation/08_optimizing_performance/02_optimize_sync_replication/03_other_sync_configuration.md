@@ -1,0 +1,70 @@
+---
+title: Other synchronization configuration options
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/08_optimizing_performance/02_optimize_sync_replication/03_other_sync_configuration/
+lastModified: 2026-11-18T12:08:27+01:00
+---
+
+# Other synchronization configuration options
+
+The following are other configuration options affecting synchronization replication.
+
+`syncBatchSize`
+
+The `syncBatchSize` option controls the number of statements in a synchronization replication JDBC batch.
+
+`syncBatchSize=n`
+
+The default value for n is 100.
+
+`syncFetchSize`
+
+The `syncFetchSize` option controls how many rows are fetched from the publication database in one network round trip. For example, for 1000 pending row changes, the default fetch size requires five database round trips. Using a fetch size of 500 retrieves all changes in two round trips. Fine tune the performance by using a fetch size that conforms to the average data volume consumed by rows fetched in one round trip.
+
+`syncFetchSize=n`
+
+The default value for n is 200.
+
+`txSetMaxSize`
+
+The `txSetMaxSize` option defines the maximum number of transactional rows that you can group in a single transaction set. The publication server loads and processes the changes by fetching as many rows in memory as grouped in a single transaction set.
+
+A higher value is expected to boost performance. However a very large value might result in an out-of-memory error. Increase or decrease the value in accordance with the average row size (low/high).
+
+`txSetMaxSize=n`
+
+The default value for n is 10000.
+
+`upsertMode`
+
+The `upsertMode` option controls how the publication server applies `INSERT` changes to a PostgreSQL or EDB Postgres Advanced Server target during synchronization replication. With upsert mode in effect, the publication server applies each `INSERT` with an `ON CONFLICT DO NOTHING` clause. If a row with the same primary key or unique key value already exists on the target, the publication server skips the row, leaves the existing target row unchanged, and continues the synchronization instead of failing with a duplicate key error. `UPDATE` and `DELETE` changes aren't affected.
+
+Valid values are `true` and `false`. An explicitly set value applies in all cases. If you don't set the option, the replication type determines the default. The replication type also affects how the publication server handles a conflicting `INSERT` when upsert mode is on.
+
+| Replication type                                                                       | What happens to a conflicting `INSERT` if `upsertMode=true`                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Single-master replication<br/>Default: `true`                                          | The publication server skips the row and continues the synchronization.                                                                                                                                                                                                                                                                                                                                                                                               |
+| Multi-master replication<br/>Default: `false`                                          | The publication server skips the row on the target primary node and doesn't record a uniqueness conflict.<br/><br/>If `uniquenessConflictDetection` is `EAGER`, or the cluster is log-based with more than two primary nodes, it still detects concurrent inserts of the same primary key on different nodes at data load time and records them as uniqueness conflicts. It always skips conflicts on a unique key other than the primary key without recording them. |
+| Single-master subscription attached to a multi-master publication<br/>Default: `false` | The publication server skips the row and continues the synchronization.                                                                                                                                                                                                                                                                                                                                                                                               |
+
+The option applies only when the target is PostgreSQL or EDB Postgres Advanced Server. For other targets, it has no effect.
+
+When upsert mode is in effect:
+
+- DML changes are always applied in JDBC batch mode.
+- In single-master replication, the publication server doesn't write skipped rows to its log. In multi-master replication, it logs a warning for each skipped row.
+
+The implicit synchronization at the end of a snapshot always uses upsert mode, regardless of this setting.
+
+You can change `upsertMode` with the `reloadconf` command. The change takes effect from the next transaction set, and you don't need to restart the publication server.
+
+`enablePerformanceStats`
+
+Set `enablePerformanceStats` to true only if you need to conduct performance testing and analyze the replication statistics. When enabled, the publication server creates more triggers on the publication tables in each primary node. The triggers produce transaction statistics that are recorded in the `MMR_transaction_history` table in the control schema. Disable this option in a production environment to avoid performance overhead.
+
+`enablePerformanceStats={true | false}`
+
+The default value is false.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

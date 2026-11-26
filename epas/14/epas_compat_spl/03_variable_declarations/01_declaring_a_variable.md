@@ -1,0 +1,57 @@
+---
+title: Declaring a variable
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_spl/03_variable_declarations/01_declaring_a_variable/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# Declaring a variable
+
+<div id="declaring_a_variable" class="registered_link"></div>
+
+Generally, you must declare all variables used in a block in the declaration section of the block. A variable declaration consists of a name that's assigned to the variable and its data type. Optionally, you can initialize the variable to a default value in the variable declaration.
+
+The general syntax of a variable declaration is:
+
+```text
+<name> <type> [ { := | DEFAULT } { <expression> | NULL } ];
+```
+
+`name` is an identifier assigned to the variable.
+
+`type` is the data type assigned to the variable.
+
+`[ := expression ]`, if given, specifies the initial value assigned to the variable when the block is entered. If the clause isn't given then the variable is initialized to the SQL `NULL` value.
+
+The default value is evaluated every time the block is entered. So, for example, assigning `SYSDATE` to a variable of type `DATE` causes the variable to have the time of the current invocation, not the time when the procedure or function was precompiled.
+
+This procedure shows some variable declarations that use defaults consisting of string and numeric expressions:
+
+```text
+CREATE OR REPLACE PROCEDURE dept_salary_rpt (
+    p_deptno        NUMBER
+)
+IS
+    todays_date     DATE := SYSDATE;
+    rpt_title       VARCHAR2(60) := 'Report For Department # ' || p_deptno
+                             || ' on ' || todays_date;
+    base_sal        INTEGER := 35525;
+    base_comm_rate  NUMBER := 1.33333;
+    base_annual     NUMBER := ROUND(base_sal * base_comm_rate, 2);
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(rpt_title);
+    DBMS_OUTPUT.PUT_LINE('Base Annual Salary: ' || base_annual);
+END;
+```
+
+The following output of the procedure shows that default values in the variable declarations are assigned to the variables:
+
+```text
+EXEC dept_salary_rpt(20);
+
+Report For Department # 20 on 10-JUL-07 16:44:45
+Base Annual Salary: 47366.55
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

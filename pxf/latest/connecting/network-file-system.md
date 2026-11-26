@@ -1,0 +1,106 @@
+---
+title: Connecting to a network file system
+description: Configure PXF to read and write data on a network file system, and query it from WarehousePG.
+product: PXF for WarehousePG
+version: "6"
+url: https://www.enterprisedb.com/docs/pxf/latest/connecting/network-file-system/
+lastModified: 2026-08-12T09:50:14Z
+---
+
+# Connecting to a network file system
+
+Configure a server for your network file system, then read and write its data through external tables.
+
+## Configuring the server
+
+Create a server that points PXF at a directory mounted at the same path on every WarehousePG (WHPG) host.
+
+1. Create a server directory under `$PXF_BASE/servers`, and copy the `pxf-site.xml` template from `$PXF_HOME/templates` into it. For example, to configure a server named `nfssrvcfg`:
+
+   ```bash
+   mkdir -p $PXF_BASE/servers/nfssrvcfg
+   cp $PXF_HOME/templates/pxf-site.xml $PXF_BASE/servers/nfssrvcfg
+   ```
+
+2. Uncomment `pxf.fs.basePath` and set it to the mount point, and set `pxf.service.user.impersonation` to `false`, since this connector always accesses files as the OS user running PXF rather than the connecting WHPG user:
+
+   ```xml
+   <property>
+       <name>pxf.fs.basePath</name>
+       <value>/mnt/extdata/pxffs</value>
+   </property>
+   <property>
+       <name>pxf.service.user.impersonation</name>
+       <value>false</value>
+   </property>
+   ```
+
+   The path in `LOCATION` is relative to `pxf.fs.basePath`. See [Configuration templates](https://www.enterprisedb.com/docs/pxf/latest/reference/configuration-templates/#pxf-sitexml) for the full list of `pxf-site.xml` properties.
+
+3. Sync the change to every segment host, then restart PXF to apply it:
+
+   ```bash
+   pxf cluster sync
+   pxf cluster restart
+   ```
+
+## Reading data
+
+Read a file from the mounted directory by creating a readable external table with the profile for its format and the server you configured. For example, to read a CSV file using the `nfssrvcfg` server:
+
+```sql
+CREATE EXTERNAL TABLE pxf_read_example (id int, name text, age int)
+    LOCATION ('pxf://data.csv?PROFILE=file:text&SERVER=nfssrvcfg')
+    FORMAT 'CSV' (delimiter=',');
+
+SELECT * FROM pxf_read_example;
+```
+
+PXF also supports structured formats like Parquet, through the same profile-based syntax:
+
+```sql
+CREATE EXTERNAL TABLE pxf_parquet_example (
+    id bigint,
+    created timestamp without time zone,
+    status integer
+)
+    LOCATION ('pxf://parquet_data/?PROFILE=file:parquet&SERVER=nfssrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_import')
+    ENCODING 'UTF8';
+```
+
+The path in `LOCATION` can't be relative, and can't include the `$` character. See [PXF profiles](https://www.enterprisedb.com/docs/pxf/latest/reference/profiles/) for the full list of supported formats, including worked examples of Avro, JSON, and multi-byte delimiters.
+
+## Writing data
+
+Create a writable external table with the `pxfwritable_export` formatter to write WHPG data out to the mounted directory:
+
+```sql
+CREATE WRITABLE EXTERNAL TABLE pxf_write_example (
+    id bigint,
+    created timestamp without time zone,
+    status integer
+)
+    LOCATION ('pxf://parquet_data/?PROFILE=file:parquet&SERVER=nfssrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')
+    ENCODING 'UTF8';
+
+INSERT INTO pxf_write_example SELECT id, created, status FROM some_local_table;
+```
+
+To query the data, create a separate readable external table at the same location:
+
+```sql
+CREATE EXTERNAL TABLE pxf_read_back (
+    id bigint,
+    created timestamp without time zone,
+    status integer
+)
+    LOCATION ('pxf://parquet_data/?PROFILE=file:parquet&SERVER=nfssrvcfg')
+    FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_import')
+    ENCODING 'UTF8';
+
+SELECT * FROM pxf_read_back;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

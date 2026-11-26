@@ -1,0 +1,151 @@
+---
+title: Requirements to install the EDB Postgres AI agent
+description: Requirements for the EDB Postgres AI agent installation for external Kubernetes cluster
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/monitoring_ext_k8s_clusters/installation_requirements/
+lastModified: 2026-08-06T13:08:56+02:00
+---
+
+# Requirements to install the EDB Postgres AI agent
+
+This section lists the requirements to configure your Hybrid Manager (HM) installation to monitor external CloudNativePG™, EDB Postgres® AI for CloudNativePG™ Cluster, and EDB Postgres® AI for CloudNativePG™ Global Cluster clusters.
+
+## HM console requirements
+
+You need access to a HM console instance with:
+
+- Machine user: After your HM cluster is ready, [create a machine user](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/create_machine_user/#creating-a-machine-user).
+- Estate Ingest Role: Assign the [estate ingest role](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/create_machine_user/#assigning-roles) to the machine user you created.
+- Access key: Save the access key generated during the machine user creation.
+- Project ID: Note the project ID where the agent will report metrics.
+
+## Required executables
+
+You will need the following executables to run the commands in this documentation:
+
+- kubectl
+- helm
+- envsubst
+
+The `cnp` and `ns` plugins for kubectl are also recommended.
+
+## Supported operators
+
+You must have an existing external Kubernetes cluster (other than the Kubernetes cluster where HM is installed) with a Postgres cluster managed by one of the following operators:
+
+- [EDB Postgres® AI for CloudNativePG™ Cluster (formerly EDB Postgres for Kubernetes)](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/installation_upgrade/)
+
+- [EDB Postgres® AI for CloudNativePG™ Global Cluster (formerly EDB Postgres Distributed for Kubernetes)](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/installation_upgrade/)
+
+- [CloudNativePG™](https://cloudnative-pg.io/docs/devel/installation_upgrade/)
+
+## Kubernetes cluster requirements
+
+Ensure the Kubernetes cluster where you are running the Postgres databases also aligns with these requirements.
+
+- Kubernetes version: 1.21 or higher.
+- Helm version: 3.8 or higher.
+- Cluster access: Admin privileges to create namespaces, RBAC resources, and deployments.
+- Required Kubernetes operators to monitor the metrics.
+
+## Cert-manager
+
+You must also have cert-manager installed in your cluster to complete the deployment.
+
+To install cert-manager:
+
+```
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.19.2/cert-manager.yaml
+```
+
+Alternatively, you can install cert-manager as a subchart of the EDB Postgres AI agent chart by setting `additionalCharts.cert-manager.install: true` in your `custom-values.yaml`. See the [Configuration reference](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/monitoring_ext_k8s_clusters/configuration_reference/).
+
+## Required environment values
+
+Export the following environment values that you will need to complete deployment. You can skip this step if you prefer to provide the environment values explicitly during the deployment.
+
+- `TARGET_NS` - The namespace of your existing CNPG cluster (or PGD Group for PGD4K).
+
+- `AGENT_NS` - The namespace to install the EDB Postgres AI agent.
+
+- `TARGET_TYPE` - The resource kind to patch when enabling the agent sidecar: `cluster` for CNPG and EDB Postgres® AI for CloudNativePG™ Cluster deployments, or `pgdgroup` for EDB Postgres® AI for CloudNativePG™ Global Cluster deployments. See [Patching clusters to enable the agent sidecar](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/monitoring_ext_k8s_clusters/mon_ext_k8s_clusters/#patching-clusters-to-enable-the-agent-sidecar).
+
+- `HM_ACCESS_KEY` - The access key for Hybrid Manager.
+
+- `HM_PROJECT_ID` - The Project ID in HM.
+
+- `HM_CACERT` - The root CA certificate of HM. Required when `rootCAEnabled` is `true` (the default), which is the configuration described in this guide. It works with any certificate provided from the chain. If you instead set `rootCAEnabled: false` to trust HM via the system CA pool (or skip verification), you can omit this value and the `beacon-server-ca` secret in [Namespace and secrets](#namespace-and-secrets) — see the [TLS configuration options](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/monitoring_ext_k8s_clusters/configuration_reference/#tls-configuration-options).
+
+  Retrieve the certificate from your HM cluster:
+
+  ```shell
+  export HM_CACERT=$(kubectl get secret -n edbpgai-bootstrap beaconator-ca-bundle -o jsonpath='{.data.public\.crt}' | base64 -d)
+  ```
+
+- `HM_URL` - The beacon server URL, including port.
+
+  Retrieve the host and port from the beacon server gateway on your HM cluster, then combine them:
+
+  ```shell
+  export SERVER_HOST=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .hosts[0]')
+  export SERVER_PORT=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .port.number')
+  export HM_URL="${SERVER_HOST}:${SERVER_PORT}"
+  ```
+
+- `EDB_SUBSCRIPTION_TOKEN` - Your EDB token.
+
+- `POD_SELECTOR` - Set to `k8s.enterprisedb.io/podRole=instance` for EDB operators, or `cnpg.io/podRole=instance` for the community CNPG operator.
+
+- `AGENT_VERSION` - The EDB Postgres AI agent version compatible with your HM release. For HM 2026.7, set it to v1.396.12. For other releases, see the [beacon-agent version compatibility matrix](https://www.enterprisedb.com/docs/tools/agent/installing/#supported-hm-versions-for-the-edb-postgres-ai-agent).
+
+For example:
+
+```shell
+export TARGET_NS=cnpg
+export AGENT_NS=upm-beacon
+export HM_ACCESS_KEY=baak_YOUR_ACCESS_KEY
+export HM_PROJECT_ID=prj_3AlRuOvlbUZafFY2
+export HM_CACERT=$(kubectl get secret -n edbpgai-bootstrap beaconator-ca-bundle -o jsonpath='{.data.public\.crt}' | base64 -d)
+export HM_URL=<beacon-server-host>:<port>
+export POD_SELECTOR='k8s.enterprisedb.io/podRole=instance'
+export AGENT_VERSION=v1.396.12
+```
+
+### Getting the Beacon server URL
+
+If you don't already know your `HM_URL` value, retrieve the host and port from the HM (HCP) cluster:
+
+```shell
+# On the Hybrid Manager (HCP) cluster
+export server_host=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .hosts[0]')
+export server_port=$(kubectl -n upm-beacon get gateways.networking.istio.io beacon-server -oyaml | yq '.spec.servers[] | select(.port.name == "https") | .port.number')
+export HM_URL="${server_host}:${server_port}"
+```
+
+This command requires `kubectl` access to the Kubernetes cluster where HM is installed, not the external cluster you're monitoring.
+
+## Namespace and secrets
+
+Create the following namespaces and secrets before installation:
+
+- Namespace: The logical partition `${AGENT_NS}` used to isolate the EDB Postgres AI agent.
+- Beacon server CA Secret: Contains the TLS certificate for connecting to HM.
+- Beacon access key aecret: Contains the HM access key for the cluster.
+- Image pull secret: Contains credentials for pulling the agent and OpenTelemetry (OTEL) collector images.
+
+Create the namespaces and secrets required for the configuration:
+
+```shell
+kubectl create namespace "${AGENT_NS}"
+kubectl create secret generic beacon-server-ca --from-literal=ca.crt="${HM_CACERT}" -n "${TARGET_NS}"
+kubectl create secret generic beacon-server-ca --from-literal=ca.crt="${HM_CACERT}" -n "${AGENT_NS}"
+kubectl create secret generic beacon-access-key --from-literal=access-key="${HM_ACCESS_KEY}" -n "${TARGET_NS}"
+kubectl get secrets -n "$AGENT_NS" -oyaml beacon-agent-pull-secret | grep -v '^\s*namespace:\s' | kubectl apply -n "$TARGET_NS" -f -
+```
+
+> **Note**
+>
+> The two `beacon-server-ca` secrets are only required when `rootCAEnabled` is `true` (the default). If you set `rootCAEnabled: false`, skip creating them — see the [TLS configuration options](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/monitoring_ext_k8s_clusters/configuration_reference/#tls-configuration-options).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,328 @@
+---
+title: Backing up and restoring your tables
+description: Back up and restore WarehousePG tables with gpbackup and gprestore, including full backups, filtering, email notifications, and incremental backups.
+product: WarehousePG Backup and Restore
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/using/
+lastModified: 2026-09-08T13:45:15Z
+---
+
+# Backing up and restoring your tables
+
+Use `gpbackup` and `gprestore` to take and restore full backups of a WarehousePG database, filtering what's included and getting notified by email when a run completes. For incremental backups of append-optimized tables, see [Creating incremental backups of append-optimized tables](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/incremental/). For architecture background, see [Architecture](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/overview/architecture/). For command syntax, see the [gpbackup](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gpbackup/) and [gprestore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gprestore/) reference pages.
+
+## Running a full backup
+
+To take a full backup that includes metadata and user data, run `gpbackup` with the `--dbname` option. This example uses zstandard compression:
+
+```bash
+gpbackup --dbname ww_sales --compression-type zstd
+```
+
+> **Note**
+>
+> In order to use the zstd compression type, Zstandard must be installed in a `$PATH` accessible by the `gpadmin` user.
+
+Specify the gzip compression level (1-9) with `--compression-level`, or disable compression entirely with `--no-compression`. If you don't specify a level, `gpbackup` uses level 1 by default.
+
+By default, `gpbackup` writes metadata files to the coordinator's backup directory while each segment writes its own table data locally, so the backup set ends up spread across every host in the cluster. To consolidate all backup files into a single directory, include the `--backup-dir` option with an absolute path. You can also add the `--single-data-file` option to write a single data file per segment instead of one file per table. Combining files this way is useful in situations where the overhead of managing many small files is a problem, such as with some third-party storage solutions:
+
+```bash
+gpbackup --dbname ww_sales --single-data-file --no-compression --backup-dir /tmp/single_file
+```
+
+`gpbackup` reports progress as it runs, including a timestamped log line for each phase of the backup and a progress bar while it locks and backs up tables, ending with `Backup completed successfully`.
+
+### Inspecting backup files
+
+A complete backup set includes metadata files, supporting files, and CSV data files, each named with the timestamp of the backup. By default, metadata and supporting files are stored on the WarehousePG coordinator host, in `$COORDINATOR_DATA_DIRECTORY/backups/YYYYMMDD/YYYYMMDDHHMMSS/`, and each segment stores its own table data in the equivalent path in its data directory. If you specify a custom backup directory with `--backup-dir`, `gpbackup` creates this same path as a subdirectory of it.
+
+> **Warning**
+>
+> `gpbackup` creates all metadata files with read-only permissions. Never delete or modify them. Doing so can make the backup set unusable.
+
+#### Coordinator files
+
+The backup directory on the coordinator contains the following metadata files:
+
+- **`gpbackup_<YYYYMMDDHHMMSS>_metadata.sql`** contains the DDL for the backup's global and database objects, split into what `gprestore` creates before and after the data is restored. See [Objects included in a backup](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/overview/architecture/#objects-included-in-a-backup) for the full list.
+
+- **`gpbackup_<YYYYMMDDHHMMSS>_toc.yaml`** is the table of contents file. It records where each object's DDL is located in the metadata SQL file, along with the table names and OIDs used to locate the corresponding table data in the [segment data files](#segment-files). For example:
+
+  ```yaml
+  dataentries:
+  - schema: public
+    name: customer
+    oid: 27289
+    attributestring: (c_custkey,c_name,c_address,c_nationkey,c_phone,c_acctbal,c_mktsegment,c_comment)
+    rowscopied: 0
+    partitionroot: ""
+    isreplicated: false
+    distbyenum: false
+  ```
+
+- **`gpbackup_<YYYYMMDDHHMMSS>_report`** contains the information used to populate the [notification email](#setting-up-email-alerts), including the command-line options used, the database backed up, the database version, and the backup type.
+
+- **`gpbackup_<YYYYMMDDHHMMSS>_config.yaml`** contains metadata about the backup task, including the `gpbackup` version, database name, WarehousePG version, and option settings such as `--no-compression`, `--compression-level`, `--metadata-only`, `--data-only`, and `--with-stats`.
+
+#### Segment files
+
+By default, each segment creates one compressed CSV file for each table it backs up, using the name format `gpbackup_<content_id>_<YYYYMMDDHHMMSS>_<oid>.gz`, where `<content_id>` is the segment's content ID, `<YYYYMMDDHHMMSS>` is the backup timestamp, and `<oid>` is the table's object ID.
+
+With `--single-data-file`, each segment instead writes all table data to a single file, `gpbackup_<content_id>_<YYYYMMDDHHMMSS>`, with a corresponding `gpbackup_<content_id>_<YYYYMMDDHHMMSS>_toc.yaml`. The coordinator's `gpbackup_<YYYYMMDDHHMMSS>_toc.yaml` file references each table's `<oid>` to locate its data in these segment files.
+
+### Understanding the backup history database
+
+Each time `gpbackup` runs, it records details of the operation, such as the timestamp, command-line options, incremental backup details, and status, in a SQLite database at `$COORDINATOR_DATA_DIRECTORY/gpbackup_history.db`. `gpbackup` doesn't back up `gpbackup_history.db` itself, but you can copy it to a secondary location if you want a backup copy. To skip recording a backup in the history database, include the `--no-history` option.
+
+`gpbackup` uses `gpbackup_history.db` to build the backup and restore plan for an incremental backup set when you run `gpbackup` with `--incremental` and don't specify `--from-timestamp` to indicate the base backup. See [Creating incremental backups](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/incremental/) for details.
+
+As of version 1.34.0, `gpbackup` also records `single_backup_dir`, `command_line`, and `object_count` for each backup. Opening an existing history database automatically adds these columns to it. See [Managing backup history](#managing-backup-history) for the commands that inspect and clean up the history database.
+
+## Restoring a full backup
+
+To restore from a backup set with `gprestore`, specify the exact timestamp `YYYYMMDDHHMMSS` of the backup with the `--timestamp` option. Add the `--create-db` option if the database doesn't already exist in the cluster. If you used a custom `--backup-dir` when creating the backup, include the same option when restoring it:
+
+```bash
+gprestore --timestamp 20250515182209 --backup-dir /tmp/single_file --create-db
+```
+
+`gprestore` doesn't restore global metadata for the WarehousePG cluster by default. Include the `--with-globals` option if you need it.
+
+By default, `gprestore` uses one connection to restore table data and metadata. If your backup set is large and wasn't created with `--single-data-file`, you can reduce restore duration by specifying the number of parallel processes with the `--jobs` option, tuned to your available system resources and database size.
+
+When restoring to an existing database, `gprestore` assumes the public schema exists. When restoring to a new database with `--create-db`, `gprestore` creates the public schema automatically using the `CREATE DATABASE` command, based on the `template0` database that contains the public schema.
+
+`gprestore` reports its own progress in the same style as `gpbackup`, ending with `Restore completed successfully`.
+
+## Managing backup history
+
+Inspect and clean up the backups recorded in the [backup history database](#understanding-the-backup-history-database). See the [gpbackup reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gpbackup/#subcommands) for the full subcommand syntax.
+
+### Listing backups
+
+List every backup recorded in the history database, including its status, database name, and backup type:
+
+```bash
+gpbackup list-backups
+```
+
+```output title="Output"
+timestamp       date                      status   database     type         object filtering  plugin  duration  date deleted  backup dir                       compressed  compression type
+20250510090000  Sat May 10 2025 09:00:00  Success  ww_sales     full                                   00:12:34                                                 true        gzip
+20250515182209  Thu May 15 2025 18:22:09  Success  ww_sales     full                                   00:00:52                /tmp/single_file                 false       gzip
+20250518060000  Sun May 18 2025 06:00:00  Success  ww_sales     incremental                            00:02:41                /nfsmount/whpg_backups/ww_sales  true        gzip
+20250520101500  Tue May 20 2025 10:15:00  Success  ww_customer  full         include-table             00:00:16                                                 true        gzip
+```
+
+The `backup dir` column shows the `--backup-dir` value recorded for each backup, and `object filtering` shows which include or exclude filtering option was used, if any.
+
+Add `--show-all` to include backups that have already been deleted, or `--format json` for machine-readable output you can parse in a script:
+
+```bash
+gpbackup list-backups --format json
+```
+
+### Finding backups that contain a table
+
+Check which backups include data for a specific table without having to perform a restore:
+
+```bash
+gpbackup find-table apac_customer.customer_fact
+```
+
+```output title="Output"
+timestamp       date                      status   database     type  object filtering  plugin  duration  date deleted  backup dir  compressed  compression type
+20250520101500  Tue May 20 2025 10:15:00  Success  ww_customer  full  include-table             00:00:16                            true        gzip
+```
+
+Specify the table argument as `schema.table`.
+
+### Viewing a backup report
+
+Display the report for a specific backup timestamp without locating the report file yourself:
+
+```bash
+gpbackup display-report 20250515182209
+```
+
+If the local report file is gone but the backup used a storage plugin, add `--plugin-config` to retrieve it from the remote location:
+
+```bash
+gpbackup display-report 20250515182209 --plugin-config /home/gpadmin/s3-config.yaml
+```
+
+### Deleting backups
+
+Delete a single backup set and record the deletion in the history database:
+
+```bash
+gpbackup delete-backup 20250515182209
+```
+
+If another incremental backup depends on it, you must add `--cascade` to delete both the backup and its dependents:
+
+```bash
+gpbackup delete-backup 20250515182209 --cascade
+```
+
+To clean up routinely, delete every full backup older than a given timestamp. `delete-backups-before` never deletes incremental backups, and skips, with a warning, any full backup that still has a live incremental dependent:
+
+```bash
+gpbackup delete-backups-before 20250101000000
+```
+
+Add `--no-prompt` to skip the confirmation prompt, for a scheduled cleanup job or another non-interactive script.
+
+## Filtering backups and restores
+
+Filter backups and restores with schema-level or table-level options to include or exclude individual objects. Without a filter, `gpbackup` backs up all schemas and tables in the specified database. For the full option syntax, see the [gpbackup](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gpbackup/#options) and [gprestore](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/whpg-backup/reference/gprestore/#options) reference pages.
+
+### Filtering backups by schema
+
+Use `--include-schema`, `--include-schema-file`, `--exclude-schema`, or `--exclude-schema-file` to filter by schema. For example:
+
+```bash
+gpbackup --dbname ww_customer --exclude-schema na_customer
+```
+
+To filter multiple schemas, repeat `--include-schema` or `--exclude-schema` in the same command, for example:
+
+```bash
+gpbackup --dbname ww_customer --include-schema apac_customer --include-schema emea_customer
+```
+
+Alternatively, use `--include-schema-file` or `--exclude-schema-file` with a text file that lists one schema per line and has no trailing blank lines:
+
+```bash
+gpbackup --dbname ww_customer --include-schema-file /tmp/nw_states.schema
+```
+
+> **Note**
+>
+> You can't combine `--include-schema` or `--include-schema-file` with `--exclude-schema` or `--exclude-schema-file`, or with a table filtering option such as `--include-table`.
+
+### Filtering backups by table
+
+Filter tables using `--include-table`, `--exclude-table`, `--include-table-file`, and `--exclude-table-file`. These options take the `schema_name.table_name` format on the command line and in a text file.
+
+```bash
+gpbackup --dbname ww_customer --include-table apac_customer.customer_fact
+```
+
+Enclose table and schema names that contain uppercase letters or spaces in double quotes, for example `na_customer."ZipCodes"` or `"WW_GEO"."time zones"`.
+
+When you specify `--include-table` or `--include-table-file`, `gpbackup` and `gprestore` don't automatically back up or restore dependent objects. You must list dependent objects in your filter explicitly. For example, if you back up or restore a view or materialized view, also list the tables it depends on. If you back up or restore a table that contains a sequence, also specify the sequence name.
+
+> **Note**
+>
+> You can use the individual table-filtering options multiple times, but you can't use `--include-table` and `--exclude-table` in the same command, and you can't combine any table filtering option with a schema filtering option such as `--include-schema`.
+
+### Filtering backups by leaf partition
+
+Use the `--leaf-partition-data` option to filter backups to specific leaf partitions, listing their names in the same `schema_name.table_name` format as for a standalone table. This option also changes how `gpbackup` writes data files, creating one file per leaf partition of a partitioned table instead of one file per table on a segment, which is the default. This per-leaf-partition file behavior doesn't apply if you also use `--single-data-file`, since that option writes a single data file per segment regardless of `--leaf-partition-data`.
+
+For example, given a partitioned table `ww_inventory` with child partitions named `ww_inventory_1_prt_1` through `ww_inventory_1_prt_30`, the file `/tmp/may_week1.include` lists the partitions for the first week of May to include in the backup:
+
+```
+"WW_GEO".ww_inventory_1_prt_1
+"WW_GEO".ww_inventory_1_prt_2
+"WW_GEO".ww_inventory_1_prt_3
+```
+
+Combine `--include-table-file` with `--leaf-partition-data` to create one data file for each leaf partition listed in the file:
+
+```bash
+gpbackup --dbname ww_sales --include-table-file /tmp/may_week1.include --leaf-partition-data
+```
+
+> **Note**
+>
+> `--exclude-table-file` and `--leaf-partition-data` aren't compatible. You can specify leaf partition names in a file used with `--exclude-table-file`, but `gpbackup` ignores them.
+
+### Filtering restores
+
+Filter what you restore from a backup set using the same schema and table filtering options as `gpbackup`, namely `--include-schema`, `--include-schema-file`, `--exclude-schema`, `--exclude-schema-file`, `--include-table`, `--include-table-file`, `--exclude-table`, and `--exclude-table-file`. These options work the same way as their `gpbackup` counterparts, with these restrictions:
+
+- The tables you're restoring must not already exist in the target database.
+- The schema or table you're restoring must exist in the backup set, or `gprestore` fails.
+- With `--include-schema`, `gprestore` can't restore objects that depend on multiple schemas.
+- With `--include-table-file`, `gprestore` doesn't create roles or set table ownership, though it restores table indexes and rules. Triggers are also restored, even though WarehousePG doesn't support them.
+- The file you specify with `--include-table-file` can't include a leaf partition name, unlike the equivalent `gpbackup` option. If you backed up specific leaf partitions, specify the partitioned table instead to restore their data.
+
+When you restore a backup set that contains data for only some leaf partitions of a partitioned table, `gprestore` creates the partitioned table and restores data only for the leaf partitions in the backup.
+
+## Setting up email alerts
+
+Enable email notifications through `sendmail` to alert you when a `gpbackup` or `gprestore` run completes, by creating a `gp_email_contacts.yaml` file in the home directory of the user running the utilities, or in the same directory as the utilities (`$GPHOME/bin`). If both exist, the one in the home directory takes precedence. If neither is present, or the file isn't configured correctly, the log records that no email was sent.
+
+The email subject line includes the utility name, timestamp, status, and the name of the WarehousePG coordinator. The email body contains the contents of a report file, which `gpbackup` and `gprestore` each generate when a run completes and place in the WarehousePG coordinator backup directory, named `gpbackup_<backup_timestamp>_report` or `gprestore_<backup_timestamp>_<restore_timestamp>_report`. For example:
+
+```
+WarehousePG Report
+
+timestamp key:           20250530234643
+gprestore version:       1.30.5
+
+database name:           test
+command line:            gprestore --timestamp 20250530234643 --redirect-db test --create-db
+
+backup segment count:    8
+restore segment count:   8
+duration:                0:00:42
+
+restore status:          Success
+```
+
+Use YAML indentation to define the structure of the `gp_email_contacts.yaml` file, with spaces rather than tabs.
+
+```yaml
+contacts:
+  gpbackup:
+  - address: name@domain
+    status:
+         success: [true | false]
+         success_with_errors: [true | false]
+         failure: [true | false]
+  gprestore:
+  - address: name@domain
+    status:
+         success: [true | false]
+         success_with_errors: [true | false]
+         failure: [true | false]
+```
+
+The file has these sections:
+
+- **`contacts`** (required): Contains the `gpbackup` and `gprestore` sections. The file can contain one, or both.
+- **`gpbackup`** (optional): Begins the `gpbackup` email section.
+- **`address`** (required): At least one email address. You can specify multiple addresses, each with its own `status` section.
+- **`status`** (required): Specifies when to send an email, based on the completion status of the operation. Specify at least one of these parameters, each at most once. The default is not to send email notifications.
+  - **`success`** (optional): Send an email if the operation completes without errors. Defaults to `false`.
+  - **`success_with_errors`** (optional): Send an email if the operation completes with errors. Defaults to `false`.
+  - **`failure`** (optional): Send an email if the operation fails. Defaults to `false`.
+- **`gprestore`** (optional): Begins the `gprestore` email section, using the same `address` and `status` syntax as `gpbackup`.
+
+To send email to different addresses depending on whether a backup succeeds or fails, and to a single address for restore operations that succeed or complete with errors, use a configuration like this:
+
+```yaml
+contacts:
+  gpbackup:
+  - address: dba_backup_success@whpg.io
+    status:
+      success: true
+  - address: dba_backup_failure@whpg.io
+    status:
+      success_with_errors: true
+      failure: true
+  gprestore:
+  - address: dba_restore_status@example.com
+    status:
+      success: true
+      success_with_errors: true
+```
+
+> **Note**
+>
+> If a status parameter isn't specified correctly, `gpbackup` and `gprestore` don't issue a warning. For example, a misspelled `success` parameter that's set to `true` doesn't trigger a warning, and no email is sent after a successful operation. Test your email notification configuration to confirm it works as expected.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

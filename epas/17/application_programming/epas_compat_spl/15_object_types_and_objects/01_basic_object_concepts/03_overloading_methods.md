@@ -1,0 +1,17 @@
+---
+title: Overloading methods
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/application_programming/epas_compat_spl/15_object_types_and_objects/01_basic_object_concepts/03_overloading_methods/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# Overloading methods
+
+<div id="overloading_methods" class="registered_link"></div>
+
+In an object type you can define two or more identically named methods (that is, a procedure or function) of the same type but with different signatures. Such methods are referred to as _overloaded_ methods.
+
+A method’s signature consists of the number of formal parameters, the data types of its formal parameters, and their order.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

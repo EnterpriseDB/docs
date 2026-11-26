@@ -1,0 +1,98 @@
+---
+title: Upgrading Failover Manager
+product: Failover Manager
+version: "5.5"
+url: https://www.enterprisedb.com/docs/efm/latest/upgrading/
+lastModified: 2026-11-18T07:03:54Z
+---
+
+# Upgrading Failover Manager
+
+<div id="upgrading_existing_cluster" class="registered_link"></div>
+
+Failover Manager provides a utility to assist you when upgrading a cluster managed by Failover Manager. To upgrade an existing cluster, you must:
+
+1. Install Failover Manager 5.5 on each node of the cluster. For detailed information about installing Failover Manager, see [Installing Failover Manager](https://www.enterprisedb.com/docs/efm/latest/installing/).
+
+2. After installing Failover Manager, invoke the efm upgrade-conf utility to create the `.properties` and `.nodes` files for Failover Manager 5.5. The Failover Manager installer installs the upgrade utility ([efm upgrade-conf](https://www.enterprisedb.com/docs/efm/latest/07_using_efm_utility/#efm_upgrade_conf)) to the `/usr/edb/efm-5.5/bin` directory. To invoke the utility, assume root privileges, and invoke the command:
+
+   ```shell
+   efm upgrade-conf <cluster_name>
+   ```
+
+   The `efm upgrade-conf` utility locates the `.properties` and `.nodes` files of preexisting clusters and copies the parameter values to a new configuration file for use by Failover Manager. The utility saves the updated copy of the configuration files in the `/etc/edb/efm-5.5` directory.
+
+3. Modify the `.properties` and `.nodes` files for Failover Manager 5.5, specifying any new preferences. Use your choice of editor to modify any additional properties in the properties file (located in the `/etc/edb/efm-5.5` directory) before starting the service for that node. For detailed information about property settings, see [The cluster properties file](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/01_cluster_properties/#cluster_properties).
+
+4. If you're using Eager Failover, you must disable it before stopping the Failover Manager cluster. For more information, see [Disabling Eager Failover](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/06_configuring_for_eager_failover/#disabling-eager-failover).
+
+5. Use a version-specific command to stop the old Failover Manager cluster. For example, you can use the following command to stop a version 5.4 cluster:
+
+   ```shell
+   /usr/edb/efm-5.4/bin/efm stop-cluster efm
+   ```
+
+   > **Note**
+   >
+   > The primary agent doesn't drop the virtual IP address (if used) when it's stopped. The database remains up and accessible on the VIP during the EFM upgrade. See also [Using Failover Manager with virtual IP addresses](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/05_using_vip_addresses/).
+
+6. Start the new [Failover Manager service](https://www.enterprisedb.com/docs/efm/latest/08_controlling_efm_service/#controlling_efm_service) (`edb-efm-5.5`) on each node of the cluster.
+
+The following example shows invoking the upgrade utility to create the `.properties` and `.nodes` files for a Failover Manager installation:
+
+```text
+[root@hostname ~]# /usr/edb/efm-5.5/bin/efm upgrade-conf efm
+Checking directory /etc/edb/efm-5.4
+Processing efm.properties file
+Checking directory /etc/edb/efm-5.4
+Processing efm.nodes file
+
+Upgrade of files is finished. The owner and group for properties and nodes files have been set as 'efm'.
+[root@hostname ~]#
+```
+
+### The optional `-source` flag
+
+You can use the `-source` flag to explicitly specify the directory containing the files to process. If the directory is a Failover Manager configuration location, that is, `/etc/edb/efm-<earlier_version>`, the utility writes the new files in the default configuration directory. This behavior allows upgrading from a specific earlier version if desired.
+
+If the source directory is any other directory, the utility creates the new files in the directory where the command was invoked. The files are owned by the user who ran the command. This approach is typically used when [using a Failover Manager configuration without sudo](https://www.enterprisedb.com/docs/efm/latest/04_configuring_efm/04_extending_efm_permissions/#running_efm_without_sudo), and doesn't require root privileges.
+
+Summary:
+
+- **The `-source` flag isn't used.** The utility searches previous installation directories for configuration files. The new files are generated in the current default configuration directory and are owned by the efm user. Root privileges are required.
+
+- **The `-source` flag is set to a previous installation's configuration directory.** The utility looks only in the specified directory for configuration files. The new files are generated in the current default configuration directory and are owned by the efm user. Root privileges are required.
+
+- **The `-source` flag is set to any other directory.** The utility looks only in the specified directory for configuration files. The new files are generated in the directory from which the command was invoked and are owned by the user invoking the command. Root privileges aren't required.
+
+> **Note**
+>
+> In all cases, if a `<cluster_name>.properties` or `<cluster_name>.nodes` file already exists in the target directory, it's renamed with a timestamp before the new file is saved.
+
+## Uninstalling Failover Manager
+
+> **Note**
+>
+> If you are using custom scripts, check to see if they are calling any Failover Manager scripts. For example, a script that runs after promotion to perform various tasks and then calls Failover Manager's `efm_address` script to acquire a virtual IP address. If you have any custom scripts calling Failover Manager scripts, update the custom scripts to use the newly installed version of the Failover Manager script before uninstalling the older version of the Failover Manager script.
+
+After upgrading to Failover Manager 5.5, you can use your native package manager to remove previous installations of Failover Manager. For example, use the following command to remove Failover Manager 5.4 and any unneeded dependencies:
+
+- On RHEL/Rocky Linux/AlmaLinux 8.x or later:
+
+```shell
+dnf remove edb-efm54
+```
+
+- On Debian or Ubuntu:
+
+```shell
+apt-get remove edb-efm54
+```
+
+- On SLES:
+
+```shell
+zypper remove edb-efm54
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

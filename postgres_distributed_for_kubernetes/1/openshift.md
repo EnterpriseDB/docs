@@ -1,0 +1,196 @@
+---
+title: Red Hat OpenShift
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/openshift/
+lastModified: 2026-06-22T07:38:49-07:00
+---
+
+# Red Hat OpenShift
+
+EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC) is a certified operator that can be
+installed on OpenShift using a web interface.
+
+## Ensuring access to the EDB private registry
+
+> **Important**
+>
+> You need access to the private EDB repository where both the operator
+> and operand images are stored. Access requires a valid
+> [EDB subscription plan](https://www.enterprisedb.com/products/plans-comparison).
+> See [Accessing EDB private image registries](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/private_edb_registries/) for details.
+
+The OpenShift install uses pull secrets to access the
+operand and operator images, which are held in a private repository.
+
+Once you have credentials to the private repo, you need to create
+two pull secrets in the `openshift-operators` namespace:
+
+- `pgd-operator-pull-secret` for the EDB Postgres® AI for CloudNativePG™ Cluster (PG4K) operator images
+- `postgresql-operator-pull-secret` for the PG4K operator images
+
+You can create each secret using the `oc create` command by replacing `<TOKEN>` with
+the repository token for your EDB account, as explained in
+[Get your token](https://www.enterprisedb.com/docs/repos/getting_started/get_your_token/).
+
+```sh
+oc create secret docker-registry pgd-operator-pull-secret \
+  -n openshift-operators \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password="<TOKEN>"
+
+oc create secret docker-registry postgresql-operator-pull-secret \
+  -n openshift-operators \
+  --docker-server=docker.enterprisedb.com \
+  --docker-username=k8s \
+  --docker-password="<TOKEN>"
+```
+
+> **Note**
+>
+> For pg4k-pgd operator v1.1.3 and earlier
+> (certified against the legacy k8s\_enterprise\_pgd repository),
+> you must create the `pgd-operator-pull-secret` image-pull secret using
+> `k8s_enterprise_pgd` as the registry username.
+
+## Installing the operator
+
+!!!
+
+> **Warning: CRITICAL WARNING: UPGRADING OPERATORS**
+>
+> OpenShift users, or any customer attempting an operator upgrade, MUST configure the new unified repository pull secret (docker.enterprisedb.com/k8s) before running the upgrade. If the old, deprecated repository path is still in use during the upgrade process, image pull failure will occur, leading to deployment failure and potential downtime. Follow the [Central Migration Guide](https://www.enterprisedb.com/docs/repos/working_with_repos/migrating_edb_registries/) first.
+
+The CNPG-GC operator can be found in the Red
+Hat OperatorHub directly from your OpenShift dashboard.
+
+- From the hamburger menu, select **Operators > OperatorHub**.
+- In the web console, use the search box to filter the listing.
+  For example, enter `EDB` or `pgd`:
+  ![Install OperatorHub](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/postgres_distributed_for_kubernetes/1/images/openshift/find-pgd-openshift.png)
+- Read the information about the operator and select **Install**.
+- In the Operator Installation page, select:
+  - The installation mode. [Cluster-wide](#cluster-wide-installation)
+    is currently the only mode.
+  - The update channel (currently **preview**).
+  - The approval strategy, following the availability on the marketplace of
+    a new release of the operator, certified by Red Hat:
+    - **Automatic**: OLM upgrades the running operator with the
+      new version.
+    - **Manual**: OpenShift waits for human intervention by requiring an
+      approval in the **Installed Operators** section.
+
+> **Note**
+>
+> If you are running with OpenShift 4.20 or later, OperatorHub has been integrated into the
+> Software Catalog. In the web console, navigate to `Operators -> Software Catalog`
+> and select a Project to view the software catalog.
+> ![Menu Software Catalog](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/postgres_distributed_for_kubernetes/1/images/software-catalog.png)
+
+### Cluster-wide installation
+
+With cluster-wide installation, you're asking OpenShift to install the
+operator in the default `openshift-operators` namespace and to make it
+available to all the projects in the cluster.
+This is the default and normally recommended approach to install EDB Postgres
+Distributed for Kubernetes.
+
+From the web console, for **Installation mode**, select
+**All namespaces on the cluster (default)**.
+
+On installation, the operator is visible in all namespaces. In case there
+were problems during installation, check the logs in any pods in the
+`openshift-operators` project on the **Workloads > Pods** page
+as you would with any other OpenShift operator.
+
+> **Important: Beware**
+>
+> By choosing the cluster-wide installation, you can't easily move to a
+> single-project installation later.
+
+## Creating a PGD cluster
+
+After the installation by OpenShift, the operator deployment
+is in the `openshift-operators` namespace. Notice the cert-manager operator was
+also installed, as was the EDB Postgres for Kubernetes operator
+(`postgresql-operator-controller-manager`).
+
+```sh
+$ oc get deployments -n openshift-operators
+NAME                                            READY   UP-TO-DATE   AVAILABLE   AGE
+cert-manager-operator                           1/1     1            1           11m
+pgd-operator-controller-manager                 1/1     1            1           11m
+postgresql-operator-controller-manager-1-20-0   1/1     1            1           23h
+…
+```
+
+After checking that the `pgd-operator-controller-manager` deployment is READY,
+you can start creating PGD clusters. The CNPG-GC
+repository contains some useful sample files.
+
+You must deploy your PGD clusters on a dedicated namespace/project. The
+default namespace is reserved.
+
+First, create a new namespace, then deploy a
+[self-signed certificate `Issuer`](https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml)
+in it:
+
+```sh
+oc create ns my-namespace
+oc apply -n my-namespace -f \
+  https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml
+```
+
+### Using PGD in a single OpenShift cluster in a single region
+
+Now you can deploy a PGD cluster, for example a flexible 3-region, which
+contains two data groups and a witness group. You can find the YAML manifest
+in the file [`flexible_3regions.yaml`](https://raw.githubusercontent.com/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/postgres_distributed_for_kubernetes/1/samples/flexible_3regions.yaml).
+
+```sh
+oc apply -f flexible_3regions.yaml -n my-namespace
+```
+
+Your PGD groups start to come up:
+
+```sh
+$ oc get pgdgroups -n my-namespace
+NAME       DATA INSTANCES   WITNESS INSTANCES   PHASE                PHASE DETAILS   AGE
+region-a   2                1                   PGDGroup - Healthy                   23m
+region-b   2                1                   PGDGroup - Healthy                   23m
+region-c   0                1                   PGDGroup - Healthy                   23m
+```
+
+### Using PGD in multiple OpenShift clusters in multiple regions
+
+To deploy PGD in multiple OpenShift clusters in multiple regions,
+you must first establish a way for the PGD groups to communicate with each other.
+
+Configuring the connectivity is outside the scope of this documentation.
+However, once you've established connectivity between the OpenShift clusters,
+you can deploy PGD groups synced with one another.
+
+## Channel
+
+The CNPG-GC operator is available
+in a single [OLM channel](https://olm.operatorframework.io/docs/best-practices/channel-naming/)
+named `stable` since v1.0.0. All the stable releases will be available in this channel.
+The `candidate` channel is only used for RC and preview release.
+
+## Dependencies
+
+The CNPG-GC operator (PGD4K) on OpenShift
+has the following dependencies:
+
+- EDB Postgres® AI for CloudNativePG™ Cluster operator (PG4K):
+  In release v1.0.1 and later, PGD4K is constrained to use an LTS release of PG4K.
+- cert-manager:
+  In release v1.1.1 and later, both cert-manager Operator for Red Hat OpenShift
+  and cert-manager Operator for Community are supported.
+
+For more details about the supported versions for each release, see
+[Supported versions](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/supported_versions/). Be aware that you can install or upgrade
+the PGD4K operator only when those dependencies are met.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

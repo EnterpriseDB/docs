@@ -1,0 +1,27 @@
+---
+title: EDB SPL Check
+product: EDB SPL Check
+url: https://www.enterprisedb.com/docs/pg_extensions/spl_check/
+lastModified: 2026-04-01T20:48:21+05:30
+---
+
+# EDB SPL Check
+
+EDB SPL Check is a code analysis tool for SPL on EDB Postgres Advanced Server. Using only the internal PostgreSQL parser, it identifies errors that can occur at runtime. In addition, it parses the SQL inside your routines and identifies errors that are usually missed when executing `CREATE PROCEDURE/FUNCTION/PACKAGE`. Similarly, it identifies errors that are usually missed when executing `CREATE PACKAGE/OBJECT TYPES/COMPOUND TRIGGER`.
+
+You can control the levels of many warnings and hints. For instance, you can add `PRAGMA` type markers to turn certain aspects off or on, allowing you to hide messages you're already aware of or keep ones you want to be reminded of.
+
+EDB SPL Check is supported on all supported versions of EDB Postgres Advanced Server.
+
+These are some of the key features of EDB SPL Check:
+
+- Checks fields of referenced database objects and types inside embedded SQL
+- Validates you're using the correct types for function parameters
+- Identifies unused variables and function arguments as well as unmodified `OUT` arguments
+- Partially detects dead code, that is, code after an unqualified `RETURN` command
+- Detects missing `RETURN` commands in functions, which are common after exception handlers or complex logic
+- Tries to identify unwanted hidden casts, which can cause performance issues like unused indexes
+- Collects relations and functions used by a function
+- Checks `EXECUTE` statements against SQL injection vulnerability
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

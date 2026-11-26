@@ -1,0 +1,48 @@
+---
+title: Built-in packages
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/
+lastModified: 2023-11-30T05:51:18Z
+---
+
+# Built-in packages
+
+Built-in packages are provided with EDB Postgres Advanced Server. For certain packages, non-superusers must be explicitly granted the `EXECUTE` privilege on the package before using any of the package’s functions or procedures. For most of the built-in packages, `EXECUTE` privilege is granted to `PUBLIC` by default.
+
+For information about using the `GRANT` command to provide access to a package, see [`GRANT`](https://www.enterprisedb.com/docs/epas/14/epas_compat_sql/64_grant/).
+
+All built-in packages are owned by the special `sys` user that must be specified when granting or revoking privileges on built-in packages:
+
+```text
+GRANT EXECUTE ON PACKAGE SYS.UTL_FILE TO john;
+```
+
+- [DBMS\_ALERT](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/01_dbms_alert/): The DBMS\_ALERT package lets you register for, send, and receive alerts. The following table lists the supported procedures:
+- [DBMS\_AQ](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/02_dbms_aq/): EDB Postgres Advanced Server Advanced Queueing provides message queueing and message processing for the EDB Postgres Advanced Server database. User-defined messages are stored in a queue, and a collection of queues is stored in a queue table. Procedures in the DBMSAQADM package create and manage message queues and queue tables. Use the DBMSAQ package to add messages to or remove them from a queue or to register or unregister a PL/SQL callback procedure.
+- [DBMS\_AQADM](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/03_dbms_aqadm/): EDB Postgres Advanced Server advanced queueing provides message queueing and message processing for the EDB Postgres Advanced Server database. User-defined messages are stored in a queue, and a collection of queues is stored in a queue table. Procedures in the DBMSAQADM package create and manage message queues and queue tables. Use the DBMSAQ package to add messages to or remove messages from a queue or to register or unregister a PL/SQL callback procedure.
+- [DBMS\_CRYPTO](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/04_dbms_crypto/): The DBMSCRYPTO package provides functions and procedures that allow you to encrypt or decrypt RAW, BLOB, or CLOB data. You can also use DBMSCRYPTO functions to generate cryptographically strong random values.
+- [DBMS\_JOB](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/05_dbms_job/): The DBMS\_JOB package lets you create, schedule, and manage jobs. A job runs a stored procedure that was previously stored in the database. The SUBMIT procedure creates and stores a job definition. A job identifier is assigned to a job with a stored procedure and the attributes describing when and how often to run the job.
+- [DBMS\_LOB](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/06_dbms_lob/): The DBMSLOB package lets you operate on large objects. The following table lists the supported functions and procedures. EDB Postgres Advanced Server's implementation of DBMSLOB is a partial implementation when compared to Oracle's version. Only the functions and procedures listed in this table are supported.
+- [DBMS\_LOCK](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/07_dbms_lock/): EDB Postgres Advanced Server provides support for the DBMS\_LOCK.SLEEP procedure.
+- [DBMS\_MVIEW](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/08_dbms_mview/): Use procedures in the DBMSMVIEW package to manage and refresh materialized views and their dependencies. EDB Postgres Advanced Server provides support for the following DBMSMVIEW procedures:
+- [DBMS\_OUTPUT](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/09_dbms_output/): The DBMSOUTPUT package sends messages (lines of text) to a message buffer or gets messages from the message buffer. A message buffer is local to a single session. Use the DBMSPIPE package to send messages between sessions.
+- [DBMS\_PIPE](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/10_dbms_pipe/): The DBMS\_PIPE package lets you send messages through a pipe in or between sessions connected to the same database cluster.
+- [DBMS\_PROFILER](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/11_dbms_profiler/): The DBMS\_PROFILER package collects and stores performance information about the PL/pgSQL and SPL statements that are executed during a performance profiling session. Use these functions and procedures to control the profiling tool.
+- [DBMS\_RANDOM](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/12_dbms_random/): The DBMSRANDOM package provides methods to generate random values. The procedures and functions available in the DBMSRANDOM package are listed in the following table.
+- [DBMS\_REDACT](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/13_dbms_redact/): The DBMSREDACT package enables you to redact or mask data returned by a query. The DBMSREDACT package provides a procedure to create, alter, enable, disable, and drop policies. The procedures available in the DBMS\_REDACT package are listed in the following table.
+- [DBMS\_RLS](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/14_dbms_rls/): The DBMS\_RLS package enables you to implement Virtual Private Database on certain EDB Postgres Advanced Server database objects.
+- [DBMS\_SCHEDULER](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/15_dbms_scheduler/): The DBMSSCHEDULER package provides a way to create and manage Oracle-style jobs, programs, and job schedules. The DBMSSCHEDULER package implements the following functions and procedures:
+- [DBMS\_SESSION](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/16_dbms_session/): EDB Postgres Advanced Server provides support for the following DBMSSESSION.SETROLE procedure:
+- [DBMS\_SQL](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/17_dbms_sql/): The DBMSSQL package provides an application interface compatible with Oracle databases to the EDB dynamic SQL functionality. With DBMSSQL you can construct queries and other commands at runtime rather than when you write the application. EDB Postgres Advanced Server offers native support for dynamic SQL. DBMS\_SQL provides a way to use dynamic SQL in a way that's compatible with Oracle databases without modifying your application.
+- [DBMS\_UTILITY](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/18_dbms_utility/): The DBMSUTILITY package provides support for the following utility programs. EDB Postgres Advanced Server's implementation of DBMSUTILITY is a partial implementation when compared to Oracle's version. Only the functions and procedures listed in the table are supported.
+- [UTL\_ENCODE](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/19_utl_encode/): The UTL\_ENCODE package provides a way to encode and decode data. EDB Postgres Advanced Server supports the following functions and procedures:
+- [UTL\_FILE](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/20_utl_file/): The UTLFILE package reads from and writes to files on the operating system’s file system. A superuser must grant non-superusers EXECUTE privilege on the UTLFILE package before they can use any of the functions or procedures in the package. For example, the following command grants the privilege to user mary:
+- [UTL\_HTTP](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/21_utl_http/): The UTL\_HTTP package provides a way to use the HTTP or HTTPS protocol to retrieve information found at a URL. EDB Postgres Advanced Server supports the following functions and procedures.
+- [UTL\_MAIL](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/22_utl_mail/): The UTL\_MAIL package manages email. EDB Postgres Advanced Server supports the following procedures.
+- [UTL\_RAW](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/23_utl_raw/): The UTL\_RAW package allows you to manipulate or retrieve the length of raw data types.
+- [UTL\_SMTP](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/24_utl_smtp/): The UTL\_SMTP package sends emails over the Simple Mail Transfer Protocol (SMTP).
+- [UTL\_URL](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/25_utl_url/): The UTL\_URL package provides a way to escape illegal and reserved characters in a URL.
+- [UTL\_TCP](https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/utl_tcp/): The UTL\_TCP package provides a way to access TCP/IP network services. EDB Postgres Advanced Server supports the following functions and procedures:
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,58 @@
+---
+title: GETXMLTYPE
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/18_dbms_xmldom/getxmltype/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# GETXMLTYPE
+
+The `GETXMLTYPE` function converts a `DOMDocument` to XMLTYPE and returns it.
+
+```
+GETXMLTYPE(doc IN DOMDOCUMENT) RETURN XMLTYPE
+```
+
+## Parameters
+
+`doc`
+
+The `DOMDocument`.
+
+## Examples
+
+This example creates an XML `DOMDocument`, sets the version to 1.0, and converts it to an XMLType object:
+
+```sql
+DECLARE
+   l_xmltype XMLTYPE;
+   l_domdoc DBMS_XMLDOM.DOMDocument;
+
+
+BEGIN
+   l_domdoc := DBMS_XMLDOM.NEWDOMDOCUMENT();
+   DBMS_XMLDOM.SETVERSION(l_domdoc, '1.0');
+   l_xmltype := DBMS_XMLDOM.GETXMLTYPE(l_domdoc);
+   DBMS_OUTPUT.PUT_LINE(l_xmltype.getStringVal());
+END;
+```
+
+This example takes an XML string as input, converts it to a `DOMDocument`, and adds a new element to the document. It then converts the `DOMDocument` back to XMLType.
+
+```sql
+DECLARE
+   doc DBMS_XMLDOM.domdocument;
+   xmldata xmltype:=xmltype('<r><a>10</a><b><bb>20</bb></b></r>');
+   l_xmltype XMLTYPE;
+   elem DBMS_XMLDOM.DOMElement;
+BEGIN
+   doc := DBMS_XMLDOM.NEWDOMDOCUMENT(xmldata);
+   elem := DBMS_XMLDOM.CREATEELEMENT(doc, 'testTag');
+   PERFORM DBMS_XMLDOM.APPENDCHILD(DBMS_XMLDOM.MAKENODE(doc), DBMS_XMLDOM.MAKENODE(elem));
+   l_xmltype := DBMS_XMLDOM.GETXMLTYPE(doc);
+   DBMS_OUTPUT.PUT_LINE(l_xmltype::varchar2);
+END;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

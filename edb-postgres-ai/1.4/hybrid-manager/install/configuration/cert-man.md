@@ -1,0 +1,248 @@
+---
+title: Implementing TLS certificates
+description: Learn how create custom certificates and manage certificates for securing the Hybrid Manager Portal with TLS.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/configuration/cert-man/
+lastModified: 2026-08-21T12:59:31+02:00
+---
+
+# Implementing TLS certificates
+
+## Certificate architecture overview
+
+Hybrid Manager (HM) uses TLS certificates to secure the portal, internal service communication, and database connections. By default, the system generates self-signed certificates at install time. You can replace these with your own certificates, use a cert-manager issuer, or bring your own private Certificate Authority (CA).
+
+cert-manager is a core dependency of HM. It manages the lifecycle of TLS certificates across the platform.
+
+| Layer              | Component                     | Purpose                                     |
+| ------------------ | ----------------------------- | ------------------------------------------- |
+| Portal ingress     | Istio Gateway + cert-manager  | TLS termination for the portal domain       |
+| Internal CA        | cert-manager (self-signed CA) | Signs certificates for internal services    |
+| Trust distribution | trust-manager                 | Distributes CA bundles to all namespaces    |
+| Service mesh mTLS  | cert-manager + Istio          | Mutual TLS between all services in the mesh |
+| Database TLS       | CloudNativePG + cert-manager  | TLS for Postgres client connections         |
+
+### Prerequisite for Helm installs on OpenShift
+
+On OpenShift, cert-manager must be pre-installed before running the HM Helm installation.
+
+On other platforms (EKS, AKS, GKE, RKE2), the bootstrap process installs cert-manager automatically as part of the `upm-cert-manager` component.
+
+## Set up a custom x.509 certificate for the Hybrid Manager Portal
+
+You can change the self-signed x.509 certificate used by the Hybrid Manager (HM) Portal with your own.
+
+To import your own certificate you need to create a Kubernetes secret containing the server certificate and the private key.
+
+### Generate the certificate
+
+Generate the base64 encoded string of your certificate (example: `my-certificate.crt`) and private key (example: `my-certificate.key`).
+
+```bash
+cat my-certificate.crt | base64
+cat my-certificate.key | base64
+```
+
+### Create the yaml file
+
+Create a file (example: `my-secret.yaml`) with the following content and replace `<base64 encoded string>` with the values generated in the previous step.
+
+```yaml
+apiVersion: v1
+data:
+  tls.crt: <base64 encoded string>
+  tls.key: <base64 encoded string>
+kind: Secret
+metadata:
+  name: my-portal-certificate
+  namespace: default
+  annotations:
+    replicator.v1.mittwald.de/replicate-to: 'istio-system'
+type: kubernetes.io/tls
+```
+
+### Apply the secret in your Kubernetes cluster
+
+```bash
+kubectl apply -n default -f ./my-secret.yaml
+```
+
+### Configure HM to use the new certificate
+
+Edit your `HybridControlPlane` CR to add the `portal_certificate_secret` parameter under `spec.globalParameters`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  globalParameters:
+    portal_certificate_secret: "my-portal-certificate"
+    # ... your other globalParameters
+```
+
+Apply the updated CR:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+The operator reconciles the change and updates the portal certificate configuration.
+
+For more information on how the secret can be formatted, consult [Istio documentation](https://istio.io/latest/docs/reference/config/networking/gateway/#ServerTLSSettings-credential_name).
+
+## Set up a custom cert-manager issuer for the HM Portal
+
+The HM Portal's certificate can also be generated and managed using one of the x.509 issuers supported by HM's internal cert-manager, e.g. The ACME Issuer for Let's Encrypt certificates.
+
+You can follow the documentation of the issuer of your choice directly from the cert-manager website to set it up.
+
+> **Note**
+>
+> We suggest to set up a ClusterIssuer rather than an Issuer. If you prefer to set up an Issuer, you need to create it in the istio-system namespace.
+
+Once the ClusterIssuer is configured, pass its name to HM.
+
+> **Note**
+>
+> Using a cert-manager issuer and providing your own certificate secret are mutually exclusive. If you configure an issuer, don't also set `spec.globalParameters.portal_certificate_secret` in your CR. If both are set, the issuer takes precedence.
+
+Edit your `HybridControlPlane` CR to add the issuer parameters under `spec.globalParameters`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  globalParameters:
+    portal_certificate_issuer_kind: "ClusterIssuer"  # Valid values are Issuer and ClusterIssuer
+    portal_certificate_issuer_name: "my-issuer"       # Your Issuer name
+    # ... your other globalParameters
+```
+
+Apply the updated CR:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+The operator reconciles the change and configures the portal to use the specified issuer.
+
+### Gateway certificate source priority
+
+If more than one certificate source is configured, HM selects the gateway certificate in this order:
+
+1. cert-manager issuer (if `portal_certificate_issuer_name` is set) — cert-manager creates and rotates the certificate automatically.
+2. Static TLS secret (if `portal_certificate_secret` is set) — You manage certificate renewal manually.
+3. Self-signed certificate (default) — Generated at install time.
+
+## Bring your own private certificate authority
+
+By default, all the certificates used by HM are signed by an internal certificate authority (CA) powered by cert-manager.
+The CA is created at install time.
+
+If you prefer to use your own Private CA, follow the steps in this section. Otherwise, you can skip this section.
+
+> **Note**
+>
+> To successfully use this method you must have access to the CA private key.
+
+Create one CA secret if it doesn't exist.
+
+```yaml
+apiVersion: v1
+data:
+  ca.crt: <base64 encoded string> # real ca crt provided by customers
+  tls.crt: <base64 encoded string> # real tls crt provided by customers
+  tls.key: <base64 encoded string> # real tls key provided by customers
+kind: Secret
+metadata:
+  name: my-custom-ca
+  namespace: default
+  annotations:
+    replicator.v1.mittwald.de/replicate-to: 'cert-manager'
+type: kubernetes.io/tls
+```
+
+> **Warning**
+>
+> You can change my-custom-ca to a name of your choosing, except `global-ca-secret`.
+> Remember to be consistent with the name you have chosen when running the following commands.
+
+Edit your `HybridControlPlane` CR to add the `ca_secret_name` parameter under `spec.globalParameters`:
+
+```yaml
+apiVersion: edbpgai.edb.com/v1alpha1
+kind: HybridControlPlane
+metadata:
+  name: edbpgai
+spec:
+  globalParameters:
+    ca_secret_name: "my-custom-ca"
+    # ... your other globalParameters
+```
+
+Apply the updated CR:
+
+```bash
+kubectl apply -f hybridmanager.yaml
+```
+
+The operator reconciles the change and configures HM to use your private CA.
+
+## Certificate rotation
+
+### cert-manager issuer
+
+When using a cert-manager issuer, certificates are rotated automatically before expiry. By default, cert-manager renews certificates when they reach two-thirds of their lifetime.
+
+To check the certificate status:
+
+```bash
+kubectl get certificate -n istio-system
+```
+
+To force an immediate renewal, delete the certificate secret. cert-manager detects the missing secret and issues a new certificate:
+
+```bash
+kubectl delete secret -n istio-system <certificate-secret-name>
+```
+
+### Static certificate
+
+When using a static TLS secret, you must manually rotate the certificate before it expires.
+
+#### Generate new certificate data
+
+Obtain a renewed certificate from your CA.
+
+#### Update the Kubernetes secret
+
+```bash
+kubectl create secret tls my-portal-certificate \
+  --cert=new-certificate.crt \
+  --key=new-certificate.key \
+  --namespace=default \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+#### Verify the update propagated
+
+The secret replicator copies the updated secret to `istio-system`. Verify:
+
+```bash
+kubectl get secret -n istio-system my-portal-certificate -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -dates -noout
+```
+
+#### Restart the Istio gateway (if needed)
+
+In most cases, Istio detects the secret change automatically. If not:
+
+```bash
+kubectl rollout restart deployment/istio-ingressgateway -n istio-system
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

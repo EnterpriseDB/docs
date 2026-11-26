@@ -1,0 +1,369 @@
+---
+title: EDB Postgres Extended Server 14 release notes
+description: Release notes for EDB Postgres Extended Server 14.
+product: EDB Postgres Extended Server
+version: "14"
+url: https://www.enterprisedb.com/docs/pge/14/release_notes/
+lastModified: 2026-11-12T14:47:11Z
+---
+
+# EDB Postgres Extended Server 14 release notes
+
+## EDB Postgres Extended Server 14.25
+
+Release date: 2026-11-12
+
+> **Note: Extension compatibility**
+>
+> Extensions released on or after November 12, 2026, are compatible only with server versions released on or after November 12, 2026.
+
+This release includes an upstream merge and security fixes.
+
+### Changes
+
+- Merged with community PostgreSQL 14.25. See the [PostgreSQL 14.25 release notes](https://www.postgresql.org/docs/release/14.25/) for more information.
+- It includes security fixes from PostgreSQL: [CVE-2026-6460](https://www.postgresql.org/support/security/CVE-2026-6460/), [CVE-2026-6467](https://www.postgresql.org/support/security/CVE-2026-6467/), [CVE-2026-14661](https://www.postgresql.org/support/security/CVE-2026-14661/), [CVE-2026-16237](https://www.postgresql.org/support/security/CVE-2026-16237/), [CVE-2026-16240](https://www.postgresql.org/support/security/CVE-2026-16240/), [CVE-2026-18447](https://www.postgresql.org/support/security/CVE-2026-18447/), [CVE-2026-116303](https://www.postgresql.org/support/security/CVE-2026-116303/), [CVE-2026-116304](https://www.postgresql.org/support/security/CVE-2026-116304/), [CVE-2026-116306](https://www.postgresql.org/support/security/CVE-2026-116306/), [CVE-2026-116307](https://www.postgresql.org/support/security/CVE-2026-116307/), [CVE-2026-116308](https://www.postgresql.org/support/security/CVE-2026-116308/), [CVE-2026-116309](https://www.postgresql.org/support/security/CVE-2026-116309/), [CVE-2026-116310](https://www.postgresql.org/support/security/CVE-2026-116310/), [CVE-2026-116311](https://www.postgresql.org/support/security/CVE-2026-116311/), [CVE-2026-116312](https://www.postgresql.org/support/security/CVE-2026-116312/), [CVE-2026-116313](https://www.postgresql.org/support/security/CVE-2026-116313/), [CVE-2026-116314](https://www.postgresql.org/support/security/CVE-2026-116314/), [CVE-2026-116315](https://www.postgresql.org/support/security/CVE-2026-116315/), [CVE-2026-116316](https://www.postgresql.org/support/security/CVE-2026-116316/), [CVE-2026-116317](https://www.postgresql.org/support/security/CVE-2026-116317/), [CVE-2026-116318](https://www.postgresql.org/support/security/CVE-2026-116318/), [CVE-2026-116319](https://www.postgresql.org/support/security/CVE-2026-116319/), [CVE-2026-116320](https://www.postgresql.org/support/security/CVE-2026-116320/), [CVE-2026-116321](https://www.postgresql.org/support/security/CVE-2026-116321/), [CVE-2026-116322](https://www.postgresql.org/support/security/CVE-2026-116322/), [CVE-2026-116323](https://www.postgresql.org/support/security/CVE-2026-116323/), [CVE-2026-116325](https://www.postgresql.org/support/security/CVE-2026-116325/), [CVE-2026-116326](https://www.postgresql.org/support/security/CVE-2026-116326/), [CVE-2026-116327](https://www.postgresql.org/support/security/CVE-2026-116327/), [CVE-2026-116328](https://www.postgresql.org/support/security/CVE-2026-116328/), [CVE-2026-116329](https://www.postgresql.org/support/security/CVE-2026-116329/), [CVE-2026-116330](https://www.postgresql.org/support/security/CVE-2026-116330/), [CVE-2026-116331](https://www.postgresql.org/support/security/CVE-2026-116331/), [CVE-2026-116332](https://www.postgresql.org/support/security/CVE-2026-116332/), [CVE-2026-116333](https://www.postgresql.org/support/security/CVE-2026-116333/), [CVE-2026-116335](https://www.postgresql.org/support/security/CVE-2026-116335/), [CVE-2026-116336](https://www.postgresql.org/support/security/CVE-2026-116336/), [CVE-2026-120139](https://www.postgresql.org/support/security/CVE-2026-120139/), [CVE-2026-120141](https://www.postgresql.org/support/security/CVE-2026-120141/), [CVE-2026-120142](https://www.postgresql.org/support/security/CVE-2026-120142/), [CVE-2026-120143](https://www.postgresql.org/support/security/CVE-2026-120143/), [CVE-2026-120144](https://www.postgresql.org/support/security/CVE-2026-120144/), [CVE-2026-120145](https://www.postgresql.org/support/security/CVE-2026-120145/), [CVE-2026-120146](https://www.postgresql.org/support/security/CVE-2026-120146/), [CVE-2026-120147](https://www.postgresql.org/support/security/CVE-2026-120147/), [CVE-2026-120148](https://www.postgresql.org/support/security/CVE-2026-120148/), [CVE-2026-120149](https://www.postgresql.org/support/security/CVE-2026-120149/), [CVE-2026-120150](https://www.postgresql.org/support/security/CVE-2026-120150/), [CVE-2026-120151](https://www.postgresql.org/support/security/CVE-2026-120151/), [CVE-2026-120152](https://www.postgresql.org/support/security/CVE-2026-120152/), [CVE-2026-120153](https://www.postgresql.org/support/security/CVE-2026-120153/), and [CVE-2026-120154](https://www.postgresql.org/support/security/CVE-2026-120154/).
+
+## EDB Postgres Extended Server 14.24
+
+Release date: 2026-08-13
+
+This release includes an upstream merge and security fixes.
+
+### Changes
+
+- Merged with community PostgreSQL 14.24. See the [PostgreSQL 14.24 release notes](https://www.postgresql.org/docs/release/14.24/) for more information.
+- It includes security fixes from PostgreSQL: [CVE-2026-6464](https://www.postgresql.org/support/security/CVE-2026-6464/), [CVE-2026-6469](https://www.postgresql.org/support/security/CVE-2026-6469/), [CVE-2026-6470](https://www.postgresql.org/support/security/CVE-2026-6470/), [CVE-2026-6471](https://www.postgresql.org/support/security/CVE-2026-6471/), [CVE-2026-14662](https://www.postgresql.org/support/security/CVE-2026-14662/), [CVE-2026-14663](https://www.postgresql.org/support/security/CVE-2026-14663/), [CVE-2026-14664](https://www.postgresql.org/support/security/CVE-2026-14664/), [CVE-2026-14666](https://www.postgresql.org/support/security/CVE-2026-14666/), [CVE-2026-14668](https://www.postgresql.org/support/security/CVE-2026-14668/), [CVE-2026-14669](https://www.postgresql.org/support/security/CVE-2026-14669/), [CVE-2026-14670](https://www.postgresql.org/support/security/CVE-2026-14670/), [CVE-2026-14672](https://www.postgresql.org/support/security/CVE-2026-14672/), [CVE-2026-14673](https://www.postgresql.org/support/security/CVE-2026-14673/), [CVE-2026-14677](https://www.postgresql.org/support/security/CVE-2026-14677/), [CVE-2026-14679](https://www.postgresql.org/support/security/CVE-2026-14679/), [CVE-2026-14680](https://www.postgresql.org/support/security/CVE-2026-14680/), [CVE-2026-14681](https://www.postgresql.org/support/security/CVE-2026-14681/), [CVE-2026-15741](https://www.postgresql.org/support/security/CVE-2026-15741/), [CVE-2026-15742](https://www.postgresql.org/support/security/CVE-2026-15742/), [CVE-2026-16238](https://www.postgresql.org/support/security/CVE-2026-16238/), [CVE-2026-16239](https://www.postgresql.org/support/security/CVE-2026-16239/), [CVE-2026-16241](https://www.postgresql.org/support/security/CVE-2026-16241/), [CVE-2026-18024](https://www.postgresql.org/support/security/CVE-2026-18024/), [CVE-2026-18408](https://www.postgresql.org/support/security/CVE-2026-18408/), and [CVE-2026-19385](https://www.postgresql.org/support/security/CVE-2026-19385/).
+
+## EDB Postgres Extended Server 14.23
+
+Release date: 2026-05-14
+
+This release includes an upstream merge and security fixes.
+
+### Changes
+
+- Merged with community PostgreSQL 14.23. See the [PostgreSQL 14.23 release notes](https://www.postgresql.org/docs/release/14.23/) for more information.
+- It includes security fixes from PostgreSQL: [CVE-2026-6472](https://www.postgresql.org/support/security/CVE-2026-6472/), [CVE-2026-6473](https://www.postgresql.org/support/security/CVE-2026-6473/), [CVE-2026-6474](https://www.postgresql.org/support/security/CVE-2026-6474/), [CVE-2026-6475](https://www.postgresql.org/support/security/CVE-2026-6475/), [CVE-2026-6476](https://www.postgresql.org/support/security/CVE-2026-6476/), [CVE-2026-6477](https://www.postgresql.org/support/security/CVE-2026-6477/), [CVE-2026-6478](https://www.postgresql.org/support/security/CVE-2026-6478/), [CVE-2026-6479](https://www.postgresql.org/support/security/CVE-2026-6479/), [CVE-2026-6575](https://www.postgresql.org/support/security/CVE-2026-6575/), [CVE-2026-6637](https://www.postgresql.org/support/security/CVE-2026-6637/), and [CVE-2026-6638](https://www.postgresql.org/support/security/CVE-2026-6638/).
+
+## EDB Postgres Extended Server 14.22
+
+Release date: 2026-02-26
+
+This release is primarily for a security fix.
+
+### Changes
+
+It includes security fixes that were incorporated in PostgreSQL 14.22: [CVE-2026-2003](https://www.postgresql.org/support/security/CVE-2026-2003/), [CVE-2026-2004](https://www.postgresql.org/support/security/CVE-2026-2004), [CVE-2026-2005](https://www.postgresql.org/support/security/CVE-2026-2005/), [CVE-2026-2006](https://www.postgresql.org/support/security/CVE-2026-2006/) and [CVE-2026-2007](https://www.postgresql.org/support/security/CVE-2026-2007/).
+
+## EDB Postgres Extended Server 14.21
+
+Release date: 2026-02-12
+
+This release is primarily an upstream merge.
+
+### Changes
+
+- Merged with community PostgreSQL 14.21. See the [PostgreSQL 14.21 Release Notes](https://www.postgresql.org/docs/release/14.21/) for more information.
+
+## EDB Postgres Extended Server 14.20
+
+Release date: 2025-11-13
+
+This release is primarily an upstream merge.
+
+### Changes
+
+- Merged with community PostgreSQL 14.20. See the [PostgreSQL 14.20 Release Notes](https://www.postgresql.org/docs/release/14.20/) for more information.
+
+## EDB Postgres Extended Server 14.19
+
+Release date: 2025-08-14
+
+This release is primarily an upstream merge.
+
+### Changes
+
+- Merged with community PostgreSQL 14.19. See the [PostgreSQL 14.19 Release Notes](https://www.postgresql.org/docs/release/14.19/) for more information.
+
+It also includes a security fix that was incorporated in 14.19: [CVE-2025-8713](https://www.postgresql.org/support/security/CVE-2025-8713/), [CVE-2025-8714](https://www.postgresql.org/support/security/CVE-2025-8714/) and [CVE-2015-8715](https://www.postgresql.org/support/security/CVE-2025-8715/).
+
+## EDB Postgres Extended Server 14.18
+
+Release date: 2025-05-09
+
+This release is primarily an upstream merge.
+
+### Changes
+
+- Merged with community PostgreSQL 14.18. See the [PostgreSQL 14.18 Release Notes](https://www.postgresql.org/docs/release/14.18/) for more information.
+
+It also includes a security fix that was incorporated in 14.18: [CVE-2025-4207](https://www.postgresql.org/support/security/CVE-2025-4207/).
+
+## EDB Postgres Extended Server 14.17
+
+Release date: 2025-02-20
+
+This release is primarily an upstream merge.
+
+### Changes
+
+- Merged with community PostgreSQL 14.17. See the [PostgreSQL 14.17 Release Notes](https://www.postgresql.org/docs/release/14.17/) for more information.
+
+## EDB Postgres Extended Server 14.16
+
+Release date: 2025-02-13
+
+This release is primarily an upstream merge.
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Merged with community PostgreSQL 14.16. See the [PostgreSQL 14.16 Release Notes](https://www.postgresql.org/docs/release/14.16/) for more information.
+
+It also includes a security fix that was incorporated in 14.16: [CVE-2025-1094](https://www.postgresql.org/support/security/CVE-2025-1094/).
+
+## EDB Postgres Extended Server 14.15
+
+Release date: 2024-11-21
+
+This release is primarily an upstream merge.
+
+Merged with community PostgreSQL 14.15. See the [PostgreSQL 14.15 Release Notes](https://www.postgresql.org/docs/14/release-14-15.html) for more information.
+
+It also includes the security fixes that were incorporated in [14.14](https://www.postgresql.org/docs/release/14.14/):
+
+- [CVE-2024-10976](https://www.postgresql.org/support/security/CVE-2024-10976/)
+- [CVE-2024-10977](https://www.postgresql.org/support/security/CVE-2024-10977/)
+- [CVE-2024-10978](https://www.postgresql.org/support/security/CVE-2024-10978/)
+- [CVE-2024-10979](https://www.postgresql.org/support/security/CVE-2024-10979/)
+
+And a remediation to issues caused by the 14.14 fix to [CVE-2024-10978](https://www.postgresql.org/support/security/CVE-2024-10978/).
+
+## EDB Postgres Extended Server 14.13.1
+
+Release date: 2024-08-22
+
+This release is primarily a bug fix release. It contains a variety of improvements over the previous release.
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- A previous release introduced a new `in_create` field to the LogicalDecodingContext structure and changed its memory layout. This means that any code that expects the old layout will no longer be compatible. The release fixed the issue to ensure that the layout of previous database server versions is still compatible with the creation of a logical replication slot.
+
+## EDB Postgres Extended Server 14.13.0
+
+Release date: 2024-08-08
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.12. For more information about new features in the core 14.12 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Added cleanup for incomplete transactions in reorder buffer after a crash (RT99636).
+- Includes all changes up to version 14.13 of the community PostgreSQL code base.
+- Includes a fix for [CVE-2024-7348](https://www.postgresql.org/support/security/CVE-2024-7348/) (Prevent unauthorized code execution during pg\_dump) - see the [PostgreSQL 14.13 Release Notes](https://www.postgresql.org/docs/14/release-14-13.html) for more information.
+- Includes all changes up to 2ndQuadrant Postgres version 14.13.0.
+
+## EDB Postgres Extended Server 14.12.0
+
+Release date: 2024-05-09
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.11. For more information about new features in the core 14.11 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.12 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.12.0.
+
+## EDB Postgres Extended Server 14.11.0
+
+Release date: 2024-02-08
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.11. For more information about new features in the core 14.11 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.11 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.11.0.
+
+## EDB Postgres Extended Server 14.10.0
+
+Release date: 2023-11-10
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.9. For more information about new features in the core 14.9 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.10 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.9.0.
+
+## EDB Postgres Extended Server 14.9.0
+
+Release date: 2023-08-10
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.8. For more information about new features in the core 14.8 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.9 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.8.0.
+
+## EDB Postgres Extended Server 14.8.0
+
+Release date: 2023-05-16
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.6. For more information about new features in the core 14.7 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.8 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.8.0.
+
+## EDB Postgres Extended Server 14.7.0
+
+Release date: 2023-02-14
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.6. For more information about new features in the core 14.7 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.7 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.6.0.
+
+## EDB Postgres Extended Server 14.6.0
+
+Release date: 2022-11-10
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.4. For more information about new features in the core 14.5 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.6 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.5.0.
+
+## EDB Postgres Extended Server 14.5.0
+
+Release date: 2022-08-11
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.4. For more information about new features in the core 14.5 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.5 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.4.0.
+
+## EDB Postgres Extended Server 14.4.0
+
+Release date: 2022-06-17
+
+This is a minor release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.4. For more information about new features in the core 14.4 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.4 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.1.0.
+
+## EDB Postgres Extended Server 14.3.0
+
+Release date: 2022-05-12
+
+This is the second release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.3. For more information about new features in the core 14.3 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.3 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.1.0.
+
+## EDB Postgres Extended Server 14.2.0
+
+Release date: 2022-02-10
+
+This is the first release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.2. For more information about new features in the core 14.2 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.2 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 14.1.0.
+
+## EDB Postgres Extended Server 14.1.0
+
+Release date: 2021-11-11
+
+This is the first release of EDB Postgres Extended Server 14. This release contains a variety of improvements over PostgreSQL 14.1. For more information about new features in the core 14.1 release, see the [Postgres 14 release notes](https://www.postgresql.org/docs/14/release.html).
+
+### Migration
+
+A dump/restore using [pg\_dumpall](https://www.postgresql.org/docs/14/app-pg-dumpall.html) is required if you want to migrate data from any previous community PostgreSQL release.
+
+### Changes
+
+- Includes all changes up to version 14.1 of the community PostgreSQL code base.
+
+- Includes all changes up to 2ndQuadrant Postgres version 13.4r1.1.6.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

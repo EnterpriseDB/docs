@@ -1,0 +1,88 @@
+---
+title: Scheduled system jobs
+description: Reference for the built-in system jobs that PEM runs automatically to maintain the database, purge old data, and perform routine monitoring operations.
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/scheduled_system_jobs/
+lastModified: 2026-09-29T20:38:51+05:30
+---
+
+# Scheduled system jobs
+
+PEM includes a set of built-in scheduled system jobs that run automatically on the PEM server. These jobs maintain the PEM database, purge stale data from the log and history tables, and perform routine monitoring. Unlike [agent-scheduled jobs](https://www.enterprisedb.com/docs/pem/latest/managing_pem_agent/managing_scheduled_jobs/), system jobs are managed by PEM and can't be modified or deleted by users.
+
+For jobs that you define and want to run across many servers or agents at once, see [Understanding job templates](https://www.enterprisedb.com/docs/pem/latest/job_templates/).
+
+To view system jobs, in the PEM web interface, select **Management > Scheduled Tasks** in the menu. Then enable the **Show system tasks?** toggle to display system jobs alongside any custom agent jobs.
+
+To configure the time zone PEM uses when scheduling system job run times, set the `timezone_for_system_jobs` parameter in **Management > Server Configuration**.
+
+## System jobs reference
+
+| Job name                                           | Description                                                                                                                                           |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Alert history table cleanup                        | Runs periodically to purge old data from the alert history table.                                                                                     |
+| Audit log table cleanup                            | Runs periodically to purge old data from the audit log table.                                                                                         |
+| Blackout unreachable servers/agents                | Marks servers and agents that are no longer reachable as blacked out.                                                                                 |
+| Check CA certificate expiry                        | Checks the expiration of the CA certificate.                                                                                                          |
+| Database cleanup                                   | Runs periodically to purge old probe history data and obsolete objects from the database.                                                             |
+| Event history table cleanup                        | Runs periodically to purge old data from the event history table.                                                                                     |
+| Job log table cleanup                              | Runs periodically to purge old data from the job log table.                                                                                           |
+| Job purge the deleted charts                       | Runs periodically to purge deleted custom charts.                                                                                                     |
+| Process alert blackouts                            | Syncs `alert_blackout` flags based on `pem.blackout` records.                                                                                         |
+| Probe log table cleanup                            | Runs periodically to purge old data from the probe log table.                                                                                         |
+| Purge deleted custom probes                        | Runs periodically to purge deleted custom probes.                                                                                                     |
+| Refresh stale materialized views                   | Checks a flag table every minute and refreshes the `pem.probe_target_view` materialized view if it's stale or hasn't been refreshed in the last hour. |
+| Server log table cleanup                           | Runs periodically to purge old data from the server log table.                                                                                        |
+| SMTP spool table cleanup                           | Runs periodically to purge old data from the SMTP spool table.                                                                                        |
+| SNMP spool table cleanup                           | Runs periodically to purge old data from the SNMP spool table.                                                                                        |
+| Update next run of Check CA certificate expiry Job | Updates the scheduled next-run time for the Check CA certificate expiration job.                                                                      |
+| Update the probe-objects combination               | Inserts or updates the probe and `parameter_value_list` records in the `pem.probe_objects_combo` table.                                               |
+| Webhook spool history table cleanup                | Runs periodically to purge old data from the webhook spool history table.                                                                             |
+| Webhook spool table cleanup                        | Runs periodically to purge old data from the webhook spool table.                                                                                     |
+
+## Leader election for system jobs
+
+Starting with PEM 10.6, PEM uses a leader-election model to hand over system jobs between registered PEM servers on `pem.pem_host_and_server`. The election reads a freshness threshold from the `leader_stickiness_seconds` configuration parameter, which defaults to 600 seconds (10 minutes). Set this parameter in **Management > Server Configuration**, as described in [Changing the value](#changing-the-value).
+
+`leader_stickiness_seconds` affects two leader-election paths:
+
+- When the current leader's row is deleted, only candidates with a last-seen timestamp within `leader_stickiness_seconds` of the current time are eligible for promotion. This eligibility window prevents promoting an agent that's been silent for hours.
+- When a server is inserted, or its node type changes to `primary` or `standalone`, the new server takes over leadership only if the current leader is stale — that is, its last-seen timestamp is older than `leader_stickiness_seconds`. This staleness check prevents leadership from flapping every time a new server registers.
+
+### When to increase the value (30–60 minutes)
+
+Increase `leader_stickiness_seconds` if:
+
+- Your network has flaky or high-latency links with routine heartbeat gaps over 5 minutes during normal operation, such as backup windows, ISP dropouts, or cross-region VPN blips. At the default value, these blips can make a healthy leader look stale, so system jobs migrate between agents on every blip.
+- You're performing planned agent upgrades or PEM server maintenance. Agents restart and miss heartbeats for a few minutes, and if another registered server comes online during that window, it can steal leadership. Temporarily raise the value to 3600 seconds for the duration, then revert it.
+- Your agent's `heartbeat_interval` in `pem_agent.cfg` is unusually long (the default is 30 seconds). As a rule of thumb, the sticky window should be at least five times the heartbeat interval, so a single skipped cycle doesn't look stale.
+
+### When to decrease the value (60–120 seconds, or 0)
+
+Decrease `leader_stickiness_seconds` if:
+
+- You have a tight failover SLA, such as requiring system jobs to resume within two minutes of losing a leader agent. Only lower the value if your heartbeat pipeline is reliable, for example, on a fast network where agents restart quickly.
+- You're deliberately draining an old PEM server so a newly added server inherits leadership immediately instead of waiting for the default 10-minute window. Set the value to `0`, add the new server, then set it back to `600`.
+- You're running a controlled disaster-recovery or failover drill. As above, set the value to `0` temporarily so promotion is instant, then restore it.
+
+### When to leave the default (600 seconds)
+
+The default value works for:
+
+- Standard on-premises or same-datacenter deployments
+- Cloud deployments with healthy inter-availability-zone networking
+- Small-to-medium fleets using the default agent heartbeat cadence
+- Deployments with no specific SLA on system-job failover time
+
+### Rule of thumb
+
+Set `leader_stickiness_seconds` to at least five times the worst heartbeat gap you observe under normal conditions, and no larger than the maximum delay you can accept for system jobs to recover after a leader agent fails. If those two bounds cross, that's a network problem to fix, not a value to tune.
+
+### Changing the value
+
+Set the `leader_stickiness_seconds` parameter in **Management > Server Configuration**.
+
+The change takes effect on the next trigger fire on `pem.pem_host_and_server`. You don't need to restart PEM.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

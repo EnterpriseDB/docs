@@ -1,0 +1,393 @@
+---
+title: Specifying connection properities
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/06_building_toolkit.properties_file/
+lastModified: 2025-07-01T14:24:44+02:00
+---
+
+# Specifying connection properities
+
+<div id="building_toolkit_properties_file" class="registered_link"></div>
+
+Migration Toolkit uses the configuration and connection information stored in the `toolkit.properties` file during the migration process to identify and connect to the source and target databases.
+
+On Linux, the `toolkit.properties` file is located in `/usr/edb/migrationtoolkit/etc`.
+
+On Windows, the file is located in `C:\Program Files\edb\mtk\etc`.
+
+The figure shows a sample `toolkit.properties` file:
+
+![A typical toolkit.properties file.](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/migration_toolkit/55/images/building_toolkit.properties.png)
+
+Before executing Migration Toolkit commands, modify the `toolkit.properties` file with the editor of your choice. Update the file to include the following information:
+
+- `SRC_DB_URL` specifies how Migration Toolkit connects to the source database. Details on forming the URL for each source database follows.
+- `SRC_DB_USER` specifies a user name (with sufficient privileges) in the source database.
+- `SRC_DB_PASSWORD` specifies the password of the source database user. Provide the password without any surrounding quotes.
+- `TARGET_DB_URL` specifies the JDBC URL of the target database.
+- `TARGET_DB_USER` specifies the name of a privileged target database user.
+- `TARGET_DB_PASSWORD` specifies the password of the target database user. Provide the password without any surrounding quotes.
+
+> **Note**
+>
+> Unless specified in the command line, Migration Toolkit expects the source database to be Oracle and the target database to be EDB Postgres Advanced Server. For any other source or target database, specify the `-sourcedbtype` or `-targetdbtype` options as described in [Migrating from a non-Oracle source database](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/#migrating-schemas-from-a-non-oracle-source-database).
+
+For specifying a target database on Cloud Service, see [Defining the URL and configuring the required parameters for Cloud Service](#url-and-parameters-for-cloud-service).
+
+<div id="define_epas_url" class="registered_link"></div>
+
+## URL and parameters for an Advanced Server
+
+Migration Toolkit helps with migration from the following platforms to Advanced Server:
+
+- Oracle
+- PostgreSQL
+- MySQL
+- Sybase
+- SQL Server
+
+For a definitive list of the objects migrated from each database type, refer to [Functionality overview](https://www.enterprisedb.com/docs/migration_toolkit/latest/04_functionality_overview/#functionality_overview).
+
+Migration Toolkit reads connection specifications for the source and the target database from the `toolkit.properties` file. Connection information for each must include:
+
+- The URL of the database
+- The name of a privileged user
+- The password associated with the specified user
+
+The URL conforms to JDBC standards and takes the form:
+
+```text
+{TARGET_DB_URL|SRC_DB_URL}=jdbc:edb://<host>:<port><database_id>
+```
+
+An Advanced Server URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `edb` — If you're using Advanced Server, specify `edb` for the subprotocol value.
+
+- `<host>` — The name or IP address of the host where the Postgres instance is running.
+
+- `<port>` — The port number that the Advanced Server database listener is monitoring. The default port number is 5444.
+
+- `<database_id>` — The name of the source or target database.
+
+- `?tcpKeepAlive=true` - Optional, set for target databases when tcp\_keepalive settings have been added in the `postgresql.conf` file to keep the server from closing idle connections.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `{TARGET_DB_USER|SRC_DB_USER}` — Specifies a user with privileges to create each type of object migrated. If migrating data into a table, the specified user might also require insert, truncate, and references privileges for each target table.
+
+- `{TARGET_DB_PASSWORD|SRC_DB_PASSWORD}` — Set to the password of the privileged Advanced Server user. Provide the password without any surrounding quotes.
+
+<div id="define_pg_url" class="registered_link"></div>
+
+## URL and parameters for PostgreSQL
+
+Migration Toolkit helps with migration from the following platforms to PostgreSQL:
+
+- Oracle
+- Advanced Server
+- MySQL
+- SQL Server
+
+For a definitive list of the objects migrated from each database type, refer to [Functionality overview](https://www.enterprisedb.com/docs/migration_toolkit/latest/04_functionality_overview/#functionality_overview).
+
+Migration Toolkit reads connection specifications for the source and the target database from the `toolkit.properties` file. Connection information for each must include:
+
+- The URL of the database
+- The name of a privileged user
+- The password associated with the specified user
+
+A PostgreSQL URL conforms to JDBC standards and takes the form:
+
+```text
+{SRC_DB_URL|TARGET_DB_URL}=jdbc:postgresql://<host>:<port>/<database_id>
+```
+
+The URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `postgresql` — If you're using PostgreSQL, specify `postgresql` for the subprotocol value.
+
+- `<host>` — The name or IP address of the host where the Postgres instance is running.
+
+- `<port>` — The port number that the Postgres database listener is monitoring. The default port number is 5432.
+
+- `<database_id>` — The name of the source or target database.
+
+- `?tcpKeepAlive=true` - Optional, set for target databases when tcp\_keepalive settings have been added in the `postgresql.conf` file to keep the server from closing idle connections.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `{SRC_DB_USER|TARGET_DB_USER}` — Specify a user with privileges to create each type of object migrated. If migrating data into a table, the specified user might also need insert, truncate, and references privileges for each target table.
+
+- `{SRC_DB_PASSWORD|TARGET_DB_PASSWORD}` — Set to the password of the privileged PostgreSQL user. Provide the password without any surrounding quotes.
+
+<div id="define_oracle_url" class="registered_link"></div>
+
+## URL and parameters for Cloud Service
+
+Migration Toolkit helps with migration from the following platforms to Cloud Service:
+
+- Oracle
+- Advanced Server
+- PostgreSQL
+- MySQL
+- SQL Server
+
+Migration Toolkit reads connection specifications for the source and the target database from the `toolkit.properties` file. Connection information for each must include:
+
+- The URL of the database
+- The name of a privileged user
+- The password associated with the specified user
+
+When migrating to Cloud Service, `TARGET_DB_URL` takes the form of a JDBC URL. For example:
+
+```text
+jdbc:<postgres_type>://<host_name>[:<port>]/<database_id>?sslmode=<sslmode>
+```
+
+> **Note**
+>
+> Many of the values you need for the target database URL are available from the Cloud Service portal. In Cloud Service, select your cluster and go to the **Connect** tab to find the values.
+
+The URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `postgres_type` — The subprotocol is the Postgres type. Specify `edb` if you're using Advanced Server or `postgresql` if you're using PostgreSQL.
+
+- `<host_name>` — The host name of your cluster. You can copy it from the **Host** field on the **Connect** tab in the Cloud Service portal.
+
+- `<port>` — The port number that the database listener is monitoring. You can copy it from the **Port** field on the **Connect** tab in the Cloud Service portal.
+
+- `<database_id>` — The name of the target database.  Set this to the name of the database in your cluster that you want to use as your migration target database.  The name of the default database for your cluster is shown in the **Dbname** field on the **Connect** tab in the Cloud Service portal.  Often a separate database is created for use as the migration target.
+
+- `sslmode` — Either "require" or "verify-full". See [Recommended settings for SSL mode](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/connect_from_a_client/#recommended-settings-for-ssl-mode). Listed at the end of the **Service URI** value on the **Connect** tab in the Cloud Service portal.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `TARGET_DB_USER` — Specifies the name of a privileged database user. You can copy it from the **User** field on the **Connect** tab in the Cloud Service portal.
+
+- `TARGET_DB_PASSWORD` — Contains the password of the specified user. Provide the password without any surrounding quotes.
+
+## URL and parameters for Oracle
+
+Migration Toolkit helps with migration from an Oracle database to a PostgreSQL or Advanced Server database. When migrating from Oracle, you must specify connection specifications for the Oracle source database in the `toolkit.properties` file. The connection information must include:
+
+- The URL of the Oracle database
+- The name of a privileged user
+- The password associated with the specified user
+
+When migrating from an Oracle database, SRC\_DB\_URL must contain a JDBC URL, specified in one of two forms. The first form is:
+
+```text
+jdbc:oracle:thin:@<host_name>:<port>:<database_id>
+```
+
+The second form is:
+
+```text
+jdbc:oracle:thin:@//<host_name>:<port>{<database_id|service_name>}
+```
+
+An Oracle URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `oracle` — The subprotocol is always `oracle`.
+
+- `thin` — The driver type. Specify a driver type of `thin`.
+
+- `<host_name>` — The name or IP address of the host where the Oracle server is running.
+
+- `<port>` — The port number that the Oracle database listener is monitoring.
+
+- `<database_id>` — The database SID of the Oracle database.
+
+- `<service_name>` — The name of the Oracle service.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `SRC_DB_USER` — Specifies the name of a privileged Oracle user. The Oracle user needs read access to the source database objects you want to migrate. If you want to migrate users/roles and related profiles/privileges, grant the Oracle user SELECT privileges on the following Oracle catalog objects:
+
+  - `DBA_ROLES`
+  - `DBA_USERS`
+  - `DBA_TAB_PRIVS`
+  - `DBA_PROFILES`
+  - `DBA_ROLE_PRIVS`
+  - `ROLE_ROLE_PRIVS`
+  - `DBA_SYS_PRIVS`
+
+- `SRC_DB_PASSWORD` — Contains the password of the specified user. Provide the password without any surrounding quotes.
+
+<div id="define_mysql_url" class="registered_link"></div>
+
+## URL and parameters for an SQL Server
+
+Migration Toolkit helps with migration from an SQL Server database to a PostgreSQL or Advanced Server database. Migration Toolkit supports migration of the following object definitions:
+
+- Schemas
+- Tables
+- Table data
+- Constraints
+- Indexes
+
+Migration Toolkit reads connection specifications for the source database from the `toolkit.properties` file. The connection information must include:
+
+- The URL of the source database
+- The name of a privileged user
+- The password associated with the specified user
+
+If you're connecting to a SQL Server database, `SRC_DB_URL` takes the form of a [Microsoft JDBC URL](#microsoft-jdbc-url) (recommended) or a [JTDS URL](#jtds-url).
+
+### Microsoft JDBC URL
+
+By default, Microsoft JDBC Driver for SQL Server uses TLS encryption for all communication between the client and the SQL Server. Set `encrypt` to `false`, if you want to disable TLS encryption. For more information about connecting to a Microsoft SQL Server using JDBC type 4 driver, see [Building the connection URL](https://docs.microsoft.com/en-us/sql/connect/jdbc/building-the-connection-url?view=sql-server-ver16).
+
+```text
+jdbc:sqlserver://<server_name>:<port>[;databaseName=<database_id>][;encrypt=false]
+```
+
+A SQL server URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `sqlserver` — The server type is always `sqlserver`.
+
+- `<server_name>` — The name or IP address of the host where the source server is running.
+
+- `<port>` — The port number that the source database listener is monitoring.
+
+- `<database_id>` — The name of the source database.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `SRC_DB_USER` — Specifies the name of a privileged SQL Server user.
+
+- `SRC_DB_PASSWORD` — Contains the password of the specified user. Provide the password without any surrounding quotes.
+
+### JTDS URL
+
+```text
+jdbc:jtds:sqlserver://<server_name>:<port>/<database_id>
+```
+
+> **Tip**
+>
+> The JTDS driver is an open source JDBC 3.0 type 4 driver that supports older versions of Microsoft SQL Server. See <http://jtds.sourceforge.net/>.  When connecting newer versions of Microsoft SQL Server with Migration Toolkit, the Microsoft JDBC Driver for SQL Server is recommended.
+
+A SQL server URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `jtds` — The driver name is always `jtds`.
+
+- `sqlserver` — The server type is always `sqlserver`.
+
+- `<server_name>` — The name or IP address of the host where the source server is running.
+
+- `<port>` — The port number that the source database listener is monitoring.
+
+- `<database_id>` — The name of the source database.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `SRC_DB_USER` — Specifies the name of a privileged SQL Server user.
+
+- `SRC_DB_PASSWORD` — Contains the password of the specified user. Provide the password without any surrounding quotes.
+
+## URL and parameters for MySQL
+
+Migration Toolkit helps with migration from a MySQL database to an Advanced Server or PostgreSQL database. When migrating from MySQL, you must specify connection specifications for the MySQL source database in the `toolkit.properties` file. The connection information must include:
+
+- The URL of the source database
+- The name of a privileged user
+- The password associated with the specified user
+
+When migrating from MySQL, `SRC_DB_URL` takes the form of a JDBC URL. For example:
+
+```text
+jdbc:mysql://<host_name>[:<port>]/<database_id>
+```
+
+The URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `mysql` — The subprotocol is always `mysql`.
+
+- `<host_name>` — The name or IP address of the host where the source server is running.
+
+- `[<port>]` — The port number that the MySQL database listener is monitoring.
+
+- `<database_id>` — The name of the source database.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `SRC_DB_USER` — Specifies the name of a privileged MySQL user.
+
+- `SRC_DB_PASSWORD` — Contains the password of the specified user. Provide the password without any surrounding quotes.
+
+> **Note**
+>
+> - If datatype `tinyInt(1)` is used to store byte values other than 0 and 1 in the MySQL source database, make sure to append the optional parameter `?tinyInt1isBit=false` in the MySQL Connector/J JDBC Driver URL.
+>
+> - Due to a bug in the MySQL Connector/J JDBC Driver 8.0.26, the migration of foreign key constraints fails in certain cases. EDB recommends that you don't use this driver for migrating data using Migration Toolkit. Instead, use MySQL Connector/J JDBC Driver 8.0.30 or later.
+>
+>   For detailed information about this bug, see the [MySQL bug report](https://bugs.mysql.com/bug.php?id=95280).
+
+`TINYINT(1)` is mapped to `BIT(1)` in PostgreSQL/EDB Postgres Advanced Server (which might not be expected in some cases). But as the MySQL JDBC driver reports it as `BIT(1)`, Migration Toolkit maps it to `BIT(1)` in PostgreSQL/EDB Postgres Advanced Server.
+
+Unlike `TINYINT(1)` that can hold the values -128 to 127, `BIT(1)` can hold only 0 and 1. So if you're storing any value other than 0 and 1 in this field, you might need to change the default behavior of the MySQL JDBC driver so that the driver reports it as `TINYINT`.
+
+To change this behavior, set the following URL option in the connection string:
+
+`jdbc:mysql://localhost:3306/world?tinyInt1isBit=false`
+
+In this case, the JDBC driver reports `TINYINT(1)` as `TINYINT` and is mapped to `SMALLINT` in the target PostgreSQL/EDB Postgres Advanced Server.
+
+<div id="define_sybase_url" class="registered_link"></div>
+
+## URL and parameters for Sybase
+
+Migration Toolkit helps with migration from a Sybase database to an Advanced Server database. When migrating from Sybase, you must specify connection specifications for the Sybase source database in the `toolkit.properties` file. The connection information must include:
+
+- The URL of the source database
+- The name of a privileged user
+- The password associated with the specified user
+
+When migrating from Sybase, `SRC_DB_URL` takes the form of a JTDS URL. For example:
+
+```text
+jdbc:jtds:sybase://<host_name>[:<port>]/<database_id>
+```
+
+> **Tip**
+>
+> For an open source JDBC 3.0 type 4 driver for Sybase ASE and older versions of Microsoft SQL Server, see <http://jtds.sourceforge.net/>.
+
+A Sybase URL contains the following information:
+
+- `jdbc` — The protocol is always `jdbc`.
+
+- `jtds` — The driver name is always `jtds`.
+
+- `sybase` — The server type is always `sybase`.
+
+- `<host_name>` — The name or IP address of the host where the source server is running.
+
+- `<port>` — The port number that the Sybase database listener is monitoring.
+
+- `<database_id>` — The name of the source database.
+
+Ensure these values are set in the `toolkit.properties` file:
+
+- `SRC_DB_USER` — Specifies the name of a privileged Sybase user.
+
+- `SRC_DB_PASSWORD` — Contains the password of the specified user. Provide the password without any surrounding quotes.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,34 @@
+---
+title: Running the agent
+description: Learn how to run the agent when setting up monitoring with Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/run_agent/
+lastModified: 2026-11-05T19:23:14Z
+---
+
+# Running the agent
+
+Run the agent:
+
+```
+beacon-agent
+```
+
+> **Tip**
+>
+> See [Agent CLI](https://www.enterprisedb.com/docs/tools/agent/agent_ref/) for other agent modes and options.
+
+The agent starts sending data to Hybrid Manager (HM). Follow the logs to monitor the data ingestion process. After a few minutes, the data from the agent appears in the HM console:
+
+- In the **Estate** section, the **Postgres** tab lists your Postgres databases along with summarized database information. Selecting one of the databases provides a more detailed database overview and monitoring capabilities.
+
+- The **Estate > Migrations** tab lists your external databases (for example, Oracle) along with summarized database and migration information. Selecting one of the databases provides a more detailed migration assessment and migration capabilities.
+
+> **Important**
+>
+> The agent detects schema changes to tables and columns while running. However, changes to views or procedures aren't detected until you restart the agent.
+
+For production use, configure the agent to [run as a service](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/run_as_service/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

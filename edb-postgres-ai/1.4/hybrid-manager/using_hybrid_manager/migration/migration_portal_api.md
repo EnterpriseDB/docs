@@ -1,0 +1,75 @@
+---
+title: Using the Migration API
+description: Learn how to use the Migration API from Hybrid Manager's console.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/migration/migration_portal_api/
+lastModified: 2026-07-23T19:28:07Z
+---
+
+# Using the Migration API
+
+The Migration API is a crucial tool for automating your database migration tasks. It allows you to programmatically manage and monitor migrations, offering a powerful way to integrate migration workflows into your existing CI/CD pipelines or automated scripts. Instead of navigating the UI, you can use the API to manage your migration projects, view the detailed schema reports, see data migration status, and perform many more administrative tasks.
+
+This API is for developers, DevOps engineers, and DBAs who need a scalable and automated way to handle a large number of migrations or integrate them into broader automation strategies.
+
+The Hybrid Manager (HM) platform provides a broader set of APIs to support end-to-end database migration, including assessment, schema conversion, and data migration. However, only a subset is shown in the [examples](#examples).
+
+## Examples
+
+### Create Migration Portal project
+
+This API endpoint is used to create a new migration project in the Migration Portal. It's a `POST` request that sends a JSON payload to define the project's properties and configurations.
+
+- **Path** — `/api/v1/projects/prj_LTIfqp81u6MslAk4/migration-portal-project`
+- **Method** — `POST`
+
+URL path parameters:
+
+- `prj_LTIfqp81u6MslAk4` — The unique identifier for the project's scope.
+
+```JSON
+Request Body:
+{
+	"projectId": "prj_LTIfqp81u6MslAk4",
+	"resourceId": "oracleSource",
+	"schemaIds": [
+		"cea06ec8-8641-4dff-9631-4b19fcba5212",
+		"5770b6fa-295c-40af-bd02-1acbe02c9eb6"
+	],
+	"mpProjectName": "my_project_name",
+	"applicationInterface": "JDBC",
+	"targetDbVersion": "EPAS_17",
+	"useUniqueSchemaObjectSuffixes": true,
+	"useOracleDefaultCase": true,
+	"assessDefaultProfile": true,
+	"description": "My Project Description (Optional)"
+}
+```
+
+Request body description:
+
+- `projectId` — The unique identifier of the project in HM.
+- `resourceId` — The unique identifier for the source database (for example, `oracleSource`).
+- `schemaIds` — An array of unique IDs for the schemas you want to include in the migration project.
+- `mpProjectName` — The custom name you want to assign to the new Migration Portal project.
+- `applicationInterface` — The type of interface used to connect to the source database (for example, `JDBC`, `ODBC`, `.NET`, `OCI`, `ProC`, Other).
+- `targetDbVersion` — The version of the target database you're migrating to (for example, `EPAS_17` for EDB Postgres Advanced Server version 17).
+- `useUniqueSchemaObjectSuffixes` — A Boolean value that, when set to `true`, ensures that object names in the target schema have unique suffixes to avoid conflicts.
+- `useOracleDefaultCase` — A Boolean value that, when set to `true`, respects Oracle's default behavior of using uppercase for object names.
+- `assessDefaultProfile` — A Boolean value that, when set to `true`, includes the default profile in the assessment.
+- `description` — A custom, optional description for the migration project.
+
+### Delete Migration Portal project
+
+This API endpoint deletes an existing migration project from the Migration Portal. It's a `DELETE` request that targets the specific project by its ID.
+
+- **Path** — `/api/v1/projects/prj_LTIfqp81u6MslAk4/migration-portal-project/42`
+- **Method** — `DELETE`
+
+URL path parameters:
+
+- `prj_LTIfqp81u6MslAk4` — The unique identifier for the project's scope.
+- `42` — The unique ID of the specific Migration Portal project you want to delete. This ID is assigned after the project is successfully created.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

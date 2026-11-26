@@ -1,0 +1,142 @@
+---
+title: Supported versions
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/supported_versions/
+lastModified: 2026-09-16T09:00:14-07:00
+---
+
+# Supported versions
+
+_This page lists the status for currently supported
+releases of EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC)_.
+
+## Naming Scheme
+
+The CNPG-GC (PGD4K) releases follows Semantic Versioning
+2.0.0 and is structured as follows:
+
+```
+<major>.<minor>.<patch>
+```
+
+- `<major>` maps to the supported PGD version. Version 1.x corresponds to PGD version 5.x.
+- `<minor>` is incremented for each supported PG4K Long-Term Support release dependency change.
+- `<patch>` indexes the patches for the current `<minor>` release,
+  representing small changes relative to the `<minor>` release.
+
+Git tags for versions are prefixed with `v`.
+
+## General Support status
+
+CNPG-GC version 1.x is used to manage Postgres Distributed version 5.x.
+The general support status is as follows:
+
+> **Note**
+>
+> The following table summarizes the general support status for CNPG-GC.
+> For detailed support status, including supported Kubernetes versions, PG4K versions,
+> Postgres versions, and Postgres Distributed versions, please refer to the
+> [Detailed support status](#detailed-support-status) section below.
+
+| Version | Currently Supported | Release Date (first release) | Supported Kubernetes Versions | Supported PG4K Versions | Supported Postgres versions | Supported Postgres Distributed versions |
+| ------- | ------------------- | ---------------------------- | ----------------------------- | ----------------------- | --------------------------- | --------------------------------------- |
+| 1.2.x   | Yes                 | Jan 5, 2026                  | v1.32 - v1.36                 | v1.28                   | v14 - v17                   | v5.9.x                                  |
+| 1.1.x   | Yes                 | Dec 25, 2024                 | v1.28 - v1.34                 | v1.25, v1.26            | v13 - v17                   | v5.6.1 -                                |
+| 1.0.x   | Yes                 | Apr 24, 2024                 | v1.28 - v1.34                 | v1.22                   | v13 - v17                   | v5.5.1 -                                |
+
+The Postgres (operand) versions are limited to those supported by
+[EDB Postgres Distributed (PGD).](https://www.enterprisedb.com/docs/pgd/latest/)
+
+> **Important**
+>
+> Please be aware that this page is informative only.
+> The ["Platform Compatibility"](https://www.enterprisedb.com/product-compatibility#bdrk8s) page
+> from the EDB website contains the official list of supported software and
+> Kubernetes distributions.
+
+## Detailed support status
+
+The CNPG-GC (PGD4K) operator uses the EDB Postgres for Kubernetes
+(PG4K) operator to manage each PGD node as a PG4K Cluster. Each minor release reaches its End of Life
+in alignment with the corresponding PG4K LTS release. For details on the support scope of each PG4K LTS
+release, please refer to the [platform compatibility](https://www.enterprisedb.com/resources/platform-compatibility#pgk8s)
+
+| Version | Currently Supported | Release Date  | Supported Kubernetes Versions | Supported PG4K Versions   | Supported Postgres versions | Supported Postgres Distributed versions | Supported OpenShift Versions | Supported Cert-manager versions |
+| ------- | ------------------- | ------------- | ----------------------------- | ------------------------- | --------------------------- | --------------------------------------- | ---------------------------- | ------------------------------- |
+| 1.2.2   | Yes                 | Sept 10, 2026 | 1.34 - 1.36                   | v1.28.0-v1.28.4           | v14 - v17                   | v5.9.4, v5.9.5                          | v4.18 - v4.22                | >=v1.10.0                       |
+| 1.2.1   | Yes                 | Jun 9, 2026   | 1.32 - 1.34                   | v1.28.0-v1.28.3           | v14 - v17                   | v5.9.3, v5.9.4, v5.9.5                  | v4.16 - v4.21                | >=v1.10.0                       |
+| 1.2.0   | Yes                 | Jan 5, 2026   | 1.32 - 1.34                   | v1.28.0-v1.28.3           | v14 - v17                   | v5.9.1, v5.9.2, v5.9.3, v5.9.4          | v4.12 - v4.20                | >=v1.10.0                       |
+| 1.1.3   | Yes                 | Sept 25, 2025 | 1.30 - 1.33                   | v1.25.x, v1.26.x          | v13 - v17                   | v5.9.0                                  | v4.12 - v4.19                | >=v1.10.0                       |
+| 1.1.2   | Yes                 | Jul 25, 2025  | 1.30 - 1.33                   | v1.25.x, v1.26.0          | v13 - v17                   | v5.8.1                                  | v4.12 - v4.19                | >=v1.10.0                       |
+| 1.1.1   | Yes                 | Mar 18, 2025  | 1.29 - 1.32                   | v1.22.8, v1.22.9, v1.25.x | v13 - v17                   | v5.7.0                                  | v4.12 - v4.18                | >=v1.10.0                       |
+
+> **Note**
+>
+> The CNPG-GC (PGD4K) 1.2.1 operator doesn't support in-place minor version upgrades to PGD operand images
+> based on open-source PostgreSQL versions 14.24, 15.19, 16.15, 17.11, and 18.6.
+>
+> This doesn't affect operand images based on EPAS or PGE distributions.
+>
+> Workarounds:
+>
+> - Instead of performing an in-place upgrade, recreate the cluster nodes with the target operand image.
+> - Perform an in-place upgrade to a higher PostgreSQL major version.
+
+> **Note**
+>
+> The supported OpenShift versions are those supported at the time the operator is released; an OpenShift
+> version that reaches End of Support (EoS) is not removed from the list.
+
+> **Note**
+>
+> CNPG-GC (PGD4K) version 1.0.0 didn't restrict supported PG4K version
+> to LTS releases. When upgrading PGD4K from 1.0.0 to 1.0.1, if the installed PG4K version exceeds 1.22,
+> uninstall the PG4K operator and reinstall it with a 1.22.x to satisfy the dependency
+> requirements.
+
+## PGD Operator manifests
+
+For each CNPG-GC release, we created an all-in-one manifests with
+CNPG-GC and the latest supported EDB Postgres for Kubernetes.
+To deploy those all-in-one manifests on Kubernetes, create the [edb-pull-secret](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/installation_upgrade/#install-the-edb-pull-secret) in advance and then apply the manifests.
+
+```
+kubectl apply --server-side --force-conflicts -f \
+   https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.2.0.yaml
+```
+
+| PGD4K release | Nested PG4K release | Manifests                                                                       |
+| ------------- | ------------------- | ------------------------------------------------------------------------------- |
+| v1.2.2        | v1.28.4             | [pg4k-pgd-1.2.2.yaml](https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.2.2.yaml) |
+| v1.2.1        | v1.28.3             | [pg4k-pgd-1.2.1.yaml](https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.2.1.yaml) |
+| v1.2.0        | v1.28.3             | [pg4k-pgd-1.2.0.yaml](https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.2.0.yaml) |
+| v1.1.3        | v1.26.1             | [pg4k-pgd-1.1.3.yaml](https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.1.3.yaml) |
+| v1.1.2        | v1.26.0             | [pg4k-pgd-1.1.2.yaml](https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.1.2.yaml) |
+| v1.1.1        | v1.25.1             | [pg4k-pgd-1.1.1.yaml](https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.1.1.yaml) |
+| v1.1.0        | v1.25.0             | [pg4k-pgd-1.1.0.yaml](https://get.enterprisedb.io/pg4k-pgd/pg4k-pgd-1.1.0.yaml) |
+
+## PGD Operand images
+
+For each minor release of PGD, EDB consistently builds the latest PostgreSQL version integrated with the latest PGD extension. Once a new minor version of PGD is released, EDB switches to build the latest PostgreSQL with the newly released PGD minor.
+
+For example:
+If PGD 5.7 is the latest minor release, EDB will continue building PGD images with the latest PostgreSQL patches for each supported PostgreSQL version, along with the latest PGD 5.7 release (e.g., PGD 5.7.1). When PGD 5.8 is released, EDB will then update to build images with the latest PostgreSQL patches combined with PGD 5.8.x.
+
+We maintain an imageCatalog for each PGD minor release. Each imageCatalog contains the operand image that includes the latest PostgreSQL patches and the latest PGD patch.
+
+| PGD Release | Flavor                    | ImageCatalog                                                                                                                                                                                                                           |
+| ----------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PGD 5.9     | EDB Postgres Advanced PGD | [epas-k8s-pgd59-ubi8](https://get.enterprisedb.io/pgd-k8s-image-catalogs/epas-k8s-pgd5.9-ubi8.yaml)  <br/> [epas-k8s-pgd59-ubi9](https://get.enterprisedb.io/pgd-k8s-image-catalogs/epas-k8s-pgd5.9-ubi9.yaml)                         |
+| PGD 5.9     | EDB Postgres Extended PGD | [pgextended-k8s-pgd59-ubi8](https://get.enterprisedb.io/pgd-k8s-image-catalogs/pgextended-k8s-pgd5.9-ubi8.yaml) <br/>  [pgextended-k8s-pgd59-ubi9](https://get.enterprisedb.io/pgd-k8s-image-catalogs/pgextended-k8s-pgd5.9-ubi9.yaml) |
+| PGD 5.9     | Postgres Community PGD    | [postgresql-k8s-pgd59-ubi8](https://get.enterprisedb.io/pgd-k8s-image-catalogs/postgresql-k8s-pgd5.9-ubi8.yaml) <br/>  [postgresql-k8s-pgd59-ubi9](https://get.enterprisedb.io/pgd-k8s-image-catalogs/postgresql-k8s-pgd5.9-ubi9.yaml) |
+| PGD 5.8     | EDB Postgres Advanced PGD | [epas-k8s-pgd58-ubi8](https://get.enterprisedb.io/pgd-k8s-image-catalogs/epas-k8s-pgd5.8-ubi8.yaml) <br/> [epas-k8s-pgd58-ubi9](https://get.enterprisedb.io/pgd-k8s-image-catalogs/epas-k8s-pgd5.8-ubi9.yaml)                          |
+| PGD 5.8     | EDB Postgres Extended PGD | [pgextended-k8s-pgd58-ubi8](https://get.enterprisedb.io/pgd-k8s-image-catalogs/pgextended-k8s-pgd5.8-ubi8.yaml) <br/> [pgextended-k8s-pgd58-ubi9](https://get.enterprisedb.io/pgd-k8s-image-catalogs/pgextended-k8s-pgd5.8-ubi9.yaml)  |
+| PGD 5.8     | Postgres Community PGD    | [postgresql-k8s-pgd58-ubi8](https://get.enterprisedb.io/pgd-k8s-image-catalogs/postgresql-k8s-pgd5.8-ubi8.yaml) <br/> [postgresql-k8s-pgd58-ubi9](https://get.enterprisedb.io/pgd-k8s-image-catalogs/postgresql-k8s-pgd5.8-ubi9.yaml)  |
+
+> **Note: Repository change for PGD 5.8 and later image catalogs**
+>
+> We're unifying our repositories, and thus operand image paths will change - please follow the [Central Migration Guide](https://www.enterprisedb.com/docs/repos/working_with_repos/migrating_edb_registries/)
+> to avoid deployment failure and downtime when upgrading.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

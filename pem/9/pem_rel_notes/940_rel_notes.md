@@ -1,0 +1,35 @@
+---
+title: Postgres Enterprise Manager 9.4.0 release notes
+product: Postgres Enterprise Manager
+version: "9"
+url: https://www.enterprisedb.com/docs/pem/9/pem_rel_notes/940_rel_notes/
+lastModified: 2023-11-17T13:38:02-05:00
+---
+
+# Postgres Enterprise Manager 9.4.0 release notes
+
+Released: 16 Nov 2023
+
+New features, enhancements, bug fixes, and other changes in PEM 9.4.0 include:
+
+> **Note: Deprecation**
+>
+> This release removes the support for API versions 7 and earlier.
+> Index Advisor isn't supported for EDB Postgres Advanced Server and PostgreSQL version 11 and later.
+
+> **Note: Curl and libcurl vulnerabilities**
+>
+> [CVE-2023-38545](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-38545) is a heap buffer [overflow](https://cwe.mitre.org/data/definitions/122.html) in [curl](https://curl.se/docs/CVE-2023-38545.html). To fully mitigate against exploitation of CVE-2023-38545, CURLOPT\_BUFFERSIZE is set to 100KB by default.
+
+| Type        | Description                                                                                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enhancement | Added support for EDB Advanced Server, EDB Postgres Distributed, and PostgreSQL 16.                                                                                    |
+| Enhancement | PEM jobs can now be scheduled by way of the REST API.                                                                                                                  |
+| Enhancement | Improved the performance diagnostics to provide aggregated statistics over the time interval.                                                                          |
+| Bug fix     | Added schema qualifications for the `process_one_alert` and `get_detail_alert_info` functions.                                                                         |
+| Bug fix     | Added the optional ICU parameters required for creating databases in PostgreSQL versions 15 and 16.                                                                    |
+| Bug fix     | Added the frontend validations for empty agent details while adding the Barman server.                                                                                 |
+| Bug fix     | Fixed an issue when downloading the system config report. The system config report didn't download if any agent had some missing parameter or was in an unknown state. |
+| Bug fix     | Added a server configuration parameter `deleted_objects_data_retention_time` to improve purging of the obsolete data for server, agent, or tools.                      |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

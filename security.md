@@ -1,0 +1,1321 @@
+---
+title: EDB Security
+product: EDB Security
+url: https://www.enterprisedb.com/docs/security/
+lastModified: 2026-11-25T18:34:32+01:00
+---
+
+# EDB Security
+
+EDB is committed to a security first approach, from the products we build and the platforms we operate, to the services we provide our customers. Transparency is a core principle for the program and part of this effort includes welcoming incoming reports so that we can address concerns surfaced by our customers or security researchers. You’ll also find it in our advisories, which detail issues found and the required fixes or mitigations needed to keep your data and databases safe.
+
+## Policies
+
+- <h3><a href="https://www.enterprisedb.com/docs/security/vulnerability-disclosure-policy/">EDB Vulnerability Disclosure Policy</a></h3>
+  This policy outlines how EnterpriseDB handles disclosures related to suspected vulnerabilities within our products, systems, or services. It also provides guidance for those who wish to perform security research, or may have discovered a potential security vulnerability impacting EDB.
+
+## Advisories
+
+- <h3><a href="https://www.enterprisedb.com/docs/security/advisories/">Full list of advisories issued</a></h3>
+
+## PostgreSQL CVE Assessments
+
+- <h3><a href="https://www.enterprisedb.com/docs/security/assessments/">Full list of PostgreSQL CVE advisories assessed by EDB</a></h3>
+
+## Most Recent Advisories
+
+<table class="table-bordered">
+
+<tr><td>
+
+<details><summary><h3 style="display:inline">CVE-2026-62157 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662157/">Read Advisory</a>
+  Updated: </span><span>2026/11/25</span>
+<h4>mongo_fdw out-of-bounds read when building an ObjectId from short _id values</h4>
+<h5> mongo_fdw 5.5.3 and earlier</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+mongo\_fdw converts \_id values to 12-byte MongoDB ObjectIds with libbson functions that read a fixed number of bytes without checking the input length: 12 bytes for a bytea \_id, and 24 characters for name-typed values and $oid fields in JSON. A shorter value causes a read past the end of the input, which can crash the PostgreSQL backend or include adjacent memory in the query sent to MongoDB. Any user who can supply an \_id value or predicate on a foreign table can trigger it. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662157/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline">CVE-2026-62156 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662156/">Read Advisory</a>
+  Updated: </span><span>2026/11/25</span>
+<h4>hdfs_fdw HiveQL injection through pushed-down IN and = ANY(array) string literals</h4>
+<h5> hdfs_fdw 2.3.3 and earlier</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+hdfs\_fdw builds string literals for IN and = ANY(array) clauses pushed down to the remote Hive or Spark server without escaping single quotes. An authenticated user with only SELECT on a foreign table can supply a crafted array value that breaks out of the literal and changes the HiveQL query, which then runs on the remote server with the foreign server's credentials. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662156/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline">CVE-2026-62155 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662155/">Read Advisory</a>
+  Updated: </span><span>2026/11/25</span>
+<h4>mongo_fdw connection URI injection through unencoded option values</h4>
+<h5> mongo_fdw 5.5.3 and earlier</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+mongo\_fdw builds the mongodb:// connection URI by inserting option values without percent-encoding them, so URI metacharacters (@ : / ? # & =) in a value are parsed as part of the URI structure. A role that is not a superuser but has USAGE on a foreign server can set the username and password options in its own user mapping. An @ or other metacharacter in those values can point the connection at a host the attacker controls, allowing connection redirection, credential capture and man-in-the-middle attacks. Server-level options such as the address, database and replica set can be injected the same way. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662155/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline">CVE-2026-62154 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662154/">Read Advisory</a>
+  Updated: </span><span>2026/11/25</span>
+<h4>mysql_fdw runs SQL supplied by a malicious MySQL server during IMPORT FOREIGN SCHEMA</h4>
+<h5> mysql_fdw 2.9.3 and earlier</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+During IMPORT FOREIGN SCHEMA, mysql\_fdw copies column metadata returned by the remote MySQL server into the CREATE FOREIGN TABLE statements it runs locally without quoting it. The COLUMN\_DEFAULT value is placed directly in the DEFAULT clause, and the name of the generated ENUM type is inserted unquoted. A malicious or compromised MySQL server, or an attacker who can tamper with the connection, can return crafted information\_schema metadata and run arbitrary SQL in the local PostgreSQL session of the user who runs IMPORT FOREIGN SCHEMA. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662154/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline">CVE-2026-62153 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662153/">Read Advisory</a>
+  Updated: </span><span>2026/11/25</span>
+<h4>mysql_fdw SQL injection through ANALYZE, IMPORT FOREIGN SCHEMA and the sql_mode option</h4>
+<h5> mysql_fdw 2.9.3 and earlier</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+mysql\_fdw inserts several values into statements sent to the remote MySQL server without escaping them: the dbname and table\_name options in ANALYZE, the remote schema name and the LIMIT TO and EXCEPT table names in IMPORT FOREIGN SCHEMA, and the sql\_mode option in the SET sql\_mode command. A user who can create or alter foreign tables or foreign servers, or run IMPORT FOREIGN SCHEMA, can break out of the string literal and run arbitrary SQL on the remote MySQL server with the credentials of the user mapping. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662153/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline">CVE-2026-62152 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662152/">Read Advisory</a>
+  Updated: </span><span>2026/11/25</span>
+<h4>mysql_fdw allows non-superusers to set connection options that run SQL and read server files</h4>
+<h5> mysql_fdw 2.9.3 and earlier</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+mysql\_fdw accepts several security-sensitive connection options from roles that are not superusers. A role with USAGE on the mysql\_fdw foreign data wrapper can set init\_command, which runs arbitrary SQL on the remote MySQL server at every connection, including connections made with other users' mappings on a shared foreign server. The same role can set mysql\_default\_file, ssl\_key, ssl\_cert, ssl\_ca and ssl\_capath, which name files read from the PostgreSQL server host, allowing server-side file reads and connection redirection. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662152/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline">CVE-2026-62151 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662151/">Read Advisory</a>
+  Updated: </span><span>2026/11/25</span>
+<h4>mysql_fdw SQL injection through a multi-byte character set escaping bypass</h4>
+<h5> mysql_fdw 2.9.3 and earlier</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+mysql\_fdw builds string literals for queries sent to the remote MySQL server with an escaping routine that is not character-set aware. When the connection uses a multi-byte character set such as GBK, SJIS or Big5 and MySQL's default backslash escaping is in effect, a crafted value whose trailing byte is 0x5C absorbs the escaping backslash and leaves the following quote unescaped. The routine handles every pushed-down string constant, including ordinary WHERE-clause literals, so an authenticated user with only SELECT on a foreign table can break out of the literal and run arbitrary SQL on the remote MySQL server with the credentials of the user mapping. <br /> <a href="https://www.enterprisedb.com/docs/security/advisories/cve202662151/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+## Most Recent Assessments
+
+<table class="table-bordered">
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6471 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6471/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL logical decoding can dlopen arbitrary file</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Missing authorization in PostgreSQL logical decoding allows a non-superuser holding the REPLICATION privilege to specify a malicious logical decoding output plugin, causing the server to dlopen() an arbitrary file visible to the operating system account running PostgreSQL. This results in code execution with server privileges. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6471/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6464 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6464/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL psql COPY FROM STDIN early failure processes data lines as psql commands</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A command injection vulnerability in the psql client causes data rows to be interpreted as psql meta-commands rather than data, when a COPY FROM STDIN or \copy FROM STDIN command fails before the server signals it is ready to receive input rows. COPY FROM with a filename parameter is not affected. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6464/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-19385 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-19385/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL pg_dump heap buffer overflow executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A heap buffer overflow in pg_dump allows an object creator to execute arbitrary code as the operating system user running pg_dump, via a crafted transform list. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-19385/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-18408 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-18408/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL psql \unrestrict lets superuser of pg_dump origin server execute arbitrary code in psql client</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+The psql \unrestrict meta-command bypasses the input-expansion restriction introduced to fix CVE-2025-8714, allowing a malicious superuser of a pg_dump origin server to inject arbitrary code for execution in the psql client during dump restoration. pg_dump, pg_dumpall, and pg_restore (when generating plain-format dumps) are affected. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-18408/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-16239 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-16239/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL type confusion in cursor CLOSE + DECLARE executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Type confusion in PostgreSQL portal handling for EXECUTE and FETCH statements allows a database user to re-declare a cursor or other portal with a different type, corrupting the assumed type of the portal. This can be leveraged to disclose server memory contents and to execute arbitrary code as the operating system user running the database. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-16239/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-16238 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-16238/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL type confusion in pg_restore_attribute_stats() executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Type confusion in PostgreSQL's pg_restore_attribute_stats() function, arising from conflation of range and multirange values, allows an object creator to execute arbitrary code as the operating system user running the database. This vulnerability only affects PostgreSQL 18.x; versions before PostgreSQL 18.5 are affected. PostgreSQL 17 and earlier are not affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-16238/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-15742 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-15742/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL fuzzystrmatch writes effectively-arbitrary addresses, via integer wraparound</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Integer wraparound in the PostgreSQL fuzzystrmatch contrib module allows an authenticated user to direct writes to effectively-arbitrary memory addresses, potentially executing arbitrary code as the operating system user running the database, via extreme inputs to levenshtein() or levenshtein_less_equal(). Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-15742/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-15741 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-15741/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL expression deparse allows SQL injection via EXTRACT argument</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+SQL injection in PostgreSQL's expression deparse mechanism allows an object owner to execute arbitrary SQL as a superuser via a hostile object definition and the EXTRACT() function, triggered when the object is later deparsed by pg_dump, psql \sf, or similar tooling. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-15741/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14680 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14680/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL type confusion via "internal" arguments</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Type confusion with PostgreSQL function arguments of the "internal" pseudo-type allows any user to execute arbitrary code as the operating system user running the database. The "internal" type represents data structures that are not intended to be reachable from SQL; existing protections against calling such functions contain gaps that allow the restriction to be bypassed. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14680/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14679 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14679/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL stack buffer overflow in argument match writes 0x0 and 0x1 to server memory</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A stack buffer overflow in PostgreSQL's function argument-name matching allows an object creator to write only the byte values 0x0 and 0x1 to server memory, via a crafted OUT parameter count. Unlike most vulnerabilities in this batch, the confirmed CVSS vector reflects an availability-only impact rather than direct arbitrary code execution. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14679/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14676 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14676/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL pg_stat_statements heap buffer overflow executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A heap buffer overflow in the PostgreSQL pg_stat_statements contrib module allows an authenticated user to execute arbitrary code with the privileges of the operating system user running the database, via crafted queries containing array constants. This vulnerability only affects PostgreSQL 18.x; versions before PostgreSQL 18.5 are affected. PostgreSQL 17 and earlier are not affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14676/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14671 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14671/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL refint plan cache type confusion executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Type confusion in the PostgreSQL refint contrib module allows an object creator to execute arbitrary code with the privileges of the operating system user running the database server. This fix was originally committed as a non-security bug fix before being assigned a CVE. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14671/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14670 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14670/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL plperl tied object heap buffer overflow executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A heap buffer overflow in PostgreSQL's plperl handling of a returned tied hash allows a function owner to execute arbitrary code as the operating system user running the database, via a crafted plperl function body. Only deployments with plperl installed are affected. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14670/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14669 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14669/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL to_char heap buffer overflow executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A heap buffer overflow in PostgreSQL's to_char(timestamptz) function allows an authenticated user who can choose the session timezone to execute arbitrary code as the operating system user running the database, via a long POSIX timezone abbreviation. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14669/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14668 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14668/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL ctid type confusion in selectivity estimator discloses derivative of arbitrary read</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Type confusion in the PostgreSQL ctid data type's selectivity estimator allows an object creator to view a calculation derived from arbitrary 4-byte spans of server memory via non-ctid inputs. The recovered value loses precision, but substantial memory-content recovery is possible over repeated queries. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14668/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14664 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14664/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL regexp heap buffer overflow executes arbitrary code</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A heap buffer overflow in PostgreSQL's regexp functions allows a query author to execute arbitrary code as the operating system user running the database, triggered when text that fails encoding validation grows unexpectedly during a round-trip conversion through pg_wchar. This vulnerability shares heritage with CVE-2026-2006. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14664/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-14662 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14662/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/08/13</span>
+
+<h4>PostgreSQL tsvector and tsquery undersize allocations, via integer wraparound</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Integer wraparound in PostgreSQL's tsvector and tsquery functions allows an unprivileged database user to cause the server to undersize an allocation and write out-of-bounds via crafted large inputs, which may execute arbitrary code as the operating system user running the database. These types are typically sourced from application logic rather than directly from end users, which limits practical exposure in most deployments. This is similar to CVE-2026-6473. Versions before PostgreSQL 18.5, 17.11, 16.15, 15.19, and 14.24 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-14662/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6637 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6637/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/06/22</span>
+
+<h4>PostgreSQL refint allows stack buffer overflow and SQL injection</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Stack buffer overflow in PostgreSQL module "refint" allows an unprivileged database user to execute arbitrary code as the operating system user running the database.  A distinct attack is possible if the application declares a user-controlled column as a "refint" cascade primary key and facilitates user-controlled updates to that column.  In that case, a SQL injection allows a primary key update value provider to execute arbitrary SQL as the database user performing the primary key update.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6637/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6479 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6479/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/06/22</span>
+
+<h4>PostgreSQL SSL/GSS init causes denial of service, via uncontrolled recursion</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Uncontrolled recursion in PostgreSQL SSL and GSS negotiation allows an attacker able to connect to a PostgreSQL AF_UNIX socket to achieve sustained denial of service.  If SSL and GSS are both disabled, an attacker can do the same via access to a PostgreSQL TCP socket.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6479/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6477 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6477/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/06/22</span>
+
+<h4>PostgreSQL libpq lo_* functions let server superuser overwrite client stack memory</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Use of inherently dangerous function PQfn(..., result_is_int=0, ...) in PostgreSQL libpq lo_export(), lo_read(), lo_lseek64(), and lo_tell64() functions allows the server superuser to overwrite a client stack buffer with an arbitrarily-large response.  Like gets(), PQfn(..., result_is_int=0, ...) stores arbitrary-length, server-determined data into a buffer of unspecified size.  Because both the \lo_export command in psql and pg_dump call lo_read(), the server superuser can overwrite pg_dump or psql stack memory.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6477/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6476 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6476/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/06/22</span>
+
+<h4>PostgreSQL pg_createsubscriber allows SQL injection via subscription name</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+SQL injection in PostgreSQL pg_createsubscriber allows an attacker with pg_create_subscription rights to execute arbitrary SQL as a superuser.  The attack takes effect when pg_createsubscriber next runs.  Within major versions 17 and 18, minor versions before PostgreSQL 18.4 and 17.10 are affected.  Versions before PostgreSQL 17 are unaffected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6476/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6475 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6475/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/06/22</span>
+
+<h4>PostgreSQL pg_basebackup and pg_rewind can overwrite unrelated files of origin superuser choice</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Symlink following in PostgreSQL pg_basebackup plain format and in pg_rewind allows an origin superuser to overwrite local files, e.g. /var/lib/postgres/.bashrc, that hijack the operating system account.  It will remain the case that starting the server after these commands implicitly trusts the origin superuser, due to features like shared_preload_libraries.  Hence, the attack has practical implications only if one takes relevant action between these commands and server start, like moving the files to a different VM or snapshotting the VM.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6475/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-6473 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6473/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/06/22</span>
+
+<h4>PostgreSQL server undersizes allocations, via integer wraparound</h4>
+<h5> PostgreSQL, EDB Postgres Advanced Server, EDB Postgres Extended Server, WarehousePG, and CloudNativePG</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Integer wraparound in multiple PostgreSQL server features allows an unprivileged database user to cause the server to undersize an allocation and write out-of-bounds.  This may execute arbitrary code as the operating system user running the database.  In applications that pass gigabyte-scale user inputs to the relevant database functions, the application input provider may achieve a segmentation fault.  Versions before PostgreSQL 18.4, 17.10, 16.14, 15.18, and 14.23 are affected.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-6473/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-44477 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-44477/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/05/12</span>
+
+<h4>Metrics exporter allows privilege escalation to PostgreSQL superuser and OS RCE</h4>
+<h5> EDB Cloud Service (formerly BigAnimal), Hybrid Manager (HM), EDB Postgres® AI for CloudNativePG™, EDB Postgres® AI for CloudNativePG™ Cluster, EDB Postgres® AI for CloudNativePG™ Global Cluster</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+The CloudNativePG metrics exporter opens its PostgreSQL connection as the <code>postgres</code> superuser via the pod-local Unix socket, then demotes the session with <code>SET ROLE pg_monitor</code>. <code>SET ROLE</code> changes only <code>current_user</code>; <code>session_user</code> remains <code>postgres</code>.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-44477/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-3172 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-3172/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/03/10</span>
+
+<h4>pgvector buffer overflow in parallel HNSW index build</h4>
+<h5> EDB Postgres Extended Server, EDB Postgres Advanced Server, EDB Cloud Service (formerly BigAnimal), Hybrid Manager (HM), EDB Postgres® AI for CloudNativePG™, WarehousePG, pgvector versions 0.6.0-0.8.1, aidb, pgpu</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+A buffer overflow in the parallel HNSW (Hierarchical Navigable Small World) index build process in the <code>pgvector</code> extension allows an authenticated database user to issue crafted queries that achieve a buffer overrun.
+This can lead to the leaking of sensitive data from other relations or a crash of the database server. The vulnerability is specifically triggered during concurrent index construction when multiple worker processes are utilized.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-3172/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-2007 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2007/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/02/12</span>
+
+<h4>PostgreSQL pg_trgm heap buffer overflow writes pattern onto server memory</h4>
+<h5> Postgresql 18.0 and 18.1, EDB Postgres Extended Server prior to 18.2.0, EDB Postgres Advanced Server prior to 18.2.0</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Heap buffer overflow in PostgreSQL pg_trgm allows a database user to achieve unknown impacts via a crafted input string. Specifically affecting the pg_trgm extension, the vulnerability arises when crafted input causes an overflow, potentially leading to denial of service or privilege escalation.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2007/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-2006 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2006/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/02/12</span>
+
+<h4>PostgreSQL missing validation of multibyte character length executes arbitrary code</h4>
+<h5> All versions of Postgresql prior to 18.2, 17.8, 16.12, 15.16, 14.21, EDB Postgres Extended Server prior to 18.2.0, 17.8.0, 16.12.0, 15.16.0, 14.21.0, EDB Postgres Advanced Server prior to 18.2.0, 17.8.0, 16.12.0, 15.16.0, 14.21.0</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Missing validation of multibyte character length in PostgreSQL text manipulation allows a database user to issue crafted queries that achieve a buffer overrun. This can lead to arbitrary code execution as the operating system user running the database.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2006/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-2005 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2005/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/02/12</span>
+
+<h4>PostgreSQL pgcrypto heap buffer overflow executes arbitrary code</h4>
+<h5> All versions of Postgresql prior to 18.2, 17.8, 16.12, 15.16, 14.21, EDB Postgres Extended Server prior to 18.2.0, 17.8.0, 16.12.0, 15.16.0, 14.21.0, EDB Postgres Advanced Server prior to 18.2.0, 17.8.0, 16.12.0, 15.16.0, 14.21.0</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Heap buffer overflow in PostgreSQL pgcrypto allows a ciphertext provider to execute arbitrary code as the operating system user running the database. Insufficient validation of ciphertext length and structure before copying decrypted data into heap-allocated buffers leads to memory corruption.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2005/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr>
+
+<td>
+
+<details>
+
+<summary>
+
+<h3 style="display:inline"> CVE-2026-2004 </h3>
+
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2004/">Read Assessment</a>
+  Published: </span>
+
+<span>2026/02/12</span>
+
+<h4>PostgreSQL intarray extension selectivity estimator executes arbitrary code</h4>
+<h5> All versions of Postgresql prior to 18.2, 17.8, 16.12, 15.16, 14.21, EDB Postgres Extended Server prior to 18.2.0, 17.8.0, 16.12.0, 15.16.0, 14.21.0, EDB Postgres Advanced Server prior to 18.2.0, 17.8.0, 16.12.0, 15.16.0, 14.21.0</h5>
+
+</summary>
+
+<hr />
+<em>Summary:</em> 
+Improper validation of input types in the PostgreSQL intarray extension allows an object creator to execute arbitrary code as the operating system user running the database server. An authenticated user with object creation privileges can bypass type validation checks in the selectivity estimator function to compromise the underlying host.
+<br />
+<a href="https://www.enterprisedb.com/docs/security/assessments/cve-2026-2004/">Read More...</a>
+
+</details>
+
+</td>
+
+</tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-12819 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-12819/">Read Assessment</a>
+  Updated: </span><span>2025/12/15</span>
+<h4>Arbitrary SQL execution in pgBouncer</h4>
+<h5> All versions of EDB pgBouncer prior to 1.25.1, community and EDB Postgres® AI for CloudNativePG™ versions prior to 1.28.0, 1.27.2, 1.26.3, 1.25.5 and older, EDB Cloud Service versions before the 15th of December 2025 release</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Untrusted search path in auth\_query connection handler in pgBouncer before 1.25.1 allows an unauthenticated attacker to execute arbitrary SQL during authentication via a malicious search\_path parameter in the StartupMessage. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-12819/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-8715 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-8715/">Read Assessment</a>
+  Updated: </span><span>2025/08/14</span>
+<h4>PostgreSQL pg_dump newline in object name executes arbitrary code in psql client and in restore target server</h4>
+<h5> All versions of Postgresql prior to 17.6, 16.10, 15.14, 14.19, 13.22 3.x, EDB Postgres Extended Server prior to 17.6.0, 16.10.0, 15.14.0, 14.19.0, 13.22, EDB Postgres Advanced Server prior to 17.6.0, 16.10.0, 15.14.0, 14.19.0, 13.22</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Improper neutralization of newlines in pg\_dump in PostgreSQL allows a user of the origin server to inject arbitrary code for restore-time execution as the client operating system account running psql to restore the dump, via psql meta-commands inside a purpose-crafted object name. The same attacks can achieve SQL injection as a superuser of the restore target server. pg\_dumpall, pg\_restore, and pg\_upgrade are also affected. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-8715/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-8714 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-8714/">Read Assessment</a>
+  Updated: </span><span>2025/08/14</span>
+<h4>PostgreSQL pg_dump lets superuser of origin server execute arbitrary code in psql client</h4>
+<h5> All versions of Postgresql prior to 17.6, 16.10, 15.14, 14.19, 13.22 3.x, EDB Postgres Extended Server prior to 17.6.0, 16.10.0, 15.14.0, 14.19.0, 13.22, EDB Postgres Advanced Server prior to 17.6.0, 16.10.0, 15.14.0, 14.19.0, 13.22</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Untrusted data inclusion in pg\_dump in PostgreSQL allows a malicious superuser of the origin server to inject arbitrary code for restore-time execution as the client operating system account running psql to restore the dump, via psql meta-commands.
+pg\_dumpall is also affected. pg\_restore is affected when used to generate a plain-format dump. This is similar to MySQL CVE-2024-21096. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-8714/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-46801 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-46801/">Read Assessment</a>
+  Updated: </span><span>2025/07/04</span>
+<h4>Pgpool-II Authentication Bypass</h4>
+<h5> All versions of EDB Pool prior to 4.5.1-4, PGPool-II versions prior to 4.6.1, 4.5.7, 4.4.12, 4.3.15, and 4.2.22</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Pgpool-II contains an authentication bypass vulnerability that can be exploited under certain conditions. If an attacker exploits the vulnerability they may be able to log in to the system as an arbitrary user, which could allow them to read or tamper with data in the database, and/or disable the database. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-46801/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-2291 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-2291/">Read Assessment</a>
+  Updated: </span><span>2025/04/30</span>
+<h4>PgBouncer "VALID UNTIL yesterday"</h4>
+<h5> All versions of PGBouncer prior to 1.24.1, TPA prior to 23.38.0, PGAI Cloud Service prior to May 12, 2025</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+In PgBouncer, the <code>auth\_query</code> mechanism does not consider the <code>VALID UNTIL</code> attribute set in PostgreSQL for user passwords.
+This oversight allows users to authenticate using expired passwords, potentially granting unauthorized access. The flaw was fixed in [PgBouncer 1.24.1](https://www.pgbouncer.org/changelog.html#pgbouncer-124x). <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-2291/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2025-1094 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-1094/">Read Assessment</a>
+  Updated: </span><span>2025/02/15</span>
+<h4>PostgreSQL quoting APIs miss neutralizing quoting syntax in text that fails encoding validation</h4>
+<h5> All versions of PostgreSQL, EPAS and PGE prior to 17.3, 16.7, 15.11, 14.16, and 13.19</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Improper neutralization of quoting syntax in PostgreSQL libpq functions <code>PQescapeLiteral()</code>, <code>PQescapeIdentifier()</code>, <code>PQescapeString()</code>, and <code>PQescapeStringConn()</code> allows a database input provider to achieve SQL injection in certain usage patterns. Specifically, SQL injection requires the application to use the function result to construct input to psql, the PostgreSQL interactive terminal. Similarly, improper neutralization of quoting syntax in PostgreSQL command line utility programs allows a source of command line arguments to achieve SQL injection when client\_encoding is <code>BIG5</code> and server\_encoding is one of <code>EUC\_TW</code> or <code>MULE\_INTERNAL</code>. Versions before PostgreSQL 17.3, 16.7, 15.11, 14.16, and 13.19 are affected. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2025-1094/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2020-10531 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2020-10531/">Read Assessment</a>
+  Updated: </span><span>2024/11/14</span>
+<h4>Integer overflow in ICU doAppend()</h4>
+<h5> All versions of EDB Postgres Advanced Server from 13 through 16</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+The original vulnerability was an integer overflow leading to a heap-based buffer overflow in <code>UnicodeString::doAppend()</code> in ICU (International Components for Unicode) for C/C++ which existed up to (and including) version 66.1. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2020-10531/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2024-7348 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-7348/">Read Assessment</a>
+  Updated: </span><span>2024/08/15</span>
+<h4>PostgreSQL relation replacement during pg_dump executes arbitrary SQL</h4>
+<h5> All versions of PostgreSQL, EPAS and PGE prior to 16.4, 15.8, and 14.13</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Time-of-check Time-of-use (TOCTOU) race condition in pg\_dump in PostgreSQL allows an object creator to execute arbitrary SQL functions as the user running pg\_dump, which is often a superuser. The attack involves replacing another relation type with a view or foreign table. The attack requires waiting for pg\_dump to start, but winning the race condition is trivial if the attacker retains an open transaction. Versions before PostgreSQL 16.4, 15.8, 14.13, 13.16, and 12.20 are affected. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-7348/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2024-4317 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-4317/">Read Assessment</a>
+  Updated: </span><span>2024/05/09</span>
+<h4>Restrict visibility of "pg_stats_ext" and "pg_stats_ext_exprs" entries to the table owner</h4>
+<h5> All versions of PostgreSQL, EPAS and PGE prior to 16.3, 15.7, and 14.12</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Missing authorization in PostgreSQL built-in views pg\_stats\_ext and pg\_stats\_ext\_exprs allows an unprivileged database user to read most common values and other statistics from CREATE STATISTICS commands of other users. The most common values may reveal column values the eavesdropper could not otherwise read or results of functions they cannot execute. Installing an unaffected version only fixes fresh PostgreSQL installations, namely those that are created with the initdb utility after installing that version. Current PostgreSQL installations will remain vulnerable until they follow the instructions in the release notes, which are provided as a convenience in the below section. Within major versions 14-16, minor versions before PostgreSQL 16.3, 15.7, and 14.12 are affected. Versions before PostgreSQL 14 are unaffected. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-4317/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2024-1597 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-1597/">Read Assessment</a>
+  Updated: </span><span>2024/03/08</span>
+<h4>SQL Injection via line comment generation</h4>
+<h5> pgJDBC all versions prior to 42.7.2, 42.6.1, 42.5.5, 42.4.4, 42.3.9, and 42.2.28 and EDB pgJDBC all versions prior to 42.5.5</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+pgjdbc, the PostgreSQL JDBC Driver, allows attacker to inject SQL if using PreferQueryMode=SIMPLE. Note this is not the default. In the default mode there is no vulnerability. A placeholder for a numeric value must be immediately preceded by a minus. There must be a second placeholder for a string value after the first placeholder; both must be on the same line. By constructing a matching string payload, the attacker can inject SQL to alter the query,bypassing the protections that parameterized queries bring against SQL Injection attacks. Versions before 42.7.2, 42.6.1, 42.5.5, 42.4.4, 42.3.9, and 42.2.28 are affected. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-1597/">Read More...</a>
+
+</details></td></tr>
+
+<tr><td>
+
+<details><summary><h3 style="display:inline"> CVE-2024-0985 </h3>
+<span>
+  <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-0985/">Read Assessment</a>
+  Updated: </span><span>2025/01/31</span>
+<h4>PostgreSQL non-owner REFRESH MATERIALIZED VIEW CONCURRENTLY executes arbitrary SQL</h4>
+<h5> PostgreSQL, EPAS all versions prior to 15.6.0,14.11.0,13.14.20 and 12.18.23, PGE all versions prior to 15.6.0</h5>
+
+</summary>
+<hr />
+<em>Summary:</em>
+
+ 
+Late privilege drop in REFRESH MATERIALIZED VIEW CONCURRENTLY in PostgreSQL allows an object creator to execute arbitrary SQL functions as the command issuer. The command intends to run SQL functions as the owner of the materialized view, enabling safe refresh of untrusted materialized views. The victim is a superuser or member of one of the attacker's roles. The attack requires luring the victim into running REFRESH MATERIALIZED VIEW CONCURRENTLY on the attacker's materialized view. As part of exploiting this vulnerability, the attacker creates functions that use CREATE RULE to convert the internally-built temporary table to a view. Versions before PostgreSQL 15.6, 14.11, 13.14, and 12.18 are affected. The only known exploit does not work in PostgreSQL 16 and later. For defense in depth, PostgreSQL 16.2 adds the protections that older branches are using to fix their vulnerability. <br /> <a href="https://www.enterprisedb.com/docs/security/assessments/cve-2024-0985/">Read More...</a>
+
+</details></td></tr>
+
+</table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

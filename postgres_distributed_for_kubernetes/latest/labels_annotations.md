@@ -1,0 +1,147 @@
+---
+title: Predefined labels
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 2.2.0
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/labels_annotations/
+lastModified: 2026-10-16T11:56:27-07:00
+---
+
+# Predefined labels
+
+These predefined labels are managed by the EDB Postgres Distributed for
+Kubernetes operator.
+
+- **`k8s.pgd.enterprisedb.io/certificateType`**
+
+  Indicates the type of the certificates. `replication` indicates a certificate
+  to be used to authenticate the replication client. `server` indicates a
+  certificate to be used for server authentication.
+- **`k8s.pgd.enterprisedb.io/group`**
+
+  Name of the PGDGroup that the resource belongs to. Added to cluster or
+  instance resources.
+- **`k8s.pgd.enterprisedb.io/isWitnessService`**
+
+  Indicates a service is for a witness node.
+- **`k8s.pgd.enterprisedb.io/nodeRoutable`**
+
+  Indicates that the readiness probe of this node monitors the Connection Manager.
+  Nodes that don't carry the label, or that carry it with the value `false`, aren't
+  included in the group's `proxy` and `proxy-r` services, and their readiness probe
+  monitors only the PostgreSQL server. The label is added when a new node joins the
+  cluster, and on existing nodes after upgrading the operator from a version before
+  2.1.0. A parting node carries `false`. The `disableConnMgrReadinessProbe` annotation
+  on the PGDGroup disables readiness probe management for the Connection Manager and for
+  the proxy services of the group. The operator writes this label; it's not meant to be
+  set by hand.
+- **`k8s.pgd.enterprisedb.io/parentGroupUUID`**
+
+  Added to node and instance pods to show the UUID of the global PGD group, used to
+  group the PGD clusters in different regions.
+- **`k8s.pgd.enterprisedb.io/type`**
+
+  Type of the resource added to cluster or instance resources, usually `node`.
+- **`k8s.pgd.enterprisedb.io/workloadType`**
+
+  Indicates the workload type of the resource added to cluster or instance
+  resources. `pgd-node-data` indicates data node; `pgd-node-witness` a witness
+  node;
+  `proxy-svc` for PGD Proxy service; `group-svc` for PGD group service to
+  communicate with any node in the PGDGroup;
+  `node-svc` is a service created from the CNP service template;
+  `scheduled-backup` is added to `scheduledBackup`
+  resources; `bootstrap-cross-location-pgd-group` is added to the pod that
+  creates a cross-location PGD group;
+  `pgd-node-restore` is added to the pod that starts the node restore process.
+
+## Predefined annotations
+
+- **`k8s.pgd.enterprisedb.io/dirtyMetadata`**
+
+  Set in a CNP cluster that has been generated from a backup and needs to have
+  its metadata cleaned up
+  before creating the PGD node. This is written by the restore job.
+- **`k8s.pgd.enterprisedb.io/disableConnMgrReadinessProbe`**
+
+  Set to `true` in the PGDGroup to prevent the readiness probe of its data nodes from
+  monitoring the Connection Manager, reverting to the operator behavior of versions
+  before 2.1.0. The data node pods are recreated once, node by node, when this
+  annotation is set or removed.
+- **`k8s.pgd.enterprisedb.io/hash`**
+
+  Holds the hash of a certain part of PGDGroup spec that's utilized in various entities
+  like `Cluster`, `ScheduledBackup`, `StatefulSet`, and `Service (node, group and proxy service)`
+  to determine if any updates are required for the corresponding resources.
+- **`k8s.pgd.enterprisedb.io/unsafeIgnoreRaftCheck`**
+
+  Set to `true` on a PGDGroup to let the operator restart nodes while the raft has
+  no spare member. It permits a restart with no quorum margin, so it's a last resort:
+  remove it as soon as the group is healthy. See
+  [Restart held, raft has no spare member](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/trouble_shooting/#restart-held-raft-has-no-spare-member)
+  for the recovery options to try first.
+- **`k8s.pgd.enterprisedb.io/latestCleanupExecuted`**
+
+  Set in the PGDGroup to indicate that the cleanup was executed.
+- **`k8s.pgd.enterprisedb.io/evictionAdmitted`**
+
+  Set to `"true"` by the operator on the `<group>-eviction` Lease when the hand-off
+  of the leaderships of the evicted pod ended, complete or not, and its eviction is
+  admitted. Absent while the hand-off runs. See
+  [Eviction held, drain retrying](https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/latest/trouble_shooting/#eviction-held-drain-retrying).
+- **`k8s.pgd.enterprisedb.io/evictionNotice`**
+
+  Set by the operator on the `<group>-eviction` Lease with `evictionAdmitted`: the
+  warning the retries of the admitted eviction get, for example after a hand-off
+  that left leaderships partly transferred. Empty when the admission has no warning.
+- **`k8s.pgd.enterprisedb.io/evictionPodUID`**
+
+  Set by the operator on the `<group>-eviction` Lease: the UID of the pod whose
+  eviction holds the Lease. Once no pod with that UID exists, or when the annotation
+  is missing, the Lease no longer holds the group and the next eviction takes it over.
+- **`k8s.pgd.enterprisedb.io/node`**
+
+  Contains the name of the node for which a certain certificate was
+  generated. Added to the certificate resources.
+- **`k8s.pgd.enterprisedb.io/nodeRestartHash`**
+
+  Stores the hash of the CNP configuration in PGDGroup. A restart is needed when the configuration
+  is changed.
+- **`k8s.pgd.enterprisedb.io/noFinalizers`**
+
+  Set in the PGDGroup with value `true` to skip the finalizer execution.
+  For internal use only.
+- **`k8s.pgd.enterprisedb.io/pause`**
+
+  Set in the PGDGroup to pause a PGDGroup.
+- **`k8s.pgd.enterprisedb.io/part`**
+
+  Set in the PGDGroup with value `on` to part all the nodes in the PGDGroup. Once all nodes
+  are parted, each CNP Cluster is annotated with value `parted`. This annotation is irreversible
+  and blocks spec changes on the PGDGroup.
+- **`k8s.pgd.enterprisedb.io/recoverabilityPointsByMethod`**
+
+  Set in the PGDGroup to store the CNP cluster's first recoverability points by
+  method in a tamper-proof place.
+- **`k8s.pgd.enterprisedb.io/reconciliationLoop`**
+
+  Set in the PGDGroup with `disabled` to temporarily disable the reconciliation from the operator.
+- **`k8s.pgd.enterprisedb.io/remoteTarget`**
+
+  Set in the PGDGroup during remote join by the bootstrap job, to indicate the remote node to physically join.
+- **`k8s.pgd.enterprisedb.io/seedingServer`**
+
+  Set in the PGDGroup to indicate to the operator which server to
+  restore. This is written by the restore job.
+- **`k8s.pgd.enterprisedb.io/seedingSnapshots`**
+
+  Set in the PGDGroup to indicate to the operator which snapshots to
+  restore. This is written by the restore job.
+- **`k8s.pgd.enterprisedb.io/useBarmanCloudPlugin`**
+
+  Set in the PGDGroup with value `true` to instruct the operator to enable the barman-cloud plugin.
+  Once the plugin is enabled, a new sidecar container will be created for the instance pod.
+  The sidecar container will manage the barman base backup and WAL archiving, rather than the PostgreSQL
+  container. Keep in mind that the barman-cloud plugin must be installed in the PG4K operator
+  namespace beforehand, and a restart of instance pod is required for these changes to take effect.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

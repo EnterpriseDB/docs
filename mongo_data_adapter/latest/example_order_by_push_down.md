@@ -1,0 +1,94 @@
+---
+title: "Example: ORDER BY pushdown"
+product: Mongo Foreign Data Wrapper
+version: "5"
+url: https://www.enterprisedb.com/docs/mongo_data_adapter/latest/example_order_by_push_down/
+lastModified: 2023-07-17T13:51:45-04:00
+---
+
+# Example: ORDER BY pushdown
+
+This example shows ORDER BY pushdown on the EMP table.
+
+Postgres data set:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION mongo_fdw;
+
+-- create server object
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address 'localhost', port '27017');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mongo_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (_id NAME, eid INTEGER, ename TEXT, deptid INTEGER) SERVER mongo_server OPTIONS (database 'edb', collection 'emp');
+
+-- insert into table
+INSERT INTO emp VALUES (0, 100, 'John', 10);
+INSERT INTO emp VALUES (0, 110, 'Mark', 10);
+INSERT INTO emp VALUES (0, 120, 'Smith', 20);
+INSERT INTO emp VALUES (0, 130, 'Ed', 30);
+```
+
+```sql
+edb=# SELECT eid, sum(eid), count(*) FROM emp GROUP BY eid HAVING min(eid) > 100 ORDER
+edb-# BY eid ASC NULLS FIRST;
+ eid | sum | count 
+-----+-----+-------
+ 110 | 110 |     1
+ 120 | 120 |     1
+ 130 | 130 |     1
+ 140 | 140 |     1
+(4 rows)
+```
+
+Enable/disable GUC for ORDER BY pushdown queries at the session level, table level, or  server level:
+
+```sql
+-- Session level
+edb=# SET mongo_fdw.enable_order_by_pushdown to true;
+SET
+-- Table level
+edb=# ALTER FOREIGN TABLE emp OPTIONS (ADD enable_order_by_pushdown 'true');
+Table altered
+-- Server level
+edb=# ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'true');
+altered
+```
+
+Query with ORDER BY pushdown:
+
+```sql
+edb=# EXPLAIN (VERBOSE, COSTS FALSE)
+edb-# SELECT eid, sum(eid), count(*) FROM emp GROUP BY eid HAVING min(eid) > 100 ORDER
+edb-# BY eid ASC NULLS FIRST;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Foreign Scan
+   Output: eid, (sum(eid)), (count(*))
+   Foreign Namespace: Aggregate on ("FDW_134".emp)
+(3 rows)
+
+edb=# 
+edb=# SELECT deptid, min(eid) FROM emp WHERE deptid > 20 GROUP BY deptid HAVING min(deptid) = 
+edb-# 30 ORDER BY deptid ASC NULLS FIRST;
+ deptid | min 
+--------+-----
+     30 | 120
+(1 row)
+
+edb=# 
+edb=# EXPLAIN (VERBOSE, COSTS FALSE)
+edb-# SELECT deptid, min(eid) FROM emp WHERE deptid > 20 GROUP BY deptid HAVING min(deptid) = 
+edb-# 30 ORDER BY deptid ASC NULLS FIRST;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Foreign Scan
+   Output: deptid, (min(eid))
+   Foreign Namespace: Aggregate on ("FDW_134".emp)
+(3 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

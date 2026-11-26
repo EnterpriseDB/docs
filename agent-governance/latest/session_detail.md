@@ -1,0 +1,90 @@
+---
+title: Inspecting a session
+description: Inspect a single AI agent session step by step, including the governance decision and SQL for each step, in EDB Agent Governance.
+product: EDB Agent Governance
+version: "1"
+url: https://www.enterprisedb.com/docs/agent-governance/latest/session_detail/
+lastModified: 2026-11-04T13:59:00+05:30
+---
+
+# Inspecting a session
+
+Use the session page to see what an agent did in one session, connection, conversation, or trace, step by step. Open it by selecting an identifier on the [Activity](https://www.enterprisedb.com/docs/agent-governance/latest/sessions_list/) page or in Recent Activity on the [Dashboard](https://www.enterprisedb.com/docs/agent-governance/latest/dashboard/). The breadcrumb shows Governance › Activity › followed by the identifier; select Activity to go back to the list.
+
+The page has a context card at the top and two tabs: Reconstruction and Participating Agents.
+
+## Reading the context card
+
+Read the context card to see where the activity came from.
+
+| Source                             | Fields                                                                                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `aidb` database                    | The identifier, Started, User Context, Resolved From, OBO Principal, Duration, Declared Purpose, and Database.  |
+| Hybrid Manager (HM) or Loki source | Session ID, Started, Database Role, Declared Purpose, Database, PostgreSQL Connection ID, and Application Name. |
+
+## Stepping through the reconstruction
+
+Use the Reconstruction tab to inspect the session. The Actions list is on the left, and the selected action's details are on the right.
+
+Use Search actions to find an action. Select Filter actions to narrow the list by date, agent, or decision. Available filters depend on the recorded data.
+
+### Reading the action list for an aidb database
+
+Review the governed steps, which are the steps `aidb` recorded a governance decision for. The list shows only these steps, with a count such as "4 governed steps of 37 spans". Each step shows:
+
+- Its verdict: Approved, Denied, or Escalated
+- The reason
+- The time
+
+Use Search steps... to find a step, and the Approved, Escalated, and Denied chips to show or hide steps by verdict. Long sessions load in pages. Select Load more steps to read further.
+
+### Reading the action list for an HM or Loki source
+
+Review the list of every SQL statement the agent executed. Use Filter actions to filter by the Recorded, Error, and Denied chips to show or hide statements by outcome.
+
+### Reading action details
+
+Select a step to open Step Details, which shows the step's name, start time, end time, and duration. Fields below appear only when the source records them, grouped as follows.
+
+**SQL Query**
+
+The SQL recorded for the step. Select Copy query to copy it.
+
+- For an `aidb` database, this is the Drafted SQL the agent submitted with the step, whatever the decision — a recorded query doesn't mean it was allowed or executed.
+- For an HM or Loki source, this is the SQL statement that actually ran.
+
+**Governance Context**
+
+The decision, reason, purpose, and role behind the step.
+
+- Decision: Allowed, Denied, or Escalated, and when it was made.
+- For a denied or escalated step: Denial Reason, OBO Principal, and Role.
+- For an `aidb` database running 7.9.0 or later:
+  - Denial Message — the PostgreSQL error message, shown when PostgreSQL itself refused the statement for lack of privileges. A statement that governance blocked before it reached the database has no Denial Message, because there was no database error.
+  - Referenced Database Objects — the tables, views, and other objects the statement named. The list can be cut short (the page says how many names were left out), and it doesn't single out the object a denial was about, so it isn't a complete access audit.
+  - Neither field is shown on older `aidb` versions.
+- For an HM or Loki source: the Postgres Message, Detail, Database Role, and Declared Purpose.
+
+**Trace Diagnostics**
+
+Identifiers and execution metadata for the step.
+
+- Execution Stats: Duration, Busy Time, and Idle Time.
+- Decision ID — use it to correlate the step with the same decision in `aidb`, or with Find by decision id on the Activity page.
+- For an `aidb` database running 7.9.0 or later: Interaction Point, Denial Class, SQLSTATE, Span ID, and Trace ID. Denial Class and SQLSTATE appear only when PostgreSQL itself refused the statement; a statement governance blocked before it reached the database has neither. On older `aidb` versions, none of these fields are shown.
+- For an HM or Loki source: SQLSTATE, PostgreSQL Connection ID, PostgreSQL PID, Query ID, Database, Application Name, and Severity.
+
+## Reviewing participating agents
+
+Open the Participating Agents tab to see the agents that took part.
+
+- For an `aidb` database, review each agent's steps, decisions, and when it was first and last seen. The list shows ten agents per page.
+- For an HM or Loki source, review each agent's purpose and steps. Use Search by agent or purpose to filter the list.
+
+## Troubleshooting a session that doesn't load
+
+Select Retry if the session can't be read. The page shows Failed to load session, or one of the connection messages described in [Troubleshooting](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/#troubleshooting) on the Connecting an aidb database page, with a Retry button. If some stored records can't be decoded, the step list says how many were skipped.
+
+Check your retention settings if steps are missing from an `aidb` session. Retention can remove steps from a session over time. See [Handling retention and missing data](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/#handling-retention-and-missing-data).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

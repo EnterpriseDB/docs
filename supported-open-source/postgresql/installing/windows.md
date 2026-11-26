@@ -1,0 +1,135 @@
+---
+title: Installing PostgreSQL on Windows
+product: PostgreSQL
+url: https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/windows/
+lastModified: 2025-02-14T12:46:47-05:00
+---
+
+# Installing PostgreSQL on Windows
+
+You can use the graphical installation wizard to install PostgreSQL on Windows.
+
+When the PostgreSQL installation finishes, you can optionally invoke the Stack Builder package manager. Stack Builder provides a graphical interface for downloading and installing applications, drivers, utilities, and their dependencies. See [Using Stack Builder](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/using_stackbuilder/) for more information.
+
+For information about preparing to use command-line tools after installation, see [Command-line tools](#command-line-tools).
+
+## Downloading PostgreSQL
+
+To download PostgreSQL installers, see the [EDB downloads page](https://www.enterprisedb.com/downloads/postgresql).
+
+Rather than use the EDB installer, you can also obtain a prebuilt installation package and instructions directly from the [PostgreSQL downloads page](https://www.postgresql.org/download/).
+
+## Installing PostgreSQL
+
+To perform an installation using the graphical installation wizard, you need superuser or administrator privileges.
+
+> **Note: Notes**
+>
+> - EDB doesn't support all non-ASCII, multi-byte characters in user or machine names. Use ASCII characters only to avoid installation errors related to unsupported path names.
+> - If you're using the graphical installation wizard to perform a system upgrade, the installer preserves the configuration options specified during the previous installation.
+
+1. To start the installation wizard, assume sufficient privileges, and double-click the installer icon. If prompted, provide a password. (In some versions of Windows, to invoke the installer with administrator privileges, you must select **Run as Administrator** from the installer icon's context menu.)
+
+   The PostgreSQL setup wizard opens to the Welcome screen.
+
+   ![The PostgreSQL setup wizard welcome screen](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/welcome.png)
+
+2. Select **Next**.
+
+   The Installation Directory window opens.
+
+   ![The Installation Directory window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/installation_directory.png)
+
+3. Accept the default installation directory, or specify a location. Select **Next**.
+
+   The Select Components window opens.
+
+   ![Select Components](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/select_components.png)
+
+4. Use options on the Select Components window to choose the software components to install. Select:
+
+   - **PostgreSQL Server** to install the PostgreSQL database server.
+   - **pgAdmin 4** to install pgAdmin 4. This option is available for PostgreSQL version 13.0 and later.
+   - **Stack Builder** to install the Stack Builder utility. For more information, see [Using Stack Builder](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/using_stackbuilder/).
+   - **Command Line Tools** to install PostgreSQL tools such as `psql`, `pg_isready`, `pgbench`, `clusterdb`, `createdb`, `dropdb`, `createuser`, `dropuser`, `pg_basebackup`, `pg_dump`, `pg_dumpall`, `pg_restore`, `reindexdb`, `vacuumdb`, and `vacuumlo`. This isn't a comprehensive list, and the command-line tools installed can vary by platform.
+
+   Select **Next**.
+
+   The Data Directory window opens.
+
+   ![The Data Directory window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/data_directory.png)
+
+5. Accept the default location, or specify the directory where you want to store data files. Select **Next**.
+
+   The Password window opens.
+
+   ![The Password window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/password.png)
+
+   PostgreSQL uses the password specified on the Password window for both the database superuser and the PostgreSQL service account.
+
+   PostgreSQL runs as a service in the background. The PostgreSQL service account is named `postgres`. If you already created a service account with the name `postgres`, you must specify the same password as the existing password for the `postgres` service account.
+
+   The specified password must conform to any security policies on the PostgreSQL host.
+
+6. Enter a password in the **Password** field, and confirm the password in the **Retype Password** field. Select **Next**.
+
+   The Port window opens.
+
+   ![The Port window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/the_port_dialog.png)
+
+7. In the **Port** field, enter the port number the server listens on. The default listener port is `5432`. Select **Next**.
+
+   The Advanced Options window opens.
+
+   ![The Advanced Options window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/aug11_ad.png)
+
+8. In the **Locale** field, select the locale to use for the new database cluster from the list. The list shows you all the available locales. **Default locale** is the operating system locale. Select **Next**.
+
+   The locale names may contain the non-ASCII characters that are converted to BCP 47 local name by the installer before being passed on to initdb. The conversion of local names prevents the failure of initdb due to non-ASCII characters.
+
+   The Pre Installation Summary window opens. It displays the installation preferences that you specified with the installation wizard.
+
+   ![The Pre Installation Summary window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/preinstallation.png)
+
+9. Review the settings. If necessary, select **Back** to return to a previous dialog box to modify a setting. When you're satisfied with the settings summary, select **Next**.
+
+   The wizard informs you that it has the information required to install PostgreSQL.
+
+   ![The Ready to Install dialog box](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/ready_to_install.png)
+
+10. Select **Next**.
+
+    During the installation, the setup wizard confirms the installation progress of PostgreSQL using a series of progress bars.
+
+    ![The Installing dialog box](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/installing.png)
+
+    Before the setup wizard completes the PostgreSQL installation, it offers to launch Stack Builder at exit. The Stack Builder utility provides a graphical interface that downloads and installs applications and drivers that work with PostgreSQL.
+
+    ![The installation wizard offers to Launch Stack Builder at exit](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/supported-open-source/postgresql/installing/images/installation_complete.png)
+
+11. Leave the check box selected and select **Finish** to launch Stack Builder. Alternatively, clear the **Stack Builder** check box and select **Finish** to complete the PostgreSQL installation without launching Stack Builder.
+
+## Command-line tools
+
+By default, the installer doesn't modify the system path. If you want to use command-line tools like `psql`, you can add PostgreSQL to the path after installation.
+
+> **Note**
+>
+> For information about the PostgreSQL interactive terminal `psql`, see the [Postgres guide](http://postgresguide.com/utilities/psql.html).
+
+To add PostgreSQL to the path:
+
+1. Open the System Properties control panel and select the **Advanced** tab. Alternatively, run `SystemPropertiesAdvanced.exe`.
+2. Select **Environment Variables** to open the environment variables editor.
+3. Select the `Path` variable under **System variables**, and select **Edit**.
+4. Add the path that you specified as the installation directory during installation, appended with `\bin`. By default, the value is `c:\program files\postgresql\15\bin`, where `15` is the version of PostgreSQL that you installed.
+
+To test your installation, open a new command prompt and run:
+
+```shell
+psql -U postgres
+```
+
+You're prompted for the password you provided during installation.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

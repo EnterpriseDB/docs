@@ -1,0 +1,197 @@
+---
+title: Restrictions on replicated database objects
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/02_overview/04_design_replication_system/03_restrictions_on_replicated_database_objects/
+lastModified: 2026-11-23T13:19:05+01:00
+---
+
+# Restrictions on replicated database objects
+
+<div id="restrictions_on_replicated_database_objects" class="registered_link"></div>
+
+When you create a subscription in a single-master replication system, the table definitions and most database objects and attributes associated with the publication tables are created in the subscription database by the subscription server.
+
+If you choose, the same process can automatically occur when a primary node is added to a multi-master replication system. You can create the table definitions and most database objects and attributes associated with the publication tables in the newly added primary node by the publication server.
+
+The following is a list of database objects and table attributes that are replicated from the publication in either a single-master or multi-master replication system.
+
+- Tables
+- Views (for snapshot-only publications) created as tables in the subscription database
+- Materialized Views (for Oracle snapshot-only publications) created as tables in the subscription database
+- Primary keys
+- Not null constraints
+- Unique constraints
+- Check constraints
+- Indexes
+
+> **Note**
+>
+> Foreign key constraints aren't replicated by the publication or subscription server in a single-master replication system. However, in a multi-master replication system, foreign key constraints are replicated from the primary definition node to other primary nodes.
+
+> **Note**
+>
+> Sequences (database objects created by the `CREATE SEQUENCE` statement) aren't replicated from the publication database to the subscription databases in a single-master replication system. Sequences also aren't replicated from the primary definition node to other primary nodes in a multi-master replication system.
+
+Replication Server does have some restrictions on the types of tables it can replicate.
+
+## Restrictions on Oracle database objects
+
+The following are the restrictions on Oracle database objects:
+
+- You can replicate certain types of Oracle partitioned tables. See [Replicating Oracle partitioned tables](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/03_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/04_replicate_oracle_partitioned_tables/#replicate_oracle_partitioned_tables) for details.
+
+- You can't replicate Oracle global temporary tables.
+
+- You can use Oracle tables with the `RAW` data type in snapshot-only publications but not in synchronization replications.
+
+- You can include Oracle materialized views in snapshot-only publications but not in synchronization replications.
+
+- You can't replicate Oracle tables that include the following data types:
+  - `BFILE`
+  - `BINARY_DOUBLE`
+  - `BINARY_FLOAT`
+  - `MLSLABEL`
+  - `LONG`
+  - `LONG RAW`
+
+- Replication Server 7.0 provides support for LOB column streaming from Oracle to PostgreSQL/EDB Postgres Advanced Server. However, if the corresponding Oracle source column is nullable, the LOB column on the target database must also be nullable. The previous version of Replication Server didn't stream the LOB columns. Rows of tables containing LOB columns were replicated during streaming, but LOB columns contained NULL. This limitation was removed.
+
+> **Note**
+>
+> If you upgrade an existing Replication Server 6.x deployment to 7.0 and the published tables contain LOB columns, you must replublish all the tables with LOB columns to avoid data inconsistency.
+
+- Oracle provides different methods to insert and update LOB columns. Replication Server supports LOB streaming only if LOB columns are inserted, updated, and deleted using `INSERT`, `UPDATE`, and `DELETE` statements.
+
+- If you use the command line SQL\*Plus tool, the maximum LOB size that you can insert or update is 4K. You can use Java program to insert large values, but you must use an `INSERT` or `UPDATE` statement.
+
+- If JDBC LOB APIs (provided by `java.sql.Clob` or `java.sql.Blob` classes) are used, triggers won't activate, and hence streaming for LOB columns won't work.
+
+- Similarly, if you use functions and procedures provided by the `DBMS_LOB` package, triggers won't activate, and streaming for LOB columns won't work.
+
+- During synchronization, Replication Server doesn't stream Oracle `CLOB`, `NCLOB`, or `BLOB` columns that use a custom column mapping to a text-based type. Instead, it reads each value into memory, so use these mappings only for columns that store small, structured content. See [Sizing LOB columns that use custom type mappings](https://www.enterprisedb.com/docs/eprs/latest/05_smr_operation/08_optimizing_performance/02_optimize_sync_replication/using_bacth_lob/#sizing-lob-columns-that-use-custom-type-mappings).
+
+## Restrictions on SQL Server database objects
+
+You can't replicate SQL Server tables that include the following data types:
+
+- `GEOGRAPHY`
+- `GEOMETRY`
+- `SQL_VARIANT`
+
+> **Note**
+>
+> See [Replicating the SQL Server SQL\_VARIANT data type](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/03_miscellaneous_xdb_processing_topics/06_replicating_sql_server_sql_variant_data_type/#replicating_sql_server_sql_variant_data_type) for a method to replicate tables containing the `SQL_VARIANT` data type under certain conditions.
+
+You can use SQL Server tables with the following data types in snapshot-only publications but not in synchronization replications:
+
+- `BINARY`
+- `IMAGE`
+- `NTEXT`
+- `NVARCHAR(max)`
+- `TEXT`
+- `TIMESTAMP`
+- `VARBINARY`
+- `VARBINARY(max)`
+
+## Restrictions on Postgres database objects
+
+For replicating Postgres partitioned tables, see [Replicating Postgres partitioned tables](https://www.enterprisedb.com/docs/eprs/latest/07_common_operations/10_replicating_postgres_partitioned_tables/#replicating_postgres_partitioned_tables) for details. You can't replicate Postgres tables with the following data types in a column that's part of the identity columns:
+
+- `BLOB`
+- `BYTEA`
+- `RAW`
+
+This restriction applies to primary key or unique columns. See [Design considerations](https://www.enterprisedb.com/docs/eprs/latest/02_overview/04_design_replication_system/02_design_considerations/#design_considerations).
+
+You can't replicate PostgreSQL or EDB Postgres Advanced Server database tables to the Oracle database that include the following data type:
+
+- `JSONB`
+- Geometry data types
+- `tsvector`, `tsquery`, `txid_snapshot`, `pg_lsn`
+- `cidr`, `inet`, `mcaddress`, `mcaddress8`, `uuid`, `money`
+- `ENUM`, `ARRAY`, range data types (such as `int4range`, `tstzrange`, `numrange`, `daterange`)
+- Any user-defined data type (that is, defined as `CREATE TYPE type_name`)
+
+You can't replicate Postgres tables that include `OID`-based large objects. For information on `OID`-based large objects, see `pg_largeobject` in the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/static/catalog-pg-largeobject.html).
+
+You can't replicate Postgres tables to an Oracle subscription database that include any geometric data types such as `POINT` and `POLYGON`.
+
+You can't replicate Postgres tables to a SQL Server subscription database that include the following data types:
+
+- `ABSTIME`
+- `ACLITEM`
+- `CHKPASS`
+- Geometric data types (such as `LINE`, `PATH`, `POLYGON`)
+- `CIRCLE`
+- `CUBE`
+- `JSON`
+- `JSONB`
+- `ROWID`
+- `tsvector`, `tsquery`, `txid_snapshot`, `pg_lsn`
+- `SEG`
+- `Any ARRAY` data type (that is, defined as `data_type[]`)
+- `ENUM`, composite type, range data types (such as `int4range`, `tstzrange`, `numrange`, `daterange`), `mcaddress8`
+- Any user-defined data type (that is, defined as `CREATE TYPE <type_name>`)
+
+## Restrictions on range data types
+
+Postgres data types called range types were first supported in PostgreSQL version 9.2 and EDB Postgres Advanced Server version 9.2. Built-in range types refer to the following built-in data types: `int4range`, `int8range`, `numrange`, `tsrange`, `tstzrange`, and `daterange`.
+
+You can include Postgres tables containing the built-in range types in the publication of a single-master or multi-master replication system. However, this results in the following restrictions on the subscription databases of a single-master replication system or the additional primary nodes of a multi-master replication system:
+
+- If a publication table of a single-master replication system contains any built-in range types, then a you can add a database as a subscription database only if the database server of the intended subscription database is Postgres version 9.2 or later.
+- If a publication table of the primary definition node in a multi-master replication system contains any built-in range types, then you can add a database as a primary node only if the database server of this intended primary node is Postgres version 9.2 or later.
+
+Custom range types constructed with the `CREATE TYPE AS RANGE` command aren't supported in Replication Server.
+
+## Limitations during re-snapshot for views
+
+As part of the re-snapshot process, Replication Server drops constraints from the tables included in the snapshot using the `CASCADE` option.  As a result, any objects, such as views in certain use cases, are also dropped.  The following example illustrates a situation with a view that contains a `GROUP BY` clause that depends on the constraints in the underlying table where if the `CASCADE` option were not used, the constraints could not be dropped for the snapshot operation.
+
+```sql
+CREATE TABLE t_place_type
+(
+  id serial NOT NULL,
+  c_name character varying(100),
+  CONSTRAINT pk_t_place_type PRIMARY KEY (id)
+);
+
+CREATE TABLE t_place
+(
+  id serial NOT NULL,
+  c_name character varying(50),
+  id_place_type integer,
+  CONSTRAINT pk_t_place PRIMARY KEY (id),
+  CONSTRAINT fk_t_place_t_place_type FOREIGN KEY (id_place_type)
+      REFERENCES t_place_type (id) MATCH SIMPLE
+      ON UPDATE NO ACTION ON DELETE NO ACTION
+);
+
+CREATE OR REPLACE VIEW v_place AS 
+ SELECT p.id,
+    p.c_name,
+    pt.c_name AS c_place_type
+   FROM t_place p
+     LEFT JOIN t_place_type pt ON pt.id = p.id_place_type
+  GROUP BY p.id, pt.id, p.c_name;
+
+ALTER TABLE t_place DROP CONSTRAINT fk_t_place_t_place_type;
+ALTER TABLE t_place DROP CONSTRAINT pk_t_place;
+ALTER TABLE t_place_type DROP CONSTRAINT pk_t_place_type;
+
+ERROR:  cannot drop constraint pk_t_place_type on table t_place_type because other objects depend on it
+DETAIL:  view v_place depends on constraint pk_t_place_type on table t_place_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+```
+
+Since Replication Server drops the constraints using the `CASCADE` option, the above error would not occur; however, the result of using this option means that the view will also be dropped.
+
+> **Important**
+>
+> When replicating to a target PGD instance, source `ALTER TABLE` statements aren't replicated due to a documented PGD limitation.
+> For example, if you use the `ALTER TABLE` command to change a column's type, this operation isn't replicated if the command causes the whole table to be rewritten.
+>
+> For more details, see the [PGD ALTER TABLE documentation](https://www.enterprisedb.com/docs/pgd/latest/advanced-functionality/ddl/ddl-command-handling/#alter-table).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

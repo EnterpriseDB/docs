@@ -1,0 +1,260 @@
+---
+title: Security
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/security/
+lastModified: 2026-09-16T09:00:14-07:00
+---
+
+# Security
+
+Security for EDB Postgres® AI for CloudNativePG™ Global Cluster (CNPG-GC) is
+analyzed at three layers: code, container, and cluster.
+
+> **Warning**
+>
+> In addition to security practices described here, you must
+> perform regular InfoSec duties on your Kubernetes cluster.
+> Familiarize yourself with [Overview of Cloud Native Security](https://kubernetes.io/docs/concepts/security/overview/)
+> in the Kubernetes documentation.
+
+> **Tip: About the 4C's Security Model**
+>
+> See [The 4C's Security Model in Kubernetes](https://www.enterprisedb.com/blog/4cs-security-model-kubernetes)
+> blog article for a better understanding and context of the approach EDB
+> takes with security in CNPG-GC.
+
+## Code
+
+CNPG-GC' source code undergoes systematic static analysis, including
+checks for security vulnerabilities, using the popular open-source linter for
+Go, [GolangCI-Lint](https://github.com/golangci/golangci-lint), directly
+integrated into the CI/CD pipeline. GolangCI-Lint can run multiple linters on
+the same source code.
+
+The following tools are used to identify security issues:
+
+- **[Golang Security Checker](https://github.com/securego/gosec) (`gosec`):** A
+  linter that scans the abstract syntax tree of the source code against a set
+  of rules designed to detect known vulnerabilities, threats, and weaknesses,
+  such as hard-coded credentials, integer overflows, and SQL injections.
+  GolangCI-Lint runs `gosec` as part of its suite.
+
+- **[govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck):** This
+  tool runs in the CI/CD pipeline and reports known vulnerabilities affecting
+  Go code or the compiler. If the operator is built with a version of the Go
+  compiler containing a known vulnerability, `govulncheck` will detect it.
+
+- **[Snyk](https://snyk.io/):** Runs as part of the CI workflow to scan for code,
+  dependency, and container security and licensing issues.
+
+> **Important**
+>
+> A failure in the static code analysis phase of the CI/CD pipeline is a blocker
+> for the entire delivery of CNPG-GC, meaning that each commit is validated
+> against all the linters defined by GolangCI-Lint.
+
+## Container
+
+Every container image that's part of CNPG-GC is built by way of CI/CD pipelines following every commit.
+Such images include not only those of the operator but also of the operands, specifically every supported PostgreSQL version.
+In the pipelines, images are scanned with:
+
+- [Dockle](https://github.com/goodwithtech/dockle): for best practices in terms
+  of the container build process
+- [Black Duck](https://www.blackduck.com/): Checks for vulnerabilities in Open Source components
+  and validates license consistency.
+
+> **Important**
+>
+> All operand images are rebuilt weekly by our pipelines to incorporate security updates at the base image
+> and package level, providing patch level updates for the container images that EDB distributes.
+
+> **Warning**
+>
+> Running outdated images can expose your environment to security risks and performance issues. We highly
+> recommend that you update to the latest image version and keep your images up to date. This will ensure
+> that you take advantage of the latest updates and patches available.
+
+The following guidelines and frameworks were taken into account for container-level security:
+
+- The [Container Image Creation and Deployment Guide](https://dl.dod.cyber.mil/wp-content/uploads/devsecops/pdf/DevSecOps_Enterprise_Container_Image_Creation_and_Deployment_Guide_2.6-Public-Release.pdf),
+  developed by the Defense Information Systems Agency (DISA) of the United States Department of Defense (DoD)
+- The [CIS Benchmark for Docker](https://www.cisecurity.org/benchmark/docker/),
+  developed by the Center for Internet Security (CIS)
+
+> **Tip: About the container-level security**
+>
+> See the [Security and Containers in CNPG-GC](https://www.enterprisedb.com/blog/security-and-containers-cloud-native-postgresql)
+> blog article for more information about the approach that EDB takes on
+> security at the container level in CNPG-GC.
+
+## Cluster
+
+Security at the cluster level takes into account all Kubernetes components that
+form both the control plane and the nodes as well as the applications that run in
+the cluster, including PostgreSQL.
+
+### Role-based access control (RBAC)
+
+The operator interacts with the Kubernetes API server with a dedicated service
+account called pgd-operator-controller-manager. In Kubernetes this account is installed
+by default in the `pgd-operator-system` namespace. A cluster role
+binds between this service account and the pgd-operator-controller-manager
+cluster role that defines the set of rules, resources, and verbs granted to the operator.
+
+RedHat OpenShift directly manages the operator RBAC entities by way of [Operator
+Lifecycle
+Manager (OLM)](https://docs.openshift.com/container-platform/4.13/operators/understanding/olm/olm-understanding-olm.html). OLM
+allows you to grant permissions only where they're required,
+implementing the principle of least privilege.
+
+> **Important**
+>
+> These permissions are exclusively reserved for the operator's service
+> account to interact with the Kubernetes API server.  They aren't directly
+> accessible by the users of the operator that interact only with `PGDGroup`
+> and `PGDGroupCleanup` resources.
+
+The following are some examples and, most importantly, the reasons why
+CNPG-GC requires full or partial management of standard Kubernetes
+namespaced resources.
+
+- **`jobs`**
+
+  The operator needs to handle jobs to manage different `PGDGroup` phases.
+- **`poddisruptionbudgets`**
+
+  The operator uses pod disruption budgets to make sure enough PGD nodes
+  are kept active during maintenance operations.
+- **`pods`**
+
+  The operator needs to manage PGD nodes as a `Cluster` resource.
+- **`secrets`**
+
+  Unless you provide certificates and passwords to your data nodes,
+  the operator adopts the "convention over configuration" paradigm by
+  self-provisioning random-generated passwords and TLS certificates and by
+  storing them in secrets.
+- **`serviceaccounts`**
+
+  The operator needs to create a service account to
+  enable the `PGDGroup` recovery job to retrieve the backup objects from
+  the object store where they reside.
+- **`services`**
+
+  The operator needs to control network access to the PGD cluster
+  from applications and properly manage
+  failover/switchover operations in an automated way.
+- **`statefulsets`**
+
+  The operator needs to manage PGD proxies.
+- **`validatingwebhookconfigurations` and `mutatingwebhookconfigurations`**
+
+  The operator injects its self-signed webhook CA into both webhook
+  configurations, which are needed to validate and mutate all the resources it
+  manages. For more details, see the
+  [Kubernetes documentation](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/).
+
+To see all the permissions required by the operator, you can run `kubectl
+describe clusterrole pgd-operator-manager-role`.
+
+CNPG-GC internally manages the PGD nodes using the `Cluster` resource as defined by EDB Postgres
+for Kubernetes. See the
+[EDB Postgres for Kubernetes documentation](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/security/)
+for the list of permissions used by the EDB Postgres for Kubernetes operator service account.
+
+### Calls to the API server made by the instance manager
+
+The instance manager, which is the entry point of the operand container, needs
+to make some calls to the Kubernetes API server to ensure that the status of
+some resources is correctly updated and to access the config maps and secrets
+that are associated with that Postgres cluster. Such calls are performed through
+a dedicated `ServiceAccount` created by the operator that shares the same
+PostgreSQL `Cluster` resource name.
+
+> **Important**
+>
+> The operand can access only a specific and limited subset of resources
+> through the API server. A service account is the recommended way to access the API server from within a pod. See the
+> [Kubernetes documentation](https://kubernetes.io/docs/tasks/run-application/access-api-from-pod/) for details.
+
+See the
+[EDB Postgres for Kubernetes documentation](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/security/)
+for more information on the instance manager.
+
+### Pod security policies
+
+A [pod security policy](https://kubernetes.io/docs/concepts/policy/pod-security-policy/)
+is the Kubernetes way to define security rules and specifications that a pod needs to meet
+to run in a cluster.
+For InfoSec reasons, every Kubernetes platform must implement them.
+
+CNPG-GC doesn't require privileged mode for containers execution.
+The PostgreSQL containers run as the postgres system user. No component requires running as root.
+
+Likewise, volumes access doesn't require privileged mode or root privileges.
+Proper permissions must be assigned by the Kubernetes platform or administrators.
+The PostgreSQL containers run with a read-only root filesystem, that is, no writable layer.
+
+The operator explicitly sets the required security contexts.
+
+On Red Hat OpenShift, CNPG-GC runs in the `restricted` security context constraint,
+the most restrictive one. The goal is to limit the execution of a pod to a namespace allocated UID
+and SELinux context.
+
+> **Tip: Security Context Constraints in OpenShift**
+>
+> For more information on security context constraints (SCC) in
+> OpenShift, see the
+> [Managing SCC in OpenShift](https://www.openshift.com/blog/managing-sccs-in-openshift)
+> article.
+
+> **Warning: Security context constraints and namespaces**
+>
+> As stated in the [Openshift documentation](https://docs.openshift.com/container-platform/latest/authentication/managing-security-context-constraints.html#role-based-access-to-ssc_configuring-internal-oauth),
+> SCCs aren't applied in the default namespaces (`default`, `kube-system`,
+> `kube-public`, `openshift-node`, `openshift-infra`, `openshift`). Don't use them
+> to run pods. PGD clusters deployed in those namespaces
+> will be unable to start due to missing SCCs.
+
+#### Exposed ports
+
+CNPG-GC exposes ports at operator, instance manager, and operand
+levels, as shown in the table.
+
+| System           | Port number | Exposing            | Name             | Certificates | Authentication |
+| :--------------- | :---------- | :------------------ | :--------------- | :----------- | :------------- |
+| operator         | 9443        | webhook server      | `webhook-server` | TLS          | Yes            |
+| operator         | 8080        | metrics             | `metrics`        | no TLS       | No             |
+| instance manager | 9187        | metrics             | `metrics`        | no TLS       | No             |
+| instance manager | 8000        | status              | `status`         | no TLS       | No             |
+| operand          | 5432        | PostgreSQL instance | `postgresql`     | optional TLS | Yes            |
+
+### PGD
+
+The current implementation of CNPG-GC creates
+passwords for the postgres superuser and the database owner.
+
+As far as encryption of passwords is concerned, CNPG-GC follows
+the default behavior of PostgreSQL: starting with PostgreSQL 14,
+`password_encryption` is by default set to `scram-sha-256`. On earlier
+versions, it's set to `md5`.
+
+> **Important**
+>
+> See [Connection DSNs and SSL](https://www.enterprisedb.com/docs/pgd/5.9/node_management/connections_dsns_and_ssl/)
+> in the PGD documentation for details.
+
+CNPG-GC uses the `postgres` role to
+maintain PGD nodes. Due to this, it is not allowed to disable `postgres` user
+access by setting `enableSuperuserAccess` to `false` in the `cnp` section of
+the spec.
+
+### Storage
+
+CNPG-GC delegates encryption at rest to the underlying storage class. For
+data protection in production environments, we highly recommend that you choose
+a storage class that supports encryption at rest.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

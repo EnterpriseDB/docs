@@ -1,0 +1,93 @@
+---
+title: Access key
+description: Learn how to create and use an API access key with Hybrid Manager.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/interacting_programmatically/access_key/
+lastModified: 2026-08-20T18:08:41+02:00
+---
+
+# Access key
+
+An access key provides authentication for users to interact directly with the Hybrid Manager (HM) API. Each access key is linked to a single user and is immutable after creation.
+
+You can create an access key for a machine user or a normal user. The organization owner can manage the access key for a machine user. Normal users can manage their own access keys.
+
+Each key must have an expiration period between 1 and 365 days, set at creation time. Once an access key expires, or if it's lost, then you must delete it and create a new one.
+
+| User type    | Quota - max keys | Keys created and managed                                                                                                                                                                                                                                                                                                                                   |
+| ------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Machine user | 2                | Two access keys, created while [creating a machine user](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/monitoring/mon_ext_dbs/mon_with_agent/create_machine_user/). Optionally, can be individually added from the **Access keys** tab on the machine user's details page using the **Create New Key** option. |
+| Normal user  | 1                | One access key, [created](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/interacting_programmatically/access_key/) and managed by the user from their home page.                                                                                                                                                |
+
+An access key can be revoked from a user. Revoking the key doesn't affect the role or any other authentication process of the linked user.
+
+## Creating a machine user
+
+To create a machine user and its initial access key:
+
+1. From the menu next to your organization name at the top right, select **User Management**.
+2. Select **Add User**.
+3. Select **Machine User** as the user type.
+4. Enter a name for the machine user.
+5. Assign the roles the machine user needs.
+6. Select **Create**.
+
+HM generates an access key for the new machine user and displays it once. Copy the access key and save it in a secure location — it isn't shown again.
+
+## Creating your personal access key
+
+1. Log in to the HM console.
+2. From the menu next to your organization name at the top right, select **My Account**.
+3. From the **My Account** page, select the **Access Keys** tab.
+4. On the **Access Keys** tab, select **Create New Key**.
+5. Enter a value for **Access Key Name**.
+6. Enter a value for **Expiry days** in the range of 1 to 365.
+7. Select **Create Key**.
+
+The generated access key is provided to the user.
+
+Copy this access key and save it in a secure location. The access key is available only when you create it. If you lose your access key, you must delete it and create a new one.
+
+You can enable in-app inbox or email notifications so that you're alerted when your personal key is about to expire. For more information, see [Managing notifications](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/monitoring/notifications/).
+
+## Managing access keys
+
+You can manage the access keys for a machine user on the **Users** page.
+
+To view the details of an access key:
+
+1. From the menu next to your organization name at the top right, select **User Management**.
+2. Select **Edit** next to the user whose access key details you want to view.
+3. View the **Access Keys** tab on the user's page. Each row provides the access key details:
+   - **Name** — Access key name.
+   - **Access Key** — Access key in half encrypted format.
+   - **Expiry at** — The expiry date for the access key.
+   - **Created at** — The creation date for the access key.
+
+### Deleting a key
+
+To delete a key, select **Delete** next to the key. You're prompted to confirm the deletion.
+
+## Rotating an access key
+
+Because each access key is immutable, rotating a key means creating a new one and retiring the old one — not editing it in place. To rotate an access key without downtime:
+
+1. Create a new access key for the user or machine user, following the steps in [Creating a machine user](#creating-a-machine-user) or [Creating your personal access key](#creating-your-personal-access-key), while the existing key is still active.
+2. Update all consumers (applications, scripts, and integrations) to use the new access key.
+3. Confirm the new access key is working as expected. See [Using the access key](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/interacting_programmatically/using_access_key/).
+4. Delete the old access key. See [Deleting a key](#deleting-a-key).
+
+Holding two active keys during the transition lets you migrate consumers gradually without an authentication gap.
+
+## Use the access key
+
+The HM API detects if the caller is using an access key in the request. If the caller uses the access key, the API checks:
+
+- The validity of the access key.
+- The organization of the user requesting access.
+- The user permissions.
+
+It then authorizes the access. For more information, see [Using the access key](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/interacting_programmatically/using_access_key/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

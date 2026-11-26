@@ -1,0 +1,41 @@
+---
+title: Postgres Enterprise Manager 10.4.2 release notes
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/pem_rel_notes/pem_10.4.2_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# Postgres Enterprise Manager 10.4.2 release notes
+
+Released: 14 May 2026
+
+Bug fixes and security improvements in Postgres Enterprise Manager 10.4.2 include the following:
+
+## Security Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td>Fixed CVE-2026-7814 — prevented stored XSS in the browser tree and explain visualizer by rendering crafted PostgreSQL object names via <code>textContent</code> instead of <code>innerHTML</code> (ported from pgAdmin commit 3294e74).</td></tr>
+<tr><td>Fixed CVE-2026-7815 — fixed SQL injection in the Maintenance Tool by allow-list validating the <code>INDEX_CLEANUP</code>, <code>PARALLEL</code>, <code>BUFFER_USAGE_LIMIT</code>, and <code>TABLESPACE</code> option fields and routing <code>reindex_tablespace</code> through <code>qtIdent</code> (ported from pgAdmin commit cf53953d9).</td></tr>
+<tr><td>Fixed CVE-2026-7816 — fixed OS command injection in the Import/Export query-export feature by introducing a psql-strtokx-modeled parenthesis-balance parser, rejecting null bytes, normalizing line breaks, and allow-list validating the <code>format</code>, <code>on_error</code>, and <code>log_verbosity</code> parameters (ported from pgAdmin commit 13badc62c).</td></tr>
+<tr><td>Fixed CVE-2026-7818 — fixed unsafe pickle deserialization in the file-backed session manager by prepending a SHA-256 HMAC over the serialized body and verifying it with <code>hmac.compare_digest</code> before deserialization. Existing session files written by prior versions are silently invalidated on read; users are required to re-authenticate once after upgrade (ported from pgAdmin commit 30a890337).</td></tr>
+<tr><td>Fixed CVE-2026-7819 — fixed symbolic-link path traversal in the File Manager by resolving paths through <code>os.path.realpath</code> in <code>check_access_permission</code> and opening uploads with <code>O_NOFOLLOW</code> and <code>0o600</code> file mode (ported from pgAdmin commit 435752b83).</td></tr>
+<tr><td>Fixed CVE-2026-7820 — fixed account-lockout bypass via the Flask-Security default <code>/login</code> endpoint by overriding <code>User.is_active</code> and <code>User.is_locked()</code> to consult the <code>locked</code> column on every authentication path. Includes a SQLite-only data normalization migration; no-op on PostgreSQL config databases (ported from pgAdmin commit d336c1e78).</td></tr>
+<tr><td>Updated Cryptography to 46.0.7 to fix CVE-2026-39892, protecting users from potential security vulnerabilities in cryptographic operations.</td></tr>
+<tr><td>Updated urllib3 to 2.7.0 to fix BDSA-2026-9851, protecting users from potential security vulnerabilities in HTTP client operations.</td></tr>
+<tr><td>Updated Authlib to 1.6.12 to fix CVE-2026-41425, protecting users from potential security vulnerabilities in OAuth and JWT handling.</td></tr>
+<tr><td>Updated Mako to 1.3.12 to fix CVE-2026-41205, protecting users from potential security vulnerabilities in template rendering.</td></tr>
+<tr><td>Updated axios/follow-redirects to 1.16.0 to fix CVE-2026-40175, CVE-2026-42033, and CVE-2026-42035, protecting users from potential security vulnerabilities in HTTP redirect handling.</td></tr>
+<tr><td>Updated PostCSS to 8.5.14 to fix CVE-2026-41305, protecting users from potential security vulnerabilities in CSS processing.</td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td>PEM upgrade now errors out when an upgrade script fails, preventing silent partial upgrades.</td></tr>
+<tr><td>Updated React to 19.2.6 to fix CVE-2026-23869, protecting users from potential security vulnerabilities in the UI rendering layer.</td></tr>
+<tr><td>Fixed the upgrade file to handle the <code>pemhistory</code> <code>log_configuration</code> table for the <code>log_connections</code> column.</td></tr>
+<tr><td>Fixed an issue where it was not possible to filter by server in the Barman dashboard's candle chart.</td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

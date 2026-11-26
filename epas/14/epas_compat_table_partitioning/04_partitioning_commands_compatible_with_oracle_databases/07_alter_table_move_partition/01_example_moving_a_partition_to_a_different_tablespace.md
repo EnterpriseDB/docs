@@ -1,0 +1,70 @@
+---
+title: "Example: Moving a partition to a different tablespace"
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_table_partitioning/04_partitioning_commands_compatible_with_oracle_databases/07_alter_table_move_partition/01_example_moving_a_partition_to_a_different_tablespace/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# Example: Moving a partition to a different tablespace
+
+<div id="example_moving_a_partition_to_a_different_tablespace" class="registered_link"></div>
+
+This following example moves a partition of the `sales` table from one tablespace to another.
+
+Create the `sales` table with the command:
+
+```text
+CREATE TABLE sales
+(
+  dept_no     number,
+  part_no     varchar2,
+  country     varchar2(20),
+  date        date,
+  amount      number
+)
+PARTITION BY RANGE(date)
+(
+  PARTITION q1_2012 VALUES LESS THAN ('2012-Apr-01'),
+  PARTITION q2_2012 VALUES LESS THAN ('2012-Jul-01'),
+  PARTITION q3_2012 VALUES LESS THAN ('2012-Oct-01'),
+  PARTITION q4_2012 VALUES LESS THAN ('2013-Jan-01') TABLESPACE ts_1,
+  PARTITION q1_2013 VALUES LESS THAN ('2013-Mar-01') TABLESPACE ts_2
+);
+```
+
+Querying the `ALL_TAB_PARTITIONS` view confirms that the partitions reside on the expected servers and tablespaces:
+
+```text
+edb=# SELECT partition_name, tablespace_name FROM ALL_TAB_PARTITIONS;
+ partition_name | tablespace_name
+----------------+-----------------
+ Q1_2012        |
+ Q2_2012        |
+ Q3_2012        |
+ Q4_2012        | TS_1
+ Q1_2013        | TS_2
+(5 rows)
+```
+
+After preparing the target tablespace, invoke the `ALTER TABLE… MOVE PARTITION` command to move the `q1_2013` partition from a tablespace named `ts_2` to a tablespace named `ts_3`:
+
+```text
+ALTER TABLE sales MOVE PARTITION q1_2013 TABLESPACE ts_3;
+```
+
+Querying the `ALL_TAB_PARTITIONS` view shows that the move was successful:
+
+```text
+edb=# SELECT partition_name, tablespace_name FROM ALL_TAB_PARTITIONS;
+ partition_name | tablespace_name
+----------------+-----------------
+ Q1_2012        |
+ Q2_2012        |
+ Q3_2012        |
+ Q4_2012        | TS_1
+ Q1_2013        | TS_3
+(5 rows)
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

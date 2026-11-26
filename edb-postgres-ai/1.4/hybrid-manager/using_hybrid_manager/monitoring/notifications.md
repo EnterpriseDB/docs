@@ -1,0 +1,342 @@
+---
+title: Notifications
+description: Learn about monitoring and notifications with Hybrid Manager.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/monitoring/notifications/
+lastModified: 2026-10-20T19:09:06+05:30
+---
+
+# Notifications
+
+With Hybrid Manager (HM), you can customize the types of notifications you want to receive. The two types of notification channels are:
+
+**User notifications** — You can receive notifications via email, HM inbox, or both. These notifications are for all users who have enabled them and if their role allows it.
+
+**System notifications** — You can receive notifications via email (mail group), webhook, PagerDuty, or any combination. These notifications are triggered once per event. System notifications are driven by activity log events, including cluster lifecycle changes (create, update, delete), security and index recommendations, automation task activity, and other platform events.
+
+The user's role in HM determines the extent of their access to notification preferences. The notifications are categorized into the following preference sections:
+
+[comment]: # "Open question #7: eng doc calls this section 'Organizations'; docs call it 'Global' — naming conflict."
+
+- Account — For user notification channels about you personally, managed by each user for their own account.
+- Global — For user and system notification channels.
+- Projects — For user and system notification channels.
+
+The notifications under the Account preference section are:
+
+- New project role assigned to you
+- Project role unassigned from you
+- The personal access key is about to expire
+
+The notifications under the Global preference section are:
+
+- New project created
+- The machine access key is about to expire
+- The IdP certificate is about to expire
+- Activity log
+
+> **Note**
+>
+> This section is visible only to the organization owner.
+
+The notifications under the Projects preference section are:
+
+[comment]: # "Open question #13: Projects event list conflicts with eng doc's list."
+
+- Active cluster paused
+- Paused cluster reactivated
+- Failed cluster maintenance upgrade
+- User invited to project
+- Failed third-party monitoring integration
+
+## Configuring notifications
+
+Project owners/editors and organization owners/admins can enable/disable notifications for the events visible to them. They can receive notifications in the HM inbox, by email, or both.
+
+Notification settings made by a user apply only to that user. If an email notification is enabled, the email is sent to the email address associated with the user's login.
+
+For org-level and project-level notifications, HM determines who receives each notification by cross-referencing the event's target audience with each user's role and their enabled notification preferences. Both conditions must be met: the user's role must qualify them to receive that notification type, and they must have it enabled in their preferences. Account-level notifications are always delivered only to the individual user they concern.
+
+[comment]: # "Open question #16: eng doc says project channels default OFF; docs say they inherit by default — conflict."
+
+[comment]: # "Open question #20 (related to #16): eng doc self-flags this inheritance behavior as unconfirmed."
+
+System notification channels can be configured at the global level by the organization owner or at the project level by the project owner. By default, each organization's project inherits the global-level system notifications channel. However, you can enable/disable or reconfigure the system notifications channel at the project level to override the default settings.
+
+When a project channel is toggled on without project-specific credentials, it uses the organization-level credentials. When toggled on with its own credentials, it uses those instead. When a project channel is toggled off, no system notifications are sent for that channel at the project level, regardless of the organization-level configuration.
+
+Notification settings follow a scope hierarchy: global settings apply across all projects, and project-level settings override them. Configure at the lowest scope that fits your needs — global for organization-wide defaults, project-level for project-specific routing.
+
+### Configure notifications at the global level
+
+Only the organization owner can set the global-level notifications.
+
+Each channel row has a toggle to enable or disable it, an edit (pencil) icon to configure its credentials, and a delete (trash) icon to clear them.
+
+#### Webhook
+
+1. In the HM console, from your profile menu, select **Settings**.
+
+2. Select the **Notifications** tab.
+
+3. Select the edit icon next to **Webhook** and provide the details:
+
+   - **Host** — The full endpoint URL of the webhook, including the scheme. Begin the URL with `https://` (recommended) or `http://`. HM rejects a URL that omits the scheme.
+   - **Method** — HTTP method for the request: POST (default) or PUT.
+   - **HTTP Headers** (optional) — Custom HTTP headers to include in the request, added as key-value pairs using **Add Key Value pair**.
+   - **Authentication** — Select an authentication type and provide credentials:
+     - **Basic Auth** — Enter an optional username and password.
+     - **Bearer Token** — Provide a bearer token.
+
+4. Select **Save**.
+
+> **Note: Webhook endpoint restrictions**
+>
+> To protect against server-side request forgery (SSRF), HM validates the webhook **Host** when you save the channel and again each time it delivers a notification, rejecting any endpoint that resolves to an internal or reserved address. The blocked addresses fall into two categories:
+>
+> - **Always blocked — can't be overridden.** Loopback addresses (such as `127.0.0.1` or `localhost`) and link-local addresses, including the cloud metadata endpoint `169.254.169.254`. These remain blocked even if an administrator adds them to the allowlist described below.
+> - **Blocked by default — can be allowed.** Private network ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and IPv6 unique local addresses. An administrator can permit specific ranges for legitimate in-cluster receivers, as described in [Allowing an internal webhook or SMTP receiver](#allowing-an-internal-webhook-or-smtp-receiver).
+>
+> If the **Host** resolves to a blocked address, the save fails with a validation error. Use a publicly reachable endpoint. HM also doesn't follow HTTP redirects returned by the endpoint, so the endpoint must accept the request directly.
+
+#### Allowing an internal webhook or SMTP receiver
+
+By default, HM blocks webhook and SMTP (email) endpoints that resolve to private or in-cluster addresses. If you operate a legitimate receiver within the cluster or on a private network, a Kubernetes administrator can allow specific IP ranges via the `WEBHOOK_ALLOWED_INTERNAL_CIDRS` environment variable on the notification service. Despite its name, this single allowlist applies to both webhook hosts and the SMTP host used for email notifications. This is a deployment-level, administrator-only action, intentionally kept separate from setting the webhook or email host in the console.
+
+The allowlist relaxes only the private ranges. Loopback and link-local addresses — including the cloud metadata endpoint `169.254.169.254` — remain blocked and can't be re-enabled via this variable.
+
+The value is a comma-separated list of CIDR (Classless Inter-Domain Routing) ranges. Use the narrowest range that covers your receiver (for example, a single `/32`) rather than a broad range, which would also re-expose other in-cluster services.
+
+To set it, update the environment variable on the `upm-notification-system` deployment (container `apiservice`) in the `upm-notification-system` namespace:
+
+```shell
+kubectl -n upm-notification-system set env deployment/upm-notification-system \
+  WEBHOOK_ALLOWED_INTERNAL_CIDRS="192.168.10.25/32,10.20.0.0/24"
+```
+
+The variable is read only at startup, so the change takes effect after the pods restart. `kubectl set env` rolls the deployment automatically. If you edit the deployment manifest directly instead, trigger a restart:
+
+```shell
+kubectl -n upm-notification-system rollout restart deployment/upm-notification-system
+```
+
+Persist the change in your deployment configuration so it isn't reverted on the next upgrade. Leaving the variable empty or unset keeps the secure default of blocking all private and internal targets.
+
+#### Webhook payload
+
+> **Warning**
+>
+> The webhook payload is evolving. HM is moving it to a standards-based, explicitly versioned format so you can build against a stable contract. Until that work lands, treat the current payload as subject to change and don't depend on its exact shape for system-critical or automated workflows. Use it for visibility and noncritical integrations for now.
+
+When a system notification is delivered through the webhook channel, HM sends an HTTP request to the configured **Host**, using the configured **Method** (`POST` by default). The request has a JSON body with `Content-Type: application/json`, and it includes any HTTP headers and authentication you configured.
+
+The body is a flat JSON object. Four fields are always present:
+
+| Field       | Description                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `event_id`  | An internal identifier for the event, set by the service that emitted it. Treat it as an opaque string. |
+| `timestamp` | Time the event occurred.                                                                                |
+| `trace_id`  | Correlation identifier for the event across the platform.                                               |
+| `title`     | Human-readable summary of the event, such as `New role assigned to user`.                               |
+
+Beyond these fields, the body takes one of two shapes, depending on the event:
+
+- **Named system notifications** — Account, organization, and project events such as a role assigned to a user, a new project, an expiring access key or IdP certificate, or a cluster being paused or reactivated. These add a small, stable set of fields for that event. Project events, for example, always include `project_id` and `project_name`.
+- **Activity log events** — Generated from platform API calls, such as creating or updating a cluster. These add `resource_type`, `resource_id`, `action_type`, `session_id`, `ip_address`, and `create_time`, plus the original API request body, flattened with `.` separators and kept in its original camelCase (for example, `projectId`, `clusterId`, `pgResources.<id>.hardware.cpu`). These flattened fields vary by resource, action, and version — read them by name rather than relying on a fixed set.
+
+> **Note**
+>
+> Some activity log payloads include both `projectId` (from the flattened API request body) and `project_id` (HM's own standard field), with the same value. This is expected, not a defect.
+
+Unlike the in-app and email channels, which deliver to individual eligible users, the webhook channel is the notification system's full output stream. When it's enabled for a scope, it receives every system notification for that scope, including account events and activity log events alike.
+
+The examples below show one named system notification from each scope, plus an activity log event.
+
+**Account event** — a project role assigned to a user:
+
+```json
+{
+  "event_id": "evt-3e9c0f5e2d77a3b4",
+  "timestamp": "2024-11-18 12:52:55.599767873 +0000 UTC",
+  "trace_id": "01933f55-631f-7502-8426-8851ccc01e05b",
+  "title": "New role assigned to user",
+  "user_name": "Jordan Lee",
+  "user_id": "usr-3e9c0f5e2d77",
+  "assigner_name": "Alex Morgan",
+  "role_names": "[viewer]",
+  "project_name": "Energetic Turtle",
+  "project_id": "prj_MXGHZsGRDyfThPUs"
+}
+```
+
+**Organization event** — a machine access key nearing expiry:
+
+```json
+{
+  "event_id": "evt-9c2e4b0d1f6e3e88",
+  "timestamp": "2024-11-18 13:10:00.123456789 +0000 UTC",
+  "trace_id": "01933f6a-2d5b-7f41-8c3e-3b0d1f6e3e88",
+  "title": "Machine access key about to expire",
+  "access_key_name": "ci-deploy-key",
+  "access_key_owner": "ci-bot",
+  "access_key_remaining_days": "7",
+  "access_key_expire_at": "2024-11-25T13:10:00Z",
+  "access_key_owner_id": "usr-9c2e4b0d1f6e"
+}
+```
+
+**Project event** — an active cluster being paused:
+
+```json
+{
+  "event_id": "evt-7a1c7e309b2f2c5a",
+  "timestamp": "2024-11-18 13:05:12.987654321 +0000 UTC",
+  "trace_id": "01933f60-7a1c-7e30-9b2f-2c5a4e6f8b1d",
+  "title": "Active cluster paused",
+  "project_id": "prj_MXGHZsGRDyfThPUs",
+  "project_name": "Energetic Turtle",
+  "cluster_name": "analytics-prod",
+  "cluster_id": "clr_8f1a34b3d4f8",
+  "cluster_paused_at": "2024-11-18T13:05:10Z"
+}
+```
+
+**Activity log event** — a cluster created through the API:
+
+```json
+{
+  "event_id": "activity:prj_MXGHZsGRDyfThPUs:Jordan Lee:cluster:clr_8f1a34b3d4f8:CREATE:2024-11-18T13:05:12Z",
+  "timestamp": "2024-11-18 13:05:12.987654 +0000 UTC",
+  "trace_id": "01933f60-7a1c-7e30-9b2f-2c5a4e6f8b1d",
+  "title": "EDB PostgresAI: CREATE on cluster analytics-prod(clr_8f1a34b3d4f8)",
+  "action_type": "CREATE",
+  "resource_type": "cluster",
+  "resource_id": "clr_8f1a34b3d4f8",
+  "resource_name": "analytics-prod",
+  "session_id": "upmsid_wmvsKzfTliChVJIq",
+  "ip_address": "127.0.0.6",
+  "create_time": "2024-11-18T13:05:12Z",
+  "user_name": "Jordan Lee",
+  "user_role": "user",
+  "project_id": "prj_MXGHZsGRDyfThPUs",
+  "project_name": "Energetic Turtle",
+  "projectId": "prj_MXGHZsGRDyfThPUs",
+  "clusterId": "clr_8f1a34b3d4f8",
+  "clusterName": "analytics-prod"
+}
+```
+
+This example is trimmed to a representative set of flattened fields. A real cluster-creation event also includes every other field from the original API request (instance sizing, storage class, GUC parameters, and so on), flattened the same way.
+
+> **Warning**
+>
+> When you build a webhook receiver, treat the payload defensively:
+>
+> - **All values are strings.** Numeric, boolean, and list values (such as `role_names`, which appears as `[viewer]`) are serialized as strings, so parse accordingly.
+> - **Two timestamp formats appear.** The top-level `timestamp` uses a `2006-01-02 15:04:05.000 +0000 UTC` layout, while embedded timestamps such as `cluster_paused_at` and `access_key_expire_at` use RFC 3339 (`2006-01-02T15:04:05Z`).
+> - **The schema is open.** Beyond the four common fields, the set of fields varies by event category and type — and activity-log events add further fields. Read fields by name and ignore unrecognized ones rather than relying on a fixed shape.
+> - **The payload isn't versioned.** Only `event_id`, `timestamp`, `trace_id`, and `title` are guaranteed to be present. Don't treat the full field set as a stable contract.
+
+#### Checking webhook delivery
+
+HM doesn't expose webhook delivery status (success, failure, or retries) in the console. If you have access to the HM control plane cluster, you can check delivery by reading the notification service's logs:
+
+```shell
+kubectl logs -n upm-notification-system deploy/upm-notification-system | grep -E '\[WH\]|failed to send'
+```
+
+Look for:
+
+- `[WH]:sending ...` — HM started sending the webhook. There's no separate success log line: if this line appears with no following error, the send succeeded.
+- `failed to send message to a member: <error>` — The request failed. This usually means the endpoint was unreachable (DNS or connection failure), it returned a non-2xx status (logged as `received a status > 2xx: <status>`), or the destination was blocked by the egress guard (see [Webhook endpoint restrictions](#webhook)).
+- `failed to send events in the channel ...` — The request failed before HM made the HTTP call, usually because of a template or configuration problem.
+
+HM doesn't retry a failed webhook delivery.
+
+If you don't have access to the control plane cluster, contact support to check delivery on your behalf.
+
+#### PagerDuty
+
+Before configuring the PagerDuty notification channel:
+
+- You need access to a PagerDuty account with elevated privileges.
+- A PagerDuty service must be created and configured with Events API v2 integration. See [Create a service](https://support.pagerduty.com/main/docs/services-and-integrations#create-a-service) and [Add integrations to an existing service](https://support.pagerduty.com/main/docs/services-and-integrations#add-integrations-to-an-existing-service) in the PagerDuty documentation.
+- In your PagerDuty account, navigate to the desired service and access its **Integrations** settings.
+- Add an Events API v2 integration and configure it according to your requirements.
+- Copy the integration key (routing key) provided by PagerDuty for the newly created integration.
+
+Then you can configure the channel:
+
+1. In the HM console, from your profile menu, select **Settings**.
+2. Select the **Notifications** tab.
+3. Select the edit icon next to **PagerDuty** to open **Configure PagerDuty Credentials**, and set the **Routing Key**.
+4. Select **Save**.
+
+#### Email
+
+1. In the HM console, from your profile menu, select **Settings**.
+
+2. Select the **Notifications** tab.
+
+3. Select the edit icon next to **Email** and enter the details:
+
+   [comment]: # "Open question #24: eng doc uses Recipient/Sender Address; docs use Email To/From — naming conflict."
+
+   - **Email To** — Optionally, a group email address for system notifications. HM sends every system notification for this scope to this address — not just events relevant to the person who configured the channel. Use a shared inbox or distribution list, not a personal email address.
+   - **Email From** — The email address that sends the notification.
+   - **Host** — URL of the email service.
+   - **Port** — Port of the email service.
+   - **Username** — Username of the email service.
+   - **Password** — Password of the email service.
+
+   > **Note**
+   >
+   > If **Email To** is set, HM delivers notifications to that address in addition to any eligible individual users — not instead of them. If **Email To** is left blank, only eligible individual users receive email notifications at their HM account email address.
+
+4. Select **Save**.
+
+> **Note: SMTP host restrictions**
+>
+> The same SSRF protection applies to the email **Host** (your SMTP server). HM validates it when you save the channel and rejects a host that resolves to an internal or reserved address, using the same rules as webhooks. To use an SMTP server on a private network, an administrator allows its IP range through the same allowlist described in [Allowing an internal webhook or SMTP receiver](#allowing-an-internal-webhook-or-smtp-receiver).
+
+### Configure notifications at project level
+
+Project-level notification settings can override global settings. Each project can have a unique configuration.
+
+1. In the HM console, select the **Projects** tab.
+2. Select any project.
+3. Go to the Project Overview page.
+4. In the left navigation, select **Settings**.
+5. Select **Notifications**. The same three channels are listed under **Channels**.
+6. Specify settings as described in [Webhook](#webhook), [PagerDuty](#pagerduty), or [Email](#email).
+
+### Viewing notifications in the HM console
+
+Users in the following roles can view the notifications:
+
+- Organization owners can view the global notifications.
+- Project owners/editors can view the project notifications.
+- All users can view their account notifications.
+
+Each notification indicates the level and project the user belongs to with multiple roles assigned in HM.
+
+Select the bell icon at the top of the HM console to view notifications. You can read a notification, mark it as unread, or archive it, and switch between **Default** and **Compact** views.
+
+Some notifications — particularly task-related ones — include a direct link to the affected resource. Selecting the link takes you to the relevant page, provided you have the required access permissions.
+
+When you have unread broadcast notifications — platform-wide announcements such as maintenance windows — a persistent banner appears at the top of the console. If there are multiple unread broadcasts, banners stack. Select **Mark as read** on a banner to dismiss it.
+
+## Managing notification preferences
+
+1. In the HM console, from your profile menu, select **My Account**.
+2. Select the **Notifications** tab. Notifications are grouped by account, organizations, and projects available to you.
+3. Scroll to the **Account**, **Global**, or **Project** section to view the events you want to manage.
+4. Select the right arrow next to the entity to expand the list of events.
+5. For each notification, you can:
+   - Use the toggle next to the event name to opt in or out of receiving notifications for that event (the toggle reads **Enabled** when on).
+   - When the event toggle is enabled, select the check box for each channel (email, in-app, webhook, PagerDuty) to control which channels deliver that notification.
+
+[comment]: # "Open question #6: eng doc says per-event channels are Email/In-app only; docs list 4 channels — conflict."
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

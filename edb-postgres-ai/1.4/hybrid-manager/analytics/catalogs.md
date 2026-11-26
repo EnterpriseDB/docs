@@ -1,0 +1,40 @@
+---
+title: Managing catalogs
+description: Create and manage Iceberg catalogs in Hybrid Manager to enable tiered storage on DHA clusters and cross-cluster querying.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/analytics/catalogs/
+lastModified: 2026-07-23T19:28:07Z
+---
+
+# Managing catalogs
+
+Attach Iceberg catalogs to your clusters to query analytical data across your estate without having to move data between clusters. Hybrid Manager (HM) automatically provisions an Iceberg catalog for each data group in a Distributed High Availability (DHA) cluster, backed by the [object storage configured at installation](https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/install/install_guide/environment_prep/#create-object-storage-secret). All replication and offload operations write to this catalog. View your catalogs under **Estate > Catalogs**.
+
+For Iceberg catalog concepts, see [Integrating with Iceberg catalogs](https://www.enterprisedb.com/docs/pgaa/latest/catalog/) in the Postgres Analytics Accelerator (PGAA) documentation.
+
+## Managing your cluster's catalog
+
+View the catalogs associated with your DHA cluster from the **Catalogs** tab in the cluster's detail view. Use the following actions to make table metadata available for querying:
+
+- **Import** — Imports the table metadata from the catalog into your cluster. Use **Import** for a point-in-time snapshot and run it again whenever you want to refresh the metadata.
+- **Enable Sync** — Continuously synchronizes table metadata from the catalog into your cluster, creating analytical tables on the cluster whenever new ones are added to the catalog. The sync status changes to **Enabled**. Use **Enable Sync** when tables are actively changing and you want queries to always reflect the latest state.
+
+## Querying analytical data across clusters
+
+Attach a catalog from another cluster within the same project to query its data from your cluster using PGAA.
+
+To attach a catalog:
+
+1. Go to the cluster's **Catalogs** tab, select **Add Catalog > Add Managed Catalog**, and search for the catalog. Only catalogs that already exist in the project appear in the search results.
+2. Use **Import** or **Enable Sync** to make the catalog's tables available for querying.
+
+Catalog-attached tables appear as **Iceberg** type on the importing cluster, regardless of their type on the source cluster. They're read-only and don't support `INSERT`, `UPDATE`, or `DELETE`.
+
+Use **Restore Table** on an Iceberg table managed by another cluster's catalog to copy the data into your own cluster as a local heap table. The source cluster and its data are unaffected, but the restored table is no longer linked to the catalog.
+
+> **Warning**
+>
+> Restoring a table from another cluster's catalog doesn't preserve the original schema. Because Iceberg's type system is a subset of Postgres's, constraints (primary keys, `NOT NULL`, unique) are lost, column types are coerced to generic equivalents, and default values are removed.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

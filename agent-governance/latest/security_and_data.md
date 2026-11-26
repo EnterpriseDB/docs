@@ -1,0 +1,77 @@
+---
+title: Securing access and handling credentials
+description: How EDB Agent Governance authenticates users, connects to aidb, Hybrid Manager, and Loki sources, stores upstream credentials, and treats your data.
+product: EDB Agent Governance
+version: "1"
+url: https://www.enterprisedb.com/docs/agent-governance/latest/security_and_data/
+lastModified: 2026-11-25T20:55:56+05:30
+---
+
+# Securing access and handling credentials
+
+Secure access to EDB Agent Governance and protect the credentials and data it holds. The viewer reads AI agent telemetry from Postgres databases running the `aidb` extension and, on the legacy path, Postgres query logs from Hybrid Manager (HM) or a standalone Loki instance. Both can contain sensitive data, and the viewer holds credentials for every upstream source it audits. There are two distinct authentication layers, and all credentials live server-side — none are exposed to the browser.
+
+| Layer                   | Question it answers                                          | Mechanism                                                                             |
+| ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| User authentication     | Who may sign in to the viewer?                               | Identity federation through Dex (OIDC)                                                |
+| Upstream authentication | How does the backend reach the source database, HM, or Loki? | A read-only Postgres role for `aidb` databases; machine user API keys for HM and Loki |
+
+## Authenticating users
+
+Sign in through Dex, which federates to your upstream identity providers:
+
+1. The backend is an OIDC client of Dex. Dex brokers login to the configured connector — OIDC, SAML, or LDAP — and reports which identity provider authenticated the user.
+2. On success, the backend mints a server-side session: a signed cookie, with refresh and ID tokens encrypted at rest. Tokens never reach the browser.
+3. A bootstrap admin exists before any identity provider is configured. Use it for first login, then add a federated identity provider and switch day-to-day login to it.
+4. Admin gating — A user is an administrator if their email is in the admin allowlist, or if their `groups` claim includes `governance-admin`. Admin-only surfaces, such as identity provider management, are gated on this.
+
+For configuring identity providers, see [Configuring](https://www.enterprisedb.com/docs/agent-governance/latest/administration/).
+
+## Authenticating upstream sources
+
+Connect the backend to each `aidb` database with a dedicated read-only login role over TLS. Prefer `sslmode=verify-full` to verify both the certificate and the host name. A client certificate is optional. Grant access to the telemetry tables and, for the Agents roster, the required catalog columns. Don't grant write privileges or `aidb` administration rights. See [Creating the viewer role](https://www.enterprisedb.com/docs/agent-governance/latest/connecting_aidb/#creating-the-viewer-role). The connection string and certificates are encrypted at rest and never returned to the browser.
+
+For the legacy HM and Loki sources, the backend authenticates using machine user API keys — shared credentials that grant access to an entire HM dataplane or Loki instance. These keys are:
+
+- Created in the HM admin portal (for HM instances) or configured externally (for Loki).
+- Stored in the backend's Postgres database.
+- Injected server-side on every proxied request.
+- Never included in responses to the browser — they're cleared on the server and omitted.
+
+The backend adds the appropriate header based on the instance type:
+
+| Instance type | Header          | Format                                                  |
+| ------------- | --------------- | ------------------------------------------------------- |
+| HM            | `x-access-key`  | The raw key value, for example `hmak_abc123...`         |
+| Loki          | `Authorization` | The full header value, for example `Bearer token123...` |
+
+## Storing credentials at rest
+
+Review the two credential stores the backend maintains in its Postgres databases:
+
+- The viewer's database holds instance credentials — `aidb` connection strings and certificates, and HM and Loki access keys — and user sessions.
+- The Dex database holds identity provider connector secrets, such as OIDC client secrets and LDAP bind passwords, in cleartext.
+
+Keep the underlying storage volume on encrypted-at-rest storage — LUKS or dm-crypt, cloud disk encryption, or an equivalent. The Dex connector credentials in particular have no application-layer encryption, so volume-level encryption is the protection that matters.
+
+## Protecting the network
+
+Review the network-level protections the viewer enforces.
+
+TLS verification. OIDC TLS verification — for discovery, JWKS, and token exchange — is always on and can't be disabled. To trust a self-signed or private-CA issuer, supply a CA bundle, which is added to the system trust pool rather than bypassing verification.
+
+Upstream egress controls. By default, the backend blocks HM and Loki instance egress to private network ranges so that a registered instance can't be used to probe your internal network. Cloud metadata, loopback, and link-local addresses stay blocked regardless. Allow private ranges only for on-premises deployments whose HM or Loki upstreams legitimately live on private IPs.
+
+Source databases running `aidb` usually live on private addresses, so this guard is off for them by default. To turn it on, set the chart value `bff.aidbBlockPrivate` to `true`.
+
+Webhook notifications. The backend encrypts webhook URLs for notifications, and the dashboard shows only the host name. The backend sends notifications with the same egress rules as instance connections, doesn't follow redirects, and never logs the URL path. See [Receiving notifications](https://www.enterprisedb.com/docs/agent-governance/latest/notifications/).
+
+Cross-origin requests. The viewer and its backend are served from a single origin in normal operation, so cross-origin access to the backend API is restricted to the origins you explicitly allow.
+
+## Handling data
+
+Review what data the viewer reads. For an `aidb` database, the viewer reads the spans and log records `aidb` stored: the SQL text agents executed, tool calls, agent and purpose attributes, governance decisions, and timing. Reads never write to the source database. For HM and Loki sources, the viewer reads Postgres query logs that include the SQL text agents executed, along with execution metadata such as the target database, Postgres role, and duration.
+
+SQL text and error messages can contain sensitive values. By default, AIDB keeps bound parameter placeholders in recorded SQL. Enabling `aidb.otel_capture_query_parameters` includes their values. Literal values already written in SQL and values included in database error messages can still appear when parameter capture is off. Limit access to the viewer and choose a telemetry retention period appropriate for this data.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

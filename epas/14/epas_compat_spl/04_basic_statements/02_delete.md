@@ -1,0 +1,53 @@
+---
+title: DELETE
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_spl/04_basic_statements/02_delete/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# DELETE
+
+<div id="delete" class="registered_link"></div>
+
+You can use the `DELETE` command available in the SQL language in SPL programs.
+
+You can use an expression in the SPL language wherever an expression is allowed in the SQL `DELETE` command. Thus, you can use SPL variables and parameters to supply values to the delete operation.
+
+```text
+CREATE OR REPLACE PROCEDURE emp_delete (
+    p_empno         IN emp.empno%TYPE
+)
+IS
+BEGIN
+    DELETE FROM emp WHERE empno = p_empno;
+
+    IF SQL%FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Deleted Employee # : ' || p_empno);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Employee # ' || p_empno || ' not found');
+    END IF;
+END;
+```
+
+The `SQL%FOUND` conditional expression returns `TRUE` if a row is deleted, `FALSE` otherwise. See [Obtaining the result status](https://www.enterprisedb.com/docs/epas/14/epas_compat_spl/04_basic_statements/08_obtaining_the_result_status/#obtaining_the_result_status) for a discussion of `SQL%FOUND` and other similar expressions.
+
+This example deletes an employee using this procedure:
+
+```text
+EXEC emp_delete(9503);
+
+Deleted Employee # : 9503
+
+SELECT * FROM emp WHERE empno = 9503;
+
+ empno | ename | job | mgr | hiredate | sal | comm | deptno
+-------+-------+-----+-----+----------+-----+------+--------
+(0 rows)
+```
+
+> **Note**
+>
+> You can include the `DELETE` command in a `FORALL` statement. A `FORALL` statement allows a single `DELETE` command to delete multiple rows from values supplied in one or more collections. See [Using the FORALL statement](https://www.enterprisedb.com/docs/epas/14/epas_compat_spl/12_working_with_collections/03_using_the_forall_statement/#using_the_forall_statement) for more information.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

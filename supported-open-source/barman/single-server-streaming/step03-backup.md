@@ -1,0 +1,112 @@
+---
+title: "Backup and Recovery: Single-Server Streaming - Running a Base Backup"
+description: Running a full backup using Barman
+product: Barman
+url: https://www.enterprisedb.com/docs/supported-open-source/barman/single-server-streaming/step03-backup/
+lastModified: 2022-07-07T16:23:29-04:00
+---
+
+# Backup and Recovery: Single-Server Streaming - Running a Base Backup
+
+With [the Barman server configured in our last step](https://www.enterprisedb.com/docs/supported-open-source/barman/single-server-streaming/step02-backup-setup/), we can run a full backup (or "base backup").
+
+> **Info: This demo is interactive**
+>
+> You can follow along right in your browser. When you click "Start Now," Katacoda will load a Docker Compose
+> environment with two container images representing a PostgreSQL 13 server with
+> [the Pagila database](https://github.com/devrimgunduz/pagila) loaded (named `pg`)
+> and a backup server for Barman (named `backup`).
+>
+> Once you see a `barman@backup` prompt, you can follow the steps below.
+
+To run a full backup, we use [Barman's `backup` command](http://docs.pgbarman.org/release/2.12/#backup):
+
+```shell
+barman backup pg --wait
+```
+
+```output title="Output"
+Starting backup using postgres method for server pg in /var/lib/barman/pg/base/20210329T235157
+Backup start at LSN: 0/3000000 (000000010000000000000002, 00000000)
+Starting backup copy via pg_basebackup for 20210329T235157
+Copy done (time: 1 second)
+Finalising the backup.
+This is the first backup for server pg
+WAL segments preceding the current backup have been found:
+        000000010000000000000002 from server pg has been removed
+Backup size: 38.3 MiB
+Backup end at LSN: 0/4000000 (000000010000000000000003, 00000000)
+Backup completed (start time: 2021-03-29 23:51:57.146435, elapsed time: 2 seconds)
+Waiting for the WAL file 000000010000000000000003 from server 'pg'
+Processing xlog segments from streaming for pg
+        000000010000000000000003
+```
+
+The `--wait` option causes Barman to wait for arrival and processing of the WAL file corresponding to the end of the backup, to ensure the backup is complete before the command returns.
+
+> **Note**
+>
+> Since the cron job is doing this periodically in the background, the WAL segments you see listed may be different than the output listed above!
+
+Verify that it completed by listing backups for the server:
+
+```shell
+barman list-backup pg
+```
+
+```output title="Output"
+pg 20210329T235157 - Mon Mar 29 23:51:59 2021 - Size: 54.3 MiB - WAL Size: 0 B
+```
+
+(the timestamps will be different for you)
+
+Of course, we've configured streaming backups - so we shouldn't need to depend on having a base backup for every change made to the database. Let's make a small modification to the data and verify that it arrives.
+
+First, log into the database (we'll use our barman user for convenience in this demonstration):
+
+```shell
+psql -h pg -d pagila -U barman
+```
+
+```output title="Output"
+psql (13.2 (Ubuntu 13.2-1.pgdg20.04+1))
+Type "help" for help.
+```
+
+Then make a modifications, and view the results:
+
+```sql
+Update actor Set first_name='ALOYSIUS' where actor_id=23;
+Select * From actor Where last_name='KILMER';
+\q
+```
+
+```output title="Output"
+UPDATE 1
+ actor_id | first_name | last_name |          last_update          
+----------+------------+-----------+-------------------------------
+       45 | REESE      | KILMER    | 2020-02-15 09:34:33+00
+       55 | FAY        | KILMER    | 2020-02-15 09:34:33+00
+      153 | MINNIE     | KILMER    | 2020-02-15 09:34:33+00
+      162 | OPRAH      | KILMER    | 2020-02-15 09:34:33+00
+       23 | ALOYSIUS   | KILMER    | 2021-03-29 23:53:22.302271+00
+(5 rows)
+```
+
+Ok, let's see if it showed up:
+
+```shell
+grep 'ALOYSIUS' ~/pg/streaming/*
+```
+
+```output title="Output"
+Binary file /var/lib/barman/pg/streaming/000000010000000000000004.partial matches
+```
+
+There it is! The current WAL segment hasn't been rotated yet, but we have the most recent data in the _partial_ WAL streamed to Barman. So in theory, nothing would be lost if something _terrible_ happened to the database right now\...
+
+Now, the crucial question with backups is always the same: "can you get the data _back?_"
+
+We'll answer this in [Step #4: Restoring a Backup](https://www.enterprisedb.com/docs/supported-open-source/barman/single-server-streaming/step04-restore/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,72 @@
+---
+title: Defining access policies
+description: Manage client authentication rules, database roles, and global system configurations in WarehousePG.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/system-access/access-management/
+lastModified: 2026-10-22T09:33:56+02:00
+---
+
+# Defining access policies
+
+Govern how users connect to the cluster and manage global privileges through a centralized administrative suite. The **Access Management** panel on the left sidebar allows you to configure security rules and system thresholds that are typically managed via command-line configuration files.
+
+> **Important**
+>
+> Access to this panel is restricted to users with the Admin role privilege.
+
+### Governing authentication rules and the cluster firewall
+
+Monitor the rules that determine who can connect to the database and from where using the **pg\_hba.conf** tab.
+
+- Review the **Total Rules**, **Trust Rules**, **MD5 Rules**, and **Reject Rules** counts in the header. A high **Trust Rules** count indicates rules that allow passwordless access. Consider transitioning these to `scram-sha-256` or `md5` authentication to secure the cluster.
+- Audit the **pg\_hba.conf Entries** table to ensure that only authorized address ranges are permitted.
+- A **Security Notice** alert appears automatically when trust-based rules are detected.
+
+### Managing cluster identities and global privileges
+
+Enforce the principle of least privilege and monitor the security posture of your user landscape using the **Roles** tab.
+
+- Monitor the **Superusers** count in the header to ensure unrestricted access is kept to an absolute minimum. If this count increases, audit the **Database Roles** table to identify which accounts were granted unrestricted access.
+- Use the **Total Roles**, **Login Roles**, and **Group Roles** header metrics to understand the composition of your role landscape. The **Login/Group Roles** column in the table distinguishes login-capable accounts from group roles at a glance.
+- Inspect the **Attributes** column in the **Database Roles** table to verify which roles can perform sensitive actions like `CREATEDB` or `CREATEROLE`. Monitor the **Conn. Limit** column to prevent any single role from exhausting the cluster session pool.
+- Create, edit, or delete a role by using the action buttons in the **Database Roles** table. The **Members** and **Member Of** columns show role membership relationships at a glance, and the create and edit form includes a **Role Membership** section for managing these relationships directly.
+
+### Configuring role-level Postgres settings
+
+Apply Postgres configuration parameters at the role level. Role-level settings override the cluster-wide defaults for any session started by that role. The **Settings** column in the **Database Roles** table shows how many parameters are configured for each role.
+
+To configure settings for a role, click the pencil icon for that role in the **Database Roles** table and select the **Settings** tab in the form that opens. Select **Add Setting** to add a parameter row, then choose a parameter from the dropdown and enter a value. To remove a setting, click the minus icon on its row. WEM applies changes using `ALTER ROLE` when you save the form.
+
+> **Note**
+>
+> Role-level settings take effect for new sessions only. Existing sessions for that role are not affected until they reconnect.
+
+### Auditing system settings
+
+Verify the operational thresholds and performance tunings of your cluster with the **System Settings** tab.
+
+- Use the search interface or the category filter to find specific parameters.
+- Check the **Value**, **Unit**, **Source**, and **Source File** columns to verify the current value of a setting and where it was set.
+
+> **Note**
+>
+> This interface is read-only for auditing purposes. To modify a setting, use the `gpconfig` utility. For example: `gpconfig -c statement_timeout -v 10000`. After making changes, apply them by reloading the configuration: `gpstop -u`.
+
+### Modifying authentication rules
+
+Update your connection rules without leaving the management console with the **HBA Editor** tab.
+
+The HBA editor operates through the host agent, which runs on the WarehousePG coordinator host. As long as the host agent is installed and connected, HBA editing works regardless of where WEM itself is deployed.
+
+> **Note**
+>
+> The **HBA Editor** tab requires the `acp-host-agent` to be installed and running on the WarehousePG coordinator host. See [Installing the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/).
+
+- Use the interactive editor to define new type, database, user, and method combinations. Since `pg_hba.conf` is parsed sequentially, ensure your more specific rules are placed above more general ones.
+- Select **Edit** to write the file through the host agent and create an automatic backup.
+
+> **Note**
+>
+> WEM always attempts to propagate the saved file to a standby coordinator. If your cluster doesn't have one, saving still succeeds, but shows a `standby update failed` warning naming the missing `standby-tasks` queue. This warning is expected and doesn't affect the save on the primary coordinator.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

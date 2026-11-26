@@ -1,0 +1,101 @@
+---
+title: Updating the conflict resolution strategy (updateconfresolutionstrategy)
+product: EDB Replication Server
+version: "7"
+url: https://www.enterprisedb.com/docs/eprs/latest/08_xdb_cli/03_xdb_cli_commands/24_updating_conflict_resolution_strategy/
+lastModified: 2025-04-03T18:05:51+02:00
+---
+
+# Updating the conflict resolution strategy (updateconfresolutionstrategy)
+
+<div id="updating_conflict_resolution_strategy" class="registered_link"></div>
+
+**For MMR only:** The `updateconfresolutionstrategy` command changes the conflict resolution strategy or standby conflict resolution strategy of the specified table.
+
+## Synopsis
+
+```shell
+-updateconfresolutionstrategy pubname
+  -repsvrfile pubsvrfile
+  -table schema_t.table_name
+  -conflictresolution { E | L | N | M | C }
+  -standbyconflictresolution { E | L | N | M | C }
+[ -customhandlername customhandler ]
+```
+
+See [Updating the conflict resolution options](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/12_update_conflict_resolution_options/) for more information.
+
+> **Note**
+>
+> The schema name and table or view name that you supply as values for the table parameter are case sensitive. Unless quoted identifiers were used to build the database objects, you must enter Oracle names using uppercase letters (for example, `EDB.DEPT`) and EDB Postgres Advanced Server names in lowercase letters (for example `edb.dept`). See [Quoted identifiers and default case translation](https://www.enterprisedb.com/docs/eprs/latest/10_appendix/03_miscellaneous_xdb_processing_topics/05_quoted_identifiers/#quoted_identifiers) for more information.
+
+## Parameters
+
+`pubname`
+
+The name of the publication containing the table whose conflict resolution strategy to update.
+
+`pubsvrfile`
+
+The file containing the publication server login information.
+
+`schema_t`
+
+The name of the schema containing `table_name`. This value is case sensitive.
+
+`table_name`
+
+The name of the table whose conflict resolution strategy to update. This value is case sensitive.
+
+`-conflictresolution`
+
+For the `conflictresolution` option, specify one of these values:
+
+- `E` for earliest timestamp conflict resolution
+- `L` for latest timestamp conflict resolution
+- `N` for node priority conflict resolution
+- `M` for manual conflict resolution
+- `C` for custom conflict handling
+
+`-standbyconflictresolution`
+
+For the `standbyconflictresolution` option, specify one of these values:
+
+- `E` for earliest timestamp conflict resolution
+- `L` for latest timestamp conflict resolution
+- `N` for node priority conflict resolution
+- `M` for manual conflict resolution
+- `C` for custom conflict handling
+
+`customhandler`
+
+For the `customhandler` name option, specify `customhandler` as the function name with an optional schema prefix (that is, formatted as schema.function\_name) as given in the `CREATE FUNCTION` command for the custom conflict handling function. You must add the custom conflict handling function to the primary definition node. See [Adding a custom conflict handling function](https://www.enterprisedb.com/docs/eprs/latest/06_mmr_operation/06_conflict_resolution/08_custom_conflict_handling/02_adding_custom_conflict_handling_function/#adding_custom_conflict_handling_function) for an example of adding the custom conflict handling function using PSQL. You must specify the custom handler name option only if you set the conflict resolution option or the standby conflict resolution option for custom conflict handling with the `C` value.
+
+## Examples
+
+This example modifies the conflict resolution strategy on the EDB Postgres Advanced Server table edb.emp in the publication `emp_pub` to use latest timestamp conflict resolution with a standby strategy of node priority conflict resolution.
+
+```shell
+$ java -jar edb-repcli.jar -updateconfresolutionstrategy emp_pub \
+>   -repsvrfile ~/pubsvrfile.prop \
+>   -table edb.emp \
+>   -conflictresolution L \
+>   -standbyconflictresolution N
+Updating Primary/Standby Conflict Resolution Strategy...
+The Primary/Standby conflict resolution strategies were updated successfully.
+```
+
+This example sets custom conflict handling for the `edb.dept` table along with the custom conflict handling function `edb.custom_conflict_dept`.
+
+```shell
+$ java -jar edb-repcli.jar -updateconfresolutionstrategy emp_pub \
+>   -repsvrfile ~/pubsvrfile.prop \
+>   -table edb.dept \
+>   -conflictresolution C \
+>   -standbyconflictresolution N \
+>   -customhandlername edb.custom_conflict_dept
+Updating Primary/Standby Conflict Resolution Strategy...
+The Primary/Standby conflict resolution strategies were updated successfully.
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

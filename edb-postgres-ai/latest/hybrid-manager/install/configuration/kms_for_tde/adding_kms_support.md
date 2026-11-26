@@ -1,0 +1,103 @@
+---
+title: Enabling KMS in Hybrid Manager
+description: Integrate KMS with Hybrid Manager.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/adding_kms_support/
+lastModified: 2026-09-29T15:30:26-07:00
+---
+
+# Enabling KMS in Hybrid Manager
+
+Transparent Data Encryption (TDE) is a data-at-rest encryption standard required by most enterprise security policies and compliance frameworks. HM supports two approaches to protecting TDE keys: passphrase-based and KMS-backed.
+
+**Passphrase mode** uses a passphrase you supply to encrypt each cluster's TDE key. This passphrase is the key-encryption key (KEK) for TDE, not any database user's SQL password. Passphrase mode is quick to set up and suitable for development and testing, but isn't appropriate for production:
+
+- The key custodian and the data custodian are the same principal, which doesn't satisfy PCI, HIPAA, or FedRAMP audit requirements.
+- A lost passphrase makes data unrecoverable, and a leaked passphrase voids the encryption entirely.
+- In disaster recovery scenarios, the passphrase is most likely to be unavailable, making it impossible to decrypt and restore your data.
+- Storing the passphrase in a template, secret, or automation pipeline defeats the security model. Don't automate passphrase-based TDE.
+
+See [Using a passphrase](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/passphrase/) and [Securing the data encryption key](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/) for the full standards framing behind these recommendations.
+
+**KMS-backed providers** (HashiCorp Vault, AWS KMS, Azure Key Vault, Google Cloud KMS) store the key outside the cluster, separately from the data. This separation satisfies audit requirements, enables automatic key rotation, and keeps the key accessible for disaster recovery. KMS is the only appropriate method for automated and production deployments.
+
+The `transparentDataEncryptionMethods` field in the `HybridControlPlane` CR controls which key providers are available for your clusters. You can list multiple providers — each individual cluster then uses one of the enabled methods. The HM default configuration enables `passphrase` and `hashicorp_vault`:
+
+```shell
+  # - transparentDataEncryptionMethods: List of TDE Encryption Methods for the agent.
+  #     Supported options: passphrase, aws_kms, azure_kms, gcp_kms, hashicorp_vault.
+  #     Default values: passphrase, hashicorp_vault.
+  transparentDataEncryptionMethods:
+    - passphrase
+    - hashicorp_vault
+```
+
+The supported options are:
+
+- `passphrase` — built-in passphrase encryption. Development and testing only.
+- `hashicorp_vault` — HashiCorp Vault. See [HashiCorp Vault](#hashicorp-vault).
+- `aws_kms` — Amazon Key Management Service. See [AWS KMS](#aws-kms).
+- `azure_kms` — Azure Key Vault. See [Azure KMS](#azure-kms).
+- `gcp_kms` — Google Cloud Key Management Service. See [Google KMS](#google-kms).
+
+> **Note**
+>
+> The `passphrase` option is included for convenience in development and testing environments only. For production installs, pin `transparentDataEncryptionMethods` to KMS providers only (`aws_kms`, `azure_kms`, `gcp_kms`, `hashicorp_vault`) and omit `passphrase` from the list entirely. Omitting `passphrase` from this list means it's never offered as an option — not in cluster templates, YAML manifests, the CLI, or the HM console — because HM only offers the methods enabled here.
+
+You can edit this field during installation, or add a provider post-install by editing your `HybridControlPlane` manifest and reapplying it. See [Updating configuration](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/install_guide/install_hm/#updating-configuration).
+
+## HashiCorp Vault
+
+The Hybrid Manager configuration includes support for HashiCorp out of the box.
+
+## AWS KMS
+
+To use Amazon's KMS, Amazon Key Management Service, add `aws_kms` to the list:
+
+```shell
+  # - transparentDataEncryptionMethods: List of TDE Encryption Methods for the agent.
+  #     Supported options: passphrase, aws_kms, azure_kms, gcp_kms, hashicorp_vault.
+  #     Default values: passphrase, hashicorp_vault.
+  transparentDataEncryptionMethods:
+    - passphrase
+    - hashicorp_vault
+    - aws_kms
+```
+
+## Azure KMS
+
+To use Azure's KMS, Azure Key Vault, add `azure_kms` to the list:
+
+```shell
+  # - transparentDataEncryptionMethods: List of TDE Encryption Methods for the agent.
+  #     Supported options: passphrase, aws_kms, azure_kms, gcp_kms, hashicorp_vault.
+  #     Default values: passphrase, hashicorp_vault.
+  transparentDataEncryptionMethods:
+    - passphrase
+    - hashicorp_vault
+    - azure_kms
+```
+
+## Google KMS
+
+If you want to use Google's KMS, Cloud Key Management Service, add `gcp_kms` to the list:
+
+```shell
+  # - transparentDataEncryptionMethods: List of TDE Encryption Methods for the agent.
+  #     Supported options: passphrase, aws_kms, azure_kms, gcp_kms, hashicorp_vault.
+  #     Default values: passphrase, hashicorp_vault.
+  transparentDataEncryptionMethods:
+    - passphrase
+    - hashicorp_vault
+    - gcp_kms
+```
+
+## Next steps
+
+- [Adding a HashiCorp Vault key](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/hashicorp/)
+- [Adding an AWS KMS key](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/aws_kms/)
+- [Adding an Azure KMS key](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/azure_kms/)
+- [Adding a Google Cloud KMS key](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/install/configuration/kms_for_tde/google_cloud_kms/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

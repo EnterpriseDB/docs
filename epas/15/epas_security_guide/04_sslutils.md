@@ -1,0 +1,139 @@
+---
+title: Generating SSL certificates
+description: The sslutils Postgres extension provides SSL certificate generation functions to EDB Postgres Advanced Server for use by the EDB Postgres Enterprise Manager server
+product: EDB Postgres Advanced Server
+version: "15"
+url: https://www.enterprisedb.com/docs/epas/15/epas_security_guide/04_sslutils/
+lastModified: 2024-06-26T10:43:05-04:00
+---
+
+# Generating SSL certificates
+
+<div id="sslutils" class="registered_link"></div>
+
+`sslutils` is a Postgres extension that provides SSL certificate generation functions to EDB Postgres Advanced Server for use by the EDB Postgres Enterprise Manager server.
+
+## Installing the extension
+
+Install `sslutils` using the following command:
+
+```shell
+  sudo <package-manager> -y install edb-as15-server-sslutils
+```
+
+Where:
+
+```
+- `<package-manager>`is the package manager used with your operating system:
+
+  | Package manager | Operating system                 |
+  | --------------- | -------------------------------- |
+  | dnf             | RHEL 8/9 and derivatives         |
+  | zypper          | SLES                             |
+  | apt-get         | Debian 10/11 and derivatives     |
+```
+
+For example, to install `sslutils` on a RHEL 9 platform:
+
+```shell
+sudo dnf -y install edb-as15-server-sslutils
+```
+
+Each parameter in the function’s parameter list is described by `parameter n`, where `n` refers to the `nth` ordinal position (for example, first, second, or third) in the function’s parameter list.
+
+## openssl\_rsa\_generate\_key
+
+The `openssl_rsa_generate_key` function generates an RSA private key. The function signature is:
+
+```sql
+openssl_rsa_generate_key(<integer>) RETURNS <text>
+```
+
+When invoking the function, pass the number of bits as an integer value. The function returns the generated key.
+
+## openssl\_rsa\_key\_to\_csr
+
+The `openssl_rsa_key_to_csr` function generates a certificate signing request (CSR). The signature is:
+
+```sql
+openssl_rsa_key_to_csr(<text>, <text>, <text>, <text>, <text>, <text>,
+<text>) RETURNS <text>
+```
+
+The function generates and returns the certificate signing request.
+
+### Parameters
+
+`parameter 1`
+
+The name of the RSA key file.
+
+`parameter 2`
+
+The common name (e.g., `agentN`) of the agent to use the signing request.
+
+`parameter 3`
+
+The name of the country where the server resides.
+
+`parameter 4`
+
+The name of the state where the server resides.
+
+`parameter 5`
+
+The location (city) in the state where the server resides.
+
+`parameter 6`
+
+The name of the organization unit requesting the certificate.
+
+`parameter 7`
+
+The email address of the user requesting the certificate.
+
+## openssl\_csr\_to\_crt
+
+The `openssl_csr_to_crt` function generates a self-signed certificate or a certificate authority certificate. The signature is:
+
+```sql
+openssl_csr_to_crt(<text>, <text>, <text>) RETURNS <text>
+```
+
+The function returns the self-signed certificate or certificate authority certificate.
+
+### Parameters
+
+`parameter 1`
+
+The name of the certificate signing the request.
+
+`parameter 2`
+
+The path to the certificate authority certificate, or `NULL` if generating a certificate authority certificate.
+
+`parameter 3`
+
+The path to the certificate authority’s private key or, if argument `2` is `NULL`, the path to a private key.
+
+## openssl\_rsa\_generate\_crl
+
+The `openssl_rsa_generate_crl` function generates a default certificate revocation list. The signature is:
+
+```sql
+openssl_rsa_generate_crl(<text>, <text>) RETURNS <text>
+```
+
+The function returns the certificate revocation list.
+
+### Parameters
+
+`parameter 1`
+
+The path to the certificate authority certificate.
+
+`parameter 2`
+
+The path to the certificate authority private key.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

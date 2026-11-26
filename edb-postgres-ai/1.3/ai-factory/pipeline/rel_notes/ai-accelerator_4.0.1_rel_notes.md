@@ -1,0 +1,36 @@
+---
+title: AI Accelerator - Pipelines 4.0.1 release notes
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/pipeline/rel_notes/ai-accelerator_4.0.1_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# AI Accelerator - Pipelines 4.0.1 release notes
+
+Released: 9 May 2025
+
+This is a minor release that includes a few bug fixes and enhancements to the knowledge base pipeline.
+
+## Highlights
+
+- Bug fixes and performance enhancements.
+- Simplified model integration for HCP.
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th></tr></thead><tbody>
+<tr><td><details><summary>Bug fixes for knowledge base and preparer pipeline schema handling.</summary><p>The knowledge base and preparer pipeline now support arbitrary Postgres schemas for source and destination tables/volumes.
+A bug prevented users for configuring explicit schemas via Postgres qualified identifiers (<code>schema.name</code>) when referencing source or destination tables/volumes in the create pipeline calls. This bug is now fixed.</p>
+</details></td></tr>
+<tr><td><details><summary>Bug fix for knowledge base result accuracy.</summary><p>A bug in the batch-processing code for knowledge base pipelines would, under certain circumstances, lead to inaccurate results during retrieval.
+This bug was introduced in the 4.0.0 release and is now fixed.</p>
+</details></td></tr>
+<tr><td><details><summary>Simplified model integration for HCP.</summary><p>External models, running on the HCP Model Serving infrastructure, can now be listed and integrated into AIDB with new helper functions <code>aidb.get_hcp_models()</code> and <code>aidb.create_hcp_model()</code>.</p>
+</details></td></tr>
+<tr><td><details><summary>Performance enhancement for embeddings processing with external models.</summary><p>When using external models for embeddings (e.g. with the nim_embeddings model adapter), AIDB performs additional API calls in order to probe the model service for the response type.
+These calls are now skipped in most situations to reduce the overhead to a minimum when running embedding processing. AIDB will now use actual results to determine the response type.</p>
+</details></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,280 @@
+---
+title: Knowledge bases reference
+description: API reference for AIDB knowledge base views, retrieval functions, volume management, and auto-processing configuration.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/reference/knowledge-bases/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Knowledge bases reference
+
+Reference for knowledge base (KB) functions and views. For guide-style documentation, see [Knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/).
+
+## Catalog views
+
+### `aidb.knowledge_bases`
+
+Also accessible as `aidb.kbs`. Lists all knowledge bases in the database with their full configuration.
+
+| Column                  | Type                                           | Description                                                              |
+| ----------------------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
+| `id`                    | integer                                        | Internal identifier                                                      |
+| `name`                  | text                                           | Knowledge base name                                                      |
+| `vector_schema`         | text                                           | Schema of the embeddings table                                           |
+| `vector_table`          | text                                           | Embeddings storage table                                                 |
+| `model_name`            | text                                           | Embedding model used                                                     |
+| `distance_operator`     | [aidb.DistanceOperator](#aidbdistanceoperator) | Vector distance function used for retrieval                              |
+| `distance_operator_sql` | text                                           | The distance operator in SQL-operator syntax (for example, `<->`, `<=>`) |
+| `vector_data_column`    | text                                           | Embeddings column                                                        |
+| `vector_key_column`     | text                                           | Key column in the embeddings table                                       |
+| `vector_index`          | jsonb                                          | Vector index configuration                                               |
+| `pipeline_ids`          | integer\[]                                     | IDs of all pipelines attached to this knowledge base                     |
+| `pipeline_names`        | text\[]                                        | Names of all pipelines attached to this knowledge base                   |
+
+---
+
+### `aidb.knowledge_base_metrics`
+
+Also accessible as `aidb.kbm`. Aggregated stats for each knowledge base — pipeline count, embedding row count, and the worst pipeline status. For per-pipeline progress (backlog, errors, source / destination counts), see [`aidb.pipeline_metrics`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbpipeline_metrics).
+
+| Column       | Type    | Description                                                                                                                                                           |
+| ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`       | text    | Knowledge base name (`schema.vector_table`).                                                                                                                          |
+| `pipelines`  | integer | Number of pipelines attached to this KB.                                                                                                                              |
+| `embeddings` | bigint  | Row count of the vector table.                                                                                                                                        |
+| `status`     | text    | Worst status across all attached pipelines (see [`aidb.PipelineStatus`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbpipelinestatus)). |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.kbm;
+
+```
+
+```output title="Output"
+             name             | pipelines | embeddings |  status
+------------------------------+-----------+------------+----------
+ public.product_catalog_kb    |         1 |       1842 | UpToDate
+ public.customer_feedback_kb  |         2 |        915 | UpToDate
+(2 rows)
+```
+
+The legacy view names `aidb.knowledge_base_stats` and `aidb.kbstat` are kept as aliases of `aidb.knowledge_base_metrics` for backward compatibility.
+
+---
+
+## Types
+
+### `aidb.DistanceOperator`
+
+Vector distance function used during retrieval.
+
+| Value          | Description        |
+| -------------- | ------------------ |
+| `L2`           | Euclidean distance |
+| `InnerProduct` | Inner product      |
+| `Cosine`       | Cosine similarity  |
+| `L1`           | L1 distance        |
+| `Hamming`      | Hamming distance   |
+| `Jaccard`      | Jaccard distance   |
+
+---
+
+### `aidb.PipelineDataFormat`
+
+Format of data in a pipeline source or volume.
+
+| Value   | Description       |
+| ------- | ----------------- |
+| `Text`  | Plain text        |
+| `Image` | Binary image data |
+| `Pdf`   | PDF documents     |
+
+---
+
+### `aidb.PipelineAutoProcessingMode`
+
+Auto-processing mode for a knowledge base pipeline.
+
+| Value        | Description                                                      |
+| ------------ | ---------------------------------------------------------------- |
+| `Live`       | Immediate processing via Postgres triggers on each data change   |
+| `Background` | Periodic processing via a Postgres background worker             |
+| `Disabled`   | No automatic processing; run manually with `aidb.run_pipeline()` |
+
+---
+
+## Knowledge base functions
+
+To change a pipeline's auto-processing mode, use [`aidb.update_pipeline`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbupdate_pipeline).
+
+### `aidb.retrieve_key`
+
+Returns the source record keys and distances for the top matching embeddings, without fetching source data.
+In `part_ids`, also returns the IDs of the matching parts for each step in a multi-step pipeline.
+For example, if a single source record is split into 10 parts by a `ChunkText` step, then `part_ids` indicates which chunk matched.
+
+#### Parameters
+
+| Parameter             | Type          | Default  | Description                                                                                                                                                                                                                                          |
+| --------------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `knowledge_base_name` | TEXT          | Required | Name of the knowledge base (`schema.vector_table`).                                                                                                                                                                                                  |
+| `query`               | TEXT or BYTEA | Required | Query text or image bytes. Must match the data format of the embedding model.                                                                                                                                                                        |
+| `topk`                | INTEGER       | `1`      | Number of results to return. Must be a positive integer — `0` or a negative value raises an error.                                                                                                                                                   |
+| `deduplicate`         | BOOLEAN       | `true`   | Return each source result only once even if multiple "parts" (for example, chunks/pages) match. See [Deduplication and intermediate results](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/#deduplication-and-intermediate-results). |
+
+#### Returns
+
+| Column          | Type             | Description                                                                                      |
+| --------------- | ---------------- | ------------------------------------------------------------------------------------------------ |
+| `key`           | text             | Source record key                                                                                |
+| `distance`      | double precision | Vector distance from the query                                                                   |
+| `part_ids`      | bigint\[]        | Which parts (for example, chunk or page) of the source record produced the matching vector       |
+| `pipeline_name` | text             | Name of the pipeline that supplied this row. Useful when the KB has multiple attached pipelines. |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retrieve_key('public.customer_feedback_kb', 'late delivery', topk=>3);
+
+```
+
+```output title="Output"
+ key  |      distance      | part_ids |   pipeline_name
+------+--------------------+----------+------------------
+ 1042 | 1.1931772046185758 | {0,0}    | feedback_eu_pipe
+ 318  | 1.1980633963685476 | {2,0}    | feedback_na_pipe
+ 1057 | 1.2150919866080878 | {2,0}    | feedback_eu_pipe
+(3 rows)
+```
+
+---
+
+### `aidb.retrieve_text`
+
+Returns source text and distances for the top matching embeddings by joining the embeddings table with the source table.
+In `part_ids`, also returns the IDs of the matching parts for each step in a multi-step pipeline. For example, if a single source record is split into 10 parts by a `ChunkText` step, then `part_ids` indicates which chunk matched.
+The return column `intermediate_steps` contains the actual intermediate step output.
+
+#### Parameters
+
+| Parameter             | Type          | Default  | Description                                                                                                                                                                                                                                          |
+| --------------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `knowledge_base_name` | TEXT          | Required | Name of the knowledge base (`schema.vector_table`).                                                                                                                                                                                                  |
+| `query`               | TEXT or BYTEA | Required | Query text or image bytes. Must match the data format of the embedding model.                                                                                                                                                                        |
+| `topk`                | INTEGER       | `1`      | Number of results to return. Must be a positive integer — `0` or a negative value raises an error.                                                                                                                                                   |
+| `deduplicate`         | BOOLEAN       | `true`   | Return each source result only once even if multiple "parts" (for example, chunks/pages) match. See [Deduplication and intermediate results](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/#deduplication-and-intermediate-results). |
+
+#### Returns
+
+| Column               | Type             | Description                                                                                                                                                                                                                                                                                                                           |
+| -------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`                | text             | Source record key                                                                                                                                                                                                                                                                                                                     |
+| `value`              | text             | Source text content. `NULL` when the original source content is non-text (for example, PDF or Image); other columns still surface match metadata.                                                                                                                                                                                     |
+| `distance`           | double precision | Vector distance from the query                                                                                                                                                                                                                                                                                                        |
+| `part_ids`           | bigint\[]        | Which part of the source record matched (for example, a chunk or page)                                                                                                                                                                                                                                                                |
+| `pipeline_name`      | text             | The name of the pipeline processing this source record                                                                                                                                                                                                                                                                                |
+| `intermediate_steps` | jsonb            | The matching results from any step configured with `intermediate_destination` — that is, the values belonging to `part_ids`. Empty (`[]`) if no step in the pipeline has intermediate storage enabled. See [Intermediate storage](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/#intermediate-storage). |
+
+`intermediate_steps` is a JSON array with one entry per step that has intermediate storage enabled, each shaped like:
+
+```json
+{"value": "...", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_my_pipeline_step_1"}
+```
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retrieve_text('public.pipeline_products', 'waterproof jacket', 3);
+
+```
+
+```output title="Output"
+  key  |                value                | distance           | part_ids | pipeline_name | intermediate_steps
+-------+-------------------------------------+--------------------+----------+---------------+--------------------
+ 19337 | Men Stripes Waterproof Shell Jacket | 0.2994317672742334 | {0}      | products      | []
+ 55018 | Women All-Weather Hiking Anorak     | 0.3804609668507203 | {0}      | products      | []
+(2 rows)
+```
+
+---
+
+### `aidb.delete_knowledge_base`
+
+Cascades: deletes all pipelines attached to the knowledge base, drops the vector table, and removes the registry entry. Doesn't delete underlying source tables.
+
+To remove a single pipeline from a multi-pipeline KB while keeping the KB and the other pipelines' vectors intact, use [`aidb.delete_pipeline`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#aidbdelete_pipeline) instead. Deleting the last attached pipeline also drops the KB.
+
+#### Parameters
+
+| Parameter | Type | Description                                        |
+| --------- | ---- | -------------------------------------------------- |
+| `name`    | TEXT | Knowledge base identifier (`schema.vector_table`). |
+
+#### Example
+
+```sql
+SELECT aidb.delete_knowledge_base('public.customer_feedback_kb');
+```
+
+---
+
+## Volume management functions
+
+Using a volume's files needs `USAGE` on the volume's schema and privileges on the volume's foreign table: `SELECT` to read or list files, `INSERT` to write, and `SELECT` and `DELETE` to delete a file. See [Volume privileges](https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/#volume-privileges).
+
+### `aidb.create_volume`
+
+Creates an AIDB volume from a PGFS storage location. The volume is a foreign table that exposes the storage location's contents as rows and can be used as a knowledge base data source or queried directly with SQL. See [External storage](https://www.enterprisedb.com/docs/aidb/latest/external-data-sources/) for setting up the PGFS storage location first.
+
+#### Parameters
+
+| Parameter     | Type | Description                                                                                                                                                                            |
+| ------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | TEXT | Name for the volume. Must be a valid unquoted PostgreSQL identifier.                                                                                                                   |
+| `server_name` | TEXT | Name of the PGFS storage location.                                                                                                                                                     |
+| `path`        | TEXT | Optional sub-path within the storage location. Canonicalized to a single trailing slash (for example, `foo`, `/foo`, `foo/`, `/foo/` all store as `foo/`; `NULL` or `/` store as `/`). |
+| `data_format` | TEXT | Data format: `Text`, `Image`, or `Pdf`.                                                                                                                                                |
+
+#### Example
+
+```sql
+SELECT aidb.create_volume('pdf_volume', 'my_s3_location', '/', 'Pdf');
+```
+
+---
+
+### `aidb.volumes`
+
+View that lists all AIDB volumes in the database. Returns `schema`, `volume`, `storage_location`, and `path`.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.volumes;
+```
+
+---
+
+### `aidb.delete_volume`
+
+Deletes an AIDB volume.
+
+> **Note**
+>
+> Deleting the underlying PGFS storage location also deletes all volumes built on top of it.
+
+#### Parameters
+
+| Parameter | Type | Description                   |
+| --------- | ---- | ----------------------------- |
+| `name`    | TEXT | Name of the volume to delete. |
+
+#### Example
+
+```sql
+SELECT aidb.delete_volume('pdf_volume');
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

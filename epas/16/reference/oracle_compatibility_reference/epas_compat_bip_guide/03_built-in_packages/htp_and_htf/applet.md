@@ -1,0 +1,44 @@
+---
+title: APPLETOPEN and APPLETCLOSE
+product: EDB Postgres Advanced Server
+version: "16"
+url: https://www.enterprisedb.com/docs/epas/16/reference/oracle_compatibility_reference/epas_compat_bip_guide/03_built-in_packages/htp_and_htf/applet/
+lastModified: 2024-11-22T12:16:04+01:00
+---
+
+# APPLETOPEN and APPLETCLOSE
+
+`htp.appletopen` generates the `<APPLET>` HTML tag, which invokes a Java applet. Close the applet with `htp.appletclose`, which generates the `</APPLET>` HTML tag.
+
+## Syntax
+
+The following is the syntax for HTP:
+
+```
+HTP.APPLETOPEN(
+   ccode          IN       VARCHAR2
+   cheight        IN       NUMBER
+   cwidth         IN       NUMBER
+   cattributes    IN       VARCHAR2   DEFAULT NULL);
+
+
+HTP.APPLETCLOSE;
+```
+
+The following is the syntax for HTF:
+
+```
+HTF.APPLETOPEN(ccode, cheight, cwidth, cattributes) RETURN VARCHAR2;
+
+HTF.APPLETCLOSE RETURN VARCHAR2;
+```
+
+## Parameters
+
+| Parameter | Purpose                                                                        |
+| --------- | ------------------------------------------------------------------------------ |
+| ccode     | The value for the CODE attribute, which specifies the name of the applet class |
+| cheight   | The value for the HEIGHT attribute                                             |
+| cwidth    | The value for the WIDTH attribute                                              |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

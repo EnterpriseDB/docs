@@ -1,0 +1,140 @@
+---
+title: Upgrading a PEM installation on a Linux host
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/upgrading/upgrading_pem_installation/upgrading_pem_installation_linux_rpm/
+lastModified: 2025-11-25T22:01:18+05:30
+---
+
+# Upgrading a PEM installation on a Linux host
+
+To upgrade PEM component software on Linux hosts, install a newer version of the PEM component packages in the following order:
+
+1. Invoke the PEM agent package installer on each monitored node except the PEM server host.
+2. Invoke the PEM server package installer. It upgrades both the PEM server and the PEM agent that resides on the PEM server host. If the web application and backend database are running on separate hosts, update the database host first.
+
+During an installation, the component installation detects an existing installation and performs an upgrade. After upgrading the PEM agent and server, you can upgrade SQL Profiler if required. That step is platform specific.
+
+> **Note: Upgrading to PEM 10 from PEM 9**
+>
+> To upgrade to PEM 10 from PEM 9 you can follow the steps below.
+> While new installations of PEM 10 use the NGINX web server by default, installations upgraded from PEM 9 will continue to use Apache HTTPD.
+> After upgrading to PEM 10, you can switch to NGINX at any time by running the provided script `/usr/edb/pem/bin/switch-web-server.sh`.
+> This will install and configure NGINX.
+> You can run the same script again to switch back to Apache HTTPD.
+
+> **Note: Upgrading to PEM 10.3**
+>
+> If you come across libcurl errors while upgrading to 10.3 on RHEL 9 then use `--allowerasing` option with your package manager.
+
+## Upgrading a PEM server installation
+
+If you want to upgrade a PEM server that's installed on a machine in an isolated network, you need to create a PEM repository on that machine before you upgrade the PEM server. For more information, see [Creating an EDB repository
+on an isolated network](https://www.enterprisedb.com/docs/pem/latest/installing/creating_pem_repository_in_isolated_network/).
+
+To upgrade a PEM server installation:
+
+```shell
+sudo <package-manager> upgrade edb-pem 
+```
+
+Where `<package-manager>` is the package manager used with your operating system:
+
+| Package manager | Operating system         |
+| --------------- | ------------------------ |
+| dnf             | RHEL 8/9 and derivatives |
+| zypper          | SLES                     |
+| apt-get         | Debian and Ubuntu        |
+
+If upgrading from PEM 9 on a RHEL-like system, you may need to include the `--allowerasing` option to prevent the upgrade from being blocked by the obsolete edb-pem-docs package.
+
+> **Note: Handling configuration file conflicts**
+>
+> During an upgrade, a package manager might detect that a configuration file provided by the new package has changed, and the user has also modified their local version of that file. Different package managers handle this situation in different ways.
+>
+> **RHEL/SLES (dnf,yum,zypper)**
+>
+> - **Without user change:** The upgrade proceeds without interruption, and the new version of the file is installed.
+>
+> - **With user change:** The package manager will apply the new version of the configuration file and save the user's modified version as a backup (e.g. \`/usr/lib/systemd/system/pemagent.service.rpmsave).
+>
+> **Debian/Ubuntu (apt)**
+>
+> - **Without user change:** `apt` will pause the upgrade and prompt you to decide how to handle the conflicting file. You will see a message similar to this:
+>
+> ```text
+> Configuration file '/lib/systemd/system/pemagent.service'
+> ==> File on system created by you or by a script.
+> ==> File also in package provided by package maintainer.
+>   What would you like to do about it?  Your options are:
+>     Y or I  : install the package maintainer's version
+>     N or O  : keep your currently-installed version
+>       D     : show the differences between the versions
+>       Z     : start a shell to examine the situation
+>  The default action is to keep your current version.
+> *** pemagent.service (Y/I/N/O/D/Z) [default=N] ?
+> ```
+>
+> - To perform an unattended upgrade, you can use `apt` options to force a decision:
+>
+>   - **To install the new package version:** Add `o Dpkg::Options::="--force-confnew"` to your command.
+>
+>     - Example: `apt -o Dpkg::Options::="--force-confnew" install edb-pem`
+>
+>   - **To keep your existing version:** Add `o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"` to your command.
+>
+>     - Example: `apt -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install edb-pem`
+
+After upgrading the PEM server, you must configure the PEM server. For detailed information, see [Configuring the PEM server](#configuring-the-pem-server).
+
+> **Note**
+>
+> If you upgrade the PEM backend database server and the PEM server, update the `PG_INSTALL_PATH` and `DB_UNIT_FILE` parameters pointing to the new version in the `/usr/edb/pem/share/.install-config` file before you run the configure script.
+
+## Configuring the PEM server
+
+After upgrading the PEM server, you can use the following command to configure the PEM server:
+
+```shell
+/usr/edb/pem/bin/configure-pem-server.sh
+```
+
+The configure script uses the values from the old PEM server configuration file while running the script. For details, see [Configuring the PEM server on Linux platforms](https://www.enterprisedb.com/docs/pem/latest/installing/configuring_the_pem_server_on_linux/).
+
+> **Note**
+>
+> - The configure script requires a superuser password only after the upgrade process.
+>
+> - If your configure script gets stuck, then stop the PEM agent with `alert_threads>0`. To get the details of such agents, execute the query:
+>
+>   ```sql
+>   SELECT agent_id FROM pem.agent_config WHERE param='alert_threads' AND value > 0;
+>   ```
+>
+>   Stop the running agents and rerun the configure script.
+>
+>   If the problem persists, then run the query to terminate the stuck alert processes:
+>
+>   ```sql
+>   SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query='SELECT pem.process_one_alert()';
+>   ```
+>
+>   Then rerun the configure script.
+
+## Upgrading a PEM agent installation
+
+To upgrade a PEM agent:
+
+```shell
+sudo <package-manager> upgrade edb-pem-agent
+```
+
+Where `<package-manager>` is the package manager used with your operating system:
+
+| Package manager | Operating system         |
+| --------------- | ------------------------ |
+| dnf             | RHEL 8/9 and derivatives |
+| zypper          | SLES                     |
+| apt-get         | Debian and Ubuntu        |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,1640 @@
+---
+title: Semantic knowledge bases reference
+description: API reference for AIDB semantic knowledge base functions — creating and managing a KB, relationships, comment curation, search, and health checks.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/reference/semantic-knowledge-bases/
+lastModified: 2026-11-26T13:15:29+05:30
+---
+
+# Semantic knowledge bases reference
+
+Reference for semantic knowledge base (semantic KB) functions. For guide-style documentation, see [Semantic knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/).
+
+## Creating and managing a semantic KB
+
+For concepts (creating a KB, resolving to a single KB, and auto-processing) see [Getting started](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/#getting-started).
+
+### `aidb.create_semantic_kb`
+
+Creates a semantic KB over one or more schemas, embeds the schema metadata with the given model, and crawls the schemas immediately. It also creates an empty term store for the [business glossary](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/business-glossary/).
+
+#### Parameters
+
+| Parameter              | Type    | Default           | Description                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------- | ------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                 | TEXT    | `default_semkb`   | Name for the KB. When omitted, functions that also omit `name`/`kb_name` resolve to this KB as long as only one exists — see [Getting started](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/#getting-started).                                                                                                                         |
+| `model`                | TEXT    | Required          | The embedding model to use. A KB uses a single model for all of its metadata.                                                                                                                                                                                                                                                                                    |
+| `schemas`              | TEXT\[] | `ARRAY['public']` | The schema or schemas to crawl and index.                                                                                                                                                                                                                                                                                                                        |
+| `auto_processing`      | TEXT    | `Disabled`        | How the KB reacts to schema changes: `Disabled`, `Live`, or `Background`. See [Auto-processing modes](#auto-processing-modes).                                                                                                                                                                                                                                   |
+| `bypass_triggers`      | BOOLEAN | `false`           | Skips the DDL event triggers for this KB. Schema changes are only picked up on `refresh_semantic_kb()`.                                                                                                                                                                                                                                                          |
+| `curation`             | BOOLEAN | `false`           | Turns on the comment review queue. See [Descriptions and curation](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/curation/).                                                                                                                                                                                                            |
+| `vector_index`         | JSONB   | `NULL`            | Vector index configuration, built with a [vector index config helper](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/reference/#vector-index-config-helpers). The KB builds the same kind of index on its glossary concepts.                                                                                                                       |
+| `user_defined_context` | TEXT    | `NULL`            | Your description of the KB, such as business terms or how its tables relate. It can contain up to 4,000 characters. AIDB includes it in the KB's managed [agent plugin](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/#managing-a-semantic-kb-plugin). Change it later with [`aidb.update_semantic_kb_context`](#aidbupdate_semantic_kb_context). |
+
+#### Returns
+
+The KB name (`TEXT`).
+
+#### Example
+
+```sql
+SELECT aidb.create_semantic_kb(
+    name    => 'analytics_kb',
+    model   => 'my_embedding_model',
+    schemas => ARRAY['sales'],
+    auto_processing => 'Live'
+);
+```
+
+---
+
+### `aidb.list_semantic_kbs`
+
+Lists every semantic KB with its model, schemas, and processing mode. The `plugin_name` column holds the name of the KB's managed [agent plugin](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/#managing-a-semantic-kb-plugin), `semkb_<kb_name>`. It's `NULL` until AIDB has published the plugin and all three of its tools.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.list_semantic_kbs();
+```
+
+---
+
+### `aidb.refresh_semantic_kb`
+
+Re-crawls a KB's schemas from scratch to pick up structural changes, and republishes the KB's managed [agent plugin](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/#managing-a-semantic-kb-plugin) and its tools. Run it after you resolve a name collision that stopped AIDB from publishing the plugin.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                      |
+| --------- | ---- | ------- | ------------------------------------------------ |
+| `name`    | TEXT | `NULL`  | The KB to refresh. Omit when only one KB exists. |
+
+#### Example
+
+```sql
+SELECT aidb.refresh_semantic_kb('analytics_kb');
+```
+
+---
+
+### `aidb.update_semantic_kb_auto_processing`
+
+Changes how a KB reacts to schema changes after creation.
+
+#### Parameters
+
+| Parameter         | Type | Default  | Description                                                                               |
+| ----------------- | ---- | -------- | ----------------------------------------------------------------------------------------- |
+| `name`            | TEXT | `NULL`   | The KB to update. Omit when only one KB exists.                                           |
+| `auto_processing` | TEXT | Required | `Disabled`, `Live`, or `Background`. See [Auto-processing modes](#auto-processing-modes). |
+
+#### Example
+
+```sql
+SELECT aidb.update_semantic_kb_auto_processing('analytics_kb', 'Live');
+```
+
+---
+
+### `aidb.update_semantic_kb_context`
+
+Stores your own description of a KB, such as business terms or how its tables relate. AIDB includes this context in the KB's managed [agent plugin](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/#managing-a-semantic-kb-plugin), so agents that use the plugin can read it. Updating the context republishes the plugin.
+
+#### Parameters
+
+| Parameter              | Type | Default  | Description                                                                                                                                                                                      |
+| ---------------------- | ---- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `user_defined_context` | TEXT | Required | Your description of the KB. It can contain up to 4,000 characters, and AIDB trims leading and trailing whitespace. It replaces any existing context. Pass `NULL` or an empty string to clear it. |
+| `kb_name`              | TEXT | `NULL`   | The KB to update. Omit when only one KB exists.                                                                                                                                                  |
+
+Clearing the context also retires the relationship and comment proposals that AIDB distilled from it.
+
+#### Example
+
+```sql
+SELECT aidb.update_semantic_kb_context('Amounts in the payments schema are stored in cents.', 'analytics_kb');
+```
+
+To clear the context:
+
+```sql
+SELECT aidb.update_semantic_kb_context(NULL, 'analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_stats`
+
+Returns entity counts and pending-change status for a KB.
+
+> **Note**
+>
+> This function is deprecated. It remains callable in SQL, but it's no longer an agent tool, and a later release will remove it. Use [`aidb.semantic_kb_health_report`](#aidbsemantic_kb_health_report) instead. The report doesn't return the `tables`, `views`, `columns`, `drifted`, or `queries` counts, and its relationship total excludes retired relationships, which `relationships` here counts.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                        |
+| --------- | ---- | ------- | -------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The KB to report on. Omit when only one KB exists. |
+
+#### Returns
+
+| Column          | Description                                                                           |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `total`         | Total indexed entities.                                                               |
+| `tables`        | Number of indexed tables.                                                             |
+| `columns`       | Number of indexed columns.                                                            |
+| `pending`       | Number of schema changes not yet reflected in the index.                              |
+| `relationships` | Number of recorded relationships.                                                     |
+| `drifted`       | Number of relationships flagged by [`relationship_drift()`](#aidbrelationship_drift). |
+| `queries`       | Number of statements imported from query history.                                     |
+
+#### Example
+
+```sql
+SELECT total, tables, columns, pending, relationships, drifted, queries
+FROM aidb.semantic_kb_stats('bank_kb');
+```
+
+---
+
+### `aidb.delete_semantic_kb`
+
+Deletes a KB, its indexed metadata, and its business glossary. It also removes the KB's managed [agent plugin](https://www.enterprisedb.com/docs/aidb/latest/agents/plugins/#managing-a-semantic-kb-plugin) and its tools, and detaches the plugin from every agent that uses it.
+
+#### Parameters
+
+| Parameter   | Type    | Default  | Description                                                              |
+| ----------- | ------- | -------- | ------------------------------------------------------------------------ |
+| `name`      | TEXT    | Required | The KB to delete.                                                        |
+| `if_exists` | BOOLEAN | `false`  | If `true` and the KB doesn't exist, raises a notice instead of an error. |
+
+#### Example
+
+```sql
+SELECT aidb.delete_semantic_kb('analytics_kb');
+```
+
+---
+
+## Auto-processing modes
+
+| Mode                 | Behavior                                                                                                                                                                                                                         |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Disabled` (default) | No automatic updates. Call `aidb.refresh_semantic_kb()` when the schema changes.                                                                                                                                                 |
+| `Live`               | DDL triggers re-crawl affected relations as soon as the schema changes.                                                                                                                                                          |
+| `Background`         | A background worker processes queued DDL events, so re-indexing happens off the write path. Internally, this mode is driven by AIDB's pipeline machinery: a `SemanticKB` pipeline step consumes the queued schema-change events. |
+
+---
+
+## Searching a semantic KB
+
+For concepts (searching everything at once, tuning results, finding the joins around a search) see [Searching a semantic KB](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/).
+
+### `aidb.semantic_kb_search`
+
+The composite entry point: runs the per-source ranked searches (schema metadata, relationships, curated semantic aliases, query history, and business glossary concepts) and fuses them into one ranked list with Reciprocal Rank Fusion (RRF).
+
+#### Parameters
+
+| Parameter          | Type             | Default | Description                                                                                                                                                                       |
+| ------------------ | ---------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_text`       | TEXT             | —       | The natural-language query.                                                                                                                                                       |
+| `kb_name`          | TEXT             | `NULL`  | The KB to search. Omit to target the single KB when only one exists.                                                                                                              |
+| `top_k`            | INT              | `10`    | Number of ranked rows to return.                                                                                                                                                  |
+| `sources`          | TEXT\[]          | `NULL`  | Sources to search: `schema`, `alias`, `relationship`, `history`, `concept`. Omit for all.                                                                                         |
+| `entity_types`     | TEXT\[]          | `NULL`  | Entity types to include: `Table`, `View`, `Column`, `Alias`, `Relationship`, `Query`. Omit for all.                                                                               |
+| `rrf_k`            | INT              | `60`    | Rank-fusion damping constant.                                                                                                                                                     |
+| `min_similarity`   | DOUBLE PRECISION | `NULL`  | Optional similarity floor. Rows scoring below it are dropped. It also applies to glossary concepts, including the ones that search reaches through a relation. Omit for no floor. |
+| `include_proposed` | BOOLEAN          | `false` | Also return relationships and glossary bindings with status `proposed`, not just `approved` ones.                                                                                 |
+
+#### Returns
+
+| Column          | Description                                                                                                                                                                                                                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source_type`   | Which source produced the row: `schema`, `alias`, `relationship`, `history`, or `concept`. A table or column that both the schema source and the concept source found is one row with `schema`. See [Searching with the glossary](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/business-glossary/#searching-with-the-glossary). |
+| `entity_type`   | `Table`, `View`, `Column`, `Alias`, `Relationship`, or `Query`.                                                                                                                                                                                                                                                                                           |
+| `schema_name`   | The schema the entity belongs to.                                                                                                                                                                                                                                                                                                                         |
+| `relation_name` | The table or view name.                                                                                                                                                                                                                                                                                                                                   |
+| `column_name`   | The column name (empty for table- and view-level matches).                                                                                                                                                                                                                                                                                                |
+| `object_ref`    | A qualified reference to the matched object. Populated for `relationship` rows, and for `history` rows, where it lists the tables the stored statement reads. Schema rows identify themselves through `schema_name`, `relation_name`, and `column_name`.                                                                                                  |
+| `definition`    | The structural definition that was embedded.                                                                                                                                                                                                                                                                                                              |
+| `comment`       | The `COMMENT ON` text for the entity, if any.                                                                                                                                                                                                                                                                                                             |
+| `score`         | The fused RRF score: `1 / (rrf_k + rank_within_source)`. Rows from different sources can tie — see [Tuning results](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/searching/#tuning-results).                                                                                                                                    |
+| `rank`          | The 1-based rank within the fused result set.                                                                                                                                                                                                                                                                                                             |
+| `components`    | JSONB detail of the per-source scores that fed the fusion.                                                                                                                                                                                                                                                                                                |
+
+#### Example
+
+```sql
+SELECT source_type, entity_type, schema_name, relation_name, column_name, rank
+FROM aidb.semantic_kb_search(
+    query_text => 'which customers spent the most',
+    kb_name    => 'analytics_kb',
+    top_k      => 5
+);
+```
+
+---
+
+### `aidb.get_metadata`
+
+The broadest schema search: returns columns, tables, and views together with full metadata.
+
+#### Parameters
+
+| Parameter        | Type             | Default | Description                                     |
+| ---------------- | ---------------- | ------- | ----------------------------------------------- |
+| `kb_name`        | TEXT             | `NULL`  | The KB to search. Omit when only one KB exists. |
+| `query_text`     | TEXT             | —       | The natural-language query.                     |
+| `min_similarity` | DOUBLE PRECISION | `NULL`  | Optional similarity floor.                      |
+| `top_k`          | INT              | `10`    | Number of results to return.                    |
+| `offset`         | INT              | `0`     | Paging offset.                                  |
+
+#### Returns
+
+`schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `definition_vector`, `similarity`.
+
+#### Example
+
+```sql
+SELECT schema_name, relation_name, column_name, entity_type, similarity
+FROM aidb.get_metadata(
+    kb_name    => 'analytics_kb',
+    query_text => 'customer email address',
+    top_k      => 10
+);
+```
+
+---
+
+### `aidb.get_entity_definitions`
+
+Matches tables and views only.
+
+#### Parameters
+
+| Parameter        | Type             | Default                  | Description                                     |
+| ---------------- | ---------------- | ------------------------ | ----------------------------------------------- |
+| `kb_name`        | TEXT             | `NULL`                   | The KB to search. Omit when only one KB exists. |
+| `query_text`     | TEXT             | —                        | The natural-language query.                     |
+| `min_similarity` | DOUBLE PRECISION | `NULL`                   | Optional similarity floor.                      |
+| `entity_types`   | TEXT\[]          | `ARRAY['Table', 'View']` | Entity types to include.                        |
+| `top_k`          | INT              | `10`                     | Number of results to return.                    |
+| `offset`         | INT              | `0`                      | Paging offset.                                  |
+
+#### Returns
+
+`schema_name`, `relation_name`, `entity_type`, `definition`, `comment`, `similarity`.
+
+#### Example
+
+```sql
+SELECT schema_name, relation_name, entity_type, similarity
+FROM aidb.get_entity_definitions(
+    kb_name      => 'analytics_kb',
+    query_text   => 'orders and line items',
+    entity_types => ARRAY['Table', 'View']
+);
+```
+
+---
+
+### `aidb.get_column_definitions`
+
+Returns just the matching column and table definitions — the leanest result, useful as compact grounding for SQL generation.
+
+#### Parameters
+
+| Parameter        | Type             | Default | Description                                     |
+| ---------------- | ---------------- | ------- | ----------------------------------------------- |
+| `kb_name`        | TEXT             | `NULL`  | The KB to search. Omit when only one KB exists. |
+| `query_text`     | TEXT             | —       | The natural-language query.                     |
+| `min_similarity` | DOUBLE PRECISION | `NULL`  | Optional similarity floor.                      |
+| `top_k`          | INT              | `10`    | Number of results to return.                    |
+| `offset`         | INT              | `0`     | Paging offset.                                  |
+
+#### Returns
+
+A single `definition` column.
+
+#### Example
+
+```sql
+SELECT definition
+FROM aidb.get_column_definitions(
+    kb_name    => 'analytics_kb',
+    query_text => 'order total amount'
+);
+```
+
+---
+
+### `aidb.search_by_comment`
+
+Matches only the natural-language `COMMENT ON` text attached to schemas, tables, and columns.
+
+#### Parameters
+
+| Parameter        | Type             | Default | Description                                     |
+| ---------------- | ---------------- | ------- | ----------------------------------------------- |
+| `kb_name`        | TEXT             | `NULL`  | The KB to search. Omit when only one KB exists. |
+| `query_text`     | TEXT             | —       | The natural-language query.                     |
+| `min_similarity` | DOUBLE PRECISION | `NULL`  | Optional similarity floor.                      |
+| `top_k`          | INT              | `10`    | Number of results to return.                    |
+| `offset`         | INT              | `0`     | Paging offset.                                  |
+
+#### Returns
+
+`schema_name`, `relation_name`, `column_name`, `entity_type`, `definition`, `comment`, `similarity`.
+
+#### Example
+
+```sql
+SELECT relation_name, column_name, comment, similarity
+FROM aidb.search_by_comment(
+    kb_name    => 'analytics_kb',
+    query_text => 'order status values'
+);
+```
+
+---
+
+### `aidb.semantic_kb_subgraph`
+
+Returns a question's neighborhood: seeds from the search hits and adds the relationships around them, so you get the joins connected to a question, not just the entities. Only traverses relationships that are `approved` and routable — see [The routability rule](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#status-and-confidence).
+
+#### Parameters
+
+| Parameter    | Type | Default | Description                                    |
+| ------------ | ---- | ------- | ---------------------------------------------- |
+| `kb_name`    | TEXT | `NULL`  | The KB to search.                              |
+| `query_text` | TEXT | —       | The natural-language query.                    |
+| `top_k`      | INT  | `10`    | Number of seed matches to expand.              |
+| `max_hops`   | INT  | `3`     | Maximum join distance to traverse from a seed. |
+
+#### Returns
+
+| Column        | Description                                                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `hop`         | Distance from the seeding match.                                                                                     |
+| `from_object` | The relationship's left endpoint.                                                                                    |
+| `to_object`   | The relationship's right endpoint.                                                                                   |
+| `via_object`  | The bridge table, populated for a `junction` hop.                                                                    |
+| `kind`        | The relationship [kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind). |
+| `predicate`   | The relationship's business-readable predicate, if any.                                                              |
+| `join_expr`   | The join expression.                                                                                                 |
+| `confidence`  | The relationship's confidence.                                                                                       |
+| `seeded_by`   | The matched object that pulled this hop in.                                                                          |
+| `truncated`   | Whether the traversal stopped before exhausting all routes.                                                          |
+
+#### Example
+
+```sql
+SELECT hop, from_object, to_object, via_object, kind, confidence, seeded_by
+FROM aidb.semantic_kb_subgraph(
+    kb_name    => 'analytics_kb',
+    query_text => 'money moved out of an account',
+    top_k      => 3,
+    max_hops   => 1
+);
+```
+
+---
+
+## Managing a business glossary
+
+For concepts (the glossary document, relations, bindings, and how search uses them) see [Business glossary](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/business-glossary/).
+
+### `aidb.semantic_kb_import_concepts`
+
+Writes a business glossary document into the term store of a KB and embeds its new and changed concepts. The document is the whole glossary of the KB. The import marks every concept that the document leaves out as deleted. It also removes every relation and binding that the document doesn't state again. It writes a row only when a value changed, so a second run with the same document changes nothing.
+
+The import checks the whole document before it writes. If the document has a problem, the import raises an error that names each field at fault, and it writes nothing.
+
+Every member of `aidb_users` can run it. You need `USAGE` on the credential of the KB's model. It isn't a [native tool](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/), because it writes bindings as `approved`.
+
+#### Parameters
+
+| Parameter    | Type  | Default  | Description                                                                                                                                                                                                                                                          |
+| ------------ | ----- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vocabulary` | JSONB | Required | The glossary document, with the optional arrays `predicates`, `concepts`, `relations`, and `bindings`. See [Writing the glossary document](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/business-glossary/#writing-the-glossary-document). |
+| `kb_name`    | TEXT  | `NULL`   | The KB to import into. Omit to target the single KB when only one exists.                                                                                                                                                                                            |
+
+#### Returns
+
+One row with these counts:
+
+| Column               | Description                                                    |
+| -------------------- | -------------------------------------------------------------- |
+| `concepts_added`     | Concepts that the KB didn't store before.                      |
+| `concepts_updated`   | Stored concepts whose values changed.                          |
+| `concepts_unchanged` | Stored concepts that the document states with the same values. |
+| `concepts_deleted`   | Concepts that the import marked as deleted.                    |
+| `concepts_embedded`  | Concepts that the import embedded with the model of the KB.    |
+| `relations_written`  | Relations that the import added or changed.                    |
+| `relations_removed`  | Stored relations that the document doesn't state.              |
+| `bindings_written`   | Bindings that the import added or changed.                     |
+| `bindings_removed`   | Stored `catalog_tag` bindings that the document doesn't state. |
+
+Each import also writes one row to the [audit log](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/), with `op` `write`, `func` `semantic_kb_import_concepts`, and these counts in `detail`.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.semantic_kb_import_concepts('{
+  "concepts": [
+    {"id": "c-soiling", "pref_label": "Soiling", "alt_labels": ["dirty panel"]}
+  ],
+  "bindings": [
+    {"concept": "c-soiling", "schema": "telemetry", "relation": "panel_readings", "column": "amb"}
+  ]
+}', 'ops_kb');
+```
+
+---
+
+## Managing relationships
+
+For concepts (kind, source, status, confidence, the routability rule) see [Relationships](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/).
+
+### `aidb.list_relationships`
+
+Lists recorded relationships, optionally filtered.
+
+#### Parameters
+
+| Parameter  | Type | Default | Description                                                                                                                                     |
+| ---------- | ---- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`  | TEXT | `NULL`  | The KB to query. Omit when only one KB exists.                                                                                                  |
+| `relation` | TEXT | `NULL`  | Restrict to relationships touching this table or view. Matched, not validated — a typo returns zero rows, not an error.                         |
+| `source`   | TEXT | `NULL`  | Restrict to one [source](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#source). Matched, not validated. |
+| `status`   | TEXT | `NULL`  | Restrict to one status (`proposed`, `approved`, `stale`, `retired`). Matched, not validated.                                                    |
+| `kind`     | TEXT | `NULL`  | Restrict to one [kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind). Matched, not validated.     |
+| `level`    | TEXT | `NULL`  | Restrict to one level (`data` or `concept`). Matched, not validated.                                                                            |
+
+#### Returns
+
+| Column            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `relationship_id` | The relationship's ID.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `left_object`     | The left endpoint (`schema.relation`).                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `left_columns`    | The left endpoint's join columns.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `right_object`    | The right endpoint (`schema.relation`).                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `right_columns`   | The right endpoint's join columns.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `junction_object` | The bridge table, populated for a `junction` kind.                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `kind`            | See [Kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind).                                                                                                                                                                                                                                                                                                                                                             |
+| `cardinality`     | Derived from the schema — for example `many-to-one`, `one-to-one`.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `is_nullable`     | Whether the join column can be null, which decides `JOIN` vs. `LEFT JOIN`.                                                                                                                                                                                                                                                                                                                                                                                          |
+| `source`          | See [Source](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#source).                                                                                                                                                                                                                                                                                                                                                         |
+| `is_validated`    | Whether PostgreSQL has validated the backing foreign key. `false` for a crawled `NOT VALID` foreign key and for every non-crawl relationship.                                                                                                                                                                                                                                                                                                                       |
+| `confidence`      | Ranking order, not a probability — see [Status and confidence](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#status-and-confidence).                                                                                                                                                                                                                                                                                        |
+| `status`          | `proposed`, `approved`, `stale`, or `retired`.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `level`           | The relationship's level: `data` or `concept`. `concept` isn't usable yet — every relationship in Phase 1 is `data`.                                                                                                                                                                                                                                                                                                                                                |
+| `join_expr`       | The join expression.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `definition`      | The relationship's join definition.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `constraint_name` | The backing constraint's name, when the relationship came from one.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `description`     | The constraint's comment, if any.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `curated_label`   | A short, human-written name for the relationship (for example, `loan repayment`), set with the `curated_label` parameter of `aidb.add_relationship()`. Refreshes and re-crawls never overwrite it. If the backing constraint is dropped, a labelled relationship is marked `retired` rather than deleted, so the label is kept. It is stored and returned only: it isn't embedded, doesn't affect `aidb.semantic_kb_search()`, and isn't used by the route finders. |
+| `stale_reason`    | Why the relationship is stale, for example `column_dropped` when a named join column is renamed or dropped. Set when `status` is `stale`.                                                                                                                                                                                                                                                                                                                           |
+| `provenance`      | JSONB detail: model, crawl ID, and where the relationship's claim came from (`asserted_by`).                                                                                                                                                                                                                                                                                                                                                                        |
+
+#### Example
+
+```sql
+SELECT left_object, left_columns, right_object, right_columns, kind, cardinality, is_nullable
+FROM aidb.list_relationships('bank_kb', relation => 'bank.customers')
+ORDER BY left_object, left_columns;
+```
+
+---
+
+### `aidb.find_join_path`
+
+Finds a route between two tables, ranked shortest first, then by confidence.
+
+#### Parameters
+
+| Parameter     | Type | Default | Description                                                                                                                                |
+| ------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kb_name`     | TEXT | `NULL`  | The KB to search.                                                                                                                          |
+| `from_object` | TEXT | `NULL`  | The starting table (`schema.relation`).                                                                                                    |
+| `to_object`   | TEXT | `NULL`  | The destination table (`schema.relation`).                                                                                                 |
+| `max_hops`    | INT  | `4`     | Maximum number of hops in a single route.                                                                                                  |
+| `max_paths`   | INT  | `10`    | Caps the search, not the ranking — enumeration stops as soon as `max_paths` routes are found, so a small value can discard the best route. |
+
+#### Returns
+
+| Column        | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `path_rank`   | 1-based rank, shortest first, then by confidence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `route`       | The full path as `A -> B -> C`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `hops`        | Number of hops in the route.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `kind`        | The [kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind) of the weakest hop in the route.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `description` | The weakest hop's constraint comment, if any — see `list_relationships()`'s `description`.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `confidence`  | The route's confidence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `join_clause` | Ready-to-paste SQL for the join.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `path`        | The route as JSONB: an array with one object per hop, in the order traveled. Each hop has `relationship_id`, `from`, `to`, `via` (the bridge table for a `junction` hop, otherwise `null`), `kind`, `predicate` (the relationship's wording read in the direction of travel), `flipped` (`true` when the hop goes from the relationship's right endpoint to its left), `is_nullable` (`true` means use a `LEFT JOIN` for this hop), and `confidence`. Use it when code needs per-hop detail; `route` and `join_clause` give the same route as text. |
+| `truncated`   | Whether `max_paths` cut the search short before ranking. Always check this on a route you rely on.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+#### Example
+
+```sql
+SELECT path_rank, route, kind, confidence
+FROM aidb.find_join_path('bank_kb', 'bank.transactions', 'bank.customers');
+```
+
+---
+
+### `aidb.suggest_joins`
+
+Lists every relationship one hop from a given set of tables, in either direction.
+
+#### Parameters
+
+| Parameter          | Type    | Default | Description                                                                     |
+| ------------------ | ------- | ------- | ------------------------------------------------------------------------------- |
+| `kb_name`          | TEXT    | `NULL`  | The KB to search.                                                               |
+| `relations`        | TEXT\[] | `NULL`  | The table(s) to find joins from.                                                |
+| `include_proposed` | BOOLEAN | `false` | Also return relationships still in `proposed` status, not just `approved` ones. |
+
+#### Returns
+
+| Column            | Description                                                                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `relationship_id` | The relationship's ID.                                                                                                                                                       |
+| `from_object`     | The starting table (`schema.relation`).                                                                                                                                      |
+| `to_object`       | The other end of the join (`schema.relation`).                                                                                                                               |
+| `via_object`      | The bridge table, populated for a `junction` kind.                                                                                                                           |
+| `kind`            | See [Kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind).                                                                      |
+| `predicate`       | Business-readable description of the join.                                                                                                                                   |
+| `is_nullable`     | Whether the join column can be null, which decides `JOIN` vs. `LEFT JOIN`.                                                                                                   |
+| `join_expr`       | The join expression.                                                                                                                                                         |
+| `confidence`      | Ranking order, not a probability — see [Status and confidence](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#status-and-confidence). |
+| `status`          | `proposed`, `approved`, `stale`, or `retired`.                                                                                                                               |
+| `description`     | The relationship's description: the constraint's comment for a crawled relationship, or whatever was passed as `description` to `add_relationship`.                          |
+
+#### Example
+
+```sql
+SELECT from_object, to_object, kind, confidence
+FROM aidb.suggest_joins('bank_kb', ARRAY['bank.accounts'])
+ORDER BY from_object, to_object;
+```
+
+---
+
+### `aidb.add_relationship`
+
+Records a relationship by hand. SQL-only — not registered as a native agent tool. See [Adding a relationship by hand](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#adding-a-relationship-by-hand).
+
+#### Parameters
+
+| Parameter                | Type    | Default                 | Description                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`                | TEXT    | `NULL`                  | The KB to add to.                                                                                                                                                                                                                                                                                                                                                                        |
+| `left_object`            | TEXT    | Required                | The left endpoint (`schema.relation`).                                                                                                                                                                                                                                                                                                                                                   |
+| `right_object`           | TEXT    | Required                | The right endpoint (`schema.relation`).                                                                                                                                                                                                                                                                                                                                                  |
+| `kind`                   | TEXT    | Required                | See [Kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind).                                                                                                                                                                                                                                                                                  |
+| `predicate`              | TEXT    | Required for `key_join` | Business-readable description of the join. Validated with a clear error if missing.                                                                                                                                                                                                                                                                                                      |
+| `left_columns`           | TEXT\[] | Required for `key_join` | The left endpoint's join columns.                                                                                                                                                                                                                                                                                                                                                        |
+| `right_columns`          | TEXT\[] | Required for `key_join` | The right endpoint's join columns.                                                                                                                                                                                                                                                                                                                                                       |
+| `junction_object`        | TEXT    | `NULL`                  | The bridge table, for a `junction` kind.                                                                                                                                                                                                                                                                                                                                                 |
+| `junction_left_columns`  | TEXT\[] | `NULL`                  | The junction table's join columns on the `left_object` side.                                                                                                                                                                                                                                                                                                                             |
+| `junction_right_columns` | TEXT\[] | `NULL`                  | The junction table's join columns on the `right_object` side.                                                                                                                                                                                                                                                                                                                            |
+| `inverse_predicate`      | TEXT    | `NULL`                  | The join described from `right_object`'s point of view, mirroring `predicate`.                                                                                                                                                                                                                                                                                                           |
+| `cardinality`            | TEXT    | Required for `key_join` | For example `many-to-one`, `one-to-one`. Omitting it (with `is_nullable`) raises the store's raw CHECK-constraint violation, not a friendly message.                                                                                                                                                                                                                                     |
+| `is_nullable`            | BOOLEAN | Required for `key_join` | Whether the join column can be null. Same omission behavior as `cardinality`.                                                                                                                                                                                                                                                                                                            |
+| `join_expr`              | TEXT    | `NULL`                  | A raw join expression, for a `conditional` relationship whose join needs an expression or a cast that `left_columns`/`right_columns` alone can't express.                                                                                                                                                                                                                                |
+| `description`            | TEXT    | `NULL`                  | Stored as the relationship's description.                                                                                                                                                                                                                                                                                                                                                |
+| `curated_label`          | TEXT    | `NULL`                  | A short, human-written name for the relationship (for example, `loan repayment`). Refreshes and re-crawls never overwrite it. If the backing constraint is dropped, a labelled relationship is marked `retired` rather than deleted, so the label is kept. Stored and returned only: it isn't embedded, doesn't affect `aidb.semantic_kb_search()`, and isn't used by the route finders. |
+| `source`                 | TEXT    | `manual`                | Only `manual` or `agent` are accepted here. `crawl` is rejected.                                                                                                                                                                                                                                                                                                                         |
+| `level`                  | TEXT    | `data`                  | `concept` is rejected today — concept-level relationships aren't traversable yet.                                                                                                                                                                                                                                                                                                        |
+| `concept_relation`       | TEXT    | `NULL`                  | For relationships between concepts rather than relations, paired with `level => 'concept'`. Not usable yet — `level => 'concept'` is rejected today.                                                                                                                                                                                                                                     |
+
+#### Returns
+
+| Column            | Description                                                                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `relationship_id` | The relationship's ID.                                                                                                                   |
+| `left_object`     | The left endpoint.                                                                                                                       |
+| `left_columns`    | The left endpoint's join columns.                                                                                                        |
+| `right_object`    | The right endpoint.                                                                                                                      |
+| `right_columns`   | The right endpoint's join columns.                                                                                                       |
+| `kind`            | See [Kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind).                                  |
+| `source`          | `manual` or `agent`.                                                                                                                     |
+| `status`          | `approved` when `source => 'manual'`; `proposed` when `source => 'agent'`.                                                               |
+| `confidence`      | The prior for the given `kind`, capped at 0.90 for an added claim.                                                                       |
+| `action`          | `inserted` or `updated`, depending on whether the call created a new row or matched an existing one (same endpoints, columns, and kind). |
+| `join_expr`       | The join expression.                                                                                                                     |
+
+#### Example
+
+```sql
+SELECT relationship_id, left_object, left_columns, source, status, confidence, action
+FROM aidb.add_relationship(
+    kb_name       => 'bank_kb',
+    left_object   => 'bank.payments',
+    right_object  => 'bank.loan_instalments',
+    kind          => 'key_join',
+    predicate     => 'settles',
+    left_columns  => ARRAY['loan_id', 'instalment_no'],
+    right_columns => ARRAY['loan_id', 'instalment_no'],
+    cardinality   => 'many-to-one',
+    is_nullable   => false,
+    description   => 'A payment settles one instalment of a loan.');
+```
+
+---
+
+### `aidb.add_relationship_as_agent`
+
+Records a relationship the same way as `aidb.add_relationship()`, but always sets `source = 'agent'`. This is the function backing the `add_relationship` native agent tool — despite the shared tool name, the tool calls `add_relationship_as_agent()`, not `add_relationship()`. See the naming note in [Adding a relationship by hand](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#adding-a-relationship-by-hand).
+
+#### Parameters
+
+Takes only `kb_name`, `left_object`, `right_object`, `kind`, `predicate`, `left_columns`, `right_columns`, `cardinality`, `is_nullable`, and `description` — no junction fields, `join_expr`, `inverse_predicate`, `curated_label`, `level`, or `source`, so an agent can record only a `key_join` this way. The relationship is always stored with `source = 'agent'` and `status = 'proposed'`, and isn't routed until a person approves it by re-asserting it with `aidb.add_relationship()`.
+
+---
+
+### `aidb.delete_relationship`
+
+Deletes a relationship. Overloaded — takes either a `relationship_id` or the full identifying shape (endpoints, columns, kind) — so name your arguments rather than passing a single positional one. A crawled relationship can't be deleted while its backing constraint still stands, since the next crawl would restore it. Drop the constraint first.
+
+#### Parameters
+
+**By ID**
+
+| Parameter         | Type   | Default | Description                        |
+| ----------------- | ------ | ------- | ---------------------------------- |
+| `kb_name`         | TEXT   | `NULL`  | The KB to delete from.             |
+| `relationship_id` | BIGINT | `NULL`  | The relationship to delete, by ID. |
+
+**By shape**
+
+| Parameter          | Type    | Default | Description                                                                                                                                          |
+| ------------------ | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`          | TEXT    | `NULL`  | The KB to delete from.                                                                                                                               |
+| `left_object`      | TEXT    | `NULL`  | The left endpoint (`schema.relation`).                                                                                                               |
+| `right_object`     | TEXT    | `NULL`  | The right endpoint (`schema.relation`).                                                                                                              |
+| `left_columns`     | TEXT\[] | `NULL`  | The left endpoint's join columns.                                                                                                                    |
+| `right_columns`    | TEXT\[] | `NULL`  | The right endpoint's join columns.                                                                                                                   |
+| `junction_object`  | TEXT    | `NULL`  | The bridge table, for a `junction` kind.                                                                                                             |
+| `kind`             | TEXT    | `NULL`  | See [Kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind).                                              |
+| `source`           | TEXT    | `NULL`  | Restrict to one [source](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#source).                              |
+| `constraint_name`  | TEXT    | `NULL`  | The backing constraint's name, when the relationship came from one.                                                                                  |
+| `level`            | TEXT    | `data`  | Restrict to one level (`data` or `concept`).                                                                                                         |
+| `concept_relation` | TEXT    | `NULL`  | For relationships between concepts rather than relations, paired with `level => 'concept'`. Not usable yet — `level => 'concept'` is rejected today. |
+
+#### Returns
+
+| Column            | Description                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `relationship_id` | The deleted relationship's ID.                                                                          |
+| `left_object`     | The left endpoint.                                                                                      |
+| `right_object`    | The right endpoint.                                                                                     |
+| `kind`            | See [Kind](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#kind). |
+| `source`          | The relationship's source.                                                                              |
+
+Both overloads return the same shape.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.delete_relationship(kb_name => 'bank_kb', relationship_id => 10);
+```
+
+---
+
+### `aidb.relationship_drift`
+
+Detects and repairs drift on hand-added relationships when a named column is renamed or dropped. This is a write, not a read — it re-runs detection and repair on every call, so it can't run inside a read-only transaction. The native agent tool for this function is flagged read-only in the tool catalog. That flag is inaccurate.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                |
+| --------- | ---- | ------- | -------------------------- |
+| `kb_name` | TEXT | `NULL`  | The KB to check for drift. |
+
+#### Returns
+
+| Column            | Description                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `detected_at`     | When the drift was detected and repaired.                                                                                                                   |
+| `relationship_id` | The affected relationship's ID.                                                                                                                             |
+| `left_object`     | The left endpoint.                                                                                                                                          |
+| `right_object`    | The right endpoint.                                                                                                                                         |
+| `source`          | The relationship's source — any source except `crawl`. Crawled relationships follow their constraint instead: they're removed or retired when it's dropped. |
+| `event`           | For example `column_dropped`, when a named column is renamed or dropped.                                                                                    |
+| `detail`          | Detail of what changed.                                                                                                                                     |
+
+#### Example
+
+```sql
+SELECT detected_at, relationship_id, left_object, right_object, source, event, detail
+FROM aidb.relationship_drift('bank_kb');
+```
+
+---
+
+### `aidb.update_semantic_kb_history_filter`
+
+Sets the roles whose statements [query history](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/query-history/#excluding-an-applications-sql) doesn't learn from, and deletes the statements those roles already contributed. Use it to keep a text-to-SQL application's generated SQL out of the KB. Members of a listed role are excluded too. A superuser is excluded only if listed.
+
+The list replaces any earlier list, and each change is written to the audit log. This function isn't available as a [native tool](https://www.enterprisedb.com/docs/aidb/latest/tools/native-tools/), so an agent can't change the list that governs what it learns from.
+
+#### Parameters
+
+| Parameter       | Type    | Default | Description                                                                                                                                                                                                                        |
+| --------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`       | TEXT    | `NULL`  | The KB to set the list on.                                                                                                                                                                                                         |
+| `exclude_roles` | TEXT\[] | `NULL`  | The roles to exclude. Pass an empty array to clear the list. `NULL` is an error, so the list can't be cleared by accident. A role that doesn't exist is an error. Listing `aidb_users` warns, because it excludes every AIDB user. |
+
+#### Returns
+
+A JSONB object:
+
+| Key                  | Description                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `previous`           | The list before this call.                                                                |
+| `current`            | The list after this call.                                                                 |
+| `purged`             | Stored statements deleted because a listed role, or a member of one, ran them.            |
+| `candidates_retired` | Proposed candidates removed or retired because only the purged statements supported them. |
+
+#### Example
+
+```sql
+SELECT jsonb_pretty(aidb.update_semantic_kb_history_filter('shop_kb', ARRAY['text2sql_app']));
+```
+
+```output title="Output"
+        jsonb_pretty
+-----------------------------
+ {                          +
+     "purged": 2,           +
+     "current": [           +
+         "text2sql_app"     +
+     ],                     +
+     "previous": [          +
+     ],                     +
+     "candidates_retired": 0+
+ }
+(1 row)
+```
+
+---
+
+### `aidb.import_query_history`
+
+Reads `pg_stat_statements` to find joins the application runs but the schema never declared. Requires `pg_stat_statements` to be loaded (`shared_preload_libraries`) and installed (`CREATE EXTENSION pg_stat_statements;`). Errors if the extension isn't installed, rather than returning zero rows.
+
+A statement is kept only if a client sent it, it's a single `SELECT` that ran at least `min_calls` times, it reads at least two tables, every table it reads is in the KB's schemas, and its role isn't [excluded](#aidbupdate_semantic_kb_history_filter). Re-importing doesn't embed statements that are already stored. See [Query history](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/query-history/).
+
+#### Parameters
+
+| Parameter           | Type    | Default | Description                                                                                                                                           |
+| ------------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`           | TEXT    | `NULL`  | The KB to import into.                                                                                                                                |
+| `min_calls`         | BIGINT  | `5`     | Minimum execution count for a statement to be considered. Lower to see more of the workload.                                                          |
+| `max_statements`    | INT     | `1000`  | Caps how many statements from `pg_stat_statements` are considered in one call, most-run first. Statements from excluded roles don't count against it. |
+| `derive_candidates` | BOOLEAN | `true`  | Whether to also derive relationship candidates from the import; see `candidates_derived`.                                                             |
+
+#### Returns
+
+| Column                | Description                                                                                                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `import_id`           | This import run's ID.                                                                                                                                                                                 |
+| `statements_read`     | Statements read from `pg_stat_statements`.                                                                                                                                                            |
+| `statements_ingested` | Statements kept, whether new or already stored.                                                                                                                                                       |
+| `skipped`             | A JSONB object counting skipped statements by reason: `not_qualifying`, `out_of_scope`, `excluded_role`, `unresolvable_relation`, `unparseable`, `redacted`, `text_unavailable`, or `self_generated`. |
+| `candidates_derived`  | Number of new relationship candidates derived from the import.                                                                                                                                        |
+| `outcome`             | `ok` if at least one statement was kept, `nothing_to_read` if nothing met the bar, or `mostly_unreadable` if more than half of what the import tried to read was `redacted` or `text_unavailable`.    |
+| `statements_embedded` | Statements that needed a new embedding. `0` on a re-import of an unchanged workload.                                                                                                                  |
+| `rows_pruned`         | Stored statements removed because a table or join column they use no longer exists, or left the KB's schemas.                                                                                         |
+
+#### Example
+
+```sql
+SELECT import_id, statements_read, statements_ingested, statements_embedded, rows_pruned,
+       skipped, candidates_derived, outcome
+FROM aidb.import_query_history('bank_kb');
+```
+
+---
+
+### `aidb.relationship_candidates`
+
+Lists relationship candidates derived from query history that aren't yet known relationships.
+
+#### Parameters
+
+| Parameter        | Type   | Default   | Description                                                                                                                                                     |
+| ---------------- | ------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`        | TEXT   | `NULL`    | The KB to list candidates for.                                                                                                                                  |
+| `source`         | TEXT   | `history` | Restrict to candidates from one [source](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/relationships/#source). Matched, not validated. |
+| `relation`       | TEXT   | `NULL`    | Restrict to candidates touching this table or view, written `schema.table` without quotes. Matched, not validated — a typo returns zero rows, not an error.     |
+| `min_exec_count` | BIGINT | `NULL`    | Minimum execution count for a candidate to be included; see `executions`.                                                                                       |
+| `limit_rows`     | INT    | `100`     | Caps how many candidates are returned.                                                                                                                          |
+
+#### Returns
+
+| Column            | Description                                  |
+| ----------------- | -------------------------------------------- |
+| `relationship_id` | The candidate's ID.                          |
+| `left_object`     | The left endpoint.                           |
+| `left_columns`    | The left endpoint's join columns.            |
+| `right_object`    | The right endpoint.                          |
+| `right_columns`   | The right endpoint's join columns.           |
+| `confidence`      | The candidate's confidence.                  |
+| `statements`      | The statements that produced this candidate. |
+| `executions`      | Execution count backing the candidate.       |
+| `definition`      | The candidate's join definition.             |
+
+#### Example
+
+```sql
+SELECT relationship_id, left_object, left_columns, right_object, right_columns,
+       confidence, statements, executions, definition
+FROM aidb.relationship_candidates('bank_kb');
+```
+
+---
+
+### `aidb.accept_relationship_candidates`
+
+Accepts one or more relationship candidates, making them routable. `source` becomes `manual`. Provenance keeps the evidence and records who approved it. Acceptance is by explicit ID only: the function takes no filter, so nothing is approved in bulk without review.
+
+#### Parameters
+
+| Parameter       | Type      | Default | Description                                                                                                                                                                                                                                                 |
+| --------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `candidate_ids` | BIGINT\[] | —       | The candidates to accept.                                                                                                                                                                                                                                   |
+| `kb_name`       | TEXT      | `NULL`  | The KB the candidates belong to. Takes this position second, unlike every other function in this section, which takes `kb_name` first.                                                                                                                      |
+| `cardinality`   | TEXT      | `NULL`  | Overrides the proposed cardinality: `many-to-one`, `one-to-many`, `one-to-one`, or `many-to-many`. `one-to-many` states that the left side is the "one" side, so the relationship is turned round and stored as `many-to-one`. Any other value is an error. |
+| `is_nullable`   | BOOLEAN   | `NULL`  | Overrides whether the "many" side's columns allow `NULL`. Omit to keep the value taken from the database's `NOT NULL` constraints.                                                                                                                          |
+
+#### Returns
+
+| Column            | Description                                                                                                                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `relationship_id` | The candidate's ID.                                                                                                                                                                                                          |
+| `accepted`        | Whether the candidate was accepted.                                                                                                                                                                                          |
+| `reason`          | Why, for example `approved`, or `no such relationship in this knowledge base` for an ID that isn't a candidate. Also refuses a relationship an agent proposed directly — reassert it with `aidb.add_relationship()` instead. |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.accept_relationship_candidates(
+  ARRAY[(SELECT relationship_id FROM aidb.relationship_candidates('bank_kb') LIMIT 1)]::bigint[],
+  'bank_kb');
+```
+
+To override the proposed shape:
+
+```sql
+SELECT * FROM aidb.accept_relationship_candidates(
+  ARRAY[(SELECT relationship_id FROM aidb.relationship_candidates('bank_kb') LIMIT 1)]::bigint[],
+  'bank_kb',
+  is_nullable => false);
+```
+
+---
+
+### `aidb.classify_query_history_statement`
+
+Explains why a single statement would or wouldn't be used by `import_query_history()` — the quickest way to understand an import that ingested less than expected.
+
+#### Parameters
+
+| Parameter   | Type | Default | Description                                                                                                                                                                                                                |
+| ----------- | ---- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `statement` | TEXT | —       | The normalized SQL statement to classify.                                                                                                                                                                                  |
+| `kb_name`   | TEXT | `NULL`  | The KB whose scope to apply. When given, the statement is classified by the same rules as `import_query_history()` for that KB, including whether every table is in the KB's schemas. Omit to classify without a KB scope. |
+
+#### Returns
+
+A JSONB object:
+
+| Key              | Description                                                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `qualifies`      | Whether `import_query_history()` would ingest this statement.                                                                |
+| `relations`      | The tables the statement touches.                                                                                            |
+| `predicates`     | The join predicates found, each with `left_relation`, `left_column`, `right_relation`, `right_column`.                       |
+| `skip_reason`    | Why the statement doesn't qualify, for example `unparseable`, `not_qualifying`, or `out_of_scope`. `null` when it qualifies. |
+| `had_unresolved` | Whether the statement had a join AIDB couldn't resolve into a `predicates` entry.                                            |
+
+#### Example
+
+```sql
+SELECT jsonb_pretty(aidb.classify_query_history_statement(
+  'SELECT 1 FROM bank.accounts a JOIN bank.customers c ON a.cust_id = c.id'));
+```
+
+```
+{
+    "qualifies": true,
+    "relations": [
+        "bank.accounts",
+        "bank.customers"
+    ],
+    "predicates": [
+        {
+            "left_column": "cust_id",
+            "right_column": "id",
+            "left_relation": "bank.accounts",
+            "right_relation": "bank.customers"
+        }
+    ],
+    "skip_reason": null,
+    "had_unresolved": false
+}
+```
+
+A statement that doesn't qualify returns just enough to say why:
+
+```sql
+SELECT aidb.classify_query_history_statement('UPDATE bank.accounts SET opened_on = now()');
+```
+
+```
+{"qualifies": false, "skip_reason": "unparseable"}
+```
+
+---
+
+### `aidb.list_query_history`
+
+Lists the normalized statements, relations touched, and join predicates recorded by `import_query_history()`, most-run first. Row-level security applies: a caller sees only the statements run by a role they're a member of, unless they hold `pg_read_all_stats`.
+
+#### Parameters
+
+| Parameter     | Type        | Default | Description                                                                                                                                                                                                                                       |
+| ------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`     | TEXT        | `NULL`  | The KB to list history for.                                                                                                                                                                                                                       |
+| `relation`    | TEXT        | `NULL`  | Restrict to statements touching this table or view. Accepts the stored form (`shop."Vouchers"`), the unquoted form (`shop.Vouchers`), or a name as SQL reads it (`SHOP.ORDERS`). Matched, not validated — a typo returns zero rows, not an error. |
+| `min_calls`   | BIGINT      | `NULL`  | Minimum execution count for a statement to be included; see `exec_count`.                                                                                                                                                                         |
+| `seen_since`  | TIMESTAMPTZ | `NULL`  | Restrict to statements last seen at or after this time; see `last_seen`.                                                                                                                                                                          |
+| `executed_by` | TEXT        | `NULL`  | Restrict to statements run by this Postgres role; see `executed_by`.                                                                                                                                                                              |
+| `limit_rows`  | INT         | `100`   | Caps how many statements are returned.                                                                                                                                                                                                            |
+
+#### Returns
+
+| Column               | Description                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `normalized_sql`     | The statement, with literals replaced by parameters.                                                                 |
+| `referenced_objects` | The tables and views the statement touches.                                                                          |
+| `join_predicates`    | The join predicates found, as JSONB: an array of `{"l": {"relation", "column"}, "r": {"relation", "column"}}` pairs. |
+| `exec_count`         | Execution count.                                                                                                     |
+| `first_seen`         | When the statement was first recorded.                                                                               |
+| `last_seen`          | When the statement was last recorded.                                                                                |
+| `executed_by`        | The Postgres role that ran it.                                                                                       |
+
+#### Example
+
+```sql
+SELECT normalized_sql, referenced_objects, join_predicates, exec_count, executed_by
+FROM aidb.list_query_history('bank_kb') ORDER BY normalized_sql;
+```
+
+---
+
+## Managing descriptions and curation
+
+For concepts (modes, protection, concurrency, review) see [Descriptions and curation](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/curation/).
+
+### `aidb.add_comment_to_object`
+
+Writes a `COMMENT ON` for a table, view, column, or constraint, and reconciles every KB that indexes the object so the new text is searchable immediately.
+
+#### Parameters
+
+| Parameter          | Type    | Default  | Description                                                                                               |
+| ------------------ | ------- | -------- | --------------------------------------------------------------------------------------------------------- |
+| `schema_name`      | TEXT    | Required | The object's schema.                                                                                      |
+| `object_name`      | TEXT    | Required | The table or view name.                                                                                   |
+| `comment`          | TEXT    | Required | The description text.                                                                                     |
+| `object_type`      | TEXT    | `table`  | `table`, `view`, `column`, or `constraint`.                                                               |
+| `column_name`      | TEXT    | `NULL`   | The column to comment on. Only used when `object_type => 'column'`.                                       |
+| `constraint_name`  | TEXT    | `NULL`   | The constraint to comment on. Only used when `object_type => 'constraint'`.                               |
+| `kb_name`          | TEXT    | `NULL`   | The KB to reconcile. Omit when only one KB exists.                                                        |
+| `mode`             | TEXT    | `add`    | `add` refuses when a description already exists. `edit` overwrites it (subject to the protections below). |
+| `expected_comment` | TEXT    | `NULL`   | Optimistic-concurrency check: the write fails if the current comment doesn't match.                       |
+| `force`            | BOOLEAN | `false`  | Required to overwrite a description AIDB didn't write itself (treated as a person's work).                |
+
+#### Returns
+
+| Column                       | Description                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `current`                    | The live comment after the call (`NULL` if queued for review, not applied).          |
+| `outcome`                    | `applied` or `queued`.                                                               |
+| `previous`                   | The comment before the call.                                                         |
+| `proposed`                   | The proposed comment, when `outcome` is `queued`.                                    |
+| `knowledge_bases_reconciled` | KBs updated by the write (only when `outcome` is `applied`).                         |
+| `knowledge_bases`            | KBs that will be updated once the proposal is approved (when `outcome` is `queued`). |
+
+#### Example
+
+```sql
+SELECT jsonb_pretty(aidb.add_comment_to_object(
+  'bank', 'transactions', 'A movement of money against an account.', kb_name => 'bank_kb'));
+```
+
+---
+
+### `aidb.remove_comment`
+
+Clears a description. Takes the same `expected_comment` and `force` protections as `add_comment_to_object()`.
+
+#### Parameters
+
+| Parameter          | Type    | Default  | Description                                                |
+| ------------------ | ------- | -------- | ---------------------------------------------------------- |
+| `schema_name`      | TEXT    | Required | The object's schema.                                       |
+| `object_name`      | TEXT    | Required | The table or view name.                                    |
+| `kb_name`          | TEXT    | `NULL`   | The KB to reconcile. Omit when only one KB exists.         |
+| `expected_comment` | TEXT    | `NULL`   | Optimistic-concurrency check.                              |
+| `force`            | BOOLEAN | `false`  | Required to remove a description AIDB didn't write itself. |
+
+#### Example
+
+```sql
+SELECT jsonb_pretty(aidb.remove_comment('bank', 'transactions', kb_name => 'bank_kb'));
+```
+
+---
+
+### `aidb.list_proposed_comments`
+
+Lists comment writes queued for review under curation.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                   |
+| --------- | ---- | ------- | ----------------------------- |
+| `kb_name` | TEXT | `NULL`  | The KB to list proposals for. |
+
+#### Returns
+
+`object`, `object_type`, `proposed_comment`, `proposed_by`.
+
+#### Example
+
+```sql
+SELECT object, object_type, proposed_comment, proposed_by FROM aidb.list_proposed_comments('bank_kb');
+```
+
+---
+
+### `aidb.resolve_object_comment`
+
+Approves or rejects a proposed comment. Deliberately SQL-only — not a native agent tool, so approving a proposal stays with a person.
+
+#### Parameters
+
+| Parameter     | Type | Default  | Description                     |
+| ------------- | ---- | -------- | ------------------------------- |
+| `kb_name`     | TEXT | `NULL`   | The KB the proposal belongs to. |
+| `schema_name` | TEXT | Required | The object's schema.            |
+| `object_name` | TEXT | Required | The table or view name.         |
+| `decision`    | TEXT | Required | `approve` or `reject`.          |
+
+#### Example
+
+```sql
+SELECT jsonb_pretty(aidb.resolve_object_comment('bank_kb', 'bank', 'accounts', 'approve'));
+```
+
+---
+
+### `aidb.update_semantic_kb_curation`
+
+Turns the comment-review queue on or off for a KB. Deliberately SQL-only — not a native agent tool, so toggling review stays with a person.
+
+#### Parameters
+
+| Parameter | Type    | Default  | Description                                                           |
+| --------- | ------- | -------- | --------------------------------------------------------------------- |
+| `kb_name` | TEXT    | `NULL`   | The KB to update.                                                     |
+| `enabled` | BOOLEAN | Required | `true` to queue writes for review, `false` to apply them immediately. |
+
+#### Returns
+
+`current`, `previous` (both booleans, as JSONB).
+
+#### Example
+
+```sql
+SELECT aidb.update_semantic_kb_curation('bank_kb', true);
+```
+
+---
+
+### `aidb.semantic_kb_audit`
+
+Lists recorded semantic KB operations. AIDB grants the function to `aidb_users`, but the caller's authenticated login (`session_user`) must also belong to the semantic KB's owner role, or be a superuser. An explicit `EXECUTE` grant doesn't replace that membership. A call without `kb_name` returns records from all semantic KBs for superusers and members of the extension owner's role. If exactly one semantic KB exists, a login authorized for it can also omit `kb_name`. A login that fails the check gets SQLSTATE `42501`. For concepts, see [Auditing semantic KB operations](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/).
+
+#### Parameters
+
+| Parameter    | Type        | Default | Description                                                                                                                                                                                                                                                                                                                            |
+| ------------ | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`    | TEXT        | `NULL`  | Only return records for this knowledge base. When `NULL`, superusers and members of the extension owner's role can read records from all knowledge bases. If exactly one semantic KB exists, a login authorized for it can also omit `kb_name` and read its records. Other callers must name a semantic KB they're authorized to read. |
+| `op`         | TEXT        | `NULL`  | Only return this operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`.                                                                                                                                                                                                           |
+| `func`       | TEXT        | `NULL`  | Only return records with this exact `func` value. It isn't always the name of the SQL function you called. See [What's recorded](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/#whats-recorded).                                                                                                     |
+| `since`      | TIMESTAMPTZ | `NULL`  | Only return records from this time on.                                                                                                                                                                                                                                                                                                 |
+| `limit_rows` | INTEGER     | `100`   | Maximum number of records to return.                                                                                                                                                                                                                                                                                                   |
+
+#### Returns
+
+`TABLE(ts TIMESTAMPTZ, kb_name TEXT, op TEXT, func TEXT, caller_kind TEXT, actor_name TEXT, login_name TEXT, object_ref TEXT, detail JSONB)`
+
+| Column        | Description                                                                                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ts`          | When AIDB wrote the record.                                                                                                                                                                             |
+| `kb_name`     | The semantic KB the record belongs to.                                                                                                                                                                  |
+| `op`          | The operation category: `retrieve`, `execute`, `annotate`, `write`, `propose`, `approve`, `reject`, or `admin`.                                                                                         |
+| `func`        | The function that ran. It isn't always the name of the SQL function you called. See [What's recorded](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/#whats-recorded). |
+| `caller_kind` | How the operation arrived. In AIDB 7.9.0 it's always `direct`, including for operations that an agent or an MCP client runs.                                                                            |
+| `actor_name`  | The effective role that invoked the operation.                                                                                                                                                          |
+| `login_name`  | The role that authenticated the database session.                                                                                                                                                       |
+| `object_ref`  | What the operation named as its subject, such as an alias name or a table. Searches don't have an object reference.                                                                                     |
+| `detail`      | JSON that's specific to the operation. See [The `detail` column](#the-detail-column).                                                                                                                   |
+
+`actor_name` and `login_name` can differ when a session uses `SET ROLE`. AIDB stores role names as they were when it wrote the record, so renaming a role later doesn't change existing records. When an alias runs its query as a different role, `detail` records that role as `execute_role`. It's separate from the actor and login roles.
+
+Read operations in a read-only transaction or on a hot standby don't write a record.
+
+#### The `detail` column
+
+The `detail` column holds JSON that's specific to the operation. AIDB never stores free text that a person typed.
+
+For a semantic KB search (`retrieve`), `detail` contains:
+
+- The search options: `top_k`, `rrf_k`, `min_similarity`, `include_proposed`, `sources`, and `entity_types`.
+- The query length in characters, in `query_chars`.
+- The number of results, in `result_count`. This is always the true number of results.
+- `hits`, a list of the results. Each entry has `source_type`, `entity_type`, and `object_ref`. The list is limited to 100 entries and 16 KiB, and each `object_ref` is limited to 256 characters. When a limit shortens the list, `hits_truncated` is `true`.
+
+The natural-language search text isn't stored.
+
+For semantic alias execution (`execute`), `detail` contains:
+
+- The execution role, in `execute_role`.
+- The names of the arguments you supplied, and the number of bound parameters.
+- The result count.
+- The number of semantic KBs that own the alias.
+
+Argument values and query result rows aren't stored.
+
+For object-description changes (`annotate`), `detail` contains:
+
+- The object type.
+- Whether the change was an add or an edit, in `mode`.
+- Whether `force` was used, in `forced`.
+- The previous wording that a forced change discarded, in `discarded`.
+
+For context processing (`process_context`), `detail` contains counts, the outcome, and the IDs of the relationships that attempt wrote. It never contains the context or the model's raw response.
+
+`detail` is limited to 32 KiB. If the serialized detail is larger, AIDB replaces all of it with a marker that has `truncated` set to `true`, and records the original size in bytes in `orig_bytes`.
+
+#### Example
+
+```sql
+SELECT ts, op, func, actor_name, object_ref, detail
+FROM aidb.semantic_kb_audit(kb_name => 'bank_kb', op => 'annotate')
+ORDER BY ts DESC LIMIT 3;
+```
+
+---
+
+### `aidb.semkb_audit_prune`
+
+Deletes the audit records of one knowledge base that are older than a given age. Nothing deletes records automatically; run this function as an operator or from a scheduled job such as `pg_cron`. The caller's authenticated login (`session_user`) must be a member of the knowledge base's owner role, which `aidb.create_semantic_kb()` sets to the extension owner. To prune the records of a deleted knowledge base, you must be the extension owner or a superuser. A caller who isn't authorized gets SQLSTATE `42501`. The function deletes records in batches and writes one `admin` audit record that contains the retention interval, the number of deleted records, and the number of batches, even when it deletes nothing. A negative or invalid interval raises an error before any records are deleted. See [Retention and pruning](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/auditing/#retention-and-pruning).
+
+#### Parameters
+
+| Parameter    | Type     | Default  | Description                                                                                                                                                                                                                                        |
+| ------------ | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`    | TEXT     | Required | The knowledge base whose records to delete.                                                                                                                                                                                                        |
+| `older_than` | INTERVAL | `NULL`   | Delete records older than this. `NULL` uses the [`aidb.semkb_audit_retention`](https://www.enterprisedb.com/docs/aidb/latest/install/configure/#semantic-knowledge-base-audit-log) parameter (default `30 days`). A zero interval deletes nothing. |
+
+#### Returns
+
+`BIGINT`: the number of records deleted.
+
+#### Example
+
+```sql
+SELECT aidb.semkb_audit_prune('bank_kb', '90 days');
+```
+
+---
+
+## Inspecting KB health
+
+For concepts, including when to use each function, see [Inspecting semantic KB health](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/health/). All of these functions are read-only and granted to `aidb_users`. Every function takes `kb_name`, which you can omit when the database has exactly one semantic KB. An unknown name raises an error.
+
+Except for `aidb.semantic_kb_health_report`, each function also requires the caller's authenticated login (`session_user`) to belong to the semantic KB's owner role. A login that fails the check gets SQLSTATE `42501`. See [Permissions for the health functions](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/health/#permissions-for-the-health-functions).
+
+### `aidb.semantic_kb_health_report`
+
+Returns one row that summarizes the health of a semantic KB. The function never raises an access error: for a login that fails the owner-role check, `audit_window_start`, `retrieve_ops`, and `execute_ops` are `NULL` and `audit_metrics_available` is `false`.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                          |
+| --------- | ---- | ------- | -------------------------------------------------------------------- |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to report on. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column                      | Description                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `kb_name`                   | The semantic KB name.                                                                                                      |
+| `auto_processing`           | The [auto-processing mode](#auto-processing-modes): `Disabled`, `Live`, or `Background`.                                   |
+| `total_objects`             | Live tables, views, and columns. Semantic aliases are excluded.                                                            |
+| `commented_objects`         | Objects with a description embedding.                                                                                      |
+| `comment_coverage`          | `commented_objects` divided by `total_objects`, rounded to three decimal places. `NULL` when there are no live objects.    |
+| `coverage_gaps`             | Objects without a description embedding. Equals the number of rows `semantic_kb_coverage_gaps` returns.                    |
+| `pending_events`            | Queued DDL events. Meaningful for `Background` processing only.                                                            |
+| `stale_objects`             | Distinct objects named by the queued events. Meaningful for `Background` processing only.                                  |
+| `total_relationships`       | Relationships that aren't `retired`.                                                                                       |
+| `orphan_relationships`      | Relationships that aren't `retired` and have a missing relation or column endpoint.                                        |
+| `total_aliases`             | Semantic aliases that have an embedding row for this semantic KB.                                                          |
+| `orphan_aliases`            | Aliases that name a missing schema, relation, or column.                                                                   |
+| `unverified_aliases`        | Aliases that couldn't be checked.                                                                                          |
+| `partially_checked_aliases` | Aliases whose tables were checked but not every column.                                                                    |
+| `oldest_embedded_at`        | The earliest time an eligible object's vector was computed.                                                                |
+| `newest_embedded_at`        | The latest time an eligible object's vector was computed.                                                                  |
+| `audit_window_start`        | The earliest retained audit record for the semantic KB. `NULL` when `audit_metrics_available` is `false`.                  |
+| `retrieve_ops`              | Recorded search operations, including a search that returned no objects. `NULL` when `audit_metrics_available` is `false`. |
+| `execute_ops`               | Recorded alias executions. `NULL` when `audit_metrics_available` is `false`.                                               |
+| `audit_metrics_available`   | Whether the caller passes the owner-role check, so the three audit-derived columns are populated.                          |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.semantic_kb_health_report('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_coverage_gaps`
+
+Lists live tables, views, and columns that have no description embedding, ordered by entity type and then by name. It's also a read-only agent tool.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                        |
+| --------- | ---- | ------- | ------------------------------------------------------------------ |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column                 | Description                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `object_ref`           | The object's display name, such as `sales.orders` or `sales.orders.customer_id`.        |
+| `entity_type`          | `Table`, `View`, or `Column`.                                                           |
+| `schema_name`          | The object's schema.                                                                    |
+| `relation_name`        | The object's table or view.                                                             |
+| `column_name`          | The column name, or `NULL` for a table or view.                                         |
+| `has_pending_proposal` | Whether a description is awaiting review. A proposal remains a gap until it's approved. |
+| `embedded_at`          | When the metadata row was embedded. It doesn't mean a description is present.           |
+
+#### Example
+
+```sql
+SELECT object_ref, entity_type, has_pending_proposal
+FROM aidb.semantic_kb_coverage_gaps('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_stale_objects`
+
+Lists objects that have DDL events queued but not yet re-embedded, with the longest-waiting first. The result describes `Background` processing only. For a `Live`, `Disabled`, or trigger-bypassed semantic KB, an empty result doesn't mean the embeddings are current.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                        |
+| --------- | ---- | ------- | ------------------------------------------------------------------ |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column               | Description                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `object_ref`         | The affected schema, relation, or column.                                                                               |
+| `schema_name`        | The schema.                                                                                                             |
+| `relation_name`      | The relation, or `NULL` for a schema-level event.                                                                       |
+| `column_name`        | The column, or `NULL` for a table-level or schema-level event.                                                          |
+| `pending_events`     | The number of queued events for the object.                                                                             |
+| `event_types`        | The types of the queued events.                                                                                         |
+| `oldest_event_at`    | When the first event was queued.                                                                                        |
+| `oldest_embedded_at` | The oldest matching metadata embedding time. `NULL` when nothing matches, which is always the case for a schema rename. |
+
+#### Example
+
+```sql
+SELECT object_ref, pending_events, oldest_event_at
+FROM aidb.semantic_kb_stale_objects('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_orphan_relationships`
+
+Lists relationships whose relation endpoint, junction endpoint, or a listed column no longer exists in the live catalog, including `retired` relationships. The function is read-only and never changes a relationship's status.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                        |
+| --------- | ---- | ------- | ------------------------------------------------------------------ |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column            | Description                                                                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `relationship_id` | The relationship's ID.                                                                                                                                                                                 |
+| `left_object`     | The left endpoint, as `schema.relation`.                                                                                                                                                               |
+| `right_object`    | The right endpoint, as `schema.relation`.                                                                                                                                                              |
+| `junction_object` | The junction relation for a junction relationship, or `NULL`.                                                                                                                                          |
+| `kind`            | The relationship kind.                                                                                                                                                                                 |
+| `source`          | The relationship source.                                                                                                                                                                               |
+| `status`          | `proposed`, `approved`, `stale`, or `retired`.                                                                                                                                                         |
+| `missing`         | The endpoints that no longer exist, such as `right_relation` or `left_column:customer_id`.                                                                                                             |
+| `last_referenced` | The latest recorded schema-source, relation-level search hit on either endpoint. `NULL` when there's no such hit or an endpoint name contains a dot. It's a limited usage signal, not proof of disuse. |
+
+#### Example
+
+```sql
+SELECT relationship_id, left_object, right_object, status, missing
+FROM aidb.semantic_kb_orphan_relationships('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_alias_diagnostics`
+
+Lists the semantic aliases of a semantic KB that aren't verified against the live catalog, ordered by alias name. The function parses each alias's stored SQL but never plans or runs it, and never returns it.
+
+#### Parameters
+
+| Parameter | Type | Default | Description                                                        |
+| --------- | ---- | ------- | ------------------------------------------------------------------ |
+| `kb_name` | TEXT | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists. |
+
+#### Returns
+
+| Column       | Description                                                                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alias_name` | The semantic alias name.                                                                                                                                                                |
+| `status`     | `orphan`, `unverified`, or `partial`. `orphan` takes precedence over `unverified`, which takes precedence over `partial`.                                                               |
+| `missing`    | Missing objects, as `schema:<name>`, `relation:<name>`, or `column:<relation>.<column>`.                                                                                                |
+| `reason`     | Why the alias couldn't be verified: `unparseable`, `invalid_alias_sql`, `unsupported_syntax`, or `outside_kb_schemas`. `NULL` otherwise.                                                |
+| `detail`     | The parser or validator message behind `reason`. `NULL` unless the login can itself read the alias store (`USAGE` on `aidb_internal` and `SELECT` on `aidb_internal.semantic_aliases`). |
+| `unchecked`  | The column references that weren't checked, each with the reason. `NULL` unless the login can itself read the alias store.                                                              |
+
+The report's `orphan_aliases`, `unverified_aliases`, and `partially_checked_aliases` counts each equal the number of rows here with that status.
+
+For what each status means and how to repair an alias, see [Detecting orphaned aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/#detecting-orphaned-aliases).
+
+#### Example
+
+```sql
+SELECT alias_name, status, missing, reason
+FROM aidb.semantic_kb_alias_diagnostics('analytics_kb');
+```
+
+---
+
+### `aidb.semantic_kb_object_usage`
+
+Reports how often each object appeared in recorded search results and alias executions, and when it last did. The counts are lower bounds, so `lower_bound` is always `true`.
+
+#### Parameters
+
+| Parameter | Type        | Default | Description                                                                |
+| --------- | ----------- | ------- | -------------------------------------------------------------------------- |
+| `kb_name` | TEXT        | `NULL`  | The semantic KB to inspect. Omit when only one semantic KB exists.         |
+| `since`   | TIMESTAMPTZ | `NULL`  | Only count records from this time on. `NULL` counts every retained record. |
+
+#### Returns
+
+| Column           | Description                                                                                                                                                           |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `object_ref`     | The object's display name. Objects whose display names are identical share one row, and their counts are combined.                                                    |
+| `source_type`    | The source of the hit, such as `schema`, `alias`, `relationship`, `history`, or `concept`. A result found through both schema and concept sources is a `schema` hit.  |
+| `retrieve_count` | How many recorded searches returned the object. One search can increase the count of several objects.                                                                 |
+| `execute_count`  | How many recorded executions of the alias.                                                                                                                            |
+| `last_retrieved` | When a search last returned the object.                                                                                                                               |
+| `last_executed`  | When the alias last ran.                                                                                                                                              |
+| `window_start`   | The earliest retained audit record in the selected window, including operations other than search or execution.                                                       |
+| `lower_bound`    | Always `true`. See [Reviewing recorded object usage](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/health/#reviewing-recorded-object-usage). |
+
+#### Example
+
+```sql
+SELECT object_ref, source_type, retrieve_count, execute_count
+FROM aidb.semantic_kb_object_usage(
+    'analytics_kb', since => now() - interval '30 days');
+```
+
+---
+
+## Creating and managing aliases
+
+For concepts (multi-KB membership, finding, running) see [Semantic aliases](https://www.enterprisedb.com/docs/aidb/latest/semantic-knowledge-bases/semantic-aliases/).
+
+### `aidb.create_semantic_alias`
+
+Creates a named, parameterized SQL query paired with a natural-language description, and embeds the description in every semantic KB that owns the query's schema(s). Placeholders in the query use `${name}` syntax, and the query must be a single read-only `SELECT`.
+
+#### Parameters
+
+| Parameter     | Type  | Default  | Description                                                                                                 |
+| ------------- | ----- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `name`        | TEXT  | Required | Unique alias name.                                                                                          |
+| `description` | TEXT  | Required | Human-readable description — this is what gets embedded for search.                                         |
+| `query_text`  | TEXT  | Required | A single read-only `SELECT`, with `${name}` placeholders for parameters.                                    |
+| `params`      | JSONB | `NULL`   | Array of parameter definitions (see below).                                                                 |
+| `kb_name`     | TEXT  | `NULL`   | Optional. Narrows the alias to just this KB. Omit to embed it for every KB that owns the query's schema(s). |
+
+Each entry in the `params` JSONB array:
+
+| Field         | Required | Description                                                       |
+| ------------- | -------- | ----------------------------------------------------------------- |
+| `name`        | Yes      | Matches a `${name}` placeholder in `query_text`.                  |
+| `param_type`  | Yes      | PostgreSQL type: `text`, `integer`, `numeric`, `date`, and so on. |
+| `description` | No       | Human-readable description of the parameter.                      |
+| `enum_values` | No       | Allowed values, when the parameter is constrained to a set.       |
+
+If the query's schema maps to more than one KB, the alias is embedded once for each of them — creation never fails on ambiguity. Pass `kb_name` only to narrow it to a single KB. A schema not yet owned by any KB leaves the alias unembedded, until a KB covering it is created or adopts it later.
+
+#### Returns
+
+The alias name (`TEXT`).
+
+#### Example
+
+```sql
+SELECT aidb.create_semantic_alias(
+    name        => 'monthly_revenue',
+    description => 'Total revenue for a given month and year',
+    query_text  => $$
+        SELECT SUM(amount) AS total
+        FROM sales.orders
+        WHERE EXTRACT(MONTH FROM order_date) = ${month}
+          AND EXTRACT(YEAR  FROM order_date) = ${year}
+    $$,
+    params => '[
+        {"name": "month", "param_type": "integer", "description": "Month number (1-12)"},
+        {"name": "year",  "param_type": "integer", "description": "Four-digit year"}
+    ]'
+);
+```
+
+---
+
+### `aidb.search_semantic_aliases`
+
+Searches aliases by natural-language query, embedding the query once per distinct model among the searched KBs so results stay dimension-safe and de-duplicated to the best match per alias. Without `kb_name`, it searches `default_semkb` if that KB exists, or every KB with stored alias embeddings otherwise. Aliases also appear in [`aidb.semantic_kb_search()`](#aidbsemantic_kb_search) results with `source_type = 'alias'`.
+
+#### Parameters
+
+| Parameter        | Type             | Default | Description                                                                                                                           |
+| ---------------- | ---------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_text`     | TEXT             | —       | Natural-language query.                                                                                                               |
+| `min_similarity` | DOUBLE PRECISION | `NULL`  | Optional similarity floor.                                                                                                            |
+| `top_k`          | INT              | `10`    | Maximum results.                                                                                                                      |
+| `offset`         | INT              | `0`     | Paging offset.                                                                                                                        |
+| `kb_name`        | TEXT             | `NULL`  | Optional. Narrows the search to this KB. Omit to resolve `default_semkb`, or all KBs with alias embeddings, per the precedence above. |
+
+#### Returns
+
+`name`, `query_text`, `similarity`.
+
+#### Example
+
+```sql
+SELECT name, query_text, similarity
+FROM aidb.search_semantic_aliases(
+    query_text => 'how much money did we make last month',
+    kb_name    => 'analytics_kb',
+    top_k      => 5
+);
+```
+
+---
+
+### `aidb.execute_semantic_alias`
+
+Runs an alias by name, substituting its parameters. Use `execute_role` to run it under a least-privilege reporting role rather than the connecting user. Because every alias is validated as a single read-only `SELECT` at creation and re-validated at execution, an alias can't be used to run writes.
+
+#### Parameters
+
+| Parameter      | Type  | Default | Description                                                                       |
+| -------------- | ----- | ------- | --------------------------------------------------------------------------------- |
+| `alias_name`   | TEXT  | —       | Alias to run.                                                                     |
+| `args`         | JSONB | `NULL`  | Object of parameter values keyed by name.                                         |
+| `execute_role` | TEXT  | `NULL`  | PostgreSQL role to run the query as — requires the appropriate `SET ROLE` grants. |
+
+#### Returns
+
+A set of `result` rows, each a JSONB object.
+
+#### Example
+
+```sql
+SELECT result
+FROM aidb.execute_semantic_alias(
+    alias_name => 'monthly_revenue',
+    args       => '{"month": 3, "year": 2025}'
+);
+```
+
+---
+
+### `aidb.get_semantic_aliases`
+
+Lists every alias, with its name, description, query text, and parameter count.
+
+#### Returns
+
+`name`, `description`, `query_text`, `param_count`.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_semantic_aliases();
+```
+
+---
+
+### `aidb.get_semantic_alias`
+
+Gets one alias by name, with its full definition: description, query text, and parameter list.
+
+#### Parameters
+
+| Parameter    | Type | Default  | Description       |
+| ------------ | ---- | -------- | ----------------- |
+| `alias_name` | TEXT | Required | The alias to get. |
+
+#### Returns
+
+`name`, `description`, `query_text`, `params`.
+
+#### Example
+
+```sql
+SELECT * FROM aidb.get_semantic_alias('monthly_revenue');
+```
+
+---
+
+### `aidb.update_semantic_alias`
+
+Updates an alias. Changing `query_text` or `kb_name` re-infers its owning KB(s) and reconciles embeddings, adding KBs it newly belongs to and dropping ones it no longer does. If the revised query still belongs to the same KB, AIDB updates the alias's embedding and the alias stays in that KB's `total_aliases`. If AIDB can't infer the owning KBs, it keeps the existing embeddings. Changing `description` re-embeds it in every KB it's already in.
+
+#### Parameters
+
+| Parameter     | Type  | Default  | Description                                                                                                                                                                                                              |
+| ------------- | ----- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`        | TEXT  | Required | The alias to update.                                                                                                                                                                                                     |
+| `description` | TEXT  | `NULL`   | Optional. If omitted, the existing description is kept.                                                                                                                                                                  |
+| `query_text`  | TEXT  | `NULL`   | Optional. The revised single read-only `SELECT`, with `${name}` placeholders for parameters.                                                                                                                             |
+| `params`      | JSONB | `NULL`   | Optional. If omitted, the existing parameter definitions are kept. Pass a new array if the definitions change. You don't need to resend it when the revised query keeps the same `${name}` placeholders and definitions. |
+| `kb_name`     | TEXT  | `NULL`   | Optional.                                                                                                                                                                                                                |
+
+#### Example
+
+```sql
+SELECT aidb.update_semantic_alias(
+    name        => 'monthly_revenue',
+    description => 'Total revenue for a given month and year, in USD'
+);
+```
+
+---
+
+### `aidb.delete_semantic_alias`
+
+Deletes an alias by name.
+
+#### Parameters
+
+| Parameter   | Type    | Default  | Description                                                                 |
+| ----------- | ------- | -------- | --------------------------------------------------------------------------- |
+| `name`      | TEXT    | Required | The alias to delete.                                                        |
+| `if_exists` | BOOLEAN | `false`  | If `true` and the alias doesn't exist, raises a notice instead of an error. |
+
+#### Example
+
+```sql
+SELECT aidb.delete_semantic_alias('monthly_revenue');
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

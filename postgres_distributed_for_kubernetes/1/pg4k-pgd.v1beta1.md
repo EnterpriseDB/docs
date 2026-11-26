@@ -1,0 +1,1442 @@
+---
+title: API Reference
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/pg4k-pgd.v1beta1/
+lastModified: 2026-06-22T07:38:49-07:00
+---
+
+# API Reference
+
+## Packages
+
+- pgd.k8s.enterprisedb.io/v1beta1
+
+Package v1beta1 contains API Schema definitions for the pgd v1beta1 API group
+
+### Resource Types
+
+- [ClusterImageCatalog](#clusterimagecatalog)
+- [ImageCatalog](#imagecatalog)
+- [PGDGroup](#pgdgroup)
+- [PGDGroupCleanup](#pgdgroupcleanup)
+
+#### Backup
+
+Backup configures the backup of cnp-pgd nodes
+
+_Appears in:_
+
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                                                                                                                  | Description                                                                                                                                                  | Required | Default | Validation |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `configuration` _[BackupConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#backupconfiguration)_ | The CNP configuration to be used for backup. ServerName value is reserved by the operator.                                                                   |          |         |            |
+| `cron` _[ScheduledBackupSpec](#scheduledbackupspec)_                                                                                   | The scheduled backup for the data.<br />Deprecated: This field is deprecated and will be removed in future versions.                                         |          |         |            |
+| `schedulers` _[ScheduledBackupSpec](#scheduledbackupspec) array_                                                                       | Define schedulers for the backup. Each scheduler has a different backup method.<br />Only one of either `backup.cron` or `backup.schedulers` can be defined. |          |         |            |
+
+#### BackupStatus
+
+BackupStatus contains the current status of the pgd backup
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                                      | Description                                                                                                                                                                                            | Required | Default | Validation |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `clusterName` _string_                                                     | ClusterName the elected cluster to take the backup, the backup could be scheduled with<br />different methods, but only one cluster will take the backup                                               |          |         |            |
+| `scheduledBackupName` _string_                                             | ScheduledBackupName is the name of the scheduled backup.<br />Deprecated: This field is deprecated and will be removed in future versions.<br />Please use ScheduledBackupStatus instead               |          |         |            |
+| `scheduledBackupHash` _string_                                             | ScheduledBackupHash is the hash of the scheduled backup configuration.<br />Deprecated: This field is deprecated and will be removed in future versions.<br />Please use ScheduledBackupStatus instead |          |         |            |
+| `scheduledBackups` _[ScheduledBackupStatus](#scheduledbackupstatus) array_ | ScheduledBackupStatus contains the status of all scheduled backups                                                                                                                                     |          |         |            |
+
+#### BarmanCloudPluginStatus
+
+BarmanCloudPluginStatus contains the status of the barman-cloud plugin
+
+_Appears in:_
+
+- [PluginStatus](#pluginstatus)
+
+| Field                                                         | Description                                                           | Required | Default | Validation |
+| ------------------------------------------------------------- | --------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `pluginEnabled` _boolean_                                     | PluginEnabled is true when the barman cloud plugin is enabled         |          |         |            |
+| `objectStore` _[ObjectStoreStatus](#objectstorestatus) array_ | ObjectStore contains the name and hashcode of the managed objectStore |          |         |            |
+
+#### CNPStatus
+
+CNPStatus contains any relevant status for the operator about CNP
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                                                                                            | Description                                                                                                                                 | Required | Default | Validation |
+| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `dataInstances` _integer_                                                                                                        |                                                                                                                                             |          | 0       |            |
+| `witnessInstances` _integer_                                                                                                     |                                                                                                                                             |          | 0       |            |
+| `clusterStatus` _[ClusterStatus](#clusterstatus) array_                                                                          | ClusterStatus contains the list of the status of the CNP clusters                                                                           |          |         |            |
+| `firstRecoverabilityPointsByMethod` _object (keys:string, values:[RecoverabilityPointsByMethod](#recoverabilitypointsbymethod))_ | The recoverability points by method, keyed per CNP clusterName<br />nolint: lll<br />Deprecated: the field is not set for backup plugins.   |          |         |            |
+| `firstRecoverabilityPoints` _object (keys:string, values:string)_                                                                | The recoverability points, keyed per CNP clusterName, as a date in RFC3339 format<br />Deprecated: the field is not set for backup plugins. |          |         |            |
+| `superUserSecretIsPresent` _boolean_                                                                                             |                                                                                                                                             | True     |         |            |
+| `applicationUserSecretIsPresent` _boolean_                                                                                       |                                                                                                                                             | True     |         |            |
+| `podDisruptionBudgetIsPresent` _boolean_                                                                                         |                                                                                                                                             | True     |         |            |
+
+#### CatalogImage
+
+CatalogImage defines the image and major version
+
+_Appears in:_
+
+- [ImageCatalogSpec](#imagecatalogspec)
+
+| Field             | Description                                                                   | Required | Default | Validation         |
+| ----------------- | ----------------------------------------------------------------------------- | -------- | ------- | ------------------ |
+| `image` _string_  | The image reference                                                           | True     |         |                    |
+| `major` _integer_ | The PostgreSQL major version of the image. Must be unique within the catalog. | True     |         | Minimum: 10 <br /> |
+
+#### CertManagerTemplate
+
+CertManagerTemplate contains the data to generate a certificate request
+
+_Appears in:_
+
+- [ClientCertConfiguration](#clientcertconfiguration)
+- [ServerCertConfiguration](#servercertconfiguration)
+
+| Field                                        | Description                                                     | Required | Default | Validation |
+| -------------------------------------------- | --------------------------------------------------------------- | -------- | ------- | ---------- |
+| `spec` _[CertificateSpec](#certificatespec)_ | The Certificate object specification                            |          |         |            |
+| `metadata` _[Metadata](#metadata)_           | Refer to Kubernetes API documentation for fields of `metadata`. |          |         |            |
+
+#### ClientCertConfiguration
+
+ClientCertConfiguration contains the information to generate the certificate for the streaming\_replica user
+
+_Appears in:_
+
+- [TLSConfiguration](#tlsconfiguration)
+
+| Field                                                                                    | Description                                                                                                  | Required | Default | Validation |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `caCertSecret` _string_                                                                  | CACertSecret is the secret of the CA to be injected into the CloudNativePG<br />ClientCASecret configuration | True     |         |            |
+| `certManager` _[CertManagerTemplate](#certmanagertemplate)_                              | The cert-manager template used to generate the certificates                                                  |          |         |            |
+| `preProvisioned` _[ClientPreProvisionedCertificates](#clientpreprovisionedcertificates)_ | PreProvisioned contains how to fetch the pre-generated client certificates                                   |          |         |            |
+
+#### ClientPreProvisionedCertificates
+
+ClientPreProvisionedCertificates instruct how to fetch the pre-generated client certificates
+
+_Appears in:_
+
+- [ClientCertConfiguration](#clientcertconfiguration)
+
+| Field                                                                        | Description                                                                  | Required | Default | Validation |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `streamingReplica` _[PreProvisionedCertificate](#preprovisionedcertificate)_ | StreamingReplica the pre-generated certificate for 'streaming\_replica' user |          |         |            |
+
+#### ClusterImageCatalog
+
+ClusterImageCatalog is the Schema for the clusterimagecatalogs API
+
+| Field                                                                                                              | Description                                                                                                                                                                             | Required | Default | Validation |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `apiVersion` _string_                                                                                              | `pgd.k8s.enterprisedb.io/v1beta1`                                                                                                                                                       | True     |         |            |
+| `kind` _string_                                                                                                    | `ClusterImageCatalog`                                                                                                                                                                   | True     |         |            |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`.                                                                                                                         | True     |         |            |
+| `spec` _[ImageCatalogSpec](#imagecatalogspec)_                                                                     | Specification of the desired behavior of the ClusterImageCatalog.<br />More info: <https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status> | True     |         |            |
+
+#### ClusterStatus
+
+ClusterStatus contains the current status of the CNP cluster
+
+_Appears in:_
+
+- [CNPStatus](#cnpstatus)
+
+| Field            | Description                                   | Required | Default | Validation |
+| ---------------- | --------------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_  | Name is the name of the CNP cluster           |          |         |            |
+| `phase` _string_ | Phase is the current phase of the CNP cluster |          |         |            |
+
+#### CnpBaseConfiguration
+
+CnpBaseConfiguration contains the configuration parameters that can be applied to both CNP Witness and Data nodes
+
+_Appears in:_
+
+- [CnpConfiguration](#cnpconfiguration)
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                                                                                                                                                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Required | Default | Validation                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------------------------------------------- |
+| `startDelay` _integer_                                                                                                                                                | The time in seconds that is allowed for a PostgreSQL instance to<br />successfully start up (default 3600)                                                                                                                                                                                                                                                                                                                                                              |          | 3600    |                                                |
+| `stopDelay` _integer_                                                                                                                                                 | The time in seconds that is allowed for a PostgreSQL instance node to<br />gracefully shutdown (default 180)                                                                                                                                                                                                                                                                                                                                                            |          | 180     |                                                |
+| `smartShutdownTimeout` _integer_                                                                                                                                      | The time in seconds that controls the window of time reserved for the smart shutdown of Postgres to complete.<br />Make sure you reserve enough time for the operator to request a fast shutdown of Postgres<br />(that is: `stopDelay` - `smartShutdownTimeout`).                                                                                                                                                                                                      |          | 15      |                                                |
+| `storage` _[StorageConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#storageconfiguration)_                                    | Configuration of the storage of the instances                                                                                                                                                                                                                                                                                                                                                                                                                           | True     |         |                                                |
+| `walStorage` _[StorageConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#storageconfiguration)_                                 | Configuration of the WAL storage for the instances                                                                                                                                                                                                                                                                                                                                                                                                                      |          |         |                                                |
+| `clusterMaxStartDelay` _integer_                                                                                                                                      | The time in seconds that is allowed for a PostgreSQL instance to<br />successfully start up (default 300)                                                                                                                                                                                                                                                                                                                                                               |          | 300     |                                                |
+| `affinity` _[AffinityConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#affinityconfiguration)_                                 | Affinity/Anti-affinity rules for Pods                                                                                                                                                                                                                                                                                                                                                                                                                                   |          |         |                                                |
+| `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#resourcerequirements-v1-core)_                               | Resources requirements of every generated Pod. Please refer to<br /><https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/><br />for more information.                                                                                                                                                                                                                                                                                         |          |         |                                                |
+| `postgresql` _[PostgresConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#postgresconfiguration)_                               | Configuration of the PostgreSQL server                                                                                                                                                                                                                                                                                                                                                                                                                                  |          |         |                                                |
+| `monitoring` _[MonitoringConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#monitoringconfiguration)_                           | The configuration of the monitoring infrastructure of this cluster                                                                                                                                                                                                                                                                                                                                                                                                      |          |         |                                                |
+| `logLevel` _string_                                                                                                                                                   | The instances' log level, one of the following values: error, warning, info (default), debug, trace                                                                                                                                                                                                                                                                                                                                                                     |          | info    | Enum: \[error warning info debug trace] <br /> |
+| `serviceAccountTemplate` _[ServiceAccountTemplate](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#serviceaccounttemplate)_                 | The service account template to be passed to CNP                                                                                                                                                                                                                                                                                                                                                                                                                        |          |         |                                                |
+| `otel` _[OTELConfiguration](#otelconfiguration)_                                                                                                                      | OpenTelemetry Configuration<br />Deprecated: This field is deprecated and will be removed in future versions.                                                                                                                                                                                                                                                                                                                                                           |          |         |                                                |
+| `postInitSQL` _string array_                                                                                                                                          | List of SQL queries to be executed as a superuser immediately<br />after a node has been created - to be used with extreme care<br />(by default empty)                                                                                                                                                                                                                                                                                                                 |          |         |                                                |
+| `postInitTemplateSQL` _string array_                                                                                                                                  | List of SQL queries to be executed as a superuser in the `template1`<br />after a node has been created - to be used with extreme care<br />(by default empty)                                                                                                                                                                                                                                                                                                          |          |         |                                                |
+| `postInitApplicationSQL` _string array_                                                                                                                               | List of SQL queries to be executed as a superuser in the application<br />database right after the cluster has been created - to be used with extreme care<br />as any data created in application database before logical join will cause the join to fail<br />(by default empty)                                                                                                                                                                                     |          |         |                                                |
+| `postInitApplicationSQLRefs` _[SQLRefs](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#sqlrefs)_                                           | List of references to ConfigMaps or Secrets containing SQL files<br />to be executed as a superuser in the application database right after<br />the cluster has been created. The references are processed in a specific order:<br />first, all Secrets are processed, followed by all ConfigMaps.<br />Within each group, the processing order follows the sequence specified<br />in their respective arrays. - to be used with extreme care<br />(by default empty) |          |         |                                                |
+| `postInitTemplateSQLRefs` _[SQLRefs](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#sqlrefs)_                                              | List of references to ConfigMaps or Secrets containing SQL files<br />to be executed as a superuser in the `template1` database right after<br />the cluster has been created. The references are processed in a specific order:<br />first, all Secrets are processed, followed by all ConfigMaps.<br />Within each group, the processing order follows the sequence specified<br />in their respective arrays. - to be used with extreme care<br />(by default empty) |          |         |                                                |
+| `postInitSQLRefs` _[SQLRefs](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#sqlrefs)_                                                      | List of references to ConfigMaps or Secrets containing SQL files<br />to be executed as a superuser in the `postgres` database right after<br />the cluster has been created. The references are processed in a specific order:<br />first, all Secrets are processed, followed by all ConfigMaps.<br />Within each group, the processing order follows the sequence specified<br />in their respective arrays. - to be used with extreme care<br />(by default empty)  |          |         |                                                |
+| `seccompProfile` _[SeccompProfile](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#seccompprofile-v1-core)_                                      | The SeccompProfile applied to every Pod and Container.<br />Defaults to: `RuntimeDefault`                                                                                                                                                                                                                                                                                                                                                                               |          |         |                                                |
+| `metadata` _[InheritedMetadata](#inheritedmetadata)_                                                                                                                  | Refer to Kubernetes API documentation for fields of `metadata`.                                                                                                                                                                                                                                                                                                                                                                                                         |          |         |                                                |
+| `managed` _[ManagedConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#managedconfiguration)_                                    | The configuration that is used by the portions of PostgreSQL that are managed by the CNP instance manager                                                                                                                                                                                                                                                                                                                                                               |          |         |                                                |
+| `projectedVolumeTemplate` _[ProjectedVolumeSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#projectedvolumesource-v1-core)_               | Template to be used to define projected volumes, projected volumes will be mounted<br />under `/projected` base folder                                                                                                                                                                                                                                                                                                                                                  |          |         |                                                |
+| `tablespaces` _[TablespaceConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#tablespaceconfiguration) array_                    | The tablespaces configuration                                                                                                                                                                                                                                                                                                                                                                                                                                           |          |         |                                                |
+| `topologySpreadConstraints` _[TopologySpreadConstraint](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#topologyspreadconstraint-v1-core) array_ | TopologySpreadConstraints specifies how to spread matching pods among the given topology.<br />More info:<br /><https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/>                                                                                                                                                                                                                                                                   |          |         |                                                |
+| `plugins` _[PluginConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#pluginconfiguration) array_                                | The plugins configuration, containing<br />any plugin to be loaded with the corresponding configuration                                                                                                                                                                                                                                                                                                                                                                 |          |         |                                                |
+| `initDBOptions` _[InitDBOptions](#initdboptions)_                                                                                                                     | InitDBOptions specifies the options to be passed to the `initdb` command<br />when the node is created from scratch                                                                                                                                                                                                                                                                                                                                                     |          |         |                                                |
+| `env` _[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#envvar-v1-core) array_                                                           | Env follows the Env format to pass environment variables<br />to the pods created in the PG4K cluster                                                                                                                                                                                                                                                                                                                                                                   |          |         |                                                |
+| `envFrom` _[EnvFromSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#envfromsource-v1-core) array_                                         | EnvFrom follows the EnvFrom format to pass environment variables<br />sources to the pods to be used by Env                                                                                                                                                                                                                                                                                                                                                             |          |         |                                                |
+
+#### CnpConfiguration
+
+CnpConfiguration contains the configurations of the data nodes that will be injected
+into the resulting clusters composing the PGD group
+
+_Appears in:_
+
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                                                                                                                                                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Required | Default | Validation                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------------------------------------------- |
+| `startDelay` _integer_                                                                                                                                                | The time in seconds that is allowed for a PostgreSQL instance to<br />successfully start up (default 3600)                                                                                                                                                                                                                                                                                                                                                              |          | 3600    |                                                |
+| `stopDelay` _integer_                                                                                                                                                 | The time in seconds that is allowed for a PostgreSQL instance node to<br />gracefully shutdown (default 180)                                                                                                                                                                                                                                                                                                                                                            |          | 180     |                                                |
+| `smartShutdownTimeout` _integer_                                                                                                                                      | The time in seconds that controls the window of time reserved for the smart shutdown of Postgres to complete.<br />Make sure you reserve enough time for the operator to request a fast shutdown of Postgres<br />(that is: `stopDelay` - `smartShutdownTimeout`).                                                                                                                                                                                                      |          | 15      |                                                |
+| `storage` _[StorageConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#storageconfiguration)_                                    | Configuration of the storage of the instances                                                                                                                                                                                                                                                                                                                                                                                                                           | True     |         |                                                |
+| `walStorage` _[StorageConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#storageconfiguration)_                                 | Configuration of the WAL storage for the instances                                                                                                                                                                                                                                                                                                                                                                                                                      |          |         |                                                |
+| `clusterMaxStartDelay` _integer_                                                                                                                                      | The time in seconds that is allowed for a PostgreSQL instance to<br />successfully start up (default 300)                                                                                                                                                                                                                                                                                                                                                               |          | 300     |                                                |
+| `affinity` _[AffinityConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#affinityconfiguration)_                                 | Affinity/Anti-affinity rules for Pods                                                                                                                                                                                                                                                                                                                                                                                                                                   |          |         |                                                |
+| `resources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#resourcerequirements-v1-core)_                               | Resources requirements of every generated Pod. Please refer to<br /><https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/><br />for more information.                                                                                                                                                                                                                                                                                         |          |         |                                                |
+| `postgresql` _[PostgresConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#postgresconfiguration)_                               | Configuration of the PostgreSQL server                                                                                                                                                                                                                                                                                                                                                                                                                                  |          |         |                                                |
+| `monitoring` _[MonitoringConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#monitoringconfiguration)_                           | The configuration of the monitoring infrastructure of this cluster                                                                                                                                                                                                                                                                                                                                                                                                      |          |         |                                                |
+| `logLevel` _string_                                                                                                                                                   | The instances' log level, one of the following values: error, warning, info (default), debug, trace                                                                                                                                                                                                                                                                                                                                                                     |          | info    | Enum: \[error warning info debug trace] <br /> |
+| `serviceAccountTemplate` _[ServiceAccountTemplate](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#serviceaccounttemplate)_                 | The service account template to be passed to CNP                                                                                                                                                                                                                                                                                                                                                                                                                        |          |         |                                                |
+| `otel` _[OTELConfiguration](#otelconfiguration)_                                                                                                                      | OpenTelemetry Configuration<br />Deprecated: This field is deprecated and will be removed in future versions.                                                                                                                                                                                                                                                                                                                                                           |          |         |                                                |
+| `postInitSQL` _string array_                                                                                                                                          | List of SQL queries to be executed as a superuser immediately<br />after a node has been created - to be used with extreme care<br />(by default empty)                                                                                                                                                                                                                                                                                                                 |          |         |                                                |
+| `postInitTemplateSQL` _string array_                                                                                                                                  | List of SQL queries to be executed as a superuser in the `template1`<br />after a node has been created - to be used with extreme care<br />(by default empty)                                                                                                                                                                                                                                                                                                          |          |         |                                                |
+| `postInitApplicationSQL` _string array_                                                                                                                               | List of SQL queries to be executed as a superuser in the application<br />database right after the cluster has been created - to be used with extreme care<br />as any data created in application database before logical join will cause the join to fail<br />(by default empty)                                                                                                                                                                                     |          |         |                                                |
+| `postInitApplicationSQLRefs` _[SQLRefs](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#sqlrefs)_                                           | List of references to ConfigMaps or Secrets containing SQL files<br />to be executed as a superuser in the application database right after<br />the cluster has been created. The references are processed in a specific order:<br />first, all Secrets are processed, followed by all ConfigMaps.<br />Within each group, the processing order follows the sequence specified<br />in their respective arrays. - to be used with extreme care<br />(by default empty) |          |         |                                                |
+| `postInitTemplateSQLRefs` _[SQLRefs](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#sqlrefs)_                                              | List of references to ConfigMaps or Secrets containing SQL files<br />to be executed as a superuser in the `template1` database right after<br />the cluster has been created. The references are processed in a specific order:<br />first, all Secrets are processed, followed by all ConfigMaps.<br />Within each group, the processing order follows the sequence specified<br />in their respective arrays. - to be used with extreme care<br />(by default empty) |          |         |                                                |
+| `postInitSQLRefs` _[SQLRefs](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#sqlrefs)_                                                      | List of references to ConfigMaps or Secrets containing SQL files<br />to be executed as a superuser in the `postgres` database right after<br />the cluster has been created. The references are processed in a specific order:<br />first, all Secrets are processed, followed by all ConfigMaps.<br />Within each group, the processing order follows the sequence specified<br />in their respective arrays. - to be used with extreme care<br />(by default empty)  |          |         |                                                |
+| `seccompProfile` _[SeccompProfile](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#seccompprofile-v1-core)_                                      | The SeccompProfile applied to every Pod and Container.<br />Defaults to: `RuntimeDefault`                                                                                                                                                                                                                                                                                                                                                                               |          |         |                                                |
+| `metadata` _[InheritedMetadata](#inheritedmetadata)_                                                                                                                  | Refer to Kubernetes API documentation for fields of `metadata`.                                                                                                                                                                                                                                                                                                                                                                                                         |          |         |                                                |
+| `managed` _[ManagedConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#managedconfiguration)_                                    | The configuration that is used by the portions of PostgreSQL that are managed by the CNP instance manager                                                                                                                                                                                                                                                                                                                                                               |          |         |                                                |
+| `projectedVolumeTemplate` _[ProjectedVolumeSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#projectedvolumesource-v1-core)_               | Template to be used to define projected volumes, projected volumes will be mounted<br />under `/projected` base folder                                                                                                                                                                                                                                                                                                                                                  |          |         |                                                |
+| `tablespaces` _[TablespaceConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#tablespaceconfiguration) array_                    | The tablespaces configuration                                                                                                                                                                                                                                                                                                                                                                                                                                           |          |         |                                                |
+| `topologySpreadConstraints` _[TopologySpreadConstraint](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#topologyspreadconstraint-v1-core) array_ | TopologySpreadConstraints specifies how to spread matching pods among the given topology.<br />More info:<br /><https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/>                                                                                                                                                                                                                                                                   |          |         |                                                |
+| `plugins` _[PluginConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#pluginconfiguration) array_                                | The plugins configuration, containing<br />any plugin to be loaded with the corresponding configuration                                                                                                                                                                                                                                                                                                                                                                 |          |         |                                                |
+| `initDBOptions` _[InitDBOptions](#initdboptions)_                                                                                                                     | InitDBOptions specifies the options to be passed to the `initdb` command<br />when the node is created from scratch                                                                                                                                                                                                                                                                                                                                                     |          |         |                                                |
+| `env` _[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#envvar-v1-core) array_                                                           | Env follows the Env format to pass environment variables<br />to the pods created in the PG4K cluster                                                                                                                                                                                                                                                                                                                                                                   |          |         |                                                |
+| `envFrom` _[EnvFromSource](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#envfromsource-v1-core) array_                                         | EnvFrom follows the EnvFrom format to pass environment variables<br />sources to the pods to be used by Env                                                                                                                                                                                                                                                                                                                                                             |          |         |                                                |
+| `joinMethod` _[JoinMethod](#joinmethod)_                                                                                                                              | JoinMethod specifies the method data nodes will use to join the local group.<br />PGD supports two ways of joining a local group: logical and physical.<br />In logical join,<br />  the node will join the group by using `bdr.join_node_group`, synchronizing data from scratch.<br />In physical join<br />	 the node will join the group by using `bdr_init_physical`, synchronizing data from a physical backup.                                                   | True     | logical | Enum: \[logical physical] <br />               |
+| `enableSuperuserAccess` _boolean_                                                                                                                                     | When this option is enabled, the CNP operator will create or use the secret defined<br />in the SuperuserSecret to allow superuser (postgres) access to the database.<br />When this option is disabled on a running Group, the operator will ignore the content<br />of the secret and set the password of the `postgres` user to `NULL`.<br />Enabled by default.                                                                                                     |          | true    |                                                |
+| `superuserSecret` _[LocalObjectReference](#localobjectreference)_                                                                                                     | The secret containing the superuser password.<br />A new secret will be created with a randomly generated password if not defined.<br />This field is only allowed in the CNP Instances configuration.<br />A Witness Node will always use the same SuperuserSecret as the other instances.                                                                                                                                                                             |          |         |                                                |
+
+#### ConnectionString
+
+_Underlying type:_ _object_
+
+ConnectionString represent the parameters to connect to a
+PostgreSQL cluster
+
+_Appears in:_
+
+- [PgdConfiguration](#pgdconfiguration)
+
+#### ConnectivityConfiguration
+
+ConnectivityConfiguration describes how to generate the services and certificates for the PGDGroup
+
+_Appears in:_
+
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                                            | Description                                                                                   | Required | Default | Validation |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `dns` _[RootDNSConfiguration](#rootdnsconfiguration)_            | Describes how the FQDN for the resources should be generated                                  |          |         |            |
+| `tls` _[TLSConfiguration](#tlsconfiguration)_                    | The configuration of the TLS infrastructure                                                   | True     |         |            |
+| `nodeServiceTemplate` _[ServiceTemplate](#servicetemplate)_      | Instructs how to generate the service for each node                                           |          |         |            |
+| `groupServiceTemplate` _[ServiceTemplate](#servicetemplate)_     | Instructs how to generate the service for the PGDGroup                                        |          |         |            |
+| `proxyServiceTemplate` _[ServiceTemplate](#servicetemplate)_     | Instructs how to generate the service pointing to the PGD Proxy for write leader node routing |          |         |            |
+| `proxyReadServiceTemplate` _[ServiceTemplate](#servicetemplate)_ | Instructs how to generate the service pointing to the PGD Proxy for read nodes routing        |          |         |            |
+
+#### ConnectivityStatus
+
+ConnectivityStatus contains any relevant status for the operator about Connectivity
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                                                       | Description                                                                                                                             | Required | Default | Validation |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `replicationTLSCertificate` _[ReplicationCertificateStatus](#replicationcertificatestatus)_ | ReplicationTLSCertificate is the name of the replication TLS certificate, if we have it                                                 |          |         |            |
+| `nodeTLSCertificates` _[NodeCertificateStatus](#nodecertificatestatus) array_               | NodeTLSCertificates are the names of the certificates that have been created for the PGD nodes                                          |          |         |            |
+| `unusedCertificates` _string array_                                                         | UnusedCertificates are the names of the certificates that we don't use anymore<br />for the PGD nodes                                   |          |         |            |
+| `nodesWithoutCertificates` _string array_                                                   | NodesWithoutCertificates are the names of the nodes which have not a server certificate                                                 |          |         |            |
+| `nodesNeedingServiceReconciliation` _string array_                                          | NodesNeedingServiceReconciliation are the names of the nodes which have not a server certificate                                        |          |         |            |
+| `configurationHash` _string_                                                                | ConfigurationHash is the hash code of the connectivity configuration, used to<br />check if we had a change in the configuration or not |          |         |            |
+
+#### DNSConfiguration
+
+DNSConfiguration describes how the FQDN for the resources should be generated
+
+_Appears in:_
+
+- [RootDNSConfiguration](#rootdnsconfiguration)
+
+| Field                 | Description                                                                                                                                                                                                                                                                                       | Required | Default | Validation |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `domain` _string_     | Contains the domain name of by all services in the PGDGroup. It is responsibility of the user to ensure that the<br />value specified here matches with the rendered nodeServiceTemplate and groupServiceTemplate                                                                                 |          |         |            |
+| `hostSuffix` _string_ | Contains an optional suffix to add to all the service names in the PGDGroup. The meaning of this setting it to<br />allow the user to easily mark all the services created in a location for routing purpose<br />(i.e., add a generic rule to CoreDNS to rewrite some service suffixes as local) |          |         |            |
+
+#### DiscoveryJobConfig
+
+DiscoveryJobConfig contains a series of fields that configure the discovery job
+
+_Appears in:_
+
+- [PgdConfiguration](#pgdconfiguration)
+
+| Field               | Description                                                                   | Required | Default | Validation |
+| ------------------- | ----------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `delay` _integer_   | Delay amount of time to sleep between retries, measured in seconds            |          | 10      |            |
+| `retries` _integer_ | Retries how many times the operation should be retried                        |          | 30      |            |
+| `timeout` _integer_ | Timeout amount of time given to the operation to succeed, measured in seconds |          | 300     |            |
+
+#### ImageCatalog
+
+ImageCatalog is the Schema for the imagecatalogs API
+
+| Field                                                                                                              | Description                                                                                                                                                                      | Required | Default | Validation |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `apiVersion` _string_                                                                                              | `pgd.k8s.enterprisedb.io/v1beta1`                                                                                                                                                | True     |         |            |
+| `kind` _string_                                                                                                    | `ImageCatalog`                                                                                                                                                                   | True     |         |            |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`.                                                                                                                  | True     |         |            |
+| `spec` _[ImageCatalogSpec](#imagecatalogspec)_                                                                     | Specification of the desired behavior of the ImageCatalog.<br />More info: <https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status> | True     |         |            |
+
+#### ImageCatalogRef
+
+ImageCatalogRef defines the referenced ImageCatalog and the referenced major Postgres version
+
+_Appears in:_
+
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field               | Description                                                                                                                                                                                               | Required | Default | Validation |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `apiGroup` _string_ | APIGroup is the group for the resource being referenced.<br />If APIGroup is not specified, the specified Kind must be in the core API group.<br />For any other third-party types, APIGroup is required. |          |         |            |
+| `kind` _string_     | Kind is the type of resource being referenced                                                                                                                                                             | True     |         |            |
+| `name` _string_     | Name is the name of resource being referenced                                                                                                                                                             | True     |         |            |
+| `major` _integer_   | The major version of PostgreSQL we want to use from the ImageCatalog                                                                                                                                      | True     |         |            |
+
+#### ImageCatalogSpec
+
+ImageCatalogSpec defines the desired ImageCatalog
+
+_Appears in:_
+
+- [ClusterImageCatalog](#clusterimagecatalog)
+- [ImageCatalog](#imagecatalog)
+
+| Field                                             | Description                                    | Required | Default | Validation                           |
+| ------------------------------------------------- | ---------------------------------------------- | -------- | ------- | ------------------------------------ |
+| `pgdImages` _[CatalogImage](#catalogimage) array_ | List of CatalogImages available in the catalog | True     |         | MaxItems: 8 <br />MinItems: 1 <br /> |
+| `proxyImage` _string_                             | The proxy image available in the catalog       |          |         |                                      |
+
+#### ImageStatus
+
+ImageStatus defines the current used images
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field            | Description                                  | Required | Default | Validation |
+| ---------------- | -------------------------------------------- | -------- | ------- | ---------- |
+| `pgd` _string_   | PGD is the current used pgd image            |          |         |            |
+| `proxy` _string_ | PGDProxy is the current used pgd proxy image |          |         |            |
+
+#### InheritedMetadata
+
+InheritedMetadata contains metadata to be inherited by all resources related to a Cluster
+
+_Appears in:_
+
+- [CnpBaseConfiguration](#cnpbaseconfiguration)
+- [CnpConfiguration](#cnpconfiguration)
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                               | Description | Required | Default | Validation |
+| --------------------------------------------------- | ----------- | -------- | ------- | ---------- |
+| `labels` _object (keys:string, values:string)_      |             |          |         |            |
+| `annotations` _object (keys:string, values:string)_ |             |          |         |            |
+
+#### InitDBOptions
+
+InitDBOptions contain options for nodes start with initDB
+
+_Appears in:_
+
+- [CnpBaseConfiguration](#cnpbaseconfiguration)
+- [CnpConfiguration](#cnpconfiguration)
+
+| Field                      | Description                                                                                                                                                                                | Required | Default | Validation                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- | ------------------------------------- |
+| `dataChecksums` _boolean_  | Whether the `-k` option should be passed to initdb,<br />enabling checksums on data pages (default: `false`)                                                                               |          |         |                                       |
+| `encoding` _string_        | The value to be passed as option `--encoding` for initdb (default:`UTF8`)                                                                                                                  |          |         |                                       |
+| `localeCollate` _string_   | The value to be passed as option `--lc-collate` for initdb (default:`C`)                                                                                                                   |          |         |                                       |
+| `localeCType` _string_     | The value to be passed as option `--lc-ctype` for initdb (default:`C`)                                                                                                                     |          |         |                                       |
+| `locale` _string_          | Sets the default collation order and character classification in the new database.                                                                                                         |          |         |                                       |
+| `localeProvider` _string_  | This option sets the locale provider for databases created in the new cluster.<br />Available from PostgreSQL 16.                                                                          |          |         |                                       |
+| `icuLocale` _string_       | Specifies the ICU locale when the ICU provider is used.<br />This option requires `localeProvider` to be set to `icu`.<br />Available from PostgreSQL 15.                                  |          |         |                                       |
+| `icuRules` _string_        | Specifies additional collation rules to customize the behavior of the default collation.<br />This option requires `localeProvider` to be set to `icu`.<br />Available from PostgreSQL 16. |          |         |                                       |
+| `builtinLocale` _string_   | Specifies the locale name when the builtin provider is used.<br />This option requires `localeProvider` to be set to `builtin`.<br />Available from PostgreSQL 17.                         |          |         |                                       |
+| `walSegmentSize` _integer_ | The value in megabytes (1 to 1024) to be passed to the `--wal-segsize`<br />option for initdb (default: empty, resulting in PostgreSQL default: 16MB)                                      |          |         | Maximum: 1024 <br />Minimum: 1 <br /> |
+
+#### JoinMethod
+
+_Underlying type:_ _string_
+
+JoinMethod represents one of the supported methods of joining a node
+
+_Appears in:_
+
+- [CnpConfiguration](#cnpconfiguration)
+- [PgdConfiguration](#pgdconfiguration)
+
+| Field      | Description                                                  |
+| ---------- | ------------------------------------------------------------ |
+| `physical` | JoinMethodPhysical represents the use of physical join<br /> |
+| `logical`  | JoinMethodLogical represents the use of logical join<br />   |
+
+#### Metadata
+
+Metadata is a structure similar to the metav1.ObjectMeta, but still
+parseable by controller-gen to create a suitable CRD for the user.
+
+_Appears in:_
+
+- [CertManagerTemplate](#certmanagertemplate)
+- [ServiceTemplate](#servicetemplate)
+
+| Field                                               | Description                                                                                                                                                                                                                                                                                         | Required | Default | Validation |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `labels` _object (keys:string, values:string)_      | Map of string keys and values that can be used to organize and categorize<br />(scope and select) objects. May match selectors of replication controllers<br />and services.<br />More info: <http://kubernetes.io/docs/user-guide/labels>                                                          |          |         |            |
+| `annotations` _object (keys:string, values:string)_ | Annotations is an unstructured key value map stored with a resource that may be<br />set by external tools to store and retrieve arbitrary metadata. They are not<br />queryable and should be preserved when modifying objects.<br />More info: <http://kubernetes.io/docs/user-guide/annotations> |          |         |            |
+
+#### NodeCertificateStatus
+
+NodeCertificateStatus encapsulate the status of the server certificate
+of a CNP node
+
+_Appears in:_
+
+- [ConnectivityStatus](#connectivitystatus)
+
+| Field                      | Description                                                           | Required | Default | Validation |
+| -------------------------- | --------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_            | Name is the name of the certificate                                   |          |         |            |
+| `hash` _string_            | Hash is the hash of the configuration for which it has been generated |          |         |            |
+| `isReady` _boolean_        | Ready is true when the certificate is ready                           |          |         |            |
+| `preProvisioned` _boolean_ | PreProvisioned is true if the certificate is preProvisioned           |          |         |            |
+| `nodeName` _string_        | NodeName is the name of the CNP cluster using this certificate        | True     |         |            |
+
+#### NodeKindName
+
+_Underlying type:_ _string_
+
+NodeKindName is a type containing the potential values of node\_kind\_name from bdr.node\_summary
+
+_Appears in:_
+
+- [NodeSummary](#nodesummary)
+
+| Field     | Description |
+| --------- | ----------- |
+| `witness` |             |
+| `data`    |             |
+
+#### NodeSummary
+
+NodeSummary shows relevant info from bdr.node\_summary
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                            | Description                                                        | Required | Default | Validation |
+| ------------------------------------------------ | ------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `node_name` _string_                             | Name of the node                                                   |          |         |            |
+| `node_group_name` _string_                       | NodeGroupName is the name of the joined group                      |          |         |            |
+| `peer_state_name` _string_                       | Consistent state of the node in human-readable form                | True     |         |            |
+| `peer_target_state_name` _string_                | State which the node is trying to reach (during join or promotion) |          |         |            |
+| `node_kind_name` _[NodeKindName](#nodekindname)_ | The kind of node: witness or data                                  |          |         |            |
+
+#### OTELConfiguration
+
+OTELConfiguration is the configuration for external openTelemetry
+
+Deprecated: This field is deprecated and will be removed in future versions.
+
+_Appears in:_
+
+- [CnpBaseConfiguration](#cnpbaseconfiguration)
+- [CnpConfiguration](#cnpconfiguration)
+
+| Field                                                 | Description                                                                                                                                                                                | Required | Default | Validation |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `metricsURL` _string_                                 | The OpenTelemetry HTTP endpoint URL to accept metrics data<br />Deprecated: This field is deprecated and will be removed in future versions.                                               |          |         |            |
+| `traceURL` _string_                                   | The OpenTelemetry HTTP endpoint URL to accept trace data<br />Deprecated: This field is deprecated and will be removed in future versions.                                                 |          |         |            |
+| `traceEnable` _boolean_                               | Whether to push trace data to OpenTelemetry traceUrl<br />Deprecated: This field is deprecated and will be removed in future versions.                                                     |          |         |            |
+| `tls` _[OTELTLSConfiguration](#oteltlsconfiguration)_ | TLSConfiguration provides the TLS certificate configuration when MetricsURL and TraceURL are using HTTPS<br />Deprecated: This field is deprecated and will be removed in future versions. |          |         |            |
+
+#### OTELTLSConfiguration
+
+OTELTLSConfiguration contains the certificate configuration for TLS connections to openTelemetry
+
+Deprecated: This field is deprecated and will be removed in future versions.
+
+_Appears in:_
+
+- [OTELConfiguration](#otelconfiguration)
+
+| Field                                                              | Description                                                                                                                                                                                                                                                                                        | Required | Default | Validation |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `caBundleSecretRef` _[SecretKeySelector](#secretkeyselector)_      | CABundleSecretRef is a reference to a secret field containing the CA bundle<br />to verify the openTelemetry server certificate<br />Deprecated: This field is deprecated and will be removed in future versions.                                                                                  |          |         |            |
+| `clientCertSecret` _[LocalObjectReference](#localobjectreference)_ | ClientCertSecret is the name of the secret containing the client certificate used to connect<br />to openTelemetry. It must contain both the standard "tls.crt" and "tls.key" files,<br />encoded in PEM format.<br />Deprecated: This field is deprecated and will be removed in future versions. |          |         |            |
+
+#### ObjectStoreStatus
+
+ObjectStoreStatus contains the name and hash of the objectStore
+
+_Appears in:_
+
+- [BarmanCloudPluginStatus](#barmancloudpluginstatus)
+
+| Field           | Description                          | Required | Default | Validation |
+| --------------- | ------------------------------------ | -------- | ------- | ---------- |
+| `name` _string_ | Name is the name of the objectStore  |          |         |            |
+| `hash` _string_ | Hash stored the objectStore hashcode | True     |         |            |
+
+#### OperatorPhase
+
+_Underlying type:_ _string_
+
+OperatorPhase it represents a phase of the PGDGroup controller
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                         | Description                                                                                                                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `PGDGroup - Healthy`                                          | PhaseHealthy triggers when no other phase condition is met<br />                                                                    |
+| `PGDGroup - Paused`                                           | PhasePaused triggers when the PGDGroup is paused and all instances and proxies pod are deleted<br />                                |
+| `PGDGroup - Waiting for nodes to be ready`                    | PhaseWaitingForNodesToBeReady triggers when a PGDGroup node is not in status ready<br />                                            |
+| `PGDGroup - Waiting for nodes major version in-place upgrade` | PhaseWaitingForNodesInPlaceUpgrade is the phase where a in-place major version upgrade (postgres, bdr, etc)<br />is happening<br /> |
+| `PGDGroup - Unable to detect a phase for the PGD group`       | PhaseUnableToDetectPhase triggers when a PGDGroup phase cannot be calculated. This is a programmatic error<br />                    |
+| `Default Metrics - Reconcile Resources`                       | PhaseDefaultMetricsReconcileResources triggers when resources need to be created or updated<br />                                   |
+
+#### OperatorPhaseCleanup
+
+_Underlying type:_ _string_
+
+OperatorPhaseCleanup it represents a phase of the PGDGroupCleanup controller
+
+_Appears in:_
+
+- [PGDGroupCleanupStatus](#pgdgroupcleanupstatus)
+
+| Field                                                                       | Description                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PGDGroupCleanup - Failed, no reliable node found in the executor PGDGroup` | NoExecutorFound the phase when the executor PGDGroup cannot be found or has no reliable node,<br />which is required for the cleanup process, and the cleanup cannot proceed. This phase indicates<br />a failure state for the PGDGroupCleanup operation.<br />This is a terminal phase, and the PGDGroupCleanup will not be requeued anymore when it is in this phase.<br /> |
+| `PGDGroupCleanup - Completed`                                               | Completed the phase when the cleanup process has been completed successfully<br />This is a terminal phase, and the PGDGroupCleanup will not be requeued anymore when it is in this phase.<br />                                                                                                                                                                               |
+| `PGDGroupCleanup - Parting the nodes`                                       | PartingNodes the phase when the cleanup process is parting the nodes in the target PGDGroup<br />                                                                                                                                                                                                                                                                              |
+| `PGDGroupCleanup - Removing the PGDGroup`                                   | RemovingGroup the phase when the cleanup process is removing the PGDGroup after all the nodes<br />in the target PGDGroup are parted<br />                                                                                                                                                                                                                                     |
+| `PGDGroupCleanup - Waiting for nodes in target PGDGroup to be parted`       | TargetNotParted the phase when the cleanup process is waiting for the nodes in the target PGDGroup to<br />be parted, which is required before removing the PGDGroup. This phase happens when force flag in<br />PGDGroupCleanup is false and waiting for nodes to be parted.<br />                                                                                            |
+
+#### PGDGroup
+
+PGDGroup is the Schema for the pgdgroups API
+
+| Field                                                                                                              | Description                                                     | Required | Default | Validation |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | -------- | ------- | ---------- |
+| `apiVersion` _string_                                                                                              | `pgd.k8s.enterprisedb.io/v1beta1`                               | True     |         |            |
+| `kind` _string_                                                                                                    | `PGDGroup`                                                      | True     |         |            |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. | True     |         |            |
+| `spec` _[PGDGroupSpec](#pgdgroupspec)_                                                                             |                                                                 | True     |         |            |
+| `status` _[PGDGroupStatus](#pgdgroupstatus)_                                                                       |                                                                 |          |         |            |
+
+#### PGDGroupCleanup
+
+PGDGroupCleanup is the Schema for the pgdgroupcleanups API
+
+| Field                                                                                                              | Description                                                     | Required | Default | Validation |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | -------- | ------- | ---------- |
+| `apiVersion` _string_                                                                                              | `pgd.k8s.enterprisedb.io/v1beta1`                               | True     |         |            |
+| `kind` _string_                                                                                                    | `PGDGroupCleanup`                                               | True     |         |            |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. | True     |         |            |
+| `spec` _[PGDGroupCleanupSpec](#pgdgroupcleanupspec)_                                                               |                                                                 | True     |         |            |
+| `status` _[PGDGroupCleanupStatus](#pgdgroupcleanupstatus)_                                                         |                                                                 | True     |         |            |
+
+#### PGDGroupCleanupSpec
+
+PGDGroupCleanupSpec defines the desired state of PGDGroupCleanup
+
+_Appears in:_
+
+- [PGDGroupCleanup](#pgdgroupcleanup)
+
+| Field               | Description                                                                                   | Required | Default | Validation |
+| ------------------- | --------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `executor` _string_ |                                                                                               | True     |         |            |
+| `target` _string_   |                                                                                               | True     |         |            |
+| `force` _boolean_   | Force will force the removal of the PGDGroup even if the target PGDGroup nodes are not parted |          | false   |            |
+
+#### PGDGroupCleanupStatus
+
+PGDGroupCleanupStatus defines the observed state of PGDGroupCleanup
+
+_Appears in:_
+
+- [PGDGroupCleanup](#pgdgroupcleanup)
+
+| Field                                                   | Description                                                              | Required | Default | Validation |
+| ------------------------------------------------------- | ------------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `phase` _[OperatorPhaseCleanup](#operatorphasecleanup)_ | Phase the phase of current cleanup cr                                    |          |         |            |
+| `nodesToPart` _string array_                            | NodesToPart shows nodes that are not parted in the target group          |          |         |            |
+| `isNodeGroupExists` _boolean_                           | IsNodeGroupExists indicates if the target group is still not dropped yet |          |         |            |
+
+#### PGDGroupSpec
+
+PGDGroupSpec defines the desired state of PGDGroup
+
+_Appears in:_
+
+- [PGDGroup](#pgdgroup)
+
+| Field                                                                                                                                                | Description                                                                                                                                                                                                                             | Required | Default      | Validation        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------ | ----------------- |
+| `imageName` _string_                                                                                                                                 | Name of the container image, supporting both tags (`<image>:<tag>`)<br />and digests for deterministic and repeatable deployments<br />(`<image>:<tag>@sha256:<digestValue>`)                                                           |          |              |                   |
+| `imageCatalogRef` _[ImageCatalogRef](#imagecatalogref)_                                                                                              | Defines the referenced ImageCatalog and the referenced major Postgres version                                                                                                                                                           |          |              |                   |
+| `imagePullPolicy` _[PullPolicy](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#pullpolicy-v1-core)_                            | Image pull policy.<br />One of `Always`, `Never` or `IfNotPresent`.<br />If not defined, it defaults to `IfNotPresent`.<br />Cannot be updated.<br />More info: <https://kubernetes.io/docs/concepts/containers/images#updating-images> |          | IfNotPresent |                   |
+| `imagePullSecrets` _[LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#localobjectreference-v1-core) array_ | The list of pull secrets to be used to pull operator and or the operand images                                                                                                                                                          |          |              |                   |
+| `inheritedMetadata` _[InheritedMetadata](#inheritedmetadata)_                                                                                        | Metadata that will be inherited by all objects related to the pgdGroup                                                                                                                                                                  | True     |              |                   |
+| `instances` _integer_                                                                                                                                | Number of instances required in the cluster                                                                                                                                                                                             | True     |              | Minimum: 0 <br /> |
+| `proxyInstances` _integer_                                                                                                                           | Number of proxy instances required in the cluster                                                                                                                                                                                       |          |              | Minimum: 0 <br /> |
+| `witnessInstances` _integer_                                                                                                                         | Number of witness instances required in the cluster                                                                                                                                                                                     |          |              | Minimum: 0 <br /> |
+| `backup` _[Backup](#backup)_                                                                                                                         | The configuration to be used for backups in the<br />CNP instances.                                                                                                                                                                     |          |              |                   |
+| `restore` _[Restore](#restore)_                                                                                                                      | The configuration to restore this PGD group from an Object Store<br />service                                                                                                                                                           |          |              |                   |
+| `cnp` _[CnpConfiguration](#cnpconfiguration)_                                                                                                        | DataInstances configuration that will be injected into the CNP<br />clusters that compose the PGD Group                                                                                                                                 | True     |              |                   |
+| `witness` _[CnpBaseConfiguration](#cnpbaseconfiguration)_                                                                                            | WitnessInstances configuration that will be injected into<br />the WitnessInstances CNP clusters<br />If not defined, it will default to the DataInstances configuration                                                                |          |              |                   |
+| `pgd` _[PgdConfiguration](#pgdconfiguration)_                                                                                                        | Pgd contains instructions to bootstrap this cluster                                                                                                                                                                                     | True     |              |                   |
+| `pgdProxy` _[PGDProxyConfiguration](#pgdproxyconfiguration)_                                                                                         | PGDProxy contains instructions to configure PGD Proxy                                                                                                                                                                                   |          |              |                   |
+| `connectivity` _[ConnectivityConfiguration](#connectivityconfiguration)_                                                                             | Configures the connectivity of the PGDGroup, like services<br />and certificates that will be used.                                                                                                                                     | True     |              |                   |
+| `failingFinalizerTimeLimitSeconds` _integer_                                                                                                         | The amount of seconds that the operator will wait in case of a failing finalizer.<br />A finalizer is considered failing when the operator cannot reach any nodes of the PGDGroup                                                       |          | 300          |                   |
+
+#### PGDGroupStatus
+
+PGDGroupStatus defines the observed state of PGDGroup
+
+_Appears in:_
+
+- [PGDGroup](#pgdgroup)
+
+| Field                                                                                                                    | Description                                                                    | Required | Default | Validation                       |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | -------- | ------- | -------------------------------- |
+| `latestGeneratedNode` _integer_                                                                                          | ID of the latest generated node (used to avoid node name clashing)             |          |         |                                  |
+| `phase` _[OperatorPhase](#operatorphase)_                                                                                | The initialization phase of this cluster                                       |          |         |                                  |
+| `phaseDetails` _string_                                                                                                  | The details of the current phase                                               |          |         |                                  |
+| `phaseTroubleshootHints` _string_                                                                                        | PhaseTroubleshootHints general troubleshooting indications for the given phase |          |         |                                  |
+| `phaseType` _[PhaseType](#phasetype)_                                                                                    | PhaseType describes the phase category.                                        |          |         | Enum: \[action wait fail] <br /> |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#condition-v1-meta) array_ | Conditions for PGDGroup object                                                 |          |         |                                  |
+| `nodes` _[NodeSummary](#nodesummary) array_                                                                              | The list of summaries for the nodes in the group                               |          |         |                                  |
+| `backup` _[BackupStatus](#backupstatus)_                                                                                 | The node that is taking backups of this PGDGroup                               |          |         |                                  |
+| `restore` _[RestoreStatus](#restorestatus)_                                                                              | The status of the restore process                                              |          |         |                                  |
+| `PGD` _[PGDStatus](#pgdstatus)_                                                                                          | Last known status of PGD                                                       |          |         |                                  |
+| `CNP` _[CNPStatus](#cnpstatus)_                                                                                          | Last known status of CNP                                                       |          |         |                                  |
+| `PGDProxy` _[PGDProxyStatus](#pgdproxystatus)_                                                                           | Last known status of PGDProxy                                                  |          |         |                                  |
+| `connectivity` _[ConnectivityStatus](#connectivitystatus)_                                                               | Last known status of Connectivity                                              |          |         |                                  |
+| `pause` _[PauseStatus](#pausestatus)_                                                                                    | Last known status of Pause                                                     |          |         |                                  |
+| `image` _[ImageStatus](#imagestatus)_                                                                                    | Last known status of used image                                                |          |         |                                  |
+| `plugins` _[PluginStatus](#pluginstatus)_                                                                                | Plugin Last known status of the plugins                                        |          |         |                                  |
+
+#### PGDNodeGroupEntry
+
+PGDNodeGroupEntry shows information about the node groups available
+in the PGD configuration
+
+_Appears in:_
+
+- [PGDStatus](#pgdstatus)
+
+| Field                            | Description                                                                                                                                                                               | Required | Default | Validation |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_                  | Name is the name of the node group                                                                                                                                                        | True     |         |            |
+| `uuid` _string_                  | UUID is the UUID of the group                                                                                                                                                             |          |         |            |
+| `enableProxyRouting` _boolean_   | EnableProxyRouting is true is the node group allows running PGD Proxies                                                                                                                   |          |         |            |
+| `enableRaft` _boolean_           | EnableRaft is true if the node group has a subgroup raft instance                                                                                                                         |          |         |            |
+| `routeWriterMaxLag` _integer_    | RouteWriterMaxLag Maximum lag in bytes of the new write candidate to be<br /> selected as write leader, if no candidate passes this, there will be no writer<br /> selected automatically |          |         |            |
+| `routeReaderMaxLag` _integer_    | RouteReaderMaxLag Maximum lag in bytes for node to be considered viable<br /> read-only node                                                                                              |          |         |            |
+| `routeWriterWaitFlush` _boolean_ | RouteWriterWaitFlush Whether to wait for replication queue flush before<br /> switching to new leader when using `bdr.routing_leadership_transfer()`                                      |          |         |            |
+
+#### PGDNodeGroupSettings
+
+PGDNodeGroupSettings contains the settings of the PGD Group
+
+_Appears in:_
+
+- [PgdConfiguration](#pgdconfiguration)
+
+| Field                            | Description                                                                                                                                                                                                   | Required | Default | Validation |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `routeWriterMaxLag` _integer_    | RouteWriterMaxLag Maximum lag in bytes of the new write candidate to be<br /> selected as write leader, if no candidate passes this, there will be no writer<br /> selected automatically<br />Defaults to -1 |          | -1      |            |
+| `routeReaderMaxLag` _integer_    | RouteReaderMaxLag Maximum lag in bytes for node to be considered viable<br /> read-only node<br />Defaults to -1                                                                                              |          | -1      |            |
+| `routeWriterWaitFlush` _boolean_ | RouteWriterWaitFlush Whether to wait for replication queue flush before<br /> switching to new leader when using `bdr.routing_leadership_transfer()`<br />Defaults to false                                   |          | false   |            |
+
+#### PGDProxyConfiguration
+
+PGDProxyConfiguration defines the configuration of PGD Proxy
+
+_Appears in:_
+
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                                                                                                                        | Description                                                                                           | Required | Default | Validation                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------- | ------- | ---------------------------------------------- |
+| `imageName` _string_                                                                                                                         | Name of the PGDProxy container image                                                                  |          |         |                                                |
+| `logLevel` _string_                                                                                                                          | The PGD Proxy log level, one of the following values: error, warning, info (default), debug, trace    |          | info    | Enum: \[error warning info debug trace] <br /> |
+| `logEncoder` _string_                                                                                                                        | The format of the log output                                                                          |          | json    | Enum: \[text json] <br />                      |
+| `proxyAffinity` _[Affinity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#affinity-v1-core)_                          | ProxyAffinity/Anti-affinity rules for pods                                                            |          |         |                                                |
+| `proxyNodeSelector` _object (keys:string, values:string)_                                                                                    | ProxyNodeSelector rules for pods                                                                      |          |         |                                                |
+| `proxyTolerations` _[Toleration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#toleration-v1-core) array_             | ProxyTolerations rules for pods                                                                       |          |         |                                                |
+| `proxyResources` _[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#resourcerequirements-v1-core)_ | Defines the resources assigned to the proxy. If not defined uses defaults requests and limits values. |          |         |                                                |
+
+#### PGDProxyEntry
+
+PGDProxyEntry shows information about the proxies available
+in the PGD configuration
+
+_Appears in:_
+
+- [PGDStatus](#pgdstatus)
+
+| Field                               | Description                                                                                                      | Required | Default | Validation |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_                     | Name is the name of the proxy                                                                                    | True     |         |            |
+| `fallbackGroupNames` _string array_ | FallbackGroupNames are the names of the fallback groups configured<br />for this proxy                           |          |         |            |
+| `parentGroupName` _string_          | ParentGroupName is the parent PGD group of this proxy                                                            |          |         |            |
+| `maxClientConn` _integer_           | MaxClientConn maximum number of connections the proxy will accept                                                |          |         |            |
+| `maxServerConn` _integer_           | MaxServerConn maximum number of connections the proxy will make to the<br />Postgres node                        |          |         |            |
+| `serverConnTimeout` _integer_       | ServerConnTimeout connection timeout for server connections in seconds                                           |          |         |            |
+| `serverConnKeepalive` _integer_     | ServerConnKeepalive keepalive interval for server connections in seconds                                         |          |         |            |
+| `fallbackGroupTimeout` _integer_    | FallbackGroupTimeout the interval after which the routing falls back<br />to one of the fallback\_groups         |          |         |            |
+| `consensusGracePeriod` _integer_    | ConsensusGracePeriod the duration in seconds for which proxy continues to route even upon loss of a Raft leader. |          |         |            |
+| `readListenPort` _integer_          | ReadListenPort is the port where the proxy will listen and route queries to read nodes                           |          |         |            |
+
+#### PGDProxySettings
+
+PGDProxySettings contains the settings of the proxy
+
+_Appears in:_
+
+- [PgdConfiguration](#pgdconfiguration)
+
+| Field                             | Description                                                                                                                                                                             | Required | Default | Validation |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `fallbackGroups` _string array_   | FallbackGroups is the list of groups the proxy should forward connection to<br />when all the data nodes of this PGD group are not available                                            |          |         |            |
+| `maxClientConn` _integer_         | MaxClientConn maximum number of connections the proxy will accept.<br />Defaults to 32767                                                                                               |          | 32767   |            |
+| `maxServerConn` _integer_         | MaxServerConn maximum number of connections the proxy will make to the<br />Postgres node.<br />Defaults to 32767                                                                       |          | 32767   |            |
+| `serverConnTimeout` _integer_     | ServerConnTimeout connection timeout for server connections in seconds.<br />Defaults to 2                                                                                              |          | 2       |            |
+| `serverConnKeepalive` _integer_   | ServerConnKeepalive keepalive interval for server connections in seconds.<br />Defaults to 10                                                                                           |          | 10      |            |
+| `fallbackGroupTimeout` _integer_  | FallbackGroupTimeout the interval after which the routing falls back<br />to one of the fallback\_groups.<br />Defaults to 60                                                           |          | 60      |            |
+| `consensusGracePeriod` _integer_  | ConsensusGracePeriod the duration in seconds for which proxy continues to route even upon loss of a Raft leader.<br />If set to 0s, proxy stops routing immediately.<br />Defaults to 6 |          | 6       |            |
+| `enableReadNodeRouting` _boolean_ | EnableReadNodeRouting is the switch to control whether the proxy will route queries to read nodes through<br />read\_listen\_port or not. By default it is false                        |          | false   |            |
+
+#### PGDProxyStatus
+
+PGDProxyStatus any relevant status for the operator about PGDProxy
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                      | Description                                                                                                                 | Required | Default | Validation |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `proxyInstances` _integer_ |                                                                                                                             |          |         |            |
+| `writeLead` _string_       | WriteLead is a reserved field for the operator, is not intended for external usage.<br />Will be removed in future versions |          |         |            |
+| `proxyHash` _string_       | ProxyHash contains the hash we use to detect if we need to reconcile the proxies                                            |          |         |            |
+
+#### PGDRaftStatus
+
+_Underlying type:_ _string_
+
+PGDRaftStatus indicates a known status of the PGDRaft
+
+_Appears in:_
+
+- [PGDStatus](#pgdstatus)
+
+| Field      | Description                                                                             |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `OK`       | PGDRaftConsensusStatusOk indicates that the raft consensus is working correctly<br />   |
+| `CRITICAL` | PGDRaftConsensusStatusCritical indicates that the raft consensus is not ready<br />     |
+| `UNKNOWN`  | PGDRaftConsensusStatusUnknown indicates that the raft consensus status is unknown<br /> |
+| `WARNING`  | PGDRaftConsensusStatusWarning is a warning that an election may be in progress<br />    |
+
+#### PGDStatus
+
+PGDStatus any relevant status for the operator about PGD
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                              | Description                                                                                         | Required | Default | Validation |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `raftConsensusLastChangedStatus` _[PGDRaftStatus](#pgdraftstatus)_ | RaftConsensusLastChangedStatus indicates the latest reported status from bdr.monitor\_group\_raft   |          |         |            |
+| `raftConsensusLastChangedMessage` _string_                         | RaftConsensusLastChangedMessage indicates the latest reported message from bdr.monitor\_group\_raft | True     |         |            |
+| `raftConsensusLastChangedTimestamp` _string_                       | RaftConsensusLastChangedTimestamp indicates when the status and message were first reported         |          |         |            |
+| `registeredProxies` _[PGDProxyEntry](#pgdproxyentry) array_        | RegisteredProxies is the status of the registered proxies                                           |          |         |            |
+| `nodeGroup` _[PGDNodeGroupEntry](#pgdnodegroupentry)_              | NodeGroup is the status of the node group associated with the PGDGroup                              |          |         |            |
+| `globalNodeGroup` _[PGDNodeGroupEntry](#pgdnodegroupentry)_        | GlobalNodeGroup is the status of the global node group associated with the PGDGroup                 |          |         |            |
+| `extensionVersion` _string_                                        | ExtensionVersion is the pgd extension version detected on the raft lead node                        |          |         |            |
+
+#### ParentGroupConfiguration
+
+ParentGroupConfiguration contains the topology configuration
+of PGD
+
+_Appears in:_
+
+- [PgdConfiguration](#pgdconfiguration)
+
+| Field              | Description                                                                              | Required | Default | Validation          |
+| ------------------ | ---------------------------------------------------------------------------------------- | -------- | ------- | ------------------- |
+| `name` _string_    | Name of the parent group                                                                 | True     |         | MinLength: 1 <br /> |
+| `create` _boolean_ | Create is true when the operator should create the parent<br />group if it doesn't exist |          | false   |                     |
+
+#### PauseStatus
+
+PauseStatus contains the information of group hibernating
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                                                                                 | Description                                                                                                                  | Required | Default | Validation |
+| --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `active` _boolean_                                                                                                    | Active indicates the PGDGroup is either:<br /> - in process of pausing<br /> - already paused<br /> - in process of resuming |          |         |            |
+| `instances` _integer_                                                                                                 | Instances is the number of paused PGD instances                                                                              |          |         |            |
+| `lastStartedTime` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#time-v1-meta)_         | LastStartedTime is the last time the PGDGroup started pausing                                                                |          |         |            |
+| `lastCompletedTime` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#time-v1-meta)_       | LastCompletedTime is last time the PGDGroup completed pausing                                                                |          |         |            |
+| `lastResumeStartedTime` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#time-v1-meta)_   | LastResumeStartedTime is the last time the PGDGroup started resuming                                                         |          |         |            |
+| `lastResumeCompletedTime` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#time-v1-meta)_ | LastCompletedTime is last time the PGDGroup completed resuming                                                               |          |         |            |
+
+#### PgdConfiguration
+
+PgdConfiguration is the configuration of the PGD group structure
+
+_Appears in:_
+
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                                                    | Description                                                                                                                                                                                                                                                                                                                                                                                   | Required | Default                                                                                                                                    | Validation                       |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| `parentGroup` _[ParentGroupConfiguration](#parentgroupconfiguration)_    | ParentGroup configures the topology of the PGD group                                                                                                                                                                                                                                                                                                                                          | True     |                                                                                                                                            |                                  |
+| `groupJoinMethod` _[JoinMethod](#joinmethod)_                            | GroupJoinMethod defines the method in case of cross region join                                                                                                                                                                                                                                                                                                                               |          | logical                                                                                                                                    | Enum: \[logical physical] <br /> |
+| `discovery` _[ConnectionString](#connectionstring) array_                | The parameters we will use to connect to a node belonging<br />to the parent PGD group.<br />Even if provided, the following parameters will be overridden with default values:<br />`application_name`, `sslmode`, `dbname` and `user`.<br />The following parameters should not be provided nor used, as they are not even<br />overridden with defaults:`sslkey`, `sslcert`, `sslrootcert` |          |                                                                                                                                            |                                  |
+| `discoveryJob` _[DiscoveryJobConfig](#discoveryjobconfig)_               | DiscoveryJob the configuration of the PGD Discovery job                                                                                                                                                                                                                                                                                                                                       |          | { delay:10 retries:30 timeout:300 }                                                                                                        |                                  |
+| `databaseName` _string_                                                  | Name of the database used by the application. Default: `app`.                                                                                                                                                                                                                                                                                                                                 |          |                                                                                                                                            |                                  |
+| `ownerName` _string_                                                     | Name of the owner of the database in the instance to be used<br />by applications. Defaults to the value of the `database` key.                                                                                                                                                                                                                                                               |          |                                                                                                                                            |                                  |
+| `ownerCredentialsSecret` _[LocalObjectReference](#localobjectreference)_ | Name of the secret containing the initial credentials for the<br />owner of the user database. If empty a new secret will be<br />created from scratch                                                                                                                                                                                                                                        |          |                                                                                                                                            |                                  |
+| `proxySettings` _[PGDProxySettings](#pgdproxysettings)_                  | Configuration for the proxy                                                                                                                                                                                                                                                                                                                                                                   |          | { enableReadNodeRouting:false fallbackGroupTimeout:60 maxClientConn:32767 maxServerConn:32767 serverConnKeepalive:10 serverConnTimeout:2 } |                                  |
+| `nodeGroupSettings` _[PGDNodeGroupSettings](#pgdnodegroupsettings)_      | Configuration for the PGD Group                                                                                                                                                                                                                                                                                                                                                               |          |                                                                                                                                            |                                  |
+| `globalRouting` _boolean_                                                | GlobalRouting is true when global routing is enabled, and in this<br />case the proxies will be created in the parent group                                                                                                                                                                                                                                                                   |          | false                                                                                                                                      |                                  |
+| `mutations` _[SQLMutations](#sqlmutations)_                              | List of SQL mutations to apply to the node group                                                                                                                                                                                                                                                                                                                                              |          |                                                                                                                                            |                                  |
+
+#### PhaseType
+
+_Underlying type:_ _string_
+
+PhaseType describes the type of the OperatorPhase
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field    | Description                                                                             |
+| -------- | --------------------------------------------------------------------------------------- |
+| `action` | PhaseTypeAction triggers a reconciliation for a pkg<br />                               |
+| `wait`   | PhaseTypeWait the phase is waiting for an external resource to complete an action<br /> |
+| `fail`   | PhaseTypeFail the operator is failing, most likely requires a manual intervention<br /> |
+
+#### PluginStatus
+
+PluginStatus contains the status of the plugins and  managed plugins
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                               | Description                                       | Required | Default | Validation |
+| ------------------------------------------------------------------- | ------------------------------------------------- | -------- | ------- | ---------- |
+| `barmanCloud` _[BarmanCloudPluginStatus](#barmancloudpluginstatus)_ | BarmanCloud stored the barman cloud plugin status |          |         |            |
+
+#### PreProvisionedCertificate
+
+PreProvisionedCertificate contains the data needed to supply a pre-generated certificate
+
+_Appears in:_
+
+- [ClientPreProvisionedCertificates](#clientpreprovisionedcertificates)
+
+| Field                | Description                                                               | Required | Default | Validation |
+| -------------------- | ------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `secretRef` _string_ | SecretRef a name pointing to a secret that contains a tls.crt and tls.key |          |         |            |
+
+#### RecoverabilityPointsByMethod
+
+_Underlying type:_ _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#time-v1-meta)_
+
+RecoverabilityPointsByMethod contains the first recoverability points for a given backup method
+
+_Appears in:_
+
+- [CNPStatus](#cnpstatus)
+
+#### ReplicationCertificateStatus
+
+ReplicationCertificateStatus encapsulate the certificate status
+
+_Appears in:_
+
+- [ConnectivityStatus](#connectivitystatus)
+- [NodeCertificateStatus](#nodecertificatestatus)
+
+| Field                      | Description                                                           | Required | Default | Validation |
+| -------------------------- | --------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_            | Name is the name of the certificate                                   |          |         |            |
+| `hash` _string_            | Hash is the hash of the configuration for which it has been generated |          |         |            |
+| `isReady` _boolean_        | Ready is true when the certificate is ready                           |          |         |            |
+| `preProvisioned` _boolean_ | PreProvisioned is true if the certificate is preProvisioned           |          |         |            |
+
+#### Restore
+
+Restore configures the restore of a PGD group from an object store
+
+_Appears in:_
+
+- [PGDGroupSpec](#pgdgroupspec)
+
+| Field                                                                                                                                                    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Required | Default | Validation |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `volumeSnapshots` _[VolumeSnapshotsConfiguration](#volumesnapshotsconfiguration)_                                                                        | The configuration for volumeSnapshot restore                                                                                                                                                                                                                                                                                                                                                                                                                                       |          |         |            |
+| `barmanObjectStore` _[BarmanObjectStoreConfiguration](https://pkg.go.dev/github.com/cloudnative-pg/barman-cloud/pkg/api#BarmanObjectStoreConfiguration)_ | The configuration for the barman-cloud tool suite                                                                                                                                                                                                                                                                                                                                                                                                                                  |          |         |            |
+| `recoveryTarget` _[RecoveryTarget](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#recoverytarget)_                            | By default, the recovery process applies all the available<br />WAL files in the archive (full recovery). However, you can also<br />end the recovery as soon as a consistent state is reached or<br />recover to a point-in-time (PITR) by specifying a `RecoveryTarget` object,<br />as expected by PostgreSQL (i.e., timestamp, transaction Id, LSN, ...).<br />More info: <https://www.postgresql.org/docs/current/runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY-TARGET> |          |         |            |
+| `serverNames` _string array_                                                                                                                             | The list of server names to be used as a recovery origin. One<br />of these servers will be elected as the seeding one when evaluating<br />the recovery target, this option is only used when restore from barmanObjectStore.                                                                                                                                                                                                                                                     |          |         |            |
+
+#### RestoreStatus
+
+RestoreStatus contains the current status of the restore
+process
+
+_Appears in:_
+
+- [PGDGroupStatus](#pgdgroupstatus)
+
+| Field                                                                                 | Description                           | Required | Default | Validation |
+| ------------------------------------------------------------------------------------- | ------------------------------------- | -------- | ------- | ---------- |
+| `serverName` _string_                                                                 | The name of the server to be restored | True     |         |            |
+| `VolumeSnapshots` _[VolumeSnapshotRestoreStatus](#volumesnapshotrestorestatus) array_ | selected volumeSnapshots to restore   |          |         |            |
+
+#### RootDNSConfiguration
+
+RootDNSConfiguration describes how the FQDN for the resources should be generated
+
+_Appears in:_
+
+- [ConnectivityConfiguration](#connectivityconfiguration)
+
+| Field                                                      | Description                                                                                                                                                                                                                                                                                       | Required | Default | Validation |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `domain` _string_                                          | Contains the domain name of by all services in the PGDGroup. It is responsibility of the user to ensure that the<br />value specified here matches with the rendered nodeServiceTemplate and groupServiceTemplate                                                                                 |          |         |            |
+| `hostSuffix` _string_                                      | Contains an optional suffix to add to all the service names in the PGDGroup. The meaning of this setting it to<br />allow the user to easily mark all the services created in a location for routing purpose<br />(i.e., add a generic rule to CoreDNS to rewrite some service suffixes as local) |          |         |            |
+| `additional` _[DNSConfiguration](#dnsconfiguration) array_ | AdditionalDNSConfigurations adds more possible FQDNs for the resources                                                                                                                                                                                                                            |          |         |            |
+
+#### SQLMutation
+
+SQLMutation is a series of SQL statements to apply atomically
+
+_Appears in:_
+
+- [SQLMutations](#sqlmutations)
+
+| Field                                        | Description                                                                                                                                                                                                                                           | Required | Default | Validation                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ----------------------------------------------------- |
+| `isApplied` _string array_                   | List of boolean-returning SQL queries. If any of them returns<br />false the mutation will be applied                                                                                                                                                 | True     |         | MinItems: 1 <br />                                    |
+| `exec` _string array_                        | List of SQL queries to be executed to apply this mutation                                                                                                                                                                                             | True     |         | MinItems: 1 <br />                                    |
+| `type` _[SQLMutationType](#sqlmutationtype)_ | Type determines when the SQLMutation occurs.<br />'always': reconcile the mutation at each reconciliation cycle<br />'beforeSubgroupRaft': are executed only before the subgroupRaft is enabled<br />If not specified, the Type defaults to 'always'. |          | always  | Enum: \[always beforeSubgroupRaft writeLeader] <br /> |
+
+#### SQLMutationType
+
+_Underlying type:_ _string_
+
+SQLMutationType a supported type of SQL Mutation
+
+_Appears in:_
+
+- [SQLMutation](#sqlmutation)
+
+| Field                | Description                                                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------- |
+| `always`             | SQLMutationTypeAlways tries to reconcile the mutation at each reconciliation cycle<br />            |
+| `beforeSubgroupRaft` | SQLMutationTypeBeforeSubgroupRaft are executed only before the subgroupRaft is enabled<br />        |
+| `writeLeader`        | SQLMutationTypeWriteLeader are executed only after raft Consensus and execute on write leader<br /> |
+
+#### SQLMutations
+
+_Underlying type:_ _[SQLMutation](#sqlmutation)_
+
+SQLMutations A list of SQLMutation
+
+_Appears in:_
+
+- [PgdConfiguration](#pgdconfiguration)
+
+| Field                                        | Description                                                                                                                                                                                                                                           | Required | Default | Validation                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ----------------------------------------------------- |
+| `isApplied` _string array_                   | List of boolean-returning SQL queries. If any of them returns<br />false the mutation will be applied                                                                                                                                                 | True     |         | MinItems: 1 <br />                                    |
+| `exec` _string array_                        | List of SQL queries to be executed to apply this mutation                                                                                                                                                                                             | True     |         | MinItems: 1 <br />                                    |
+| `type` _[SQLMutationType](#sqlmutationtype)_ | Type determines when the SQLMutation occurs.<br />'always': reconcile the mutation at each reconciliation cycle<br />'beforeSubgroupRaft': are executed only before the subgroupRaft is enabled<br />If not specified, the Type defaults to 'always'. |          | always  | Enum: \[always beforeSubgroupRaft writeLeader] <br /> |
+
+#### ScheduledBackupSpec
+
+ScheduledBackupSpec defines the desired state of ScheduledBackup
+
+_Appears in:_
+
+- [Backup](#backup)
+
+| Field                                                                                                                                                    | Description                                                                                                                                                                                                                                                                                                                                                               | Required | Default           | Validation                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------- | ------------------------------------------------------- |
+| `suspend` _boolean_                                                                                                                                      | If this backup is suspended or not                                                                                                                                                                                                                                                                                                                                        |          |                   |                                                         |
+| `immediate` _boolean_                                                                                                                                    | If the first backup has to be immediately start after creation or not                                                                                                                                                                                                                                                                                                     |          |                   |                                                         |
+| `schedule` _string_                                                                                                                                      | The schedule does not follow the same format used in Kubernetes CronJobs<br />as it includes an additional second specifier,<br />see <https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format>                                                                                                                                                              | True     |                   |                                                         |
+| `backupOwnerReference` _string_                                                                                                                          | Indicates which ownerReference should be put inside the created backup resources.<br />- none: no owner reference for created backup objects (same behavior as before the field was introduced)<br />- self: sets the Scheduled backup object as owner of the backup<br />- cluster: set the cluster as owner of the backup                                               |          | none              | Enum: \[none self cluster] <br />                       |
+| `target` _[BackupTarget](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#backuptarget)_                                        | The policy to decide which instance should perform this backup. If empty,<br />it defaults to `cluster.spec.backup.target`.<br />Available options are empty string, `primary` and `prefer-standby`.<br />`primary` to have backups run always on primary instances,<br />`prefer-standby` to have backups run preferably on the most updated<br />standby, if available. |          |                   | Enum: \[primary prefer-standby] <br />                  |
+| `method` _[BackupMethod](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#backupmethod)_                                        | The backup method to be used, possible options are `barmanObjectStore`,<br />`volumeSnapshot` and `plugin`. Defaults to: `barmanObjectStore`.                                                                                                                                                                                                                             |          | barmanObjectStore | Enum: \[barmanObjectStore volumeSnapshot plugin] <br /> |
+| `pluginConfiguration` _[BackupPluginConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#backuppluginconfiguration)_ | Configuration parameters passed to the plugin managing this backup                                                                                                                                                                                                                                                                                                        |          |                   |                                                         |
+| `online` _boolean_                                                                                                                                       | Whether the default type of backup with volume snapshots is<br />online/hot (`true`, default) or offline/cold (`false`)<br />Overrides the default setting specified in the cluster field '.spec.backup.volumeSnapshot.online'                                                                                                                                            |          |                   |                                                         |
+| `onlineConfiguration` _[OnlineConfiguration](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#onlineconfiguration)_             | Configuration parameters to control the online/hot backup with volume snapshots<br />Overrides the default settings specified in the cluster '.backup.volumeSnapshot.onlineConfiguration' stanza                                                                                                                                                                          |          |                   |                                                         |
+
+#### ScheduledBackupStatus
+
+ScheduledBackupStatus contains the status of the scheduled backup
+
+_Appears in:_
+
+- [BackupStatus](#backupstatus)
+
+| Field                                                                                                             | Description                                            | Required | Default | Validation |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------- | ------- | ---------- |
+| `method` _[BackupMethod](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/pg4k.v1/#backupmethod)_ | Method is the backup method used to take the backup    |          |         |            |
+| `name` _string_                                                                                                   | Name is the name of the scheduled backup               |          |         |            |
+| `hash` _string_                                                                                                   | Hash is the hash of the scheduled backup configuration |          |         |            |
+
+#### ServerCertConfiguration
+
+ServerCertConfiguration contains the information to generate the certificates for the nodes
+
+_Appears in:_
+
+- [TLSConfiguration](#tlsconfiguration)
+
+| Field                                                       | Description                                                                                                  | Required | Default | Validation |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `caCertSecret` _string_                                     | CACertSecret is the secret of the CA to be injected into the CloudNativePG<br />ServerCASecret configuration | True     |         |            |
+| `certManager` _[CertManagerTemplate](#certmanagertemplate)_ | The cert-manager template used to generate the certificates                                                  | True     |         |            |
+
+#### ServiceTemplate
+
+ServiceTemplate is a structure that allows the user to set a template for the Service generation.
+
+_Appears in:_
+
+- [ConnectivityConfiguration](#connectivityconfiguration)
+
+| Field                                                                                                            | Description                                                                                                                                                                 | Required | Default | Validation                    |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ----------------------------- |
+| `metadata` _[Metadata](#metadata)_                                                                               | Refer to Kubernetes API documentation for fields of `metadata`.                                                                                                             |          |         |                               |
+| `spec` _[ServiceSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#servicespec-v1-core)_ | Specification of the desired behavior of the service.<br />More info: <https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status> |          |         |                               |
+| `updateStrategy` _[ServiceUpdateStrategy](#serviceupdatestrategy)_                                               | UpdateStrategy indicates how to update the services generated by this template.                                                                                             |          | patch   | Enum: \[patch replace] <br /> |
+
+#### ServiceUpdateStrategy
+
+_Underlying type:_ _string_
+
+ServiceUpdateStrategy defines the type for updating LoadBalancers. Allowed values are "patch" and "replace".
+
+_Appears in:_
+
+- [ServiceTemplate](#servicetemplate)
+
+| Field     | Description                                                                                                                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `patch`   | ServiceUpdateStrategyPatch indicates to update existing services with a PATCH request<br />                                                                                                                |
+| `replace` | ServiceUpdateStrategyReplace indicates to update existing LoadBalancer services by recreating the service<br />ServiceUpdateStrategyReplace should be used for LoadBalancer services created in AWS.<br /> |
+
+#### TLSConfiguration
+
+TLSConfiguration is the configuration of the TLS infrastructure used
+by PGD to connect to the nodes
+
+_Appears in:_
+
+- [ConnectivityConfiguration](#connectivityconfiguration)
+
+| Field                                                              | Description                                   | Required | Default   | Validation                                    |
+| ------------------------------------------------------------------ | --------------------------------------------- | -------- | --------- | --------------------------------------------- |
+| `mode` _[TLSMode](#tlsmode)_                                       |                                               | True     | verify-ca | Enum: \[verify-ca verify-full require] <br /> |
+| `serverCert` _[ServerCertConfiguration](#servercertconfiguration)_ | The configuration for the server certificates | True     |           |                                               |
+| `clientCert` _[ClientCertConfiguration](#clientcertconfiguration)_ | The configuration for the client certificates | True     |           |                                               |
+
+#### TLSMode
+
+_Underlying type:_ _string_
+
+TLSMode describes which mode should be used for the node to node communications
+
+_Appears in:_
+
+- [TLSConfiguration](#tlsconfiguration)
+
+| Field         | Description                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `verify-full` | VerifyFull verifies that the certificate is signed by the passed CA<br />and the server host name matches the certificate<br /> |
+| `verify-ca`   | VerifyCA verifies that the certificate is signed by the passed CA<br />                                                         |
+| `require`     | Require requires TLS but do not perform any certificate validation<br />                                                        |
+
+#### VolumeSnapshotRestoreStatus
+
+VolumeSnapshotRestoreStatus the volumeSnapshot to restore
+
+_Appears in:_
+
+- [RestoreStatus](#restorestatus)
+
+| Field                                                                                                | Description                                                                                           | Required | Default | Validation |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `snapshotName` _string_                                                                              | SnapshotName is the snapshot name to restore                                                          |          |         |            |
+| `pvcRole` _[PVCRole](https://pkg.go.dev/github.com/cloudnative-pg/cloudnative-pg/pkg/utils#PVCRole)_ | PVCRole is the pvcRole snapshot to restore                                                            |          |         |            |
+| `tablespaceName` _string_                                                                            | TablespaceName is the tablespace name the snapshot<br />belongs to, if the pvcRole is `PG_TABLESPACE` |          |         |            |
+
+#### VolumeSnapshotsConfiguration
+
+VolumeSnapshotsConfiguration contains the configuration for the volumeSnapshots restore
+
+_Appears in:_
+
+- [Restore](#restore)
+
+| Field                                                                                                                    | Description                                                 | Required | Default | Validation |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- | -------- | ------- | ---------- |
+| `selector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#labelselector-v1-meta)_ | Label selector used to select the volumeSnapshot to restore | True     |         |            |
+
+#### CertificateKeystores
+
+CertificateKeystores configures additional keystore output formats to be
+created in the Certificate's output Secret.
+
+_Appears in:_
+
+- [CertificateSpec](#certificatespec)
+
+| Field                                        | Description                                                                                            | Required | Default | Validation |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- | ------- | ---------- |
+| `jks` _[JKSKeystore](#jkskeystore)_          | JKS configures options for storing a JKS keystore in the<br />`spec.secretName` Secret resource.       |          |         |            |
+| `pkcs12` _[PKCS12Keystore](#pkcs12keystore)_ | PKCS12 configures options for storing a PKCS12 keystore in the<br />`spec.secretName` Secret resource. |          |         |            |
+
+#### CertificateList
+
+CertificateList is a list of Certificates
+
+| Field                                                                                                          | Description                                                     | Required | Default | Validation |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | -------- | ------- | ---------- |
+| `apiVersion` _string_                                                                                          | `cert-manager.io/v1`                                            | True     |         |            |
+| `kind` _string_                                                                                                | `CertificateList`                                               | True     |         |            |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. | True     |         |            |
+
+#### CertificatePrivateKey
+
+CertificatePrivateKey contains configuration options for private keys
+used by the Certificate controller.
+This allows control of how private keys are rotated.
+
+_Appears in:_
+
+- [CertificateSpec](#certificatespec)
+
+| Field                                                                    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Required | Default | Validation                        |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------- | --------------------------------- |
+| `rotationPolicy` _[PrivateKeyRotationPolicy](#privatekeyrotationpolicy)_ | RotationPolicy controls how private keys should be regenerated when a<br />re-issuance is being processed.<br />If set to Never, a private key will only be generated if one does not<br />already exist in the target `spec.secretName`. If one does exists but it<br />does not have the correct algorithm or size, a warning will be raised<br />to await user intervention.<br />If set to Always, a private key matching the specified requirements<br />will be generated whenever a re-issuance occurs.<br />Default is 'Never' for backward compatibility. |          |         |                                   |
+| `encoding` _[PrivateKeyEncoding](#privatekeyencoding)_                   | The private key cryptography standards (PKCS) encoding for this<br />certificate's private key to be encoded in.<br />If provided, allowed values are `PKCS1` and `PKCS8` standing for PKCS#1<br />and PKCS#8, respectively.<br />Defaults to `PKCS1` if not specified.                                                                                                                                                                                                                                                                                            |          |         | Enum: \[PKCS1 PKCS8] <br />       |
+| `algorithm` _[PrivateKeyAlgorithm](#privatekeyalgorithm)_                | Algorithm is the private key algorithm of the corresponding private key<br />for this certificate. If provided, allowed values are either `RSA`,`Ed25519` or `ECDSA`<br />If `algorithm` is specified and `size` is not provided,<br />key size of 256 will be used for `ECDSA` key algorithm and<br />key size of 2048 will be used for `RSA` key algorithm.<br />key size is ignored when using the `Ed25519` key algorithm.                                                                                                                                     |          |         | Enum: \[RSA ECDSA Ed25519] <br /> |
+| `size` _integer_                                                         | Size is the key bit size of the corresponding private key for this certificate.<br />If `algorithm` is set to `RSA`, valid values are `2048`, `4096` or `8192`,<br />and will default to `2048` if not specified.<br />If `algorithm` is set to `ECDSA`, valid values are `256`, `384` or `521`,<br />and will default to `256` if not specified.<br />If `algorithm` is set to `Ed25519`, Size is ignored.<br />No other values are allowed.                                                                                                                      |          |         |                                   |
+
+#### CertificateSpec
+
+CertificateSpec defines the desired state of Certificate.
+A valid Certificate requires at least one of a CommonName, DNSName, or
+URISAN to be valid.
+
+_Appears in:_
+
+- [CertManagerTemplate](#certmanagertemplate)
+
+| Field                                                                                                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Required | Default | Validation                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subject` _[X509Subject](#x509subject)_                                                                           | Full X509 name specification (<https://golang.org/pkg/crypto/x509/pkix/#Name>).                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `commonName` _string_                                                                                             | CommonName is a common name to be used on the Certificate.<br />The CommonName should have a length of 64 characters or fewer to avoid<br />generating invalid CSRs.<br />This value is ignored by TLS clients when any subject alt name is set.<br />This is x509 behaviour: <https://tools.ietf.org/html/rfc6125#section-6.4.4>                                                                                                                                                                                                                     |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `duration` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#duration-v1-meta)_    | The requested 'duration' (i.e. lifetime) of the Certificate. This option<br />may be ignored/overridden by some issuer types. If unset this defaults to<br />90 days. Certificate will be renewed either 2/3 through its duration or<br />`renewBefore` period before its expiry, whichever is later. Minimum<br />accepted duration is 1 hour. Value must be in units accepted by Go<br />time.ParseDuration <https://golang.org/pkg/time/#ParseDuration>                                                                                            |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `renewBefore` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.34/#duration-v1-meta)_ | How long before the currently issued certificate's expiry<br />cert-manager should renew the certificate. The default is 2/3 of the<br />issued certificate's duration. Minimum accepted value is 5 minutes.<br />Value must be in units accepted by Go time.ParseDuration<br /><https://golang.org/pkg/time/#ParseDuration>                                                                                                                                                                                                                          |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `dnsNames` _string array_                                                                                         | DNSNames is a list of DNS subjectAltNames to be set on the Certificate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `ipAddresses` _string array_                                                                                      | IPAddresses is a list of IP address subjectAltNames to be set on the Certificate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `uris` _string array_                                                                                             | URIs is a list of URI subjectAltNames to be set on the Certificate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `emailAddresses` _string array_                                                                                   | EmailAddresses is a list of email subjectAltNames to be set on the Certificate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `secretName` _string_                                                                                             | SecretName is the name of the secret resource that will be automatically<br />created and managed by this Certificate resource.<br />It will be populated with a private key and certificate, signed by the<br />denoted issuer.<br />IMPORTANT: this field was required in the original cert-manager API declaration                                                                                                                                                                                                                                 | True     |         |                                                                                                                                                                                                                                                                                                                             |
+| `keystores` _[CertificateKeystores](#certificatekeystores)_                                                       | Keystores configures additional keystore output formats stored in the<br />`secretName` Secret resource.                                                                                                                                                                                                                                                                                                                                                                                                                                              |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `issuerRef` _[ObjectReference](#objectreference)_                                                                 | IssuerRef is a reference to the issuer for this certificate.<br />If the `kind` field is not set, or set to `Issuer`, an Issuer resource<br />with the given name in the same namespace as the Certificate will be used.<br />If the `kind` field is set to `ClusterIssuer`, a ClusterIssuer with the<br />provided name will be used.<br />The `name` field in this stanza is required at all times.                                                                                                                                                 | True     |         |                                                                                                                                                                                                                                                                                                                             |
+| `isCA` _boolean_                                                                                                  | IsCA will mark this Certificate as valid for certificate signing.<br />This will automatically add the `cert sign` usage to the list of `usages`.                                                                                                                                                                                                                                                                                                                                                                                                     |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `usages` _[KeyUsage](#keyusage) array_                                                                            | Usages is the set of x509 usages that are requested for the certificate.<br />Defaults to `digital signature` and `key encipherment` if not specified.                                                                                                                                                                                                                                                                                                                                                                                                |          |         | Enum: \[signing digital signature content commitment key encipherment key agreement data encipherment cert sign crl sign encipher only decipher only any server auth client auth code signing email protection s/mime ipsec end system ipsec tunnel ipsec user timestamping ocsp signing microsoft sgc netscape sgc] <br /> |
+| `privateKey` _[CertificatePrivateKey](#certificateprivatekey)_                                                    | Options to control private keys used for the Certificate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `encodeUsagesInRequest` _boolean_                                                                                 | EncodeUsagesInRequest controls whether key usages should be present<br />in the CertificateRequest                                                                                                                                                                                                                                                                                                                                                                                                                                                    |          |         |                                                                                                                                                                                                                                                                                                                             |
+| `revisionHistoryLimit` _integer_                                                                                  | revisionHistoryLimit is the maximum number of CertificateRequest revisions<br />that are maintained in the Certificate's history. Each revision represents<br />a single `CertificateRequest` created by this Certificate, either when it<br />was created, renewed, or Spec was changed. Revisions will be removed by<br />oldest first if the number of revisions exceeds this number. If set,<br />revisionHistoryLimit must be a value of `1` or greater. If unset (`nil`),<br />revisions will not be garbage collected. Default value is `nil`. |          |         | ExclusiveMaximum: false <br />                                                                                                                                                                                                                                                                                              |
+
+#### JKSKeystore
+
+JKSKeystore configures options for storing a JKS keystore in the `spec.secretName`
+Secret resource.
+
+_Appears in:_
+
+- [CertificateKeystores](#certificatekeystores)
+
+| Field                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Required | Default | Validation |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `create` _boolean_                                            | Create enables JKS keystore creation for the Certificate.<br />If true, a file named `keystore.jks` will be created in the target<br />Secret resource, encrypted using the password stored in<br />`passwordSecretRef`.<br />The keystore file will only be updated upon re-issuance.<br />A file named `truststore.jks` will also be created in the target<br />Secret resource, encrypted using the password stored in<br />`passwordSecretRef` containing the issuing Certificate Authority | True     |         |            |
+| `passwordSecretRef` _[SecretKeySelector](#secretkeyselector)_ | PasswordSecretRef is a reference to a key in a Secret resource<br />containing the password used to encrypt the JKS keystore.                                                                                                                                                                                                                                                                                                                                                                   | True     |         |            |
+
+#### KeyUsage
+
+_Underlying type:_ _string_
+
+KeyUsage specifies valid usage contexts for keys.
+See: <https://tools.ietf.org/html/rfc5280#section-4.2.1.3>
+
+```
+https://tools.ietf.org/html/rfc5280#section-4.2.1.12
+```
+
+Valid KeyUsage values are as follows:
+"signing",
+"digital signature",
+"content commitment",
+"key encipherment",
+"key agreement",
+"data encipherment",
+"cert sign",
+"crl sign",
+"encipher only",
+"decipher only",
+"any",
+"server auth",
+"client auth",
+"code signing",
+"email protection",
+"s/mime",
+"ipsec end system",
+"ipsec tunnel",
+"ipsec user",
+"timestamping",
+"ocsp signing",
+"microsoft sgc",
+"netscape sgc"
+
+_Validation:_
+
+- Enum: \[signing digital signature content commitment key encipherment key agreement data encipherment cert sign crl sign encipher only decipher only any server auth client auth code signing email protection s/mime ipsec end system ipsec tunnel ipsec user timestamping ocsp signing microsoft sgc netscape sgc]
+
+_Appears in:_
+
+- [CertificateSpec](#certificatespec)
+
+| Field                | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `signing`            | UsageSigning is a key usage flag<br />           |
+| `digital signature`  | UsageDigitalSignature is a key usage flag<br />  |
+| `content commitment` | UsageContentCommitment is a key usage flag<br /> |
+| `key encipherment`   | UsageKeyEncipherment is a key usage flag<br />   |
+| `key agreement`      | UsageKeyAgreement is a key usage flag<br />      |
+| `data encipherment`  | UsageDataEncipherment is a key usage flag<br />  |
+| `cert sign`          | UsageCertSign is a key usage flag<br />          |
+| `crl sign`           | UsageCRLSign is a key usage flag<br />           |
+| `encipher only`      | UsageEncipherOnly is a key usage flag<br />      |
+| `decipher only`      | UsageDecipherOnly is a key usage flag<br />      |
+| `any`                | UsageAny is a key usage flag<br />               |
+| `server auth`        | UsageServerAuth is a key usage flag<br />        |
+| `client auth`        | UsageClientAuth is a key usage flag<br />        |
+| `code signing`       | UsageCodeSigning is a key usage flag<br />       |
+| `email protection`   | UsageEmailProtection is a key usage flag<br />   |
+| `s/mime`             | UsageSMIME is a key usage flag<br />             |
+| `ipsec end system`   | UsageIPsecEndSystem is a key usage flag<br />    |
+| `ipsec tunnel`       | UsageIPsecTunnel is a key usage flag<br />       |
+| `ipsec user`         | UsageIPsecUser is a key usage flag<br />         |
+| `timestamping`       | UsageTimestamping is a key usage flag<br />      |
+| `ocsp signing`       | UsageOCSPSigning is a key usage flag<br />       |
+| `microsoft sgc`      | UsageMicrosoftSGC is a key usage flag<br />      |
+| `netscape sgc`       | UsageNetscapeSGC is a key usage flag<br />       |
+
+#### LocalObjectReference
+
+LocalObjectReference is a reference to an object in the same namespace as the referent.
+If the referent is a cluster-scoped resource (e.g. a ClusterIssuer),
+the reference instead refers to the resource with the given name in the
+configured 'cluster resource namespace', which is set as a flag on the
+controller component (and defaults to the namespace that cert-manager
+runs in).
+
+_Appears in:_
+
+- [SecretKeySelector](#secretkeyselector)
+
+| Field           | Description                                                                                                                              | Required | Default | Validation |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_ | Name of the resource being referred to.<br />More info: <https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names> | True     |         |            |
+
+#### ObjectReference
+
+ObjectReference is a reference to an object with a given name, kind and group.
+
+_Appears in:_
+
+- [CertificateSpec](#certificatespec)
+
+| Field            | Description                              | Required | Default | Validation |
+| ---------------- | ---------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_  | Name of the resource being referred to.  | True     |         |            |
+| `kind` _string_  | Kind of the resource being referred to.  |          |         |            |
+| `group` _string_ | Group of the resource being referred to. |          |         |            |
+
+#### PKCS12Keystore
+
+PKCS12Keystore configures options for storing a PKCS12 keystore in the
+`spec.secretName` Secret resource.
+
+_Appears in:_
+
+- [CertificateKeystores](#certificatekeystores)
+
+| Field                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Required | Default | Validation |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `create` _boolean_                                            | Create enables PKCS12 keystore creation for the Certificate.<br />If true, a file named `keystore.p12` will be created in the target<br />Secret resource, encrypted using the password stored in<br />`passwordSecretRef`.<br />The keystore file will only be updated upon re-issuance.<br />A file named `truststore.p12` will also be created in the target<br />Secret resource, encrypted using the password stored in<br />`passwordSecretRef` containing the issuing Certificate Authority | True     |         |            |
+| `passwordSecretRef` _[SecretKeySelector](#secretkeyselector)_ | PasswordSecretRef is a reference to a key in a Secret resource<br />containing the password used to encrypt the PKCS12 keystore.                                                                                                                                                                                                                                                                                                                                                                   | True     |         |            |
+
+#### PrivateKeyAlgorithm
+
+_Underlying type:_ _string_
+
+PrivateKeyAlgorithm represent a private key algorithm
+
+_Validation:_
+
+- Enum: \[RSA ECDSA Ed25519]
+
+_Appears in:_
+
+- [CertificatePrivateKey](#certificateprivatekey)
+
+| Field     | Description                                                     |
+| --------- | --------------------------------------------------------------- |
+| `RSA`     | RSAKeyAlgorithm denotes the RSA private key type.<br />         |
+| `ECDSA`   | ECDSAKeyAlgorithm denotes the ECDSA private key type.<br />     |
+| `Ed25519` | Ed25519KeyAlgorithm denotes the Ed25519 private key type.<br /> |
+
+#### PrivateKeyEncoding
+
+_Underlying type:_ _string_
+
+PrivateKeyEncoding represent a private key encoding
+
+_Validation:_
+
+- Enum: \[PKCS1 PKCS8]
+
+_Appears in:_
+
+- [CertificatePrivateKey](#certificateprivatekey)
+
+| Field   | Description                                                                                                                                                                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PKCS1` | PKCS1 key encoding will produce PEM files that include the type of<br />private key as part of the PEM header, e.g. `BEGIN RSA PRIVATE KEY`.<br />If the keyAlgorithm is set to 'ECDSA', this will produce private keys<br />that use the `BEGIN EC PRIVATE KEY` header.<br /> |
+| `PKCS8` | PKCS8 key encoding will produce PEM files with the `BEGIN PRIVATE KEY`<br />header. It encodes the keyAlgorithm of the private key as part of the<br />DER encoded PEM block.<br />                                                                                            |
+
+#### PrivateKeyRotationPolicy
+
+_Underlying type:_ _string_
+
+PrivateKeyRotationPolicy denotes how private keys should be generated or sourced when a Certificate
+is being issued.
+
+_Appears in:_
+
+- [CertificatePrivateKey](#certificateprivatekey)
+
+#### SecretKeySelector
+
+SecretKeySelector is a reference to a specific 'key' within a Secret resource.
+In some instances, `key` is a required field.
+
+_Appears in:_
+
+- [JKSKeystore](#jkskeystore)
+- [PKCS12Keystore](#pkcs12keystore)
+
+| Field           | Description                                                                                                                                                   | Required | Default | Validation |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ---------- |
+| `name` _string_ | Name of the resource being referred to.<br />More info: <https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names>                      | True     |         |            |
+| `key` _string_  | The key of the entry in the Secret resource's `data` field to be used.<br />Some instances of this field may be defaulted, in others it may be<br />required. |          |         |            |
+
+#### X509Subject
+
+X509Subject Full X509 name specification
+
+_Appears in:_
+
+- [CertificateSpec](#certificatespec)
+
+| Field                                | Description                                         | Required | Default | Validation |
+| ------------------------------------ | --------------------------------------------------- | -------- | ------- | ---------- |
+| `organizations` _string array_       | Organizations to be used on the Certificate.        |          |         |            |
+| `countries` _string array_           | Countries to be used on the Certificate.            |          |         |            |
+| `organizationalUnits` _string array_ | Organizational Units to be used on the Certificate. |          |         |            |
+| `localities` _string array_          | Cities to be used on the Certificate.               |          |         |            |
+| `provinces` _string array_           | State/Provinces to be used on the Certificate.      |          |         |            |
+| `streetAddresses` _string array_     | Street addresses to be used on the Certificate.     |          |         |            |
+| `postalCodes` _string array_         | Postal codes to be used on the Certificate.         |          |         |            |
+| `serialNumber` _string_              | Serial number to be used on the Certificate.        |          |         |            |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

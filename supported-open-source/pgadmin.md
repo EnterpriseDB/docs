@@ -1,0 +1,32 @@
+---
+title: pgAdmin
+description: EDB supports pgAdmin.
+product: pgAdmin
+url: https://www.enterprisedb.com/docs/supported-open-source/pgadmin/
+lastModified: 2025-04-22T14:39:17Z
+---
+
+# pgAdmin
+
+pgAdmin is an open source, multi-platform console for PostgreSQL management and administration.
+
+> **Note**
+>
+> Looking for pgAdmin documentation? Head over to <https://www.pgadmin.org/docs/>
+
+pgAdmin is available in desktop or web-based deployment models and is compatible with PostgreSQL or EDB Postgres Advanced Server 9.5 or higher. The intuitive  graphical user interface (GUI) provides tools for managing, querying, and analyzing PostgreSQL databases.
+
+Key capabilities include:
+
+- Powerful query tool with color syntax highlighting
+- Fast datagrid for display/entry of data
+- Graphical query plan display
+- Grant Wizard for rapid updates to ACLs
+- Procedural language debugger (supporting pl/pgsql and edb-spl)
+- Schema diff tool for managing differences between schemas
+- Auto-vacuum management
+- Monitoring dashboard
+- Backup, restore, vacuum and analyze on demand
+- SQL/shell/batch job scheduling agent
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,71 @@
+---
+title: EDB CloudNativePG Cluster 1.22.10 release notes
+product: EDB Postgres® AI for CloudNativePG™ Cluster
+version: 1.30.2
+url: https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/rel_notes/1_22_10_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB CloudNativePG Cluster 1.22.10 release notes
+
+Released: 23 May 2025
+
+EDB Postgres for Kubernetes version 1.22.10 is an LTS release of EDB Postgres for Kubernetes;
+there is no corresponding upstream release of CloudNativePG.
+
+> **Warning**
+>
+> A new LTS release, version 1.25.2, is now available!
+> Please note that support for 1.22 will officially end on July 2025.
+>
+> We recommend starting your upgrade planning now to transition smoothly to
+> the 1.25 LTS release.
+
+This release of EDB CloudNativePG Cluster includes the following:
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Implemented the <code>k8s.enterprisedb.io/validation</code> annotation</summary><p>...enabling users to disable
+the validation webhook on EDB Postgres for Kubernetes-managed resources. Use with caution,
+as this allows unrestricted changes.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7196">#7196</a></td></tr>
+<tr><td>Added support for collecting <code>pg_stat_wal</code> metrics in PostgreSQL 18</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7005">#7005</a></td></tr>
+<tr><td><details><summary>Added support for LZ4, XZ, and Zstandard compression methods</summary><p>...when archiving
+WAL files via Barman Cloud (<em>deprecated</em>).</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7151">#7151</a></td></tr>
+</tbody></table>
+
+## Security Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Set <code>imagePullPolicy</code> to <code>Always</code> for the operator deployment</summary><p>...to ensure that images are always pulled from the registry, reducing the risk of using
+outdated or potentially unsafe local images.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7250">#7250</a></td></tr>
+</tbody></table>
+
+## Changes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Updated the default PostgreSQL version to 17.5 for new cluster definitions.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7556">#7556</a></td></tr>
+<tr><td>Updated the default PgBouncer version to <strong>1.24.1</strong> for new <code>Pooler</code> deployments.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7399">#7399</a></td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Fixed native replication slot synchronization and logical replication failover for PostgreSQL 17</summary><p>...by appending the <code>dbname</code> parameter to <code>primary_conninfo</code> in replica configurations.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7298">#7298</a></td></tr>
+<tr><td><details><summary>Improved backup efficiency by introducing a fail-fast mechanism in WAL archiving</summary><p>...allowing quicker detection of unexpected primary demotion and avoiding unnecessary retries.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7483">#7483</a></td></tr>
+<tr><td><details><summary>Fixed an off-by-one error in parallel WAL archiving</summary><p>...that could cause one extra worker process to be spawned beyond the requested number.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7389">#7389</a></td></tr>
+<tr><td>Resolved a race condition that caused the operator to perform two switchovers when updating the PostgreSQL configuration.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/6991">#6991</a></td></tr>
+<tr><td><details><summary>Corrected the <code>PodMonitor</code> configuration by adjusting the <code>matchLabels</code> scope for the targeted pooler and cluster pods.</summary><p>Previously, the <code>matchLabels</code> were too broad, inadvertently inheriting labels from the cluster and leading to data collection from unintended targets.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7063">#7063</a></td></tr>
+<tr><td><details><summary>Added a webhook warning for clusters with a missing unit (e.g., MB, GB) in the <code>shared_buffers</code> configuration.</summary><p>This will become an error in future releases. Users should update their configurations to include explicit units (e.g., <code>512MB</code> instead of <code>512</code>).</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7160">#7160</a></td></tr>
+<tr><td><code>cnp</code> plugin: ensured that the primary Pod is recreated during an imperative restart when <code>primaryUpdateMethod</code> is set to <code>restart</code>, aligning its definition with the replicas.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/7122">#7122</a></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

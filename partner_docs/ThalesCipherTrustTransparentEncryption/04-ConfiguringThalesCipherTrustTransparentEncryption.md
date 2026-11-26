@@ -1,0 +1,102 @@
+---
+title: Configuring
+description: Walkthrough of configuring the integration
+product: Partner Docs
+url: https://www.enterprisedb.com/docs/partner_docs/ThalesCipherTrustTransparentEncryption/04-ConfiguringThalesCipherTrustTransparentEncryption/
+lastModified: 2023-08-24T12:40:28-04:00
+---
+
+# Configuring
+
+The following diagram shows the basic flow of the CTE solution.
+
+![Basic CTE Solution Implementation](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/ImplementingCTE.png)
+
+## Prerequisites
+
+Implementing the CipherTrust Transparent Encryption (CTE) solution requires the following components:
+
+- Postgres server installed and operational
+- CipherTrust Manager installed and operational
+- A CTE agent installed on the Postgres host registered to the CipherTrust Manager
+
+### Postgres host
+
+- Make sure that the Postgres server is installed and running.
+
+- For CentOS 7, you need to install the following repository:
+
+```bash
+sudo yum install -y lsof
+```
+
+### CipherTrust Manager
+
+Make sure that CipherTrust Manager is installed and running.
+
+![CypherTrust Manager](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CipherTrustManager.png)
+
+## Configuring CipherTrust Manager
+
+Log in to the CipherTrust Manager (CM) web UI. Then:
+
+1. Create a registration token.
+
+   1. Navigate to **Key and Access Management** and select **Registration Tokens**. This token is used for the CTE agent enrollment to CM.
+
+   2. To create a registration token, select **New Registration Token**.
+
+   The screenshot shows a registration token created with the name **edb**.
+
+   ![Registration Token](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/ConfiguringCipherTrustManager.png)
+
+2. Create user sets.
+
+   1. Navigate to **CTE** and select **Policies > Policy Elements > User Sets**.
+
+   2. To create the user set, select **Create User Set**.
+
+3. Create the Postgres, EnterpriseDB, and Barman user sets as shown in the following screenshots.
+
+![Create User Sets1](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CreateUserSets1.png)
+
+![Create User Sets2](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CreateUserSets2.png)
+
+![Create User Sets2](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CreateUserSets3.png)
+
+3. Create a policy by navigating back to **Policies** and selecting **Create Policy**.
+
+The following screenshots show the live data transformation (LDT) policies postgres-policy, epas-policy, and barman-policy.
+
+![postgres-policy Screenshot](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CreatePolicies1.png)
+![epas-policy Screenshot](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CreatePolicies2.png)
+![barman-policy Screenshot](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CreatePolicies3.png)
+
+> **Note**
+>
+> The policies include the user sets Postgres and EnterpriseDB created in Step 2 and the same key rule for the policies:
+
+![Policy User Sets and Key Rule](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/CreatePolicies4.png)
+
+### Installing CTE agent
+
+Refer to the following guides from Thales for installing the CTE agent on the Postgres host:
+
+- [CTE Agent Quick Start Guide](https://thalesdocs.com/ctp/cte/Books/Online-Files/7.0.0/CTE_Agent_Linux_Quick_Start_Guide_v7.0.0_Doc_v1.pdf)
+
+- [CTE Agent Advanced Installation Guide](https://thalesdocs.com/ctp/cte/Books/Online-Files/7.0.0/CTE_Agent_Linux_Adv_Config_Integration_Guide_v7.0.0_Doc_v6.pdf)
+
+> **Note**
+>
+> You need the registration token and host address of the CipherTrust Manager during the installation.
+
+After the CTE agent is successfully installed, verify the Postgres host is registered with CM.
+
+1. Log in to the CM web UI and navigate to **CTE**.
+2. Select **Clients**. The client status appears as Healthy. (You might have to wait a few seconds for the status to update).
+
+The screenshot shows clients registered with the CipherTrust Manager.
+
+![CipherTrust Manager Registered Clients](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/partner_docs/ThalesCipherTrustTransparentEncryption/Images/InstallingCTEAgent.png)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

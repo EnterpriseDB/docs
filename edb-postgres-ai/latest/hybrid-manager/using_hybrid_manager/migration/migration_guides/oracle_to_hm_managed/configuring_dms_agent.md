@@ -1,0 +1,255 @@
+---
+title: Configuring and running the EDB DMS agent
+description: Create migration credentials, configure the EDB DMS agent in reader mode for your Oracle source, and verify the source appears in HM.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/configuring_dms_agent/
+lastModified: 2026-09-22T15:28:24+02:00
+---
+
+# Configuring and running the EDB DMS agent
+
+The EDB DMS agent connects to your Oracle source and works with the Data Migration Service (DMS) to perform data and schema migrations. It must be running for **Data Only**, **Schema Only**, and **Schema and Data** migrations. Before you can run it, you need to create migration credentials in HM and pass them to the agent alongside your Oracle connection details.
+
+## Creating migration credentials
+
+Migration credentials authenticate the DMS agent to Hybrid Manager (HM). You need one set of credentials per HM project.
+
+1. In the HM console, select the project you're using for your migration.
+
+2. Select **Migrate > Credentials**.
+
+3. Select **Create Migration Credential**, enter a name, and select **Create Migration Credential**. A `credentials.zip` file is downloaded to your machine.
+
+   > **Note**
+   >
+   > Store the credentials safely. If you lose them, you'll need to revoke this set and create new ones.
+
+4. Unzip the downloaded file and copy the credentials folder to the auxiliary machine where you installed the DMS agent — for example, to `$HOME/credentials/`. If you use a different path, update `CREDENTIAL_DIRECTORY_PATH` in the script to match.
+
+   The folder contains:
+
+   - `int.crt`
+   - `int.truststore.p12`
+   - `client.keystore.p12`
+   - `client-key.pem`
+   - `client-cert.pem`
+
+## Configuring the DMS agent
+
+1. Open `/opt/cdcagent/run-cdcagent.sh` with write permissions.
+
+2. Set the required variables. Optional parameters are commented out by default — uncomment and configure any that apply to your environment.
+
+   See the [parameter reference](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/) for details.
+
+   ```shell
+   #!/bin/bash -e
+   # run-cdcagent.sh
+   #
+   # This script provides a convenient place to specify
+   # environment variables used to configure the
+   # EDB Data Migration Service Agent.
+   #
+
+   ##########################################
+   # DMS Agent General Configuration       #
+   ##########################################
+
+   # This ID is used to identify DMS Agent
+   # and is specified by the user.
+   export DBCONFIG_ID=<source_name_of_choice>
+
+   # Determine the run mode of the DMS Agent
+   # The run mode can be set to either 'reader' or 'writer'
+   # 'reader' mode is used to read changes from a source database
+   # 'writer' mode is used to write changes to a target database
+   export RUN_MODE=reader
+
+   # This is the DMS backend service used by the Agent
+   # Obtain this value from the HM console Sources or Destinations migration pages
+   export RW_SERVICE_HOST=<rw_service_host>
+
+   ##########################################
+   # DMS Agent TLS Configuration           #
+   ##########################################
+
+   # You need to create migration credentials in EDB Postgres AI platform
+   # and set the path of the credentials directory
+   export CREDENTIAL_DIRECTORY_PATH=$HOME/credentials
+
+   ##########################################
+   # DMS Agent DB Configuration            #
+   ##########################################
+
+   # You can increase the index to configure more than
+   # one database for the DMS Agent
+   export DBCONFIG_DATABASES_0__TYPE=ORACLE
+   export DBCONFIG_DATABASES_0__HOSTNAME=<oracle_host>
+   export DBCONFIG_DATABASES_0__PORT=1521
+
+   # For CDB/PDB: use CDB_NAME/PDB_NAME (for example, ORCLCDB/ORCLPDB1).
+   # The agent splits on "/" to identify the CDB and PDB separately.
+   # Using only the PDB name will cause it to be treated as the CDB, leaving the PDB unset.
+   # For non-CDB: use the SID or service name (for example, ORCL)
+   export DBCONFIG_DATABASES_0__CATALOG=<CDB_NAME/PDB_NAME or SID>
+
+   # Use your Oracle migration user (not SYS)
+   export DBCONFIG_DATABASES_0__USERNAME=<migration_user>
+
+   # The password env can be set without specifying it here
+   # but the env structure looks like this
+   export DBCONFIG_DATABASES_0__PASSWORD=<password>
+
+   # Required for 'Schema and data' or 'Schema only' scope. 
+   # Must match resource_id in beacon_agent.yaml.
+   export DBCONFIG_DATABASES_0__RESOURCEID=<resource_id>
+
+   # Table filters for databases, only tables passing the filter will be discovered and therefore can be chosen for migration:
+   # - Format: a comma-separated list of tokens in the form `schema.table`
+   # - Wildcard: use `*` for schema or table (for example: `SCHEMA1.*` or `*.TABLE1`)
+   # - Semantics:
+   #    * If `includeList` is absent/empty -> all tables are included
+   #    * If `includeList` is present -> only tables matching at least one include pattern are considered
+   #    * If `excludeList` is absent/empty -> no table is excluded
+   #    * If `excludeList` is present -> only tables matching at least one exclude pattern are considered
+   #    * `excludeList` has higher priority: a table matching any exclude pattern is always excluded
+   # Examples:
+   #export DBCONFIG_DATABASES_0__INCLUDELIST=SCHEMA1.*,SCHEMA2.TABLE1
+   #export DBCONFIG_DATABASES_0__EXCLUDELIST=SCHEMA1.IGNORED_TABLE
+
+   # SSL mode: STRICT (verify-full), DEFAULT (require), WEAK (prefer/allow plaintext)
+   #export DBCONFIG_DATABASES_0__SSLMODE=DEFAULT
+
+   # TCP connection settings (for dead connection detection)
+   # Socket timeout in seconds (default: 600 for writer, 60 for reader)
+   #export DBCONFIG_DATABASES_0__SOCKETTIMEOUT=600
+   # Enable TCP keepalive probes (default: true)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVE=true
+   # Writer-mode TCP keepalive timing for long-running operations
+   # used during PK application and post-snapshot deduplication
+   # Seconds before first keepalive probe (default: 60)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESIDLE=60
+   # Seconds between keepalive retries (default: 10)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESINTERVAL=10
+   # Max failed probes before connection is dead (default: 6)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESCOUNT=6
+
+   # Escape hatch for arbitrary JDBC driver properties (format: key=value;key=value)
+   # These are applied after defaults but before explicit settings (SSLMODE, SOCKETTIMEOUT, etc.)
+   # Oracle examples: oracle.net.encryption_client=REJECTED;v$session.program=DMSAgent
+   #export DBCONFIG_DATABASES_0__JDBCOPTIONS=oracle.net.encryption_client=REJECTED;v$session.program=DMSAgent
+
+   # You can increase the index to configure more than one database for the DMS Agent:
+   #export DBCONFIG_DATABASES_1__TYPE=ORACLE
+   #export DBCONFIG_DATABASES_1__HOSTNAME=<oracle_host>
+   #export DBCONFIG_DATABASES_1__PORT=1521
+   #export DBCONFIG_DATABASES_1__CATALOG=<pdb_or_sid>
+   #export DBCONFIG_DATABASES_1__USERNAME=<migration_user>
+   #export DBCONFIG_DATABASES_1__PASSWORD=<password>
+   #export DBCONFIG_DATABASES_1__RESOURCEID=<resource_id>
+
+   # Oracle Wallet authentication (Oracle only)
+   # WALLET_LOCATION: path to the Oracle Wallet directory. When set, wallet authentication is used
+   #   and password is not required. The agent auto-generates oracle.net.wallet_location and
+   #   oracle.net.tns_admin connection properties from this path.
+   # WALLET_TNS_ALIAS: optional TNS alias for wallet mode.
+   #   When set: uses TNS alias URL (jdbc:oracle:thin:/@<alias>), requires matching tnsnames.ora entry.
+   #   When absent: uses EZConnect URL (jdbc:oracle:thin:/@//host:port/service),
+   #     wallet credential entry must match "//host:port/service".
+   # username is still required for schema discovery and Debezium log mining.
+   #
+   # Example: Oracle Wallet with TNS alias
+   #export DBCONFIG_DATABASES_1__WALLET_LOCATION=/path/to/wallet
+   #export DBCONFIG_DATABASES_1__WALLET_TNS_ALIAS=MY_ORACLE_DB
+   #
+   # Example: Oracle Wallet with EZConnect
+   #export DBCONFIG_DATABASES_1__WALLET_LOCATION=/path/to/wallet
+
+   ##########################################
+   # Optional Parameters Below              #
+   ##########################################
+
+   # Enables performance metrics reporting to HM. Required for the
+   # Migration details > Metrics tab to populate for this agent.
+   # Recommended for all production migrations.
+   #export METRICS_TASK_ENABLED=true
+
+   # FIPS mode can be enabled by setting the FIPS_MODE env variable to true
+   #export FIPS_MODE=true
+
+   # Enable transformation for null character(0x00) in Oracle text-based types: VARCHAR2, LONG, CLOB, NCLOB
+   #export TRANSFORMATION_ENABLE_NULLCHAR_REPLACEMENT=false
+   # Customize the replacement string for null character(0x00)
+   #export TRANSFORMATION_NULLCHAR_REPLACEMENT=""
+   # Enable transformation for special characters in column names such as: $ and -
+   #export TRANSFORMATION_ENABLE_SPECIAL_COLUMN_NAME_ENCODING=false
+
+   # Configure logging
+   # Loglevel for the entire Quarkus application and underlying components
+   # WARNING: Enabling this loglevel is extremely verbose
+   #export QUARKUS_LOG_LEVEL=DEBUG
+   # Loglevel for the EDB package
+   # Preferred mode for debugging issues related to the logic of the agent
+   #export QUARKUS_LOG_CATEGORY__COM_ENTERPRISEDB__LEVEL=DEBUG
+
+   # Passthrough debezium configuration properties
+   # You can set any Debezium configuration property by prefixing it with DBZ_
+   # for example, to change max.batch.size:
+   # debezium supported properties can be found here:
+   # for oracle: https://debezium.io/documentation/reference/stable/connectors/oracle.html#oracle-connector-properties
+   # for postgres: https://debezium.io/documentation/reference/stable/connectors/postgresql.html#postgresql-connector-properties
+   #export DBZ_MAX_BATCH_SIZE=204800
+
+   cd "$(dirname "$0")"
+
+   echo "Starting in mode: $RUN_MODE"
+
+   # JDK-8241239: disable JSSE's TLS 1.3 AES-GCM KeyUpdate (auto-fired ~137GB) that deadlocks a
+   # blocking SSLSocket during a large snapshot read
+   KEYLIMITS_PROPS="$(mktemp)"
+   printf '%s\n' 'jdk.tls.keyLimits=AES/GCM/NoPadding KeyUpdate 2^60, ChaCha20-Poly1305 KeyUpdate 2^60' > "$KEYLIMITS_PROPS"
+
+   case "$RUN_MODE" in
+     reader|writer)
+       # RUN_MODE env var auto-maps to the run.mode config property via MicroProfile
+       # Config's standard env-var-to-property naming rule (RUN_MODE -> run.mode).
+       exec java -Djava.security.properties="$KEYLIMITS_PROPS" -jar ./quarkus-run.jar
+       ;;
+     *)
+       echo "Unknown RUN_MODE: $RUN_MODE (expected: reader|writer)"
+       exit 1
+       ;;
+   esac
+   ```
+
+> **Important: Required for the Schema and data and Schema only migration scopes**
+>
+> `DBCONFIG_DATABASES_<N>__RESOURCEID` is required if you plan to use the **Schema and data** or **Schema only** migration scope. The value must match the `resource_id` set for this database in the EDB Postgres AI agent's `beacon_agent.yaml`. Without it, HM can't resolve the Migration Portal project for the source database and the migration will fail.
+
+## Running the DMS agent
+
+Navigate to the DMS agent directory and run the configuration script:
+
+```shell
+cd /opt/cdcagent
+./run-cdcagent.sh
+```
+
+The script exports all required environment variables and starts the agent process. Once running, the agent registers your Oracle database as a source in HM. Continue to the next section to verify it appears correctly.
+
+## Verifying the source in HM
+
+Once the agent is running, verify that your Oracle database appears as a source in HM:
+
+1. In the HM console, select your project.
+
+2. Select **Migrate > Sources**.
+
+Your Oracle database should be listed with its name, type, agent ID, and status. For a description of all fields on this page, see [Sources](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrate/sources/).
+
+## Next step
+
+[Migrate your data](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/oracle_to_hm_managed/migrating_data/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

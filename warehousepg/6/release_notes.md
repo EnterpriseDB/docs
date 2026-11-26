@@ -1,0 +1,181 @@
+---
+title: WarehousePG 6.x release notes
+product: WarehousePG
+version: 6.27.6
+url: https://www.enterprisedb.com/docs/warehousepg/6/release_notes/
+lastModified: 2026-11-24T10:40:00Z
+---
+
+# WarehousePG 6.x release notes
+
+The WarehousePG documentation describes the latest version of WarehousePG 6.
+
+| Version                               | Release date      |
+| ------------------------------------- | ----------------- |
+| [6.27.8-WHPG](#warehousepg-6278-whpg) | 18 November 2026  |
+| [6.27.7-WHPG](#warehousepg-6277-whpg) | 21 October 2026   |
+| [6.27.6-WHPG](#warehousepg-6276-whpg) | 25 September 2026 |
+| [6.27.5-WHPG](#warehousepg-6275-whpg) | 10 June 2026      |
+| [6.27.4-WHPG](#warehousepg-6274-whpg) | 7 April 2026      |
+| [6.27.3-WHPG](#warehousepg-6273-whpg) | 28 January 2026   |
+| [6.27.2-WHPG](#warehousepg-6272-whpg) | 8 December 2025   |
+
+## WarehousePG 6.27.8-WHPG
+
+Released: 18 November 2026
+
+WarehousePG 6.27.8-WHPG is a security and maintenance release. It includes the following bug fixes and other changes:
+
+> **Note**
+>
+> WarehousePG 6.27.8 changes the privileges required for types used in stored expressions and for function `DESCRIBE` callbacks, the `search_path` that `amcheck` uses, and the paths that `orafce` `UTL_FILE` accepts. Review [Upgrading to 6.27.8: Behavior changes to review](https://www.enterprisedb.com/docs/warehousepg/6/install_guide/minor_upgrade/#replacing-binaries-and-restarting-whpg) before you upgrade.
+
+### Bug fixes
+
+- Fixed ORCA underestimating the cardinality of CTE consumers over joins of three or more tables, which affected `ROLLUP`, `CUBE`, `GROUPING SETS`, and materialized CTE plans.
+- Fixed a crash when building a multi-column bitmap index on an append-optimized column-oriented table with a `NULL` by-reference key.
+- Fixed a resource queue `duplicate portal id` error, and the leaked queue slot that followed, when planning evaluates a stable function that opens a cursor. For example, this happened with JDBC refcursor calls that set a fetch size.
+- Errors raised on segments now carry the schema, table, column, data type, and constraint name fields to the client, as errors raised on the coordinator do.
+- Fixed the gppylib PID lock: a forked child could remove its parent's lock, and a lock directory left without a PID file was treated as acquired.
+- Fixed `gprecoverseg -r` not passing `--hba-hostnames` to its inner recovery, which wrote IP-based replication entries to `pg_hba.conf` on clusters initialized with `HBA_HOSTNAMES=1`.
+
+### Security
+
+- Set a safe `search_path` while `amcheck` runs index expressions and opclass support functions as the table owner, for [CVE-2026-14673](https://www.cve.org/CVERecord?id=CVE-2026-14673). Btree opclass support functions written in SQL or PL/pgSQL that rely on the caller's `search_path` may now fail during `amcheck` verification.
+- Required `USAGE` privilege on types used by stored expressions, by `CREATE TYPE ... AS RANGE`, and by `ALTER TABLE ... OF`, for [CVE-2026-6470](https://www.cve.org/CVERecord?id=CVE-2026-6470).
+- Fixed `SET SESSION AUTHORIZATION` dropping an active `SET ROLE` on rollback, for [CVE-2024-10978](https://www.cve.org/CVERecord?id=CVE-2024-10978).
+- Restricted `DESCRIBE` callbacks of functions to superusers. Before this change, any role that could run `CREATE FUNCTION` could crash a backend.
+- Made `gpfdist` reject requests whose segment ID or segment count is out of range, for [CVE-2026-122042](https://www.cve.org/CVERecord?id=CVE-2026-122042). Such a request could crash it.
+- Made `orafce` `UTL_FILE` reject paths that still contain `..` after canonicalization.
+
+## WarehousePG 6.27.7-WHPG
+
+Released: 21 October 2026
+
+WarehousePG 6.27.7-WHPG is a security and maintenance release. It includes the following bug fixes and other changes:
+
+> **Note**
+>
+> WarehousePG 6.27.7 changes the privileges required to run some administration functions and the minimum TLS version for external table protocols. Review [Upgrading to 6.27.7: Behavior changes to review](https://www.enterprisedb.com/docs/warehousepg/6/install_guide/minor_upgrade/#replacing-binaries-and-restarting-whpg) before you upgrade.
+
+### Bug fixes
+
+- Fixed the resource group cgroup detection to read `/proc/1/cgroup` line by line instead of with an unbounded `fscanf()`, which could overflow a fixed-size stack buffer when a cgroup path was longer than the buffer, and added the missing `NULL` check after `strpbrk()`.
+- Fixed the spelling of the `cluster is expanded from version N to M` error raised when a session's `gpexpand` version no longer matches the cluster's.
+
+### Security
+
+- Restricted `gp_expand_lock_catalog()` and `gp_expand_bump_version()` to superusers, so any role can no longer call them, even with no `gpexpand` running, to block catalog changes or disconnect sessions that hold temporary tables, for [CVE-2026-104948](https://www.cve.org/CVERecord?id=CVE-2026-104948).
+- Restricted `gp_add_master_standby()` to superusers, so a regular role can no longer insert a standby row that blocks `gpinitstandby`, for [CVE-2026-104949](https://www.cve.org/CVERecord?id=CVE-2026-104949).
+- Raised the minimum TLS version for the `gpfdists://` external table client and the `s3://` protocol clients to TLS 1.2.
+
+## WarehousePG 6.27.6-WHPG
+
+Released: 25 September 2026
+
+WarehousePG 6.27.6-WHPG is a security-focused release. It includes the following bug fixes and other changes:
+
+> **Note**
+>
+> WarehousePG 6.27.6 changes several behaviors that can affect existing scripts and configurations, including dump output format, `CREATE OPERATOR` privileges, and `pgcrypto` and `psql` behavior. Review [Upgrading to 6.27.6: Behavior changes to review](https://www.enterprisedb.com/docs/warehousepg/6/install_guide/minor_upgrade/#replacing-binaries-and-restarting-whpg) before you upgrade.
+
+### Bug fixes
+
+- Fixed `gpload` to pass arguments through its shell wrapper without word splitting, so control-file paths with spaces work, and to fall back to `$HOME/gpAdminLogs` when the `-l` log file is unusable.
+- Fixed PL/Perl array and tied-container handling for non-rectangular arrays, forged `ARRAY` objects, tied `SETOF` array references, and `NULL` `SV *` values.
+- Fixed `pgcrypto` to reset the global debug handler after a PGP pipeline error, so later calls no longer emit stray `dbg:` notices.
+
+### Security
+
+- Fixed a `pg_dump` privilege-escalation race by adding the [`restrict_nonsystem_relation_kind`](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/config_params/guc-list/#restrict_nonsystem_relation_kind) configuration parameter (`view`, `foreign-table`), which `pg_dump` sets for the duration of a dump to stop the backend from expanding non-system views or accessing non-system foreign tables, for [CVE-2024-7348](https://www.cve.org/CVERecord?id=CVE-2024-7348).
+- Wrapped plain-text output from `pg_dump`, `pg_dumpall`, and `pg_restore` in `psql` `\restrict` and `\unrestrict` markers, so a hostile server can't inject meta-commands executed at restore time, and added the `--restrict-key` option, for [CVE-2025-8714](https://www.cve.org/CVERecord?id=CVE-2025-8714).
+- Fixed a one-byte overread in GB18030 multibyte character handling, replaced unbounded `pg_mblen()` call sites with length-checked variants across the server, fixed an out-of-bounds read in JSON parse error messages for incomplete byte sequences, and fixed `translate()` reading one byte past the end of its `to` argument, for [CVE-2025-4207](https://www.cve.org/CVERecord?id=CVE-2025-4207) and [CVE-2026-2006](https://www.cve.org/CVERecord?id=CVE-2026-2006).
+- Required superuser to attach a non-built-in `RESTRICT` or `JOIN` selectivity estimator in `CREATE OPERATOR`, and hardened `tsmatchsel()` against a non-`tsvector` operand, for [CVE-2026-2004](https://www.cve.org/CVERecord?id=CVE-2026-2004).
+- Fixed a buffer overflow in `pgcrypto`'s `pgp_pub_decrypt_bytea()` function by bounding the session key length, for [CVE-2026-2005](https://www.cve.org/CVERecord?id=CVE-2026-2005).
+- Stopped `psql` from executing in-line `COPY ... FROM STDIN` data as SQL after the `COPY` command fails, including WarehousePG 6's legacy `COPY ... WITH OIDS FROM STDIN` syntax, for [CVE-2026-6464](https://www.cve.org/CVERecord?id=CVE-2026-6464).
+- Hardened `tsvector` and `tsquery` construction against integer overflows in `tsvectorrecv()`, `make_tsvector()`, `parsetext()`, `tsvectorout()`, and `QTN2QT()`, for [CVE-2026-14662](https://www.cve.org/CVERecord?id=CVE-2026-14662).
+- Fixed `pgcrypto` to fail cipher operations during PGP encryption instead of emitting effectively unencrypted data, and added the [`ignore-cipher-failure`](https://www.enterprisedb.com/docs/warehousepg/6/security-guide/Encryption/#recovering-data-encrypted-before-the-cve-2026-14663-fix) decryption option to read back data mis-encrypted by affected builds, for [CVE-2026-14663](https://www.cve.org/CVERecord?id=CVE-2026-14663).
+- Fixed a buffer overrun in `regexp_matches()`, `regexp_split_to_table()`, and `regexp_split_to_array()` on invalidly encoded input, for [CVE-2026-14664](https://www.cve.org/CVERecord?id=CVE-2026-14664).
+- Fixed `ascii()` to validate multibyte input length before reading continuation bytes, with related fixes to `EUC_CN` length handling, `mb2wchar()` on short input, PGP-decrypted text encoding validation, and `SUBSTRING()` on toasted multibyte values, bounded the copy of overlength time zone abbreviations in `to_char()`, and fixed PL/Perl to read a tied array's length only once in `plperl_array_to_datum()`, for [CVE-2026-18024](https://www.cve.org/CVERecord?id=CVE-2026-18024), [CVE-2026-14669](https://www.cve.org/CVERecord?id=CVE-2026-14669), and [CVE-2026-14670](https://www.cve.org/CVERecord?id=CVE-2026-14670).
+- Removed a stale per-backend plan cache in `contrib/spi/refint`'s `check_foreign_key()` function that caused type confusion, and fixed a `NULL`-key segfault, for [CVE-2026-14671](https://www.cve.org/CVERecord?id=CVE-2026-14671).
+- Used overflow-safe array allocation in `pltcl` and `plperl`, and guarded fixed-size argument arrays in the parser, fmgr, PL/pgSQL, `plperl`, `plpython`, and `pltcl` against extreme argument counts, for [CVE-2026-14677](https://www.cve.org/CVERecord?id=CVE-2026-14677) and [CVE-2026-14679](https://www.cve.org/CVERecord?id=CVE-2026-14679).
+- Fixed `pg_trgm`'s `gtrgm_picksplit()` function reading past the end of the signature buffer for all-true datums, for [CVE-2026-14678](https://www.cve.org/CVERecord?id=CVE-2026-14678).
+- Rejected SQL-level calls to functions that take or return the `internal` type, including operator and cast syntax, fixed `numeric_avg_combine()` and `numeric_combine()` to handle a `NaN` count correctly, and made aggregate combine functions return `NULL` honestly, for [CVE-2026-14680](https://www.cve.org/CVERecord?id=CVE-2026-14680).
+- Fixed integer overflow and out-of-bounds writes in `fuzzystrmatch`'s Levenshtein distance functions by computing distances in 64-bit arithmetic, for [CVE-2026-15742](https://www.cve.org/CVERecord?id=CVE-2026-15742).
+- Fixed a memory disclosure and possible remote code execution vulnerability from a mismatch between a portal's tuple descriptor and the query's actual output during `EXECUTE` or `FETCH`, for [CVE-2026-16239](https://www.cve.org/CVERecord?id=CVE-2026-16239).
+
+## WarehousePG 6.27.5-WHPG
+
+Released: 10 June 2026
+
+WarehousePG 6.27.5-WHPG includes the following bug fixes and other changes:
+
+### Bug fixes
+
+- Fixed `GPHOME_CLIENTS` resolution in `greenplum_clients_path.sh` to correctly locate client binaries.
+
+### Security
+
+- Hardened multiple modules against integer overflow vulnerabilities for [CVE-2026-6473](https://github.com/advisories/GHSA-8rqw-w7xq-566r), including ltree, `ts_headline`, intarray, the regex engine, `unicode_normalize`, `formatting.c`, `array_agg`, and the hstore PL/Perl and PL/Python extensions.
+- Fixed a format-string vulnerability in `timeofday()` for [CVE-2026-6474](https://github.com/advisories/GHSA-qhm2-px33-58v8) where a crafted time zone setting could abuse the `pg_strftime()` `%Z` format specifier to cause crashes or corrupt server memory.
+- Fixed a path traversal vulnerability in `pg_rewind` for [CVE-2026-6475](https://github.com/advisories/GHSA-7h2q-899j-9636) where paths received from a rogue endpoint could overwrite files outside the target directory.
+- Fixed a buffer overrun in the frontend large object interface (`libpq`) for [CVE-2026-6477](https://github.com/advisories/GHSA-jm5f-gpfq-q9h3) where `PQfn()` could write beyond the end of the result buffer when the server returned more data than requested.
+- Added timing-safe comparisons for secret material in all authentication paths for [CVE-2026-6478](https://github.com/advisories/GHSA-r6v6-v5r9-3ggh), covering SCRAM, MD5, RADIUS, and plain authentication methods.
+- Fixed a stack overflow vulnerability in `ProcessStartupPacket()` for [CVE-2026-6479](https://github.com/advisories/GHSA-hwfh-mh4f-m67f) where a malicious client could alternate SSL and GSS negotiation requests indefinitely to exhaust server stack space.
+- Fixed an SQL injection and buffer overrun vulnerability in the `refint` contrib module for [CVE-2026-6637](https://github.com/advisories/GHSA-96xx-m79q-xh44).
+
+## WarehousePG 6.27.4-WHPG
+
+Released: 7 April 2026
+
+WarehousePG 6.27.4-WHPG includes the following new features, enhancements, bug fixes, and other changes:
+
+### Bug fixes
+
+- Resolved critical stability issues in the ORCA optimizer including fixes for segmentation faults and infinite recursion.
+- Fixed an issue where unnecessary motion was created on query executor slices.
+- Corrected behavior and stability when running the `execute on initplan` function.
+- Removed role assertions in `get_ao_compression_ratio()` and `aorow_compression_ratio_internal` to allow the function to execute on query executors, enabling the use of `gp_dist_random()` to retrieve compression statistics from all segments.
+
+### Security
+
+- Fixed a heap buffer overflow vulnerability in libpq for [CVE-2025-12818](https://github.com/advisories/GHSA-pr6x-gg24-6wfp) by hardening memory allocation against integer overflows. This change implements stricter `size_t` calculations for large, untrusted inputs to ensure allocated buffers are sufficient for their contents.
+
+## WarehousePG 6.27.3-WHPG
+
+Released: 28 January 2026
+
+WarehousePG 6.27.3-WHPG includes the following new features, enhancements, bug fixes, and other changes:
+
+### Bug fixes
+
+- Made the `ReScanForeignScan` callback optional for Foreign Data Wrappers (FDWs) to simplify the implementation and improve compatibility for external data sources.
+- Removed the `GUC_NO_SHOW_ALL` flag for the `archive_timeout` configuration parameter to ensure the setting is correctly displayed in all system configuration views.
+
+## WarehousePG 6.27.2-WHPG
+
+Released: 8 December 2025
+
+WarehousePG 6.27.2-WHPG includes the following new features, enhancements, bug fixes, and other changes:
+
+### Enhancements
+
+- Restored the functionality of `greenplum-abi-tests` to ensure ongoing development stability and interface compatibility.
+- Adjusted `ftsprobe` logging to use `WARNING` severity for failure and retry exhaustion events, ensuring these critical messages are always visible regardless of `gp_log_fts` settings.
+
+### Bug fixes
+
+- Resolved mirror promotion failures and fixed assertion failures caused by the incorrect application of the `fmtId()` function.
+- Improved error detection reliability in `status_check` cases and implemented checks for MergeAppend nodes in the share input mutator.
+- Optimized internal performance by transitioning to `LWLocks` for instrumentation headers and using pipes instead of sockets for immediate poll termination.
+- Fixed an issue where tables with corrupted `reloptions` could not be dropped due to compression validation errors being incorrectly raised during non-validation code paths.
+
+### Security
+
+- Included a fix for [CVE-2025-1094](https://github.com/advisories/GHSA-mhw9-x46c-v6q4).
+- Included a fix for [CVE-2024-10979](https://github.com/advisories/GHSA-2r9h-x757-8j9q).
+- Included a fix for [CVE-2024-10977](https://github.com/advisories/GHSA-62q4-hc79-94qj).
+- Included a fix for [CVE-2024-0985](https://github.com/advisories/GHSA-4828-5p9m-g4ff).
+- Included a fix for [CVE-2020-14343](https://github.com/advisories/GHSA-8q59-q68h-6hv4).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

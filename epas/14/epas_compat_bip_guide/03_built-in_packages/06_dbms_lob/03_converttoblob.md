@@ -1,0 +1,66 @@
+---
+title: CONVERTTOBLOB
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/06_dbms_lob/03_converttoblob/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# CONVERTTOBLOB
+
+The `CONVERTTOBLOB` procedure converts character data to binary.
+
+```text
+CONVERTTOBLOB(<dest_lob> IN OUT BLOB, <src_clob> CLOB,
+  <amount> INTEGER, <dest_offset> IN OUT INTEGER,
+  <src_offset> IN OUT INTEGER, <blob_csid> NUMBER,
+  <lang_context> IN OUT INTEGER, <warning> OUT INTEGER)
+```
+
+## Parameters
+
+`dest_lob`
+
+`BLOB` large object locator to which to convert the character data.
+
+`src_clob`
+
+`CLOB` large object locator of the character data to convert.
+
+`amount`
+
+Number of characters of `src_clob` to convert.
+
+`dest_offset IN`
+
+Position in bytes in the destination `BLOB` where you want to begin writing the source `CLOB`. The first byte is offset 1.
+
+`dest_offset OUT`
+
+Position in bytes in the destination `BLOB` after the write operation completes. The first byte is offset 1.
+
+`src_offset IN`
+
+Position in characters in the source `CLOB` where you want to begin conversion to the destination `BLOB`. The first character is offset 1.
+
+`src_offset OUT`
+
+Position in characters in the source `CLOB` after the conversion operation completes. The first character is offset 1.
+
+`blob_csid`
+
+Character set ID of the converted destination `BLOB`.
+
+`lang_context IN`
+
+Language context for the conversion. The default value of `0` is typically used for this setting.
+
+`lang_context OUT`
+
+Language context after the conversion completes.
+
+`warning`
+
+`0` if the conversion was successful, `1` if a character can't be converted.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

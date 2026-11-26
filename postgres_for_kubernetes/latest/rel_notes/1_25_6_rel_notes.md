@@ -1,0 +1,92 @@
+---
+title: EDB CloudNativePG Cluster 1.25.6 release notes
+product: EDB Postgres® AI for CloudNativePG™ Cluster
+version: 1.30.2
+url: https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/rel_notes/1_25_6_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB CloudNativePG Cluster 1.25.6 release notes
+
+Released: 10 February 2026
+
+This release of EDB CloudNativePG Cluster is built on the final community release of the 1.25.x series of CloudNativePG.
+EDB will continue providing LTS releases in the 1.25.x series according to our [Long-Term Support
+policy](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/#long-term-support).
+
+This release of EDB CloudNativePG Cluster includes the following:
+
+## Enhancements
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Added support for Azure's <code>DefaultAzureCredential</code> authentication mechanism
+for backup and recovery operations.
+</summary><p>This can be enabled by setting <code>azureCredentials.useDefaultAzureCredentials: true</code> in the backup
+configuration, simplifying authentication in Azure environments without
+requiring explicit storage account keys or SAS tokens.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9468">#9468</a></td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Fixed a bug where replicas could enter a crash-loop by attempting to download
+timeline history files from future timelines.
+</summary><p>This occurred when stale files
+remained in the WAL archive from a previous cluster life, and replicas would
+incorrectly try to fetch them during recovery.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9650">#9650</a></td></tr>
+<tr><td>Fixed a race condition in <code>replica_cluster</code> setups during designated primary
+transitions, preventing transient &quot;no primary&quot; states in the replica cluster.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9601">#9601</a></td></tr>
+<tr><td><details><summary>Fixed a validation gap in Azure object store configurations where the <code>storageAccount</code> was not required when using explicit credentials (such as a
+storage key or SAS token).
+</summary><p>The operator now enforces that a storage account
+name is provided in these cases and that <code>connectionString</code> is mutually
+exclusive with other authentication parameters.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9604">#9604</a></td></tr>
+<tr><td><details><summary>Optimized the deletion path so the operator begins cleaning up resources
+immediately when a cluster is marked for deletion.
+</summary><p>This significantly reduces the time a cluster remains in <code>Terminating</code> status
+while waiting for internal reconciliation loops.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9555">#9555</a></td></tr>
+<tr><td><details><summary>Fixed an issue where replication slots were not properly dropped from
+replicas when the feature was disabled or the cluster was reconfigured.
+</summary><p>This ensures that unused slots do not cause WAL build-up on the primary.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9381">#9381</a></td></tr>
+<tr><td><details><summary>Fixed an issue where <code>imagePullSecrets</code> were not added to the <code>ServiceAccount</code>
+created for the <code>Pooler</code>.
+</summary><p>Previously, these secrets were applied to the
+Deployment but not the SA, which caused image pull failures in restricted
+environments using certain security policies.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9427">#9427</a></td></tr>
+<tr><td><details><summary>Added a check to verify ownership before the operator deletes a <code>PodMonitor</code>.
+</summary><p>This prevents the operator from accidentally deleting manually managed
+monitoring resources that happen to share a name with expected CNP
+resources. Contributed by @juliamertz.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9340">#9340</a></td></tr>
+<tr><td><details><summary>Fixed a bug where <code>pg_stat_archiver</code> metrics would continue to report stale
+data on standby instances after a switchover.
+</summary><p>The exporter now skips these metrics on standbys, as PostgreSQL only provides
+valid archiver stats on the primary.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9411">#9411</a></td></tr>
+<tr><td><details><summary>Clarified the interpretation of timestamp formats for recovery <code>targetTime</code>.
+</summary><p>Timestamps provided without an explicit timezone are now consistently
+interpreted as UTC. Contributed by @pchovelon.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/8937">#8937</a></td></tr>
+<tr><td>Fixed backup status updates to prevent &quot;resource has been modified&quot; errors
+during concurrent updates.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9551">#9551</a></td></tr>
+<tr><td>Fixed event reporting to use the correct pod name when a backup pod is not
+found.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9552">#9552</a></td></tr>
+<tr><td>Improved performance of scheduled backup operations for clusters with a very
+high number of historical backups.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9489">#9489</a></td></tr>
+<tr><td>Fixed error handling when removing finalizers on <code>Database</code> objects.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9431">#9431</a></td></tr>
+<tr><td><details><summary>Updated the <code>status</code> command to display &quot;Disabled&quot; when the <code>skipWalArchiving</code> annotation is present on a cluster.
+</summary><p>This replaces
+confusing &quot;starting up&quot; or &quot;unknown&quot; states when WAL archiving is
+intentionally bypassed.</p>
+</details></td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9709">#9709</a></td></tr>
+<tr><td>Fixed the <code>logs --follow</code> command to continue polling for new pods instead
+of exiting prematurely when all current log streams complete.</td><td><a href="https://github.com/cloudnative-pg/cloudnative-pg/pull/9599">#9599</a></td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

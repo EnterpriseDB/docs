@@ -1,0 +1,101 @@
+---
+title: Connection Manager overview
+description: Overview of Connection Manager
+product: EDB Postgres Distributed (PGD)
+version: 6.5.1
+url: https://www.enterprisedb.com/docs/pgd/latest/connection-manager/overview/
+lastModified: 2026-11-20T11:33:47Z
+---
+
+# Connection Manager overview
+
+## About Connection Manager
+
+Connection Manager is a new background worker for EDB Postgres Distributed (PGD) 6.0 that simplifies the process of connection to PGD clusters by providing a single point of entry for client applications. It replaces the PGD 5.x proxy solution with a tightly integrated approach that exposes read-write, read-only, and HTTP status network interfaces in PGD.
+
+Connection Manager is fully integrated into PGD and is designed to work seamlessly with the existing PGD architecture. Every PGD data node has a Connection Manager instance that listens for incoming connections and routes them to the appropriate node in the cluster, specifically the current write leader in the cluster. It also provides a read-only interface for applications that only need to read data from the cluster.
+
+Starting in PGD 6.3.0, Connection Manager starts by default on subscriber-only nodes, ensuring that even nodes dedicated primarily to receiving replicated data have access to advanced connection pooling and session management features.
+
+Connection Manager consolidates three capabilities that previously required separate tools. It routes writes to the current leader, distributes read traffic across nodes, and pools backend connections. Because it runs inside PGD, authentication is configured once in `pg_hba.conf` and applies to both the proxy layer and the database, with no separate user list to maintain.
+
+Starting in PGD 6.5, Connection Manager runs on a multi-threaded engine instead of a single thread. Client traffic, pooling, and authentication are handled across multiple threads, so connection capacity scales with the number of CPU cores available to the node. Configuration and routing updates are processed on a separate thread, off the traffic path, so they don't add latency to client connections. The number of worker threads is controlled by [`bdr.conn_mgr_worker_threads`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/pgd-settings/#bdrconn_mgr_worker_threads), which defaults to sizing itself automatically as the number of CPU cores divided by 4, clamped between 2 and 8.
+
+## Using Connection Manager
+
+Connection Manager follows the Postgres server's configuration by default. There are three ports, the read-write port, the read-only port, and the HTTP port. The read-write port is used for write operations, while the read-only port is used for read operations. The HTTP port is used for monitoring and management purposes.
+
+The read-write port is, by default, set to the Postgres port + 1000 (usually 6432).
+The read-only port is set to the Postgres port + 1001 (usually 6433).
+The HTTP port is set to the Postgres port + 1002 (usually 6434).
+
+To use Connection Manager, configure your client applications to connect to its read-write or read-only port on the data node. Connection Manager routes the connection to the appropriate node in the cluster.
+
+Connecting to the read-only port restricts the connection to read-only operations, similar to [`SET TRANSACTION READ ONLY`](https://www.postgresql.org/docs/current/sql-set-transaction.html), except that it's not possible to change it to read-write. The [`transaction_read_only`](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-TRANSACTION-READ-ONLY) configuration parameter correctly reports `on` in these connections.
+
+## Understanding write leader failover
+
+Write leader failover applies to any PGD cluster that uses Connection Manager routing, whether it runs in one location or several.
+
+The Raft leader of each group that has `enable_routing` set to `on` selects the write leader. It keeps the current write leader as long as that node is routable and connected.
+
+The Raft leader checks whether it has received a message from each node within the election timeout window, and treats a node it hasn't heard from in that window as failed. The window depends on which group elects the write leader. You choose that group with the `enable_routing` group option, which sets up either local or global routing. See [Configuring routing](https://www.enterprisedb.com/docs/pgd/latest/geo-replication-dba/routing/) for the settings.
+
+| Routing                                                                                              | Timeout                                                                                                                                                           | Default   |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| [Local routing](https://www.enterprisedb.com/docs/pgd/latest/geo-replication-dba/routing/) (default) | [`bdr.raft_group_election_timeout`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/pgd-settings/#bdrraft_group_election_timeout)   | 3 seconds |
+| [Global routing](https://www.enterprisedb.com/docs/pgd/latest/geo-replication-dba/routing/)          | [`bdr.raft_global_election_timeout`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/pgd-settings/#bdrraft_global_election_timeout) | 6 seconds |
+
+A node counts as failed when it stops sending messages, whether the cause is a crashed node, a stopped Postgres instance, or a network failure.
+
+When the write leader fails either check, PGD selects a replacement in five steps.
+
+1. Exclude nodes that can't take writes. A node is excluded when it isn't active, is a witness node, is a subscriber-only node, has [`route_fence`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_option) set, or has [`route_writes`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_option) disabled.
+2. Exclude nodes the Raft leader hasn't received a message from within the election timeout window.
+3. Exclude nodes that exceed the [`route_writer_max_lag`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) group option, if you set it.
+4. Keep only the nodes with the highest [`route_priority`](https://www.enterprisedb.com/docs/pgd/latest/geo-replication-dba/routing/#setting-route-priority). When more than one remains, choose the node that has applied the most changes from the previous write leader, based on the progress bids described after these steps. The Raft leader node is the last choice, because failing over to it after a Raft leader loss takes additional time for the election.
+5. Publish the new write leader as a routing record through Raft. Connection Manager on each node then routes new connections to it.
+
+Each routable data node reports to the Raft leader how far it durably applied the failed write leader's changes. This report is called a progress bid. The Raft leader waits for the progress bids for up to [`route_writer_election_timeout`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#bdralter_node_group_option) (default `500ms`) before it selects the new write leader. During that time the group has no write leader, and Connection Manager rejects new read-write connections with "no nodes available". A failover therefore takes at least the timeout, so applications should retry connections that fail during a failover.
+
+A Quorum Commit group also needs the [`route_writer_election_quorum`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/nodes-management-interfaces/#route_writer_election_quorum-notes) option, so the elected write leader holds every transaction the group acknowledged. See [Using Quorum Commit](https://www.enterprisedb.com/docs/pgd/latest/commit-scopes/quorum-commit/using-quorum-commit/) for the details.
+
+Planned switchovers that don't name the new write leader, such as [`bdr.transfer_all_leaderships()`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/functions/#bdrtransfer_all_leaderships), choose the target the same way.
+
+Because the Raft leader selects the write leader, failover takes longer when the failed node held both roles. The remaining nodes must elect a new Raft leader before PGD can select a new write leader.
+
+See [Understanding failure scenarios](https://www.enterprisedb.com/docs/pgd/latest/recovering-from-failures/) for the behavior in other failure cases.
+
+## Raft leader elections and PreVote
+
+A node that is cut off from its group, for example by a flapping network link, keeps raising its Raft term while it's isolated. When it reconnects, its higher term forces the healthy leader to step down and starts an unnecessary election. Until the election ends, the group has no Raft leader and no write leader.
+
+With PreVote, a node first asks the other voting nodes whether they would vote for it, without raising its own term. It starts a real election only if a majority would. An isolated node never gets that majority, so its term stays low and it rejoins the group without disturbing the leader. Granting a PreVote doesn't change which node the voter treats as the Raft leader.
+
+PreVote needs no configuration and you can't turn it off. It's active once every node in the group runs PGD 6.2 or later, because the group then negotiates Raft protocol version 6003 or later. Until the last node is upgraded, the group uses ordinary elections. To check, look at the `Protocol Version` column of [`pgd raft show`](https://www.enterprisedb.com/docs/pgd/latest/reference/cli/command_ref/raft/show/) or the `protocol_version` column of [`bdr.group_raft_details`](https://www.enterprisedb.com/docs/pgd/latest/reference/tables-views-functions/catalogs-visible/#bdrgroup_raft_details).
+
+> **Note**
+>
+> PreVote applies to the Raft instance of the top-level group. Raft subgroups still use ordinary elections in this release.
+
+## Authentication
+
+Connection Manager performs TLS termination and pre-authentication using the same `pg_hba.conf` configuration as Postgres, with no separate user list to maintain. See [Authentication](https://www.enterprisedb.com/docs/pgd/latest/connection-manager/authentication/) for supported methods and constraints.
+
+## Connection pooling
+
+Connection Manager includes built-in connection pooling, removing the need for a separate pooler such as pgBouncer in most deployments. Pooling reduces the number of backend Postgres connections by sharing them across many client connections, lowering memory and process overhead on the database server. See [Connection pooling](https://www.enterprisedb.com/docs/pgd/latest/connection-manager/connection-pooling/) for reference details, [Configuring connection pooling](https://www.enterprisedb.com/docs/pgd/latest/connection-pooling-dba/) for DBA setup guidance, and [Using connection pooling in your application](https://www.enterprisedb.com/docs/pgd/latest/connection-pooling-developer/) for developer guidance.
+
+## Load balancing
+
+Connection Manager isn't a replacement for a load balancer. Use an external load balancer to distribute client traffic across Connection Manager instances running on different nodes. See [Load balancing](https://www.enterprisedb.com/docs/pgd/latest/connection-manager/load-balancing/) for configuration details and HAProxy examples.
+
+## Configuration
+
+Connection Manager is configured through PGD group options, including ports, connection limits, consensus timeouts, and pool mode. See [Configuring Connection Manager](https://www.enterprisedb.com/docs/pgd/latest/connection-manager/configuring/) for the full option reference.
+
+## Monitoring
+
+Connection Manager exposes connection counts and pool utilization through catalog views and HTTP endpoints. See [Monitoring](https://www.enterprisedb.com/docs/pgd/latest/connection-manager/monitoring/) for available metrics.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

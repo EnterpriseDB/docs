@@ -1,0 +1,95 @@
+---
+title: Verifying and managing cluster health
+description: Monitor real-time WarehousePG cluster health, verify node availability, and start, stop, restart, or recover the cluster directly from WEM.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/monitoring/cluster-overview/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Verifying and managing cluster health
+
+Ensure your WarehousePG (WHPG) environment remains available and efficient by monitoring real-time health metrics and resource utilization, and respond directly from WEM when it isn't. To verify your cluster configuration and current status, or to control it, select the **Cluster** panel from the left sidebar.
+
+### Confirming core cluster availability
+
+To ensure consistent database access for your applications, verify that your cluster is online and responding to requests. Monitoring node health and uptime allows you to identify potential service interruptions before they impact users.
+
+The header cards **Cluster Status**, **Segments**, **Connections**, **Databases**, and **Active Queries** provide an instant cluster-wide snapshot. Hover over the info icon on a card or panel title to see what it counts.
+
+- Verify the **Cluster Status** card shows as Healthy. If the state is Degraded, it indicates that one or more segments have failed or synchronization is lagging. Identify the affected components in the **Segment Details** table.
+- Ensure the count of Up segments matches your total segment count. If any segments are Down, your cluster is at risk of data loss or reduced performance. Locate the affected components in the **Segment Details** table.
+- Confirm the primary coordinator host is up and the standby is Synchronized using the **Coordinator & Standby Status** table. If the standby appears as Not Synced, a failover event can result in data loss or extended downtime. To resolve synchronization issues, check the network connectivity or restart the standby process.
+- Compare active connections against the maximum limit using the **Connections** card. If connections are near the ceiling, new application requests are rejected. To prevent rejection, terminate idle sessions or increase the `max_connections` configuration parameter.
+
+### Resolving cluster availability issues
+
+Verify that your cluster is online and responding to requests. Use the **Cluster** panel to monitor node health and uptime. If you identify a problem in the summary cards, follow these steps to restore service:
+
+- Confirm the Up count matches your total segment configuration. If segments are Down, search the **Segment Details** table for the specific primary or mirror nodes that are offline.
+- Review the Hostname and Port columns in the **Segment Details** table. If multiple failed segments share a hostname, the physical host likely has a hardware or network issue. If any hosts are unreachable, reboot the host or resolve the network outage.
+- Once you identify the failed segments, run `gprecoverseg` from the command line to return them to service, or use the **Recovery** tab under **Management** to do the same without shell access. See [Recovering from segment failures](https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/managing/ha/recovering-from-segment-failures/) for details on segment recovery, or [Recovering failed segments](#recovering-failed-segments) below for the WEM-driven approach.
+- Confirm the primary coordinator is up and the standby is Synchronized. If the standby appears as Not Synced, restart the standby process to prevent data loss during a failover event. See [Enabling coordinator mirroring](https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/managing/ha/enabling-mirroring-in-warehousepg/enabling-coordinator-mirroring/) for details.
+- If active connections are near the maximum limit, new application requests fail. Terminate idle sessions or increase the [max\_connections](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/config_params/guc-list/#max_connections) parameter to prevent service rejection.
+
+### Inspecting individual segment status
+
+Use the **Segment Details** table to review the state of each segment. The table shows the **Content ID**, **Role**, **Status**, **Mode**, **Hostname**, and **Port** for each segment. Filter the table by **Role**, **Status**, or **Hostname** to isolate specific subsets of your cluster.
+
+### Reviewing segment configuration events
+
+Track segment status and role changes over time using the **Configuration History** tab.
+
+- The **All Configuration Events** table shows each event's **Time**, **Content ID**, **Hostname**, **Role**, **Status** (Up or Down), **Mode** (Synced or Not Synced), and **Description**. Filter the table by **Status**, **Hostname**, **Content ID**, or **Role** to isolate specific subsets.
+- The **Failure Timeline** table pairs each Down event with its matching Up event, showing the **Content ID**, **Hostname**, **Role**, **Down Time**, **Up Time**, and **Duration**. A segment still down shows no **Up Time**.
+- Use this tab to audit recent segment failovers or resynchronization events that may have contributed to a performance or availability issue, or to confirm how long a segment was unavailable.
+
+### Starting, stopping, and restarting the cluster
+
+Start, stop, or restart the WarehousePG cluster directly from WEM, without shell access to the coordinator, using the **Operations** tab under **Management**. Commands dispatch through the host agent, so [the host agent](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/host-agent/) must be installed and connected on the coordinator. The **Cluster Status** card on the **Overview** tab links directly to this tab whenever the cluster is down or unreachable.
+
+- Select **Start** to bring the cluster up when it's stopped or unreachable.
+- Select **Stop** to wait for active sessions to finish before stopping the cluster (`gpstop -a`), or **Fast Stop** to terminate every active session immediately and stop right away (`gpstop -M fast`), rolling back any uncommitted transactions.
+- Select **Restart** to stop the cluster, waiting for active sessions, then start it again.
+- Stop, Fast Stop, and Restart each prompt for confirmation before running, since these actions are destructive. A cluster whose **Environment** setting is `prod` shows an extra production warning in that confirmation. See [Runtime settings](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#runtime-settings).
+- Only one cluster operation, including a segment recovery from the **Recovery** tab, runs at a time. Buttons stay disabled with an explanation while another operation is already in progress.
+
+Each button wraps the equivalent `gpstart` or `gpstop` command. See [Starting and Stopping WarehousePG](https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/managing/startstop/) for what each underlying command does.
+
+A banner tracks the operation's progress and shows its result once it completes, and you can dismiss it at any time.
+
+> **Note**
+>
+> The **Management** tab doesn't appear at all if WEM's own application state database is hosted on this same WarehousePG cluster, since starting or stopping the cluster could take WEM down with it. Host WEM's state database on a separate Postgres instance to use this feature. See [Application state](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/#application-state).
+
+> **Note**
+>
+> Every action on this tab is restricted to Admins, regardless of the grants set in the [Permissions tab](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/system-access/management/#defining-role-based-access-control).
+
+### Recovering failed segments
+
+Identify and recover down segments without shell access to the coordinator using the **Recovery** tab under **Management**. The **Segments** card on the **Overview** tab links directly here whenever a segment is down.
+
+- Segments needing recovery appear in a table showing each one's **Content ID**, **Role**, **Status**, **Mode**, **Hostname**, and **Port**. A separate banner warns when a segment has both its primary and mirror down, since `gprecoverseg` has no automated path for that, and manual recovery is required first.
+- Select **Recover (Incremental)** to copy only the changes each down segment missed while offline (`gprecoverseg -a`). Incremental recovery requires a live mirror for each segment being recovered.
+- Select **Recover (Full)** to delete each down segment's entire data directory and re-copy it from scratch (`gprecoverseg -a -F`). Custom files, such as `gpfdist` certificates, aren't restored automatically, so only use full recovery after confirming the segment failure didn't cause data corruption.
+- Select **Rebalance** to move segments back to their preferred primary or mirror roles (`gprecoverseg -r -a`), once every segment is valid and resynchronized. Rebalancing cancels and rolls back in-flight queries, and stays disabled while any segment is still invalid.
+
+Each button wraps the equivalent `gprecoverseg` command, run in-place against the current host. See [Recovering from Segment Failures](https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/managing/ha/recovering-from-segment-failures/) for the underlying incremental and full recovery scenarios.
+
+> **Note**
+>
+> Recovery actions are also restricted to Admins, and disable automatically while the cluster is unreachable or another cluster operation is already running.
+
+### Analyzing database utilization
+
+Prevent a single database or tenant from impacting the overall cluster performance by identifying resource outliers. Monitoring individual database metrics allows you to balance the load and ensure fair access to storage and connections.
+
+The **Database Connections** table shows each database's **Database** name, **Size**, **Owner**, and **Connections** count.
+
+The **Database Connections** table counts connections per database, and some system connections may not appear in it. As a result, its total can differ from the **Connections** card, which counts all database connections, and from the **Active Queries** card, which counts only active queries and excludes system queries.
+
+- Compare database sizes to identify rapidly growing databases that might require storage expansion or data vacuuming. If a database consumes excessive space, perform a `VACUUM` operation to reclaim storage or plan a disk expansion before the volume reaches capacity.
+- Monitor the **Connections** column to identify unauthorized access or application connection leaks. If a single database shows an unusual spike in sessions, investigate the application for connection leaks, terminate idle sessions, or implement a connection pooler.
+- Verify that only authorized databases are active in the **Database Connections** table. If you find an unknown database consuming resources, contact the owner or drop the database to free up cluster capacity.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,38 @@
+---
+title: Support services
+description: How to create a support case in the support portal of Cloud Service.
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/support_services/
+lastModified: 2025-04-30T10:44:43+05:30
+---
+
+# Support services
+
+## Contact Us
+
+For the most efficient support, we recommend visiting our support portal at <https://techsupport.enterprisedb.com/>. Please sign in with your EDB account and create support tickets under the _Cloud Subscription_ category.
+
+Alternatively, you can reach our support team via email at: <techsupport@enterprisedb.com>.
+
+## Case severity level
+
+| Level      | Description                                                                                                                                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity 1 | The cloud service is down, or there's an error with critical impact on your production environment. Covers urgent problems including database service outage, data loss, and cluster provisioning failure.                                |
+| Severity 2 | There's a cloud service error or an issue significantly impacting your production environment. The system is functioning but in a severely reduced capacity. Covers problems including database service interruption and backup failures. |
+| Severity 3 | There's an error or issue that doesn't have a significant impact on your production environment. Covers problems including API issues, monitoring metrics, and logging issues.                                                            |
+| Severity 4 | General questions, inquiries, or nontechnical requests.                                                                                                                                                                                   |
+
+## Best practices
+
+- **Email Allow List:** To ensure you don't miss important communications from our Cloud Service Support team, please add <techsupport@enterprisedb.com> to your email allowed list.
+- **Support Portal Access:** If you are unable to access the Support Portal, please contact your EDB administrator. They have the necessary permissions to manage access for you.
+
+## For more information
+
+- [Cloud Service Terms](https://www.enterprisedb.com/biganimal-terms)
+- [Service Level Agreement (SLA) - Cloud Service](https://www.enterprisedb.com/service-level-agreement-sla-biganimal)
+- [SLO Support Terms - Cloud Service](https://www.enterprisedb.com/slo-support-terms-biganimal)
+- [Learn about EDB support](https://www.enterprisedb.com/support-center)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

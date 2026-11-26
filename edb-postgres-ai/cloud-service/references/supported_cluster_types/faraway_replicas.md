@@ -1,0 +1,52 @@
+---
+title: Faraway replicas
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/references/supported_cluster_types/faraway_replicas/
+lastModified: 2024-10-18T07:27:39Z
+---
+
+# Faraway replicas
+
+Faraway replicas are read-only replicas of Cloud Service clusters that you can provision in most supported regions. You can create faraway replicas of your single-node and high-availability clusters in different regions of your cloud. Database users and applications can read from a nearby faraway replica instead of the source cluster. This ability relieves some of the workload on the source cluster and frees it up to handle write traffic.
+
+In case of a failure, you can manually promote the faraway replica to a full-fledged Cloud Service cluster, making it capable of accepting writes. See [Managing replicas](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/faraway_replicas/).
+
+In Cloud Service, faraway replicas use log shipping to replicate from their source clusters. This means that a replica cluster accesses the write-ahead log (WAL) of its source cluster and “replays” the changes described in it.
+
+A WAL is a file that logs any changes made to a database. Databases write the change to the WAL before actually making the change. This way, if the database goes down before the change can be applied, the WAL has a record of the intended changes. The replica pulls in the changes from the WAL every time a new WAL file is closed, so replication is asynchronous.
+
+Faraway replicas are priced the same as single-node clusters.
+
+## Advantages
+
+- **Disaster recovery** — You can create faraway replicas in different regions in your cloud. Deploying faraway replicas across regions can help you build a more solid disaster recovery (DR) plan.
+
+- **Improved read-query performance** — For an improved read-query performance, set up the faraway replica in the same region as your application. For example, applications can read the writes made to a cluster in the `us-east` region from a `us-west` replica.
+
+- **Flexibility** — Options you might not find anywhere else:
+  - Your choice of instance type and size
+  - Your choice of storage volume and properties
+  - No limit to the number of replicas you can create
+
+## Limitations
+
+- **Manual intervention** — Unlike standby replicas, Cloud Service doesn't automatically promote faraway replicas to the source cluster in case of a failure.
+
+- **Replication lag** — Promoting a faraway replica to a Cloud Service cluster can result in loss of data. See [Replication lag  with faraway replicas](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/managing_your_cluster/backup_and_restore/#replication-lag-with-faraway-replicas).
+
+## Examples
+
+The diagram shows a three-node, high-availability cluster with two faraway replicas.
+
+![Generic faraway cluster](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/edb-postgres-ai/cloud-service/images/FarawayReplicas-generic.png)
+
+The diagram shows a faraway replica in Region B that's promoted to a new cluster.
+
+![Faraway cluster after promotion](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/advocacy_docs/edb-postgres-ai/cloud-service/images/FarawayReplicas-afterpromotion.png)
+
+## Related topics
+
+- [Managing replicas](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/using_cluster/faraway_replicas/)
+- [Activating regions](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/getting_started/your_cloud_account/managing_regions/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

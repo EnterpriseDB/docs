@@ -1,0 +1,121 @@
+---
+title: Installing the gateway collector (optional)
+description: Install and configure the optional gateway collector for centralized OTLP ingestion into ClickHouse.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/collector/
+lastModified: 2026-09-22T14:04:10+01:00
+---
+
+# Installing the gateway collector (optional)
+
+Install the gateway collector (`edb-otelcol`), a centralized OpenTelemetry Protocol (OTLP) ingestion endpoint, to receive telemetry data (metrics, logs, and traces) from external sources and forward it to ClickHouse.
+
+You need a dedicated gateway collector only when multiple systems or clusters send observability data to the same ClickHouse instance, or when applications outside your WHPG cluster need to ship telemetry to ClickHouse. If your deployment consists of a single WHPG cluster sending data directly to ClickHouse, skip this page, WEM auto-provisions the gateway collector for you.
+
+## Installing the gateway collector
+
+Install the package on a host reachable from both your WHPG cluster nodes and ClickHouse, typically the same host as ClickHouse itself.
+
+1. Configure the EDB repository, then install the gateway collector package:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo yum install -y edb-otelcol
+   ```
+
+2. The package ships `/etc/edb/otelcol/config.yaml`. Replace the whole file with the following content:
+
+   ```bash
+   sudo tee /etc/edb/otelcol/config.yaml << 'EOF'
+   receivers:
+     otlp:
+       protocols:
+         grpc:
+           endpoint: "0.0.0.0:4317"
+         http:
+           endpoint: "0.0.0.0:4318"
+
+   exporters:
+     clickhouse:
+       endpoint: "clickhouse://default:<password>@localhost:9000"
+       database: acp_observability
+       timeout: 5s
+       retry_on_failure:
+         enabled: true
+         initial_interval: 5s
+         max_interval: 30s
+         max_elapsed_time: 300s
+
+   processors:
+     batch:
+       timeout: 5s
+       send_batch_size: 8192
+
+   service:
+     pipelines:
+       metrics:
+         receivers: [otlp]
+         processors: [batch]
+         exporters: [clickhouse]
+       logs:
+         receivers: [otlp]
+         processors: [batch]
+         exporters: [clickhouse]
+       traces:
+         receivers: [otlp]
+         processors: [batch]
+         exporters: [clickhouse]
+   EOF
+   ```
+
+   Under `endpoint`:
+
+   - Replace `default` with your ClickHouse username. `default` is ClickHouse's built-in user, and what [Installing ClickHouse](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/observability-stack/#installing-clickhouse) uses as an example.
+   - Replace `<password>` with that user's password.
+   - Replace `localhost` with your ClickHouse host if the gateway collector runs on a different host than ClickHouse.
+
+   Optionally, add a `prometheus` exporter alongside `clickhouse` to also expose a scrape endpoint for an external Prometheus instance, without giving up the ClickHouse write path:
+
+   ```yaml
+   exporters:
+     clickhouse:
+       # ...
+     prometheus:
+       endpoint: "0.0.0.0:8889"
+
+   service:
+     pipelines:
+       metrics:
+         receivers: [otlp]
+         processors: [batch]
+         exporters: [clickhouse, prometheus]
+   ```
+
+   Only the metrics pipeline supports the `prometheus` exporter. Logs and traces still export to ClickHouse only.
+
+3. Start the gateway collector:
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable edb-otelcol
+   sudo systemctl start edb-otelcol
+   sudo systemctl status edb-otelcol
+   ```
+
+4. Verify the gateway collector is listening and forwarding data:
+
+   ```bash
+   # Check the gateway is listening
+   ss -tlnp | grep -E '4317|4318'
+
+   # Check logs for errors
+   journalctl -u edb-otelcol -n 20 --no-pager
+   ```
+
+## Next steps
+
+Continue to [Installing WEM](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/wem/).
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

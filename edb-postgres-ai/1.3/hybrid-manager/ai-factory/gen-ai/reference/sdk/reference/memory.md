@@ -1,0 +1,350 @@
+---
+title: memory
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/memory/
+lastModified: 2026-05-22T19:45:14+05:30
+---
+
+# memory
+
+- `__all__ = ['TaskMemory']` <small>module-attribute</small>  <span id="griptape.memory.__all__"></span>
+
+<span id="griptape.memory.TaskMemory"></span>
+
+Bases:
+[`ActivityMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/mixins/activity_mixin/#griptape.mixins.activity_mixin.ActivityMixin "ActivityMixin (griptape.mixins.activity_mixin.ActivityMixin)")
+,  [`SerializableMixin`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/mixins/serializable_mixin/#griptape.mixins.serializable_mixin.SerializableMixin "SerializableMixin (griptape.mixins.serializable_mixin.SerializableMixin)")
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/memory/task/task\_memory.py</code>
+
+</summary>
+
+```python
+@define
+class TaskMemory(ActivityMixin, SerializableMixin):
+    name: str = field(
+        default=Factory(lambda self: self.__class__.__name__, takes_self=True),
+        kw_only=True,
+        metadata={"serializable": True},
+    )
+    artifact_storages: dict[type, BaseArtifactStorage] = field(
+        default=Factory(
+            lambda: {
+                TextArtifact: TextArtifactStorage(),
+                BlobArtifact: BlobArtifactStorage(),
+            }
+        ),
+        kw_only=True,
+    )
+    namespace_storage: dict[str, BaseArtifactStorage] = field(
+        factory=dict, kw_only=True, metadata={"serializable": True}
+    )
+    namespace_metadata: dict[str, Any] = field(factory=dict, kw_only=True, metadata={"serializable": True})
+
+    @artifact_storages.validator  # pyright: ignore[reportAttributeAccessIssue]
+    def validate_artifact_storages(self, _: Attribute, artifact_storage: dict[type, BaseArtifactStorage]) -> None:
+        seen_types = []
+
+        for storage in artifact_storage.values():
+            if type(storage) in seen_types:
+                raise ValueError("can't have more than memory storage of the same type")
+
+            seen_types.append(type(storage))
+
+    def get_storage_for(self, artifact: BaseArtifact) -> Optional[BaseArtifactStorage]:
+        def find_storage(a: BaseArtifact) -> Optional[BaseArtifactStorage]:
+            return next((v for k, v in self.artifact_storages.items() if isinstance(a, k)), None)
+
+        if isinstance(artifact, ListArtifact):
+            if artifact.has_items():
+                return find_storage(artifact.value[0])
+            return None
+        return find_storage(artifact)
+
+    def process_output(
+        self,
+        tool_activity: Callable,
+        subtask: ActionsSubtask,
+        output_artifact: BaseArtifact,
+    ) -> BaseArtifact:
+        from griptape.utils import J2
+
+        tool_name = getattr(getattr(tool_activity, "__self__"), "name")
+        activity_name = getattr(tool_activity, "name")
+        namespace = output_artifact.name
+
+        if output_artifact:
+            result = self.store_artifact(namespace, output_artifact)
+
+            if result:
+                return result
+            self.namespace_metadata[namespace] = subtask.actions_to_json()
+
+            output = J2("memory/tool.j2").render(
+                memory_name=self.name,
+                tool_name=tool_name,
+                activity_name=activity_name,
+                artifact_namespace=namespace,
+            )
+
+            if subtask.structure and subtask.structure.meta_memory:
+                subtask.structure.meta_memory.add_entry(
+                    ActionSubtaskMetaEntry(
+                        thought=subtask.thought,
+                        actions=subtask.actions_to_json(),
+                        answer=output,
+                    ),
+                )
+
+            return InfoArtifact(output, name=namespace)
+        return InfoArtifact("tool output is empty")
+
+    def store_artifact(self, namespace: str, artifact: BaseArtifact) -> Optional[BaseArtifact]:
+        namespace_storage = self.namespace_storage.get(namespace)
+        storage = self.get_storage_for(artifact)
+
+        if not storage:
+            return artifact
+        if namespace_storage and namespace_storage != storage:
+            return ErrorArtifact("error storing tool output in memory")
+        if storage:
+            if isinstance(artifact, ListArtifact):
+                for a in artifact.value:
+                    storage.store_artifact(namespace, a)
+
+                self.namespace_storage[namespace] = storage
+
+                return None
+            if isinstance(artifact, BaseArtifact):
+                storage.store_artifact(namespace, artifact)
+
+                self.namespace_storage[namespace] = storage
+
+                return None
+            return ErrorArtifact("error storing tool output in memory")
+        return ErrorArtifact("error storing tool output in memory")
+
+    def load_artifacts(self, namespace: str) -> ListArtifact:
+        storage = self.namespace_storage.get(namespace)
+
+        if storage:
+            return storage.load_artifacts(namespace)
+        return ListArtifact()
+
+    def find_input_memory(self, memory_name: str) -> Optional[TaskMemory]:
+        if memory_name == self.name:
+            return self
+        return None
+```
+
+</details>
+
+- `artifact_storages = field(default=Factory(lambda: {TextArtifact: TextArtifactStorage(), BlobArtifact: BlobArtifactStorage()}), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.TaskMemory.artifact_storages"></span>
+
+- `name = field(default=Factory(lambda self: self.__class__.__name__, takes_self=True), kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.TaskMemory.name"></span>
+
+- `namespace_metadata = field(factory=dict, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.TaskMemory.namespace_metadata"></span>
+
+- `namespace_storage = field(factory=dict, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.memory.TaskMemory.namespace_storage"></span>
+
+<span id="griptape.memory.TaskMemory.find_input_memory"></span>
+
+### find\_input\_memory(memory\_name)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/memory/task/task\_memory.py</code>
+
+</summary>
+
+```python
+def find_input_memory(self, memory_name: str) -> Optional[TaskMemory]:
+    if memory_name == self.name:
+        return self
+    return None
+```
+
+</details>
+
+<span id="griptape.memory.TaskMemory.get_storage_for"></span>
+
+### get\_storage\_for(artifact)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/memory/task/task\_memory.py</code>
+
+</summary>
+
+```python
+def get_storage_for(self, artifact: BaseArtifact) -> Optional[BaseArtifactStorage]:
+    def find_storage(a: BaseArtifact) -> Optional[BaseArtifactStorage]:
+        return next((v for k, v in self.artifact_storages.items() if isinstance(a, k)), None)
+
+    if isinstance(artifact, ListArtifact):
+        if artifact.has_items():
+            return find_storage(artifact.value[0])
+        return None
+    return find_storage(artifact)
+```
+
+</details>
+
+<span id="griptape.memory.TaskMemory.load_artifacts"></span>
+
+### load\_artifacts(namespace)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/memory/task/task\_memory.py</code>
+
+</summary>
+
+```python
+def load_artifacts(self, namespace: str) -> ListArtifact:
+    storage = self.namespace_storage.get(namespace)
+
+    if storage:
+        return storage.load_artifacts(namespace)
+    return ListArtifact()
+```
+
+</details>
+
+<span id="griptape.memory.TaskMemory.process_output"></span>
+
+### process\_output(tool\_activity, subtask, output\_artifact)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/memory/task/task\_memory.py</code>
+
+</summary>
+
+```python
+def process_output(
+    self,
+    tool_activity: Callable,
+    subtask: ActionsSubtask,
+    output_artifact: BaseArtifact,
+) -> BaseArtifact:
+    from griptape.utils import J2
+
+    tool_name = getattr(getattr(tool_activity, "__self__"), "name")
+    activity_name = getattr(tool_activity, "name")
+    namespace = output_artifact.name
+
+    if output_artifact:
+        result = self.store_artifact(namespace, output_artifact)
+
+        if result:
+            return result
+        self.namespace_metadata[namespace] = subtask.actions_to_json()
+
+        output = J2("memory/tool.j2").render(
+            memory_name=self.name,
+            tool_name=tool_name,
+            activity_name=activity_name,
+            artifact_namespace=namespace,
+        )
+
+        if subtask.structure and subtask.structure.meta_memory:
+            subtask.structure.meta_memory.add_entry(
+                ActionSubtaskMetaEntry(
+                    thought=subtask.thought,
+                    actions=subtask.actions_to_json(),
+                    answer=output,
+                ),
+            )
+
+        return InfoArtifact(output, name=namespace)
+    return InfoArtifact("tool output is empty")
+```
+
+</details>
+
+<span id="griptape.memory.TaskMemory.store_artifact"></span>
+
+### store\_artifact(namespace, artifact)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/memory/task/task\_memory.py</code>
+
+</summary>
+
+```python
+def store_artifact(self, namespace: str, artifact: BaseArtifact) -> Optional[BaseArtifact]:
+    namespace_storage = self.namespace_storage.get(namespace)
+    storage = self.get_storage_for(artifact)
+
+    if not storage:
+        return artifact
+    if namespace_storage and namespace_storage != storage:
+        return ErrorArtifact("error storing tool output in memory")
+    if storage:
+        if isinstance(artifact, ListArtifact):
+            for a in artifact.value:
+                storage.store_artifact(namespace, a)
+
+            self.namespace_storage[namespace] = storage
+
+            return None
+        if isinstance(artifact, BaseArtifact):
+            storage.store_artifact(namespace, artifact)
+
+            self.namespace_storage[namespace] = storage
+
+            return None
+        return ErrorArtifact("error storing tool output in memory")
+    return ErrorArtifact("error storing tool output in memory")
+```
+
+</details>
+
+<span id="griptape.memory.TaskMemory.validate_artifact_storages"></span>
+
+### validat&#x65;_&#x61;rtifact\_storages(_, artifact\_storage)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/memory/task/task\_memory.py</code>
+
+</summary>
+
+```python
+@artifact_storages.validator  # pyright: ignore[reportAttributeAccessIssue]
+def validate_artifact_storages(self, _: Attribute, artifact_storage: dict[type, BaseArtifactStorage]) -> None:
+    seen_types = []
+
+    for storage in artifact_storage.values():
+        if type(storage) in seen_types:
+            raise ValueError("can't have more than memory storage of the same type")
+
+        seen_types.append(type(storage))
+```
+
+</details>
+
+- [ActionSubtaskMetaEntry](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/memory/meta/): -   all = \['ActionSubtaskMetaEntry', 'BaseMetaEntry', 'MetaMemory'] module-attribute
+- [BaseConversationMemory](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/memory/structure/): -   all = \['BaseConversationMemory', 'ConversationMemory', 'Run', 'SummaryConversationMemory'] module-attribute
+- [task](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/hybrid-manager/ai-factory/gen-ai/reference/sdk/reference/memory/task/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

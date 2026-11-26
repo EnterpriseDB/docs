@@ -1,0 +1,62 @@
+---
+title: Connecting your AWS cloud
+product: EDB Postgres AI Cloud Service
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/getting_started/your_cloud_account/connecting_to_your_cloud/connecting_aws/
+lastModified: 2024-10-18T05:05:04Z
+---
+
+# Connecting your AWS cloud
+
+## Prerequisites
+
+Before connecting your cloud, make sure that you're assigned the following AWS managed policies or an equivalent custom policy granting full access to resources:
+
+- arn:aws:iam::aws:policy/IAMFullAccess
+
+- arn:aws:iam::aws:policy/ServiceQuotasFullAccess
+
+> **Note**
+>
+> Cloud Service is deployed in a VPC in your cloud service provider (CSP). To make changes or modify your Cloud Service clusters, use the EDB Postgres AI Console, API, or CLI to manage and execute the activity. You can also open a Support case if you need help. Making changes in the resources in those dedicated VPCs can affect EDB's ability to deliver service.
+
+## Connecting your cloud
+
+> **Tip**
+>
+> If you're using CloudShell, add the `./` prefix to the `biganimal` command (`./biganimal`).
+
+To connect your cloud:
+
+1. Open AWS CloudShell in your browser.
+
+2. Create a BigAnimal CLI credential:
+
+   ```shell
+   biganimal credential create --name <cred> 
+   ```
+
+3. To set up your cloud provider, run the `setup-csp` command:
+
+   ```shell
+    biganimal cloud-provider setup  
+   ```
+
+   The command checks for cloud account readiness and displays the results.
+
+4. If the following readiness checks aren't met for your cloud service provider, see [Configure your AWS account](https://www.enterprisedb.com/docs/edb-postgres-ai/cloud-service/getting_started/your_cloud_account/preparing_cloud_account/preparing_aws/#configure-your-aws-account) to manually configure your cloud:
+
+   - Is the AWS CLI configured to access your AWS account?
+
+   - Is the limit on the number of vCPUs and network load balancers (NLBs) in your region enough for your clusters?
+
+   If the cloud readiness checks pass, your cloud account is successfully set up.
+
+5. Connect your cloud account to BigAnimal:
+
+   ```shell
+   biganimal cloud-provider connect --provider aws --project <project-name>
+   ```
+
+   After your cloud account is successfully connected to BigAnimal, you and other users with the correct permissions can create clusters.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

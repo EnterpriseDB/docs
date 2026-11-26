@@ -1,0 +1,44 @@
+---
+title: Data redaction key concepts
+description: Describes the benefits and basic operation of the data redaction feature
+product: EDB Postgres Advanced Server
+version: "18"
+url: https://www.enterprisedb.com/docs/epas/latest/epas_security_guide/05_data_redaction/data_redaction_key_concepts/
+lastModified: 2025-11-25T20:39:04+05:30
+---
+
+# Data redaction key concepts
+
+<div id="data_redaction" class="registered_link"></div>
+
+The EDB Postgres Advanced Server _Data redaction_ feature limits sensitive data exposure by dynamically changing data as it's displayed for certain users.
+
+For example, a social security number (SSN) is stored as `021-23-9567`. Privileged users can see the full SSN, while other users see only the last four digits: `xxx-xx-9567`.
+
+You implement data redaction by defining a function for each field to which to apply redaction. The function returns the value to display to the users subject to the data redaction.
+
+For example, for the SSN field, the redaction function returns `xxx-xx-9567` for an input SSN of `021-23-9567`.
+
+For a salary field, a redaction function always returns `$0.00`, regardless of the input salary value.
+
+These functions are then incorporated into a redaction policy by using the `CREATE REDACTION POLICY` command. In addition to other options, this command specifies:
+
+- The table on which the policy applies
+- The table columns affected by the specified redaction functions
+- Expressions to determine the affect session users
+
+The `edb_data_redaction` parameter in the `postgresql.conf` file then determines whether to apply data redaction.
+
+By default, the parameter is enabled, so the redaction policy is in effect. The following occurs:
+
+- Superusers and the table owner bypass data redaction and see the original data.
+- All other users have the redaction policy applied and see the reformatted data.
+
+If the parameter is disabled by having it set to `FALSE` during the session, then the following occurs:
+
+- Superusers and the table owner bypass data redaction and see the original data.
+- All other users get an error.
+
+You can change a redaction policy using the `ALTER REDACTION POLICY` command. Or, you can eliminate it using the `DROP REDACTION POLICY` command.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

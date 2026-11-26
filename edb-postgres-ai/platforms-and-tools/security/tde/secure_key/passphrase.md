@@ -1,0 +1,126 @@
+---
+title: Using a passphrase
+description: Learn how to secure your encryption key with a passphrase.
+product: EDB Postgres AI
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/passphrase/
+lastModified: 2026-11-02T10:35:00+01:00
+---
+
+# Using a passphrase
+
+Protect the data key with a passphrase using the OpenSSL command line utility. Passphrase mode is intended for development and testing only. It's not appropriate for production environments.
+
+A passphrase stored alongside the database provides encryption but not assurance: the key custodian and the data custodian are the same principal. Auditors don't accept this model for PCI, HIPAA, or FedRAMP workloads. The passphrase is the key. Losing it makes data unrecoverable, leaking it voids the encryption, and there's no recovery path or reset. Don't automate passphrase handling; doing so defeats the security model.
+
+For production deployments, use a [key store](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/key_store/) backed by an external KMS such as AWS KMS, Azure Key Vault, HashiCorp Vault, or another [supported provider](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/secure_key/key_store/).
+
+## Wrap and unwrap commands
+
+A wrap command encrypts (wraps) the data key with your passphrase, and an unwrap command decrypts (unwraps) it. You must provide both to TDE, either as command-line arguments or as environment variables, so the `initdb` utility can access the data key when creating a database cluster. See [initdb TDE options](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/reference/initdb_tde_options/) for the full set of related command options.
+
+### Via command argument
+
+Specify the wrap and unwrap commands directly as `initdb` arguments when creating the cluster.
+
+#### Linux
+
+```shell
+initdb -D datadir --data-encryption \
+  --key-wrap-command='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"' \
+  --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
+```
+
+#### Windows
+
+```shell
+initdb.exe -D c:\cdatadir   
+--key-wrap-command="openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"" 
+--key-unwrap-command="openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"" 
+--data-encryption
+```
+
+This example wraps the randomly generated data key by encrypting it with the AES-128-CBC (AESKW) algorithm, using a key derived from the passphrase with the PBKDF2 key derivation function and a random salt. The terminal prompts for the passphrase. (See the `openssl-enc` manual page for details about these options, which vary across versions.) The unwrap command performs the reverse operation. The `initdb` utility doesn't need it directly, but stores it in the cluster's `postgresql.conf` file for use at server startup.
+
+Utility programs that operate directly on the data directory or its copies, such as [pg\_rewind](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/reference/backup_file_options/#pg_rewind) and [pg\_upgrade](https://www.enterprisedb.com/docs/edb-postgres-ai/platforms-and-tools/security/tde/reference/pg_upgrade_arguments/), also need the unwrap command. Each has its own command-line option for providing it; see that utility's reference page for the exact option.
+
+### Via environment variable
+
+Alternatively, set the wrap and unwrap commands as environment variables before creating the database server. `initdb` falls back on these variables if no command-line arguments are given. If both are set, the command-line arguments take precedence.
+
+#### Linux
+
+```shell
+export PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"'
+export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
+```
+
+#### Windows
+
+```shell
+set PGDATAKEYWRAPCMD=openssl enc -e -aes-128-cbc -pbkdf2 -out %p
+set PGDATAKEYUNWRAPCMD=openssl enc -d -aes-128-cbc -pbkdf2  -in %p
+```
+
+## Additional OpenSSL options
+
+Use these options if the server starts without a terminal available to enter the passphrase, or if you want to read the passphrase from a file instead of typing it.
+
+### Prompting for the passphrase at startup (Linux)
+
+Key unwrap commands that prompt for a password on the terminal don't work when the server starts via `pg_ctl` or a service manager such as systemd, since the server is detached from the terminal in those environments. To get an interactive password prompt at server start, use a more elaborate configuration that fetches the password through an indirect mechanism.
+
+For example, for systemd, you can use `systemd-ask-password`:
+
+```
+export PGDATAKEYWRAPCMD="bash -c 'openssl enc -e -aes-128-cbc -pbkdf2 -out "%p" -pass file:<(sudo systemd-ask-password --no-tty)'"
+export PGDATAKEYUNWRAPCMD="bash -c 'openssl enc -d -aes-128-cbc -pbkdf2 -in "%p" -pass file:<(sudo systemd-ask-password --no-tty)'"
+```
+
+You also need an entry in `/etc/sudoers`:
+
+```
+postgres ALL = NOPASSWD: /usr/bin/systemd-ask-password
+```
+
+### Using a passphrase file
+
+Another way to simplify operations is to store the passphrase in a plaintext file and reference that file when securing the data encryption key.
+
+> **Important**
+>
+> Use this method only for testing or demonstration purposes. Don't store your passphrase in a plaintext file in a production environment.
+
+1. Store the passphrase in a file accessible by initdb named `pass.bin`:
+
+   #### Linux
+
+   ```
+   echo "<passphrase>" > /var/lib/postgresql/pass.bin
+   ```
+
+   #### Windows
+
+   ```
+   echo "<passphrase>" > c:\secure_location\pass.bin
+   ```
+
+2. When initializing the TDE-enabled database cluster using the `-pass file:<path_to_file>` flag, reference the file that contains the passphrase:
+
+   #### Linux
+
+   ```
+   initdb --data-encryption \
+     --key-wrap-command='openssl enc -e -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -out "%p"' \
+     --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -in "%p"'
+   ```
+
+   #### Windows
+
+   ```shell
+   initdb.exe -D c:\cdatadir
+   --key-wrap-command="openssl enc -e -aes-128-cbc -pbkdf2 -pass file:c:\secure_location\pass.bin -out "%p"" 
+   --key-unwrap-command="openssl enc -d -aes-128-cbc -pbkdf2 -pass file:c:\secure_location\pass.bin -in "%p""  
+   --data-encryption
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

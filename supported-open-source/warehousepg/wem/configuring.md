@@ -1,0 +1,141 @@
+---
+title: Configuring WarehousePG Enterprise Manager
+description: Configure WEM settings after installation using the Settings tab for runtime settings and the configuration file for startup settings.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/configuring/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Configuring WarehousePG Enterprise Manager
+
+After the initial installation of WarehousePG Enterprise Manager (WEM), use these configuration methods to fine-tune your settings or enable optional observability features.
+
+### Understanding startup and runtime settings
+
+WEM settings are either startup or runtime settings, and the **Management** > **Settings** tab shows them in separate sections. See the [Configuration parameters](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/) reference for what each setting does.
+
+#### Startup settings
+
+Startup settings are read when WEM starts. You manage them in `/etc/edb/wem/wem.conf`, and the **Settings** tab shows them read-only, so you can't change them in the console. Changing one in `wem.conf` requires a restart of WEM. See [Modifying startup settings manually](#modifying-startup-settings-manually).
+
+| Group                   | Parameters                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| WHPG Connection         | `WHPG_HOST`, `WHPG_PORT`, `WHPG_DATABASE`, `WHPG_USER`, `WHPG_PASSWORD`, `WHPG_MONITORING_DB` |
+| ClickHouse              | `CLICKHOUSE_URL` (shown with the password masked), `CLICKHOUSE_DB`                            |
+| OpenTelemetry Collector | `OTEL_GATEWAY_ENDPOINT` (empty means WEM manages the gateway collector)                       |
+| Application             | `HIGH_LOAD_MODE`                                                                              |
+| WEM Database            | `WEM_HOST`, `WEM_PORT`, `WEM_DATABASE`, `WEM_USER`, `WEM_PASSWORD`                            |
+
+#### Runtime settings
+
+Runtime settings take effect as soon as you save them, with no restart. You manage them in the WEM console. WEM stores them in its own database and doesn't read them from `wem.conf` or the environment. See [Modifying runtime settings using the WEM console](#modifying-runtime-settings-using-the-wem-console).
+
+| Group                   | Settings                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Cluster Identity        | **Cluster Name** (`WEM_CLUSTER_NAME`), **Environment** (`WEM_CLUSTER_ENVIRONMENT`)                            |
+| Query Monitoring        | **Slow Query Logging** (`LOG_MIN_DURATION_STATEMENT`), **Long-Running Threshold** (`LONG_RUNNING_THRESHOLD`)  |
+| OpenTelemetry Collector | **Collection Interval** (`OTEL_COLLECTION_INTERVAL`)                                                          |
+| FlowServer              | **FlowServer Address** (`FLOWSERVER_ADDRESS`), **Activity Retention** (`FLOWSERVER_ACTIVITY_RETENTION_HOURS`) |
+| AI Assistant            | **Anthropic API Key** (`ANTHROPIC_API_KEY`), **Model** (`ANTHROPIC_MODEL`)                                    |
+
+### Modifying runtime settings using the WEM console
+
+Edit **runtime settings** in the WEM console, with no changes to files on the WEM host.
+
+1. Navigate to **Management** > **Settings**.
+2. In **Runtime Settings**, update the fields you need. WEM validates each field as you type, for example that a duration such as `30s` or `5m` is valid.
+3. Select **Save Changes** to apply the changes, or **Discard** to reset the fields. The panel shows how many unsaved changes you have. Changes apply as soon as you save, with no restart.
+
+To turn off the AI Assistant, select **Remove Key** next to the **Anthropic API Key** and confirm. To keep the saved key when you save other changes, leave the field blank.
+
+> **Note**
+>
+> Users who don't have permission to change settings can view them but not edit them.
+
+### Modifying startup settings manually
+
+Edit **startup settings** in the configuration file on the WEM host. The **Settings** tab shows their current values and can't change them.
+
+1. Open `/etc/edb/wem/wem.conf` and update the required parameters. See the [Configuration parameters](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/configuration/#wem-parameters) reference for a full list of supported parameters.
+2. Restart the WEM service for the changes to take effect:
+
+   ```bash
+   systemctl restart wem
+   ```
+
+> **Note: Where runtime settings come from after an upgrade**
+>
+> When you upgrade to WEM 1.6, WEM imports the runtime settings it finds in `wem.conf` or the environment once. If you already saved a value in the WEM 1.5 console, WEM keeps that value and ignores the one in `wem.conf`. After that, changing these parameters in `wem.conf` or the environment has no effect, so change them in **Settings**.
+
+### Changing OTel Collector settings
+
+WEM writes `/etc/edb/otelcol/config.yaml` on every cluster node through the host agent. It updates the file when WEM starts, when a host agent restarts, and when a setting WEM manages changes. Don't edit this file directly, because WEM overwrites your changes.
+
+Some values in `/etc/edb/otelcol/config.yaml` come from WEM settings, and you change them in WEM. All other values come from the host agent's template, and you change them with an override file. The [OTel Collector configuration reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/otel-collector-config/) lists the values in each group.
+
+#### Changing settings that WEM manages
+
+Use this method for the values that WEM sets. For example, the **Collection Interval** runtime setting sets `receivers.host_metrics.collection_interval`.
+
+1. Update the setting. Change runtime settings, such as the **Collection Interval**, in the WEM console. Change startup settings, such as `OTEL_GATEWAY_ENDPOINT`, in `/etc/edb/wem/wem.conf`.
+2. If you edited `wem.conf`, restart WEM:
+
+   ```bash
+   sudo systemctl restart wem
+   ```
+
+WEM regenerates the collector configuration and sends it to the nodes whose configuration changed. You don't need to restart the host agents.
+
+#### Overriding other collector settings
+
+Use this method for every other value in `/etc/edb/otelcol/config.yaml`, such as batch sizes (`processors.batch`) or where the collector starts reading logs (`receivers.file_log.start_at`). Put your overrides in a separate file and add it to the collector's startup options. The collector merges this file on top of the generated configuration, so WEM doesn't overwrite your changes.
+
+Perform these steps on each node where you want to override settings:
+
+1. Create `/etc/edb/otelcol/config_local.yml` and add only the values you want to override. For example, to change batch processing:
+
+   ```yaml
+   processors:
+     batch:
+       send_batch_size: 8192
+       send_batch_max_size: 16384
+       timeout: 5s
+   ```
+
+   Use the component names from the generated `/etc/edb/otelcol/config.yaml`. Larger batches can reduce CPU usage, but they can also need more memory, increase delivery latency, and lose more data if the collector crashes or restarts.
+
+2. Set the owner of the file to the `edb-otelcol` user:
+
+   ```bash
+   sudo chown edb-otelcol:edb-otelcol /etc/edb/otelcol/config_local.yml
+   ```
+
+3. Validate the merged configuration:
+
+   ```bash
+   sudo /usr/edb/otelcol/bin/edb-otelcol validate \
+     --config=file:/etc/edb/otelcol/config.yaml \
+     --config=file:/etc/edb/otelcol/config_local.yml
+   ```
+
+4. Print the merged configuration to verify the result:
+
+   ```bash
+   sudo /usr/edb/otelcol/bin/edb-otelcol print-config \
+     --config=file:/etc/edb/otelcol/config.yaml \
+     --config=file:/etc/edb/otelcol/config_local.yml
+   ```
+
+5. Open `/etc/edb/otelcol/edb-otelcol.conf` and add your file to `OTELCOL_OPTIONS`:
+
+   ```ini
+   OTELCOL_OPTIONS="--config /etc/edb/otelcol/config.yaml --config /etc/edb/otelcol/config_local.yml"
+   ```
+
+6. Restart the collector service. Restart only `edb-otelcol`, not the host agent:
+
+   ```bash
+   sudo systemctl restart edb-otelcol
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

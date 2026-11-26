@@ -1,0 +1,222 @@
+---
+title: Examples
+description: Understand how to load data using Flowserver through the provided worked examples.
+product: FlowServer for WarehousePG
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/flowserver/loading/examples/
+lastModified: 2026-07-13T16:30:01+02:00
+---
+
+# Examples
+
+The following examples illustrate how to load different formats of data into WarehousePG (WHPG) using FlowServer.
+
+## Loading CSV data from RabbitMQ using insert mode
+
+In this example, you load data from a RabbitMQ queue named `queue_for_whpg` into a WHPG table named `data_from_rabbitmq`. The RabbitMQ queue uses CSV format that include a customer identifier (integer), the month (integer), and an expense amount (decimal). The target table will incorporate a new column that calculates the tax for each expense.
+
+The data will be processed in batches and committed every second. It will be loaded into WHPG using the insert mode.
+
+Create a configuration file named `rabbitmq_data.yaml` which contains the following:
+
+```yaml
+version: v1.0
+source:
+  rabbitmq:
+    server: myuser:mypassword@localhost:5672
+    vhost: /
+    queue: queue_for_whpg
+    format:
+      csv:
+        columns:
+        - name: cust_id
+          type: int
+        - name: month
+          type: int
+        - name: expense
+          type: decimal (9,2)
+        delimiter: '&'
+        quote: "'"
+        escape: "\x2c" # ,
+    task:
+      batch_size:
+        interval_ms: 1000
+target:
+  database:
+    host: localhost
+    port: 5432
+    user: gpadmin
+    password: password
+    dbname: testdb
+    error_limit: 5
+    tables:
+    - table: data_from_rabbitmq
+      schema: public
+      mode:
+        insert: {}
+      mapping:
+        customer: cust_id
+        month: month
+        cost: expense
+        tax: expense * .25
+```
+
+Create the target WHPG table:
+
+```sql
+CREATE TABLE data_from_rabbitmq (customer int, month int, cost decimal(9,2), tax decimal (7,2));
+```
+
+Run FlowCLI to submit and start a job that loads the data from the RabbitMQ queue into the WHPG table:
+
+```bash
+flowcli submit --name rabbitmq_job rabbitmq_data.yaml -s
+```
+
+Verify that the WHPG target table has been populated with the data loaded from the RabbitMQ queue:
+
+```sql
+SELECT * from data_from_rabbitmq;
+```
+
+## Loading Avro data from Kafka in merge mode
+
+In this example, you load Avro-format value data as JSON from a Kafka topic named `kafka_topic` into a WarehousePG (WHPG) table named `data_from_kafka`.
+
+Th Kafka producer emits customer order messages in JSON format that include the customer name (text), and the amount purchased (integer).
+
+The data will be processed in batches and committed every second. It will be loaded into WHPG using the merge mode:
+
+- It will insert new rows and update existing rows when the value of `qty` from the target table `data_from_kafka` is bigger than 20.
+- It will delete rows when the value of `name` from the target table `data_from_kafka` is equal to the input data, and the value of `name` is `customer-3`.
+
+Create a configuration file named `kafka_data.yaml` which contains the following:
+
+```yaml
+version: v1.0
+source:
+  kafka:
+    brokers:
+      - kafka_host:9092
+    topic: test_avro
+    value:
+      avro:
+        column:
+          name: value
+          type: JSON
+        schema_registry: http://kafka_host:8081
+    task:
+      batch_size:
+        interval_ms: 1000
+target:
+  database:
+    host: localhost
+    port: 15432
+    user: gpadmin
+    password: password
+    dbname: testdb
+    error_limit: "5"
+    tables:
+    - table: data_from_kafka
+      schema: public
+      mode:
+        merge:
+          match_columns:
+            - name
+          update_columns:
+            - qty
+          update_condition: data_from_kafka.qty > 20
+          delete_condition: (value->>'name')::text = 'customer-3'
+      mapping:
+        name: (value->>'name')::text
+        qty: (value->>'qty')::int
+```
+
+Create the target WHPG table:
+
+```sql
+CREATE TABLE data_from_kafka (name text, qty int);
+```
+
+Run FlowCLI to submit and start a job that loads the data from the Kafka topic into the WHPG table:
+
+```bash
+flowcli submit --name kafka_job kafka_data.yaml -s
+```
+
+Verify that the WHPG target table has been populated with the data loaded from the Kafka topic:
+
+```sql
+SELECT * from data_from_kafka;
+```
+
+## Loading JSON data from Kafka into multiple target tables
+
+In this example, you load a single Kafka topic named `orders` into two WHPG tables at once: an insert-only detail table, `orders_detail`, and a merge-maintained summary table, `orders_summary`. FlowServer reads the topic once per batch and stages the data, then applies each target table's write mode independently against that staged data.
+
+Create a configuration file named `orders.yaml` which contains the following:
+
+```yaml
+version: v1.0
+source:
+  kafka:
+    brokers:
+      - kafka_host:9092
+    topic: orders
+    value:
+      json:
+        column:
+          name: value
+          type: json
+    task:
+      batch_size:
+        interval_ms: 1000
+target:
+  database:
+    host: localhost
+    port: 5432
+    user: gpadmin
+    password: password
+    dbname: testdb
+    error_limit: "5"
+    tables:
+    - table: orders_detail
+      schema: public
+      mode:
+        insert: {}
+      mapping:
+        name: (value->>'name')::text
+        qty: (value->>'qty')::int
+    - table: orders_summary
+      schema: public
+      mode:
+        merge:
+          match_columns:
+            - name
+          update_columns:
+            - qty
+      mapping:
+        name: (value->>'name')::text
+        qty: (value->>'qty')::int
+```
+
+Create the target WHPG tables:
+
+```sql
+CREATE TABLE orders_detail (name text, qty int);
+CREATE TABLE orders_summary (name text, qty int);
+```
+
+Run FlowCLI to submit and start a job that loads the data from the Kafka topic into both WHPG tables:
+
+```bash
+flowcli submit --name orders_job orders.yaml -s
+```
+
+Verify that both WHPG target tables have been populated with the data loaded from the Kafka topic:
+
+```sql
+SELECT * from orders_detail;
+SELECT * from orders_summary;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

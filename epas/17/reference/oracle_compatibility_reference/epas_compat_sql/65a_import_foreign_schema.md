@@ -1,0 +1,106 @@
+---
+title: IMPORT FOREIGN SCHEMA
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_sql/65a_import_foreign_schema/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# IMPORT FOREIGN SCHEMA
+
+## Name
+
+`IMPORT FOREIGN SCHEMA` — Import a foreign schema from a foreign server or database link.
+
+## Synopsis and parameters
+
+See [IMPORT FOREIGN SCHEMA](https://www.postgresql.org/docs/current/sql-importforeignschema.html) for command syntax, parameters and functionality.
+
+NOT NULL constraints are imported by  default. Use the `import_not_null` option if you don’t want to import NOT NULL constraints.
+
+## Description
+
+After you create an access to a remote database with either a Foreign Data Wrapper or a database link, you can import a foreign schema with `IMPORT FOREIGN SCHEMA`. You can import foreign schemas with database links created with `edb_dblink_oci` connections as explained in the [database link creation examples](https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_sql/21_create_public_database_link/#examples).
+
+You can then access the imported schema objects locally, instead of remotely.
+
+## Example
+
+This example uses the `IMPORT FOREIGN SCHEMA` command to import a database schema named `IMP` from an Oracle server to an EDB Postgres Advanced Server. The target schema with the imported table definitions is called `tmp_schema` and uses an `edb_dblink_oci` connection called `oci_link`.
+
+### Prerequisites
+
+- Ensure you have the `connstr` information at hand.
+
+- Create a [server](https://www.postgresql.org/docs/current/sql-createserver.html) and [user mapping](https://www.postgresql.org/docs/current/sql-createusermapping.html) as in the following example. Alternatively, you can [create a public database link](https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_sql/21_create_public_database_link/).
+
+### Import schemas
+
+1. [Create a server](https://www.postgresql.org/docs/current/sql-createserver.html) (here called `oci_link`) that connects you to the Oracle database. Specify the foreign data wrapper, and the connection string required to reach the Oracle service.
+
+   ```sql
+   CREATE SERVER oci_link FOREIGN DATA WRAPPER oci_dblink OPTIONS (connstr :ORACLE_SERVICE);
+   ```
+
+   Where `ORACLE_SERVICE` is the environment variable for the name of the Oracle service from which you want to do the import.
+
+2. Map the EDB Postgres `edb` user to the Oracle database user for which you want to import the schemas. Use the `oci_link` connection created previously, and specify the Oracle’s user and password:
+
+   ```sql
+   CREATE USER MAPPING FOR edb SERVER oci_link OPTIONS ("user" 'a', password 'c');
+   ```
+
+   Where `'a'` is the Oracle user name that has access to the foreign schema and `'c'`, its password.
+
+3. Create a schema where you’ll place the imported objects:
+
+   ```sql
+   CREATE SCHEMA tmp_schema;
+   ```
+
+4. Import the `IMP` schema from the source database to EDB Postgres Advanced `tmp_schema` using the `oci_link` connection.
+
+   ```sql
+   IMPORT FOREIGN SCHEMA "IMP" FROM SERVER oci_link INTO tmp_schema;
+   ```
+
+   This command creates foreign tables that represent the tables existing on the Oracle server.
+
+   By default, all tables and views existing in a particular schema on the foreign server are imported. Optionally, the list of tables can be limited to a specified subset, or specific tables can be excluded.
+
+5. Verify the imported foreign table contains all the schema objects you expect it to have:
+
+   ```sql
+   SELECT * FROM tmp_schema."FOO";
+   ```
+
+   ```output title="Output"
+    a | b | c | d
+   ---+--------+------------+-----
+    1 | 1.1000 | ABC | XYZ
+   (1 row)
+   ```
+
+   ```sql
+   SELECT * FROM tmp_schema."Foo";
+   ```
+
+   ```output title="Output"
+    a | b | c | d
+   ---+--------+------------+-----
+    2 | 2.2000 | PQR | STU
+   (1 row)
+   ```
+
+   ```sql
+   SELECT * FROM tmp_schema."V1";
+   ```
+
+   ```output title="Output"
+    a | b | c | d
+   ---+--------+------------+-----
+    1 | 1.1000 | ABC | XYZ
+   (1 row)
+   ```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

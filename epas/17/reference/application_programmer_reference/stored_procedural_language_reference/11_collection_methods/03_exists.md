@@ -1,0 +1,52 @@
+---
+title: EXISTS
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/reference/application_programmer_reference/stored_procedural_language_reference/11_collection_methods/03_exists/
+lastModified: 2025-11-25T20:57:39+05:30
+---
+
+# EXISTS
+
+<div id="exists" class="registered_link"></div>
+
+The `EXISTS` method verifies that a subscript exists in a collection. `EXISTS` returns `TRUE` if the subscript exists. If the subscript doesn't exist, `EXISTS` returns `FALSE`.
+
+## Syntax
+
+The method takes a single argument: the `subscript` that you are testing for. The syntax is:
+
+```sql
+<collection>.EXISTS(<subscript>)
+```
+
+Where:
+
+`collection` is the name of the collection.
+
+`subscript` is the value that you are testing for. If you specify a value of `NULL`, `EXISTS` returns `false`.
+
+## Example
+
+This example verifies that subscript number `10` exists in the associative array:
+
+```sql
+DECLARE
+    TYPE sparse_arr_typ IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
+    sparse_arr      sparse_arr_typ;
+BEGIN
+    sparse_arr(-100)  := -100;
+    sparse_arr(-10)   := -10;
+    sparse_arr(0)     := 0;
+    sparse_arr(10)    := 10;
+    sparse_arr(100)   := 100;
+    DBMS_OUTPUT.PUT_LINE('The index exists: ' ||
+        CASE WHEN sparse_arr.exists(10) = TRUE THEN 'true' ELSE 'false' END);
+END;
+
+The index exists: true
+```
+
+Some collection methods raise an exception if you call them with a subscript that doesn't exist in the specified collection. Rather than raising an error, the `EXISTS` method returns a value of `FALSE`.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

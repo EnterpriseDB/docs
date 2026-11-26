@@ -1,0 +1,369 @@
+---
+title: Release notes
+product: Lasso
+version: "4"
+url: https://www.enterprisedb.com/docs/lasso/latest/release-notes/
+lastModified: 2026-09-09T17:01:26+02:00
+---
+
+# Release notes
+
+## Lasso - Version 4.21.0
+
+Released: 07 Sep 2026
+
+Lasso Version 4.21.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                 | Addresses |
+| ----------- | --------------------------------------------------------------------------- | --------- |
+| Feature     | Added support for Debian 13                                                 | DC-1135   |
+| Improvement | Use the psycopg2-binary host option to pass a list of default local sockets | DC-1132   |
+| Bug Fixes   | Exclude several views from BDR collection                                   | DC-1133   |
+| Deprecation | Dropped support for Debian 11                                               | DC-1138   |
+
+## Lasso - Version 4.20.0
+
+Released: 21 Jan 2026
+
+Lasso Version 4.20.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                                                                                   | Addresses |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Feature     | Added support for PostgreSQL 18.                                                                                                                              | DC-1044   |
+| Feature     | Upgraded Python versions to 3.12.                                                                                                                             | DC-1044   |
+| Feature     | PEM/Security: Enhanced configuration for Upload domain CA certificates. Added support for providing CA files via configurable files or environment variables. | DC-1044   |
+| Feature     | Connectivity: The Upload domain is now configurable (defaulting to `https://scipio.enterprisedb.com/`) to support flexible deployment environments.           | DC-1044   |
+| Deprecation | Dropped support for Ubuntu 20.04.6 (Focal Fossa).                                                                                                             | DC-1044   |
+| Deprecation | Dropped support for PostgreSQL 13.                                                                                                                            | DC-1044   |
+
+## Lasso - Version 4.19.0
+
+Released: 07 Apr 2025
+
+Lasso Version 4.19.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                                                      | Addresses |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Feature     | Added support for Ubuntu 24.04.                                                                                                  | DC-1034   |
+| Improvement | Locks held by prepared transactions are now included in `running_locks.out`.                                                     | DC-1059   |
+| Bug Fixes   | Fixed concurrency issue where the Lasso Patroni collector tries to scan all PIDs, resulting in error `process no longer exists`. | DC-1056   |
+
+## Lasso - Version 4.18.0
+
+Released: 24 Jan 2025
+
+Lasso Version 4.18.0 includes the following enhancements and bug fixes:
+
+| Type              | Description                                                                                                                    | Addresses |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| Feature           | Support for PostgreSQL 17                                                                                                      | DC-1037   |
+| Feature           | New `--config-file` option for the Lasso configuration file in non-default path                                                | DC-1026   |
+| Feature           | Collect the list of worst offender tables in terms of transaction wraparound                                                   | DC-220    |
+| Feature           | Collect information about child partition tables                                                                               | DC-469    |
+| Feature           | Collect information about triggers                                                                                             | DC-440    |
+| Feature           | Collect summary of client authentication file contents (`pg_hba_file_rules`)                                                   | DC-125    |
+| Feature           | Collect statistics about the checkpointer process (new PG17+ view `pg_stat_checkpointer`)                                      | DC-1030   |
+| Feature           | Collect the Simple LRU (least recently used) cache statistics (`pg_stat_slru`)                                                 | DC-144    |
+| Feature           | Collect the contents of the `/etc/hosts` file                                                                                  | DC-1028   |
+| Improvement       | Enforce UTC timezone and ISO datestyle in query outputs                                                                        | DC-6      |
+| Bug Fixes         | Fix log path collector erroring out with `No such file or directory: /proc/<PID>/fd/1`                                         | DC-1041   |
+| Bug Fixes         | Fix Lasso not gathering the `efm cluster-status` when using `--efm-configuration` to a non-default EFM configuration file path | DC-1027   |
+| Deprecation Notes | Dropped support for CentOS 7, SLES 12, Debian 10 and PostgreSQL 12                                                             | DC-1037   |
+
+## Lasso - Version 4.17.0
+
+Released: 12 Sep 2024
+
+Lasso Version 4.17.0 includes the following enhancements and bug fixes:
+
+| Type              | Description                                                                                         | Addresses |
+| ----------------- | --------------------------------------------------------------------------------------------------- | --------- |
+| Feature           | Support for Patroni                                                                                 |           |
+| Feature           | New argument `--command-timeout`                                                                    | DC-874    |
+| Feature           | New optional setting customer `environment`                                                         | DC-1013   |
+| Feature           | Add collection of `checksum_failures` and `checksum_last_failure` timestamp from `pg_stat_database` | DC-1014   |
+| Feature           | Gather blocking locks                                                                               | DC-422    |
+| Feature           | Show symbolic link target in `linux/pg_links.data`                                                  | DC-967    |
+| Bug Fixes         | Make BDR's `worker_errors` output sorted by error timestamp                                         | DC-150    |
+| Bug Fixes         | Fix bdr sequences query to prevent duplicate rows                                                   | DC-69     |
+| Deprecation Notes | Customer `token` is now optional in the configuration                                               | DC-1013   |
+
+## Lasso - Version 4.16.0
+
+Released: 04 Jun 2024
+
+Lasso Version 4.16.0 includes the following enhancements and bug fixes:
+
+| Type                   | Description                                                                                                                                                                            | Addresses |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Packaging Improvements | Add edb-python as the only OS package dependency needed for Lasso. Embed all Python dependencies that Lasso needs                                                                      | DC-997    |
+| Feature                | EPAS-specific catalog data: `edb_resource_group`, `edb_all_resource_group`, `edb_profile`, `edb_policy`, `edb_redaction_policy`, `edb_redaction_column`, `edb_dir`, `edb_pg_namespace` | DC-101    |
+| Feature                | Collect FIPS information if enabled on the server                                                                                                                                      | DC-359    |
+| Feature                | Collect locale outputs                                                                                                                                                                 | DC-758    |
+| Feature                | If possible, gather name of the exact log file Postgres is logging to, and the list of log files in the log directory                                                                  | DC-861    |
+| Feature                | Collect information about dynamically loaded libraries Dynamic linker configuration                                                                                                    | DC-984    |
+| Feature                | Get BDR/PGD SDW stats from the `get_decoding_worker_stat` and `wal_sender_stats` views                                                                                                 | DC-993    |
+| Bug Fixes              | Avoid calculating times for replication/bgworker and other backends types in maxage queries                                                                                            | DC-983    |
+| Bug Fixes              | Add external access by default for EDB Lasso packages, to be used by the `-–upload` command line option                                                                                | DC-1003   |
+| Deprecation Notes      | Add deprecation notes for command line options  `--latest-version` and `--is-latest-version`                                                                                           | DC-1003   |
+
+## Lasso - Version 4.15.0
+
+Released: 23 Apr 2024
+
+Lasso Version 4.15.0 includes the following enhancements and bug fixes:
+
+| Type            | Description                                                                                                                                                              | Addresses |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| Feature         | Lasso now gathers information about the package origins: list of repositories, repository configuration, and HTTP(S) proxies in use for package download, if any.        | DC-31     |
+| Feature         | Lasso now gathers information about the EDB Postgres Advanced Server code packages, including functions and procedures inside the packages.                              | DC-320    |
+| Feature         | Packages for Debian 12 ("Bookworm") are now available.                                                                                                                   | DC-888    |
+| Improvement     | Lasso now shows a hint message if connecting to the database with a user that doesn't have access to the custom schema the edb\_wait\_states extension was installed on. | DC-977    |
+| Bug fix         | Fixed an issue where Lasso was trying to set lock\_timeout on PostgreSQL older than 9.3.                                                                                 | DC-219    |
+| Doc improvement | Lasso bundle is no longer mentioned in the Lasso documentation and Knowledge Base articles.                                                                              | DC-885    |
+
+## Lasso - Version 4.14.0
+
+Released: 05 Mar 2024
+
+Lasso Version 4.14.0 includes the following enhancements and bug fixes:
+
+| Type            | Description                                                                                 | Addresses |
+| --------------- | ------------------------------------------------------------------------------------------- | --------- |
+| Feature         | Lasso now collects device mapper (`dm-X`) mappings for `iostat` on non-container instances. | DC-970    |
+| Improvement     | Changed message about the lock file detected.                                               | DC-974    |
+| Bug fix         | Fixed issue on lock file removal for some exception cases.                                  | DC-947    |
+| Bug fix         | Fixed detection issue on non-Redwood instances for `SYS.ALL_PART_*` relations.              | DC-973    |
+| Bug fix         | Removed the `tools/pem` directory when there's no PEM agent service.                        | DC-859    |
+| Doc improvement | Added requirements for running Lasso on Windows Server.                                     | DC-250    |
+| Doc improvement | Added clarification related to the usage of `libpq` and `.pgpass`.                          | DC-292    |
+
+## Lasso - Version 4.13.0
+
+Released: 08 Feb 2024
+
+Lasso Version 4.13.0 includes the following enhancements and bug fixes:
+
+| Type    | Description                                                                                                       | Addresses        |
+| ------- | ----------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Feature | Added Lasso packages for SLES 15.                                                                                 | DC-288           |
+| Feature | Added new `--info` option to display all collector information with revision/version.                             | DC-943           |
+| Feature | Added support for `edb_queue`.                                                                                    | DC-965           |
+| Feature | Added command-line arguments to specify the range for `edb_wait_states`: `--sampling-start` and `--sampling-end`. | DC-951           |
+| Feature | Now gather server information from `edb_wait_states`.                                                             | DC-953           |
+| Feature | Now gather operating system information from `edb_wait_states`.                                                   | DC-954           |
+| Feature | Now gather load profile from `edb_wait_states`.                                                                   | DC-955           |
+| Feature | Now gather top wait events from `edb_wait_states`.                                                                | DC-956           |
+| Feature | Now gather top SQL statements from `edb_wait_states`.                                                             | DC-957           |
+| Feature | Now gather transaction stats from `edb_wait_states`.                                                              | DC-958           |
+| Feature | Now gather WAL stats from `edb_wait_states`.                                                                      | DC-959           |
+| Feature | Now gather shared buffers stats from `edb_wait_states`.                                                           | DC-960           |
+| Feature | Now gather tuple stats from `edb_wait_states`.                                                                    | DC-961           |
+| Feature | Now gather temp files stats from `edb_wait_states`.                                                               | DC-962           |
+| Feature | Now gather information about user sessions from `edb_wait_states`.                                                | DC-963           |
+| Feature | Now gather information about database settings from `edb_wait_states`.                                            | DC-964           |
+| Feature | Added documentation about `edb_wait_states` to the Lasso docs                                                     | DC-972           |
+| Bug fix | `lasso --version` can now be executed without a config file and the output was simplified.                        | RT100700, DC-943 |
+| Bug fix | Fixed an issue such that Lasso no longer fetches `/proc` information if running from inside a container.          | RT101043, DC-968 |
+| Bug fix | Added `SYS` schema qualifier for the `ALL_PART_*` relations.                                                      | RT101043, DC-969 |
+
+## Lasso - Version 4.12.0
+
+Released: 09 Jan 2024
+
+Lasso Version 4.12.0 includes the following enhancements and bug fixes:
+
+| Type    | Description                                                                                                                                                                                                                                                                                                                                                      | Addresses        |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Feature | Now produce the file `postgresql/conns_per_second.out`, which shows the current rate of new connections established to the database during an observation period of 3 seconds.                                                                                                                                                                                   | DC-892           |
+| Feature | Now produce the file `postgresql/running_activity_maxage.out`, which shows the age of the oldest running backend, transaction, and query in the database.                                                                                                                                                                                                        | DC-893           |
+| Bug fix | Fixed an issue where extremely large data files were allowed to be included in the Lasso report. In some situations, this condition caused elevated memory usage. Now, by default any data file larger than 500 MB is discarded (configurable with a new command line argument `--local-size-limit`) with a corresponding entry in the new `contents.data` file. | RT100724, DC-944 |
+| Bug fix | Fixed an issue where Lasso RPM packages were marked as obsolete even if they were the latest version.                                                                                                                                                                                                                                                            | RT100304, DC-899 |
+| Bug fix | Fixed an issue where the Lasso lock file wasn't being deleted at the end of the execution.                                                                                                                                                                                                                                                                       | DC-894           |
+
+> **Important: Deprecation notice**
+>
+> - PostgreSQL 11 is now EOL and considered deprecated (DC-945).
+
+## Lasso - Version 4.11.0
+
+Released: 14 Dec 2023
+
+Lasso Version 4.11.0 includes the following enhancements and bug fixes:
+
+| Type    | Description                                                                                                                                                    | Addresses      |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Feature | Implemented EDB Postgres Advanced Server and 2ndQPG flavor detection.                                                                                          | DC-875         |
+| Feature | Now gathering EDB Postgres Advanced Server Catalog - Views related to partitioned tables in Oracle syntax.                                                     | (DC-266)       |
+| Feature | Added support for PostgreSQL 16.                                                                                                                               | DC-887         |
+| Feature | Added support for RHEL9.                                                                                                                                       | DC-802, DC-803 |
+| Bug fix | Fixed situation when `ls pg_data` command takes much time to complete with extremely large number of files. Added a default `timeout` of `120s` for this case. | DC-845         |
+
+## Lasso - Version 4.10.0
+
+Released: 07 Nov 2023
+
+Lasso Version 4.10.0 includes the following enhancements and bug fixes:
+
+!!! Deprecation
+Deprecated Ubuntu Bionic (18.04) as it is EOL since June 2023. (DC-877)
+
+| Type    | Description                                                         | Addresses |
+| ------- | ------------------------------------------------------------------- | --------- |
+| Feature | Implemented a feature (filelock) to not rely on an EPEL dependency. | DC-863    |
+
+## Lasso - Version 4.9.0
+
+Released: 17 Oct 2023
+
+Lasso Version 4.9.0 includes the following enhancements and bug fixes:
+
+| Type    | Description                                                                    | Addresses |
+| ------- | ------------------------------------------------------------------------------ | --------- |
+| Feature | Added limits for the postmaster process.                                       | DC-162    |
+| Feature | Added progress reporting views.                                                | (DC-170)  |
+| Feature | Added waits profiling by way of `pg_stat_activity`.                            | DC-841    |
+| Bug fix | Fixed issue related to the report filename when the hostname is a socket path. | DC-769    |
+| Bug fix | Fixed issue for the SET ROLE syntax.                                           | DC-842    |
+| Bug fix | Fixed issue on hostname from config file.                                      | DC-864    |
+
+## Lasso - Version 4.8.0
+
+Released: 06 Jul 2023
+
+Lasso Version 4.8.0 includes the following enhancements and bug fixes:
+
+| Type    | Description                                                                                                                                                 | Addresses |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Feature | Added support for PGD Proxy.                                                                                                                                |           |
+| Feature | PGD Proxy support: Added new option `--pgd-proxy-configuration` for custom installations of pgd-proxy (Default: `/etc/edb/pgd-proxy/pgd-proxy-config.yml`). | DC-696    |
+| Feature | PGD Proxy support: Now collect the contents of the PGD Proxy configuration file.                                                                            | DC-697    |
+| Feature | PGD Proxy support: Now collect the output of `systemctl status pgd-proxy`.                                                                                  | DC-698    |
+| Feature | PGD Proxy support: Now collect the output of `systemctl cat pgd-proxy`.                                                                                     | DC-699    |
+
+## Lasso - Version 4.7.0
+
+Released: 01 Jun 2023
+
+Lasso Version 4.7.0 includes the following enhancements and bug fixes:
+
+| Type         | Description                                                                                | Addresses |
+| ------------ | ------------------------------------------------------------------------------------------ | --------- |
+| Feature      | Now collect output of `systemd-detect-virt`.                                               | DC-76     |
+| Feature      | Now collect the output of `lsmod`.                                                         | DC-197    |
+| Feature      | Now collect the content of `harp.cluster.init.yml`                                         | DC-628    |
+| Security fix | Redacted password for Lasso with `--password` seen in `ps` and `top` outputs.              | DC-627    |
+| Bug fix      | Fixed a bug whereby it wasn't possible to run `lasso --help` without a configuration file. | DC-490    |
+
+## Lasso - Version 4.6.0
+
+Released: 06 Dec 2022
+
+Lasso Version 4.6.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                                                                                                     | Addresses |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Feature     | Lasso packages are now open to all customers through EDB repository (<https://www.enterprisedb.com/repos>).                                                                     | DC-443    |
+| Enhancement | Updated the [main Lasso Knowledge Base article](https://techsupport.enterprisedb.com/kb/a/support-lasso/) to reflect the installation from packages and the configuration file. | KB-54     |
+| Bug fix     | Improved Debian/Ubuntu packages to comply with the Lintian.                                                                                                                     | DC-435    |
+
+## Lasso - Version 4.5.0
+
+Released: 15 Nov 2022
+
+Lasso Version 4.5.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                               | Addresses |
+| ----------- | --------------------------------------------------------------------------------------------------------- | --------- |
+| Enhancement | Added support for PostgreSQL 15.                                                                          | DC-428    |
+| Enhancement | Improved execution on situations where there is a short timeout or when Lasso is executed on the standby. | DC-169    |
+
+## Lasso - Version 4.4.0
+
+Released: 22 Sep 2022
+
+Lasso Version 4.4.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                    | Addresses |
+| ----------- | ------------------------------------------------------------------------------ | --------- |
+| Enhancement | Now collect output of `pg_shmem_allocations` in Postgres version 13 and later. | DC-195    |
+| Enhancement | Documented options for `edb-lasso.conf`.                                       | DC-308    |
+
+## Lasso - Version 4.3.0
+
+Released: 25 Aug 2022
+
+Lasso Version 4.3.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                                   | Addresses                              |
+| ----------- | --------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Enhancement | Added support for `etcd`.                                                                     | DC-367, DC-371, DC-370, DC-369, DC-368 |
+| Bug fix     | Fixed a bug and now gather databases and tablespaces sizes regardless of `CONNECT` privilege. | DC-325                                 |
+
+## Lasso - Version 4.2.0
+
+Released: 18 May 2022
+
+Lasso Version 4.2.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                                               | Addresses |
+| ----------- | ----------------------------------------------------------------------------------------- | --------- |
+| Enhancement | Now collect systemd information for HARP.                                                 | DC-331    |
+| Enhancement | Now collect configuration files included in `pgbouncer.ini`.                              | DC-322    |
+| Enhancement | Added support to allow the user to specify custom paths to pgbouncer configuration files. | DC-321    |
+| Enhancement | Now gather etcdctl endpoint commands, if this is the consensus database.                  | DC-309    |
+| Enhancement | Added lasso option to specify a different path for harp's `config.yml`.                   | DC-306    |
+| Enhancement | Added helper function to get harp configuration file.                                     | DC-305    |
+| Enhancement | Added ability to get harpctl outputs.                                                     | DC-304    |
+| Enhancement | Added ability to get HARP `config.yml`.                                                   | DC-303    |
+| Enhancement | Added ability to identify all the pgbouncer instances on the node.                        | DC-157    |
+| Enhancement | Now collect systemctl output for pgbouncer.                                               | DC-156    |
+| Enhancement | Now collect `pgbouncer.ini` configuration file.                                           | DC-151    |
+| Other       | Fixed SLES smoke tests that are failing.                                                  | DC-349    |
+| Other       | Added support for Ubuntu 22.04.                                                           | DC-284    |
+| Bug fix     | Now redact sslpassword.                                                                   | DC-348    |
+
+## Lasso - Version 4.1.1
+
+Released: 10 May 2022
+
+Lasso Version 4.1.1 includes the following enhancements and bug fixes:
+
+| Type    | Description                                                    | Addresses |
+| ------- | -------------------------------------------------------------- | --------- |
+| Bug fix | Removed the psycopg2-binary warning from the bundle execution. |           |
+
+## Lasso - Version 4.1.0
+
+Released: 03 May 2022
+
+Lasso Version 4.1.0 includes the following enhancements and bug fixes:
+
+| Type        | Description                                                   | Addresses |
+| ----------- | ------------------------------------------------------------- | --------- |
+| Enhancement | Built PPC64le Lasso bundle.                                   | DC-276    |
+| Enhancement | Added `.exe` extension to Windows artifacts.                  | DC-285    |
+| Other       | Added smoke tests for Almalinux 8 (x86\_64).                  | DC-294    |
+| Other       | Added smoke tests for RHEL (x86\_64 and PPC64le).             | DC-295    |
+| Other       | Added smoke tests for SLES 12 (x86\_64 and PPC64le).          | DC-296    |
+| Other       | Added smoke tests for SLES 15 (x86\_64 and PPC64le).          | DC-297    |
+| Bug fix     | Lasso now uses MD5 hashing of tarball in FIPS enable systems. | DC-310    |
+
+## Lasso - Version 4.0.0
+
+Released: 30 Mar 2022
+
+Lasso Version 4.0.0 includes the following enhancements and bug fixes:
+
+| Type    | Description                                                                                                                                                                               | Addresses |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| Feature | Rebranded Data Collector to Lasso, the diagnostic tool from EDB.                                                                                                                          |           |
+| Feature | Rebranding: Updated copyright notes.                                                                                                                                                      | DC-239    |
+| Feature | Rebranding: Updated license on all files.                                                                                                                                                 | DC-228    |
+| Feature | Rebranding: Changed the name of the bundle to reflect the new brand of the tool.                                                                                                          | DC-208    |
+| Feature | Rebranding: Generated output tarball now has the new brand and is identified with EDB.                                                                                                    | DC-49     |
+| Feature | Rebranding: The connection Lasso creates to the database now sets the `application_name`to `edb-lasso` to identify the process Lasso is running.                                          | DC-222    |
+| Feature | Rebranding: Updated the documentation to reflect the new brand name.                                                                                                                      | DC-184    |
+| Feature | Added a report that gathers output from `pg_replication_origin_status` to help with logical replication diagnostics. This includes native logical replication and others like BDR or xDB. | DC-232    |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

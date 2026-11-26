@@ -1,0 +1,65 @@
+---
+title: EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.3 release notes
+product: EDB Postgres® AI for CloudNativePG™ Global Cluster
+version: 1.2.2
+url: https://www.enterprisedb.com/docs/postgres_distributed_for_kubernetes/1/rel_notes/1_1_3_rel_notes/
+lastModified: 2026-09-30T12:30:26-07:00
+---
+
+# EDB Postgres® AI for CloudNativePG™ Global Cluster 1.1.3 release notes
+
+Released: 24 September 2025
+
+## Highlights
+
+- _New PGD Version Support:_ PGD version 5.9 is now supported
+- _New PG4K operator Version Support:_ PG4K operator v1.26.1 is now supported
+
+## Supported versions
+
+- Kubernetes: 1.33, 1.32, 1.31, and 1.30
+
+- Latest PGD with PostgreSQL: 17, 16, 15, 14, and 13
+
+  PostgreSQL 17.6 is the default image
+
+  PostgreSQL 13 support ends on November 12, 2025
+
+- PG4K: v1.25.0, v1.25.1, v1.25.2, v1.26.0,v1.26.1
+
+## Default images
+
+- PGD: `docker.enterprisedb.com/k8s_enterprise_pgd/postgresql-pgd:17.6-pgd590-ubi9`
+- PGD proxy: `docker.enterprisedb.com/k8s_enterprise_pgd/edb-pgd-proxy:5.9.0-ubi9`
+
+This release of EDB Postgres® AI for CloudNativePG™ Global Cluster includes the following:
+
+## Features
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>Barman Cloud Plugin</summary><p>Update the default Barman cloud plugin to v0.6.0. Support customization of the
+plugin image from the operator configmap</p></details></td><td>#1068, #1421</td></tr>
+<tr><td><details><summary>PGD Group Configuration</summary><p>Add support to configure instance pod env through pgdgroup YAML</p></details></td><td>#1509</td></tr>
+</tbody></table>
+
+## Security Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td>Update the operator base image to latest version of ubi-micro v9.6.</td><td>#1514</td></tr>
+</tbody></table>
+
+## Bug Fixes
+
+<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>
+<tr><td><details><summary>PGD 5.9 compatibility</summary><p>enable_raft for subgroup could not be enabled with PGD 5.9</p></details></td><td>#1516</td></tr>
+<tr><td><details><summary>VolumeSnapshot restore</summary><p>restore from VolumeSnapshot sometimes hangs during cleanup metadata phase</p></details></td><td>#1547</td></tr>
+<tr><td><details><summary>Physical join logging</summary><p>Pipe the physical join (bdr_init_physical command) log with the PostgreSQL log
+into the physical join job</p></details></td><td>#1515</td></tr>
+<tr><td><details><summary>TLS and certificates</summary><p>Mount the correct serverTLSSecret in the physical join job, fix physical join
+job failure when a self-signed certificate is used and only the private key is
+shared across regions</p></details></td><td>#1505</td></tr>
+<tr><td>Operator configmap name to use pgd-operator-controller-manager-config in all cases</td><td>#1493</td></tr>
+<tr><td>Show major version upgrade in PGDGroup phase</td><td>#1333</td></tr>
+</tbody></table>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

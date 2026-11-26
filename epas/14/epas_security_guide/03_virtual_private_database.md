@@ -1,0 +1,54 @@
+---
+title: Virtual private database
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_security_guide/03_virtual_private_database/
+lastModified: 2026-08-27T17:18:06+05:30
+---
+
+# Virtual private database
+
+<div id="virtual_private_database" class="registered_link"></div>
+
+_Virtual Private Database_ is a type of fine-grained access control using security policies. _Fine-grained access control_ means that access to data can be controlled down to specific rows as defined by the security policy.
+
+The rules that encode a security policy are defined in a _policy function_, which is an SPL function with certain input parameters and return value. The _security policy_ is the named association of the policy function to a particular database object, typically a table.
+
+In EDB Postgres Advanced Server, the policy function can be written in any language supported by EDB Postgres Advanced Server such as SQL and PL/pgSQL in addition to SPL.
+
+> **Note**
+>
+> The database objects currently supported by EDB Postgres Advanced Server Virtual Private Database are tables. Policies cannot be applied to views or synonyms.
+
+The advantages of using Virtual Private Database are the following:
+
+- Provides a fine-grained level of security. Database object level privileges given by the `GRANT` command determine access privileges to the entire instance of a database object, while Virtual Private Database provides access control for the individual rows of a database object instance.
+- A different security policy can be applied depending upon the type of SQL command (`INSERT, UPDATE, DELETE, or SELECT`).
+- The security policy can vary dynamically for each applicable SQL command affecting the database object depending upon factors such as the session user of the application accessing the database object.
+- Invocation of the security policy is transparent to all applications that access the database object and thus, individual applications don't have to be modified to apply the security policy.
+- Once a security policy is enabled, it is not possible for any application (including new applications) to circumvent the security policy except by the system privilege noted by the following.
+- Even superusers cannot circumvent the security policy except by the system privilege noted by the following.
+
+> **Note**
+>
+> The only way security policies can be circumvented is if the `EXEMPT ACCESS POLICY` system privilege has been granted to a user. The `EXEMPT ACCESS POLICY` privilege should be granted with extreme care as a user with this privilege is exempted from all policies in the database.
+
+> **Note: EXEMPT ACCESS POLICY isn't preserved by pg\_dumpall --no-role-passwords**
+>
+> If you run `pg_dumpall` with `--no-role-passwords`, the `rolpolicyexempt` attribute isn't included in the dump and defaults to `false` on restore. Any role that held `EXEMPT ACCESS POLICY` on the source cluster loses that exemption after the restore. This is a known limitation, since preserving the attribute would require dumping the password-related columns it's stored alongside.
+>
+> Before dumping with `--no-role-passwords`, identify affected roles:
+>
+> ```sql
+> SELECT rolname FROM pg_authid WHERE rolpolicyexempt = true;
+> ```
+>
+> After restoring, reapply the exemption for each affected role:
+>
+> ```sql
+> ALTER USER <role> EXEMPT ACCESS POLICY;
+> ```
+
+The `DBMS_RLS` package provides procedures to create policies, remove policies, enable policies, and disable policies.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

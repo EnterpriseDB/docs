@@ -1,0 +1,51 @@
+---
+title: Live query plan extension settings
+description: Reference for the settings of the whpg_live_query_plan extension that WEM uses to show the live plan of a running query.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/reference/live-query-plan-extension/
+lastModified: 2026-11-24T14:37:52Z
+---
+
+# Live query plan extension settings
+
+Set these parameters on the WarehousePG cluster, not in WEM, to tune the `whpg_live_query_plan` extension behind the live plan. The defaults work for most clusters. See [Viewing query plans](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/queries/live-query-plan/).
+
+## Setting the extension's parameters
+
+All of the extension's parameters use the `whpg_live_query_plan.` prefix. Set them with `gpconfig` as `gpadmin` on the coordinator. A parameter marked **Restart** in the [extension](#extension-parameters) and [WarehousePG](#warehousepg-parameters-the-live-plan-depends-on) parameter tables takes effect after you run `gpstop -raf`. A parameter marked **Reload** takes effect after you run `gpstop -u`.
+
+For example:
+
+```bash
+gpconfig -c whpg_live_query_plan.max_slots -v 400
+gpstop -raf
+```
+
+To check the current value, run `SHOW whpg_live_query_plan.max_slots;`.
+
+## Extension parameters
+
+| Parameter                                   | Default            | Range          | Applies           | Description                                                                                                                                                                                                                                                     |
+| ------------------------------------------- | ------------------ | -------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `whpg_live_query_plan.max_slots`            | `0`                | 0–262143       | Restart           | Number of statements the extension can track at once. `0` uses the value of `max_connections`. A statement that starts when all slots are in use has no live plan. Each slot uses `whpg_live_query_plan.slot_bytes` of shared memory on the coordinator.        |
+| `whpg_live_query_plan.slot_bytes`           | `131072` (128 KiB) | 4096–268435456 | Restart           | Shared memory for the plan of each tracked statement, in bytes. The default holds about 454 steps. Raise it for statements with deep partition trees. A plan that doesn't fit is cut off, and `plan_truncated` is true in the output of `whpg_live_query_plan`. |
+| `whpg_live_query_plan.timing`               | `on`               | `on`, `off`    | Reload            | Record the time each step takes, as `EXPLAIN ANALYZE` does. This adds a small CPU cost to every tracked statement. With `off`, step times stay at zero and the other counters aren't affected.                                                                  |
+| `whpg_live_query_plan.summary_max_segments` | `5`                | 0–64           | Reload or session | Number of segments in each of the **Top segments by rows** and **Slowest segments by time** lists of a step. `0` leaves both lists empty. To change it for one SQL session, use `SET whpg_live_query_plan.summary_max_segments = 10;`.                          |
+| `whpg_live_query_plan.finished_rows`        | `16384`            | 0–4194304      | Restart           | Number of entries that keep the final counters of segments that have finished a step, so they stay in the totals and the skew while other segments still work. `0` turns this off.                                                                              |
+
+> **Note**
+>
+> Each entry uses 48 bytes on every segment and mirror, but not on the coordinator or standby. The default uses 768 KiB and the maximum uses 192 MiB. The oldest entries are overwritten first. A larger `finished_rows` makes every refresh of the live plan slower, because each segment scans all the entries. Raise it only when the totals of a long query lose finished segments while many short statements run.
+
+## WarehousePG parameters the live plan depends on
+
+The live plan also depends on these WarehousePG parameters. For the full descriptions of `shared_preload_libraries` and `track_activity_query_size`, see the configuration parameters in the WarehousePG [6](https://www.enterprisedb.com/docs/warehousepg/6/ref_guide/config_params/guc-list/) and [7](https://www.enterprisedb.com/docs/warehousepg/latest/ref_guide/config_params/guc-list/) documentation.
+
+| Parameter                   | Required value                                                       | Applies | Description                                                                                                                                                                                                                                                                        |
+| --------------------------- | -------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shared_preload_libraries`  | Includes `whpg_live_query_plan`                                      | Restart | Loads the extension on the coordinator, standby, every segment, and every mirror. Keep the libraries that are already listed. See [Installing the live query plan extension](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/installing/live-query-plan/). |
+| `gp_enable_query_metrics`   | `on`                                                                 | Restart | Collects the per-step counters on every segment. Without it, no plan is recorded.                                                                                                                                                                                                  |
+| `gp_instrument_shmem_size`  | 5 MB or more (default)                                               | Restart | Size of the shared memory for the per-step counters. Raise it, for example to `20MB`, if every step in the live plan shows no data or `gp_instrument_shmem_summary()` shows that the slots are exhausted.                                                                          |
+| `track_activity_query_size` | Large enough for your longest statement (1024 characters by default) | Restart | Number of characters WarehousePG keeps of a running statement. WEM doesn't run `EXPLAIN` on a statement that's cut, so its step details and **Text Plan** tab are off. For example, set it to `8kB`.                                                                               |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

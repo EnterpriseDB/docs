@@ -1,0 +1,52 @@
+---
+title: PURGE_QUEUE_TABLE
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/03_dbms_aqadm/07_purge_queue_table/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# PURGE\_QUEUE\_TABLE
+
+Use the `PURGE_QUEUE_TABLE` procedure to delete messages from a queue table. The signature is:
+
+```text
+PURGE_QUEUE_TABLE(
+  <queue_table> IN VARCHAR2,
+  <purge_condition> IN VARCHAR2,
+  <purge_options> IN aq$_purge_options_t)
+```
+
+## Parameters
+
+`queue_table`
+
+`queue_table` specifies the name of the queue table from which you're deleting a message.
+
+`purge_condition`
+
+Use `purge_condition` to specify a condition (a SQL `WHERE` clause) that the server evaluates when deciding which messages to purge.
+
+`purge_options`
+
+`purge_options` is an object of the type `aq$_purge_options_t`. An `aq$_purge_options_t` object contains:
+
+| Attribute       | Type    | Description                                                                                              |
+| --------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `block`         | Boolean | Specify `TRUE` to hold an exclusive lock on all queues in the table. The default is `FALSE`.             |
+| `delivery_mode` | INTEGER | `delivery_mode` specifies the type of message to purge. The only accepted value is `DBMS_AQ.PERSISTENT`. |
+
+## Example
+
+The following anonymous block removes any messages from the `work_order_table` with a value in the `completed` column of `YES`:
+
+```text
+DECLARE
+   purge_options dbms_aqadm.aq$_purge_options_t;
+BEGIN
+   dbms_aqadm.purge_queue_table('work_order_table', 'completed = YES',
+purge_options);
+  END;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

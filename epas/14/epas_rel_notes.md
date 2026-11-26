@@ -1,0 +1,79 @@
+---
+title: EDB Postgres Advanced Server release notes
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/
+lastModified: 2026-11-11T11:56:13Z
+---
+
+# EDB Postgres Advanced Server release notes
+
+EDB Postgres Advanced Server 14 is built on open-source PostgreSQL 14, which introduces myriad enhancements that enable databases to scale up and scale out in more efficient ways. PostgreSQL 14 has significant performance improvements, which includes an improved indexing and lookup system, a level up on query planning when using extended statistics, improved performance for queries that use aggregates or partitioned tables, and providing more ways to monitor activity within a PostgreSQL database. And along with highly requested features like parallelized vacuuming, incremental sorting, PostgreSQL 14 has a multitude of other new features and capabilities.
+
+The EDB Postgres Advanced Server (EDB Postgres Advanced Server) documentation describes the latest version of EDB Postgres Advanced Server 14 including minor releases and patches. The release notes in this section provide information on what was new in each release.
+
+| Version                                                                                     | Release date | Upstream merges                                                                                                          |
+| ------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| [14.25.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_25_0_rel_notes/)  | 12 Nov 2026  | [14.25](https://www.postgresql.org/docs/14/release-14-25.html)                                                           |
+| [14.24.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_24_0_rel_notes/)  | 13 Aug 2026  | [14.24](https://www.postgresql.org/docs/14/release-14-24.html)                                                           |
+| [14.23.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_23_0_rel_notes/)  | 14 May 2026  | [14.23](https://www.postgresql.org/docs/14/release-14-23.html)                                                           |
+| [14.22.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_22_0_rel_notes/)  | 26 Feb 2026  | [14.22](https://www.postgresql.org/docs/14/release-14-22.html)                                                           |
+| [14.21.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_21_0_rel_notes/)  | 12 Feb 2026  | [14.21](https://www.postgresql.org/docs/14/release-14-21.html)                                                           |
+| [14.20.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_20_0_rel_notes/)  | 13 Nov 2025  | [14.20](https://www.postgresql.org/docs/14/release-14-20.html)                                                           |
+| [14.19.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_19_0_rel_notes/)  | 14 Aug 2025  | [14.19](https://www.postgresql.org/docs/14/release-14-19.html)                                                           |
+| [14.18.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_18_0_rel_notes/)  | 08 May 2025  | [14.18](https://www.postgresql.org/docs/14/release-14-18.html)                                                           |
+| [14.17.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_17_0_rel_notes/)  | 20 Feb 2025  | [14.17](https://www.postgresql.org/docs/14/release-14-17.html)                                                           |
+| [14.16.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_16_0_rel_notes/)  | 13 Feb 2025  | [14.16](https://www.postgresql.org/docs/14/release-14-16.html)                                                           |
+| [14.15.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_15_0_rel_notes/)  | 21 Nov 2024  | [14.15](https://www.postgresql.org/docs/14/release-14-15.html)                                                           |
+| [14.14.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_14_0_rel_notes/)  | 14 Nov 2024  | [14.14](https://www.postgresql.org/docs/14/release-14-14.html)                                                           |
+| [14.13.1](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_13_1_rel_notes/)  | 16 Aug 2024  |                                                                                                                          |
+| [14.13.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_13_0_rel_notes/)  | 08 Aug 2024  | [14.13](https://www.postgresql.org/docs/14/release-14-13.html)                                                           |
+| [14.12.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_12_0_rel_notes/)  | 09 May 2024  | [14.12](https://www.postgresql.org/docs/14/release-14-12.html)                                                           |
+| [14.11.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_11_0_rel_notes/)  | 08 Feb 2024  | [14.11](https://www.postgresql.org/docs/14/release-14-11.html)                                                           |
+| [14.10.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_10_0_rel_notes/)  | 09 Nov 2023  | [14.10](https://www.postgresql.org/docs/14/release-14-10.html)                                                           |
+| [14.9.1](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_9_1_rel_notes/)    | 25 Sep 2023  |                                                                                                                          |
+| [14.9.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_9_0_rel_notes/)    | 21 Aug 2023  | [14.9](https://www.postgresql.org/docs/14/release-14-9.html)                                                             |
+| [14.8.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_8_0_rel_notes/)    | 11 May 2023  | [14.8](https://www.postgresql.org/docs/14/release-14-8.html)                                                             |
+| [14.7.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_7_0_rel_notes/)    | 10 Feb 2023  | [14.7](https://www.postgresql.org/docs/14/release-14-7.html)                                                             |
+| [14.6.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_6_0_rel_notes/)    | 10 Nov 2022  | [14.6](https://www.postgresql.org/docs/14/release-14-6.html)                                                             |
+| [14.5.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_5_0_rel_notes/)    | 11 Aug 2022  | [14.5](https://www.postgresql.org/docs/14/release-14-5.html)                                                             |
+| [14.4.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_4_0_rel_notes/)    | 16 Jun 2022  | [14.4](https://www.postgresql.org/docs/14/release-14-4.html)                                                             |
+| [14.3.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_3_0_rel_notes/)    | 12 May 2022  | [14.3](https://www.postgresql.org/docs/14/release-14-3.html)                                                             |
+| [14.2.1](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/19_epas14.2.1_rel_notes/) | 10 Feb 2022  | [14.2](https://www.postgresql.org/docs/14/release-14-2.html)                                                             |
+| [14.1.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/20_epas14_rel_notes/)     | 01 Dec 2021  | [14.0](https://www.postgresql.org/docs/14/release-14.html), [14.1](https://www.postgresql.org/docs/14/release-14-1.html) |
+
+## Support announcements
+
+### Backup and Recovery Tool (BART) incompatibility
+
+The EDB Backup and Recovery Tool (BART) isn't supported by EDB Postgres Advanced Server or PostgreSQL version 14 and later. We strongly recommend that you move to [Barman](https://www.enterprisedb.com/docs/supported-open-source/barman/) or [PgBackRest](https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/) as your backup recovery tool.
+
+- [Version 14.25.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_25_0_rel_notes/): Released: 12 Nov 2026
+- [Version 14.24.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_24_0_rel_notes/): Released: 13 Aug 2026
+- [Version 14.23.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_23_0_rel_notes/): Released: 14 May 2026
+- [Version 14.22.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_22_0_rel_notes/): Released: 26 Feb 2026
+- [Version 14.21.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_21_0_rel_notes/): Released: 12 Feb 2026
+- [Version 14.20.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_20_0_rel_notes/): Released: 13 Nov 2025
+- [Version 14.19.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_19_0_rel_notes/): Released: 14 Aug 2025
+- [Version 14.18.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_18_0_rel_notes/): Released: 09 May 2025
+- [Version 14.17.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_17_0_rel_notes/): Released: 20 Feb 2025
+- [Version 14.16.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_16_0_rel_notes/): Released: 13 Feb 2025
+- [Version 14.15.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_15_0_rel_notes/): Released: 21 Nov 2024
+- [Version 14.14.0 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_14_0_rel_notes/): Released: 14 Nov 2024
+- [Version 14.13.1 ](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_13_1_rel_notes/): Released: 16 Aug 2024
+- [Version 14.13.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_13_0_rel_notes/): Released: 8 Aug 2024
+- [Version 14.12.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_12_0_rel_notes/): Released: 9 May 2024
+- [Version 14.11.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_11_0_rel_notes/): Released: 8 Feb 2024
+- [Version 14.10.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_10_0_rel_notes/): Released: 09 Nov 2023
+- [Version 14.9.1](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_9_1_rel_notes/): Released: 22 Sep 2023
+- [Version 14.9.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_9_0_rel_notes/): Released: 21 Aug 2023
+- [Version 14.8.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_8_0_rel_notes/): EDB Postgres Advanced Server 14.8.0 includes the following enhancements and bug fixes:
+- [Version 14.7.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_7_0_rel_notes/): EDB Postgres Advanced Server 14.7.0 includes the following enhancements and bug fixes:
+- [Version 14.6.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_6_0_rel_notes/): EDB Postgres Advanced Server 14.6.0 includes the following enhancements and bug fixes:
+- [Version 14.5.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_5_0_rel_notes/): EDB Postgres Advanced Server 14.5.0 includes the following bug fixes:
+- [Version 14.4.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_4_0_rel_notes/): EDB Postgres Advanced Server 14.4.0 includes the following bug fixes:
+- [Version 14.3.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/epas14_3_0_rel_notes/): EDB Postgres Advanced Server 14.3.0 includes the following bug fixes:
+- [Version 14.2.1](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/19_epas14.2.1_rel_notes/): EDB Postgres Advanced Server 14.2.10 includes the following bug fixes:
+- [Version 14.1.0](https://www.enterprisedb.com/docs/epas/14/epas_rel_notes/20_epas14_rel_notes/): New features, enhancements, bug fixes, and other changes in EDB Postgres Advanced Server 14 include:
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

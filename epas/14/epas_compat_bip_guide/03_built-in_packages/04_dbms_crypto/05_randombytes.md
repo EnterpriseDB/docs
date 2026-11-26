@@ -1,0 +1,36 @@
+---
+title: RANDOMBYTES
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_bip_guide/03_built-in_packages/04_dbms_crypto/05_randombytes/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# RANDOMBYTES
+
+The `RANDOMBYTES` function returns a `RAW` value of the specified length, containing cryptographically random bytes. The signature is:
+
+```text
+RANDOMBYTES
+  (<number_bytes> IN INTEGER) RETURNS RAW
+```
+
+## Parameter
+
+`number_bytes`
+
+`number_bytes` specifies the number of random bytes to return.
+
+## Examples
+
+This example uses `RANDOMBYTES` to return a value that is 1024 bytes long:
+
+```text
+DECLARE
+  result RAW(1024);
+BEGIN
+  result := DBMS_CRYPTO.RANDOMBYTES(1024);
+END;
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,45 @@
+---
+title: COUNT
+product: EDB Postgres Advanced Server
+version: "14"
+url: https://www.enterprisedb.com/docs/epas/14/epas_compat_spl/11_collection_methods/01_count/
+lastModified: 2023-02-14T16:10:29+05:30
+---
+
+# COUNT
+
+<div id="count" class="registered_link"></div>
+
+`COUNT` is a method that returns the number of elements in a collection. The syntax for using `COUNT` is:
+
+```text
+<collection>.COUNT
+```
+
+Where `collection` is the name of a collection.
+
+For a varray, `COUNT` always equals `LAST`.
+
+This example shows that an associative array can be sparsely populated, with gaps in the sequence of assigned elements. `COUNT` includes only the elements that were assigned a value.
+
+```text
+DECLARE
+    TYPE sparse_arr_typ IS TABLE OF NUMBER INDEX BY BINARY_INTEGER;
+    sparse_arr      sparse_arr_typ;
+BEGIN
+    sparse_arr(-100)  := -100;
+    sparse_arr(-10)   := -10;
+    sparse_arr(0)     := 0;
+    sparse_arr(10)    := 10;
+    sparse_arr(100)   := 100;
+    DBMS_OUTPUT.PUT_LINE('COUNT: ' || sparse_arr.COUNT);
+END;
+```
+
+The following output shows that there are five populated elements included in `COUNT`:
+
+```text
+COUNT: 5
+```
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

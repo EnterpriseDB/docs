@@ -1,0 +1,62 @@
+---
+title: Postgres dashboards
+description: Learn how to use Postgres dashboards to monitor the performance and health of Postgres databases in Hybrid Manager.
+product: EDB Postgres AI
+version: 1.4.5 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.4/hybrid-manager/using_hybrid_manager/monitoring/monitoring_grafana/grafana_dashboards/postgres_dashboards/
+lastModified: 2026-08-18T11:48:54+05:30
+---
+
+# Postgres dashboards
+
+These dashboards were designed by EDB to provide insights into the performance and health of Postgres databases you manage or monitor with Hybrid Manager (HM).
+
+## Resource Availability
+
+**Description:** Shows the underlying hardware resource utilization (cores, memory, CPU) of the nodes hosting your Postgres instances.
+
+**Metrics:** Available and total cores per node, available and total memory per node, CPU requests and limits per node, Postgres pods per node count, pod status, and more.
+
+**Usage:** Use this to identify capacity bottlenecks and see if you have oversubscribed and if nodes have been overscheduled.
+
+## PGD Status
+
+For distributed high availability (DHA or PGD) clusters only.
+
+**Description:** Provides an overview of how your distributed high availability PGD cluster is performing, focusing on its replication capabilities.
+
+**Metrics:** PGD and BDR versioning, data node status, version, Raft state and metrics, BDR worker state and metrics, replication status, connections, throughput, and more.
+
+**Usage:** Gives a central view of the health and synchronization status of your cluster. Identify nodes that are lagging or unhealthy and monitor the overall performance of the distributed setup.
+
+## Postgres Estate Statistics
+
+![Postgres Estate Statistics dashboard](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/edb-postgres-ai/1.4/hybrid-manager/images/postgres_estatestats_dashboard.png)
+
+**Description:** Offers a fleet-wide view of the clusters you're running.
+
+**Metrics:** List and count of all running clusters, their age, and latest restore stamp.
+
+**Usage:** Provides a high-level overview of the clusters under your estate.
+
+## Postgres logs
+
+**Description:** You can view Postgres server logs.
+
+**Metrics:** Logs in text form.
+
+**Usage:** Provides a visual overview of Postgres log data, enabling quick identification of trends and errors. Use this for real-time log analysis and troubleshooting.
+
+## Postgres Status
+
+![Postgres Status dashboard](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/edb-postgres-ai/1.4/hybrid-manager/images/postgres_status_dashboard.png)
+
+For all cluster types (single-node and multiple nodes).
+
+**Description:** Provides an overview of how your individual Postgres instances are performing.
+
+**Metrics:** Cluster status, Postgres version, pod status, replication status and lag, connections, throughput, resource utilization, WAL filing status, and more.
+
+**Usage:** Provides a central view of the health and activity of individual Postgres databases. Identify instances with high load, connection issues, replication lag, or other performance issues that may require investigation.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

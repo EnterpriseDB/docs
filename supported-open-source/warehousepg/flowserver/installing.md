@@ -1,0 +1,169 @@
+---
+title: Installing and upgrading FlowServer for WarehousePG
+description: Learn how to install and upgrade FlowServer for WarehousePG.
+product: FlowServer for WarehousePG
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/flowserver/installing/
+lastModified: 2026-10-08T12:03:48+01:00
+---
+
+# Installing and upgrading FlowServer for WarehousePG
+
+You can run the FlowServer service and the FlowCLI utility on any host that is able to reach your WarehousePG (WHPG) cluster. However, you must also install the packages on every host in your WHPG cluster.
+
+## Prerequisites
+
+- WarehousePG (WHPG) version 6.x running on RHEL 7 or RHEL 8.
+- WarehousePG version 7.x running on RHEL 8 or RHEL 9.
+
+## Network requirements
+
+The following table lists the connection requirements among the different components:
+
+| Source     | Destination                         | Protocol |
+| ---------- | ----------------------------------- | -------- |
+| FlowServer | WarehousePG coordinator             | libpq    |
+| FlowServer | WarehousePG segments                | HTTP     |
+| FlowServer | Kafka broker hosts / RabbitMQ hosts | TCP      |
+| FlowCLI    | FlowServer                          | gRPC     |
+
+## Download and install the package on your WarehousePG cluster
+
+1. Download the package from the EDB repository:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo dnf download whpg<whpg_major_version>-flow-server
+   ```
+
+   Where `<whpg_major_version>` is your WHPG version (6 or 7).
+
+2. Create a file `all_hosts` on your WHPG coordinator, which lists all hosts in the WHPG cluster. For example:
+
+   ```ini
+   cdw
+   scdw
+   sdw1
+   sdw2
+   sdw3
+   ```
+
+3. From the coordinator, use the `gpssh` utility to install the packages from the coordinator onto every other host in the cluster:
+
+   ### RHEL 8, 9
+
+   ```bash
+   gpssh -f all_hosts -e 'sudo dnf install -y whpg<whpg_major_version>-flow-server'
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   gpssh -f all_hosts -e 'sudo yum install -y whpg<whpg_major_version>-flow-server'
+   ```
+
+4. (Optional) Create the FlowServer extension by connecting to a database on your WHPG cluster and running:
+
+```SQL
+CREATE EXTENSION fs_formatter;
+```
+
+If you don't create the extension manually, it will be automatically created when a job starts.
+
+## Download and install the package on your dedicated FlowServer host / FlowCLI host (optional)
+
+If you're running FlowServer on a different host to your WHPG cluster, or if you're planning to run FlowCLI commands from a different host, you must also download and install the packages on these hosts.
+
+1. Download the package from the EDB repository:
+
+   ```bash
+   export EDB_SUBSCRIPTION_TOKEN=<your-token>
+   export EDB_REPO=gpsupp
+   curl -1sSLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_REPO/setup.rpm.sh" | sudo -E bash
+   sudo dnf download whpg<whpg_major_version>-flow-server
+   ```
+
+2. Install the package on the FlowServer dedicated host:
+
+   ### RHEL 8, 9
+
+   ```bash
+   sudo dnf install -y whpg<whpg_major_version>-flow-server
+   ```
+
+   ### RHEL 7
+
+   ```bash
+   sudo yum install -y whpg<whpg_major_version>-flow-server
+   ```
+
+## Configure FlowServer
+
+Create a configuration file `flow_server.json` on the host that will be running the FlowServer service and include the following content. The host might be the host within your WHPG cluster, or a dedicated server.
+
+```ini
+{
+    "Host": "",
+    "Port": 6060,
+    "Gpfdist": {
+        "Host": "",
+        "Port": 6070,
+        "ReuseTables": true
+    },
+    "Prometheus": {
+        "Host": "",
+        "Port": 9080,
+        "MetricsPath": "/flow_metrics"
+    },
+    "DebugPort": 6080,
+    "Logging": {
+        "SplitLogByJob": false,
+        "FrontendLevel": "debug",
+        "BackendLevel": "info"
+    }
+}
+```
+
+Where:
+
+- `Host`: The hostname or IP address of the server. The default is an empty string, which means it listens on all interfaces.
+- `Port`: The port number on which the server listens for incoming connections. The default is 6060.
+- `Gpfdist`: Configuration for the internal `gpfdist` service that streams data to WarehousePG segments.
+  - `Host`: The hostname or IP address of the `gpfdist` service. The default is an empty string, which means it listens on all interfaces.
+  - `Port`: The port number on which the `gpfdist` service listens. The default is 6070.
+  - `ReuseTables`: Whether to reuse existing external tables across jobs. The default is `false`.
+- `Prometheus`: Optional. Enables a Prometheus metrics endpoint for scraping FlowServer metrics.
+- `DebugPort`: Optional. Enables the debug server for runtime profiling and diagnostics.
+- `Logging`: Controls log verbosity for the frontend (stdout) and backend (log file).
+
+For a full description of all parameters, see the [flow\_server.json reference](https://www.enterprisedb.com/docs/supported-open-source/warehousepg/flowserver/reference/flow_server_json/).
+
+## Start the FlowServer service
+
+Once you have configured the settings, start the FlowServer service in the background on your preferred host, pointing to the configuration file `flow_server.json` you just created:
+
+```bash
+nohup ./flowserver -c /path/flow_server.json &
+```
+
+To check whether the service is running:
+
+```bash
+ps aux | grep flowserver
+```
+
+## Upgrading FlowServer
+
+Upgrading to a newer version of FlowServer requires no data or configuration migration. Upgrade by replacing the `flowserver` binary or reinstalling the package on every host, using the same steps as a fresh install.
+
+Stop your jobs, then stop the `flowserver` process before installing the new package:
+
+```bash
+flowcli stop --all
+pkill flowserver
+```
+
+FlowServer doesn't persist submitted job definitions across restarts, so after you install the new package and start `flowserver` again, resubmit your job configuration files and start them again. Each job resumes from the last offset committed to WHPG rather than reprocessing data from the beginning, so no progress is lost.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

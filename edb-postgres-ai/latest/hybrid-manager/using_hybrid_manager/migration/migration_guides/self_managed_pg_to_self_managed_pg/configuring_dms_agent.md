@@ -1,0 +1,423 @@
+---
+title: Configuring and running the EDB DMS agent
+description: Create migration credentials, configure the EDB DMS agent in reader and writer mode for a self-managed Postgres-to-Postgres migration, and verify both endpoints appear in HM.
+product: EDB Postgres AI
+version: Innovation Release
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/configuring_dms_agent/
+lastModified: 2026-10-14T11:17:37+02:00
+---
+
+# Configuring and running the EDB DMS agent
+
+Because the destination is a self-managed Postgres database, this migration requires two DMS agent instances: one in reader mode to read changes from the source, and one in writer mode to apply them to the destination. Install and configure both before creating a migration.
+
+## Prerequisites
+
+- Ensure the machine where you're running the DMS agents has Java/OpenJDK 17 or later installed.
+
+- [Install the EDB DMS agent](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/installing_agent/).
+
+## Creating migration credentials
+
+Migration credentials authenticate the DMS agent to Hybrid Manager (HM). You need one set of credentials per HM project, and both the reader and writer agents use the same credentials.
+
+1. In the HM console, select the project you're using for your migration.
+
+2. Select **Migrate > Credentials**.
+
+3. Select **Create Migration Credential**, enter a name, and select **Create Migration Credential**. A `credentials.zip` file is downloaded to your machine.
+
+   > **Note**
+   >
+   > Store the credentials safely. If you lose them, you'll need to revoke this set and create new ones.
+
+4. Unzip the downloaded file and copy the credentials folder to each machine where you installed a DMS agent — for example, to `$HOME/credentials/`. If you use a different path, update `CREDENTIAL_DIRECTORY_PATH` in each script to match.
+
+   The folder contains:
+
+   - `int.crt`
+   - `int.truststore.p12`
+   - `client.keystore.p12`
+   - `client-key.pem`
+   - `client-cert.pem`
+
+## Configuring the reader DMS agent
+
+The reader agent connects to your source Postgres database and streams changes to HM.
+
+1. Open `/opt/cdcagent/run-cdcagent.sh` on the reader machine with write permissions.
+
+2. Set the required variables. Optional parameters are commented out by default — uncomment and configure any that apply to your environment.
+
+   See the [parameter reference](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/) for details.
+
+   > **Important: Required for the Schema and data and Schema only migration scopes**
+   >
+   > `DBCONFIG_DATABASES_<N>__RESOURCEID` is required if you plan to use the **Schema and data** or **Schema only** migration scope. The value must match the `resource_id` set for this database in the EDB Postgres AI agent's `beacon_agent.yaml`. Without it, HM can't resolve the Migration Portal project for the source database and the migration will fail.
+
+   ```shell
+   #!/bin/bash -e
+   # run-cdcagent.sh
+   #
+   # This script provides a convenient place to specify
+   # environment variables used to configure the
+   # EDB Data Migration Service Agent.
+   #
+
+   ##########################################
+   # DMS Agent General Configuration       #
+   ##########################################
+
+   # This ID is used to identify DMS Agent
+   # and is specified by the user.
+   export DBCONFIG_ID=<source_name_of_choice>
+
+   # Determine the run mode of the DMS Agent
+   # The run mode can be set to either 'reader' or 'writer'
+   # 'reader' mode is used to read changes from a source database
+   # 'writer' mode is used to write changes to a target database
+   export RUN_MODE=reader
+
+   # This is the DMS backend service used by the Agent
+   # Obtain this value from the HM console Sources or Destinations migration pages
+   export RW_SERVICE_HOST=<rw_service_host>
+
+   ##########################################
+   # DMS Agent TLS Configuration           #
+   ##########################################
+
+   # You need to create migration credentials in EDB Postgres AI platform
+   # and set the path of the credentials directory
+   export CREDENTIAL_DIRECTORY_PATH=$HOME/credentials
+
+   ##########################################
+   # DMS Agent DB Configuration            #
+   ##########################################
+
+   # A sample configuration to create a single Postgres database connection:
+   export DBCONFIG_DATABASES_0__TYPE=POSTGRES
+   export DBCONFIG_DATABASES_0__HOSTNAME=<localhost/host>
+   export DBCONFIG_DATABASES_0__PORT=<5432>
+   # The CATALOG is the database name
+   export DBCONFIG_DATABASES_0__CATALOG=<source>
+   export DBCONFIG_DATABASES_0__USERNAME=<postgres>
+   # The password env can be set without specifying it here
+   # but the env structure looks like this
+   export DBCONFIG_DATABASES_0__PASSWORD=<password>
+   # Required for 'Schema and data' or 'Schema only' scope.
+   # Must match resource_id in beacon_agent.yaml.
+   #export DBCONFIG_DATABASES_0__RESOURCEID=<resource_id>
+
+   # Table filters for databases, only tables passing the filter will be discovered and therefore can be chosen for migration:
+   # - Format: a comma-separated list of tokens in the form `schema.table`
+   # - Wildcard: use `*` for schema or table (for example: `public.*` or `*.mytable`)
+   # - Semantics:
+   #    * If `includeList` is absent/empty -> all tables are included
+   #    * If `includeList` is present -> only tables matching at least one include pattern are considered
+   #    * If `excludeList` is absent/empty -> no table is excluded
+   #    * If `excludeList` is present -> only tables matching at least one exclude pattern are considered
+   #    * `excludeList` has higher priority: a table matching any exclude pattern is always excluded
+   # Examples:
+   #export DBCONFIG_DATABASES_0__INCLUDELIST=public.*,public2.table1
+   #export DBCONFIG_DATABASES_0__EXCLUDELIST=public.ignored_table,public2.ignored_table
+
+   # SSL mode: STRICT (verify-full), DEFAULT (require), WEAK (prefer/allow plaintext)
+   #export DBCONFIG_DATABASES_0__SSLMODE=DEFAULT
+
+   # TCP connection settings (for dead connection detection)
+   # Socket timeout in seconds (default: 600 for writer, 60 for reader)
+   #export DBCONFIG_DATABASES_0__SOCKETTIMEOUT=600
+   # Enable TCP keepalive probes (default: true)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVE=true
+   # Writer-mode TCP keepalive timing for long-running operations
+   # used during PK application and post-snapshot deduplication
+   # Seconds before first keepalive probe (default: 60)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESIDLE=60
+   # Seconds between keepalive retries (default: 10)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESINTERVAL=10
+   # Max failed probes before connection is dead (default: 6)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESCOUNT=6
+
+   # Escape hatch for arbitrary JDBC driver properties (format: key=value;key=value)
+   # These are applied after defaults but before explicit settings (SSLMODE, SOCKETTIMEOUT, etc.)
+   # PostgreSQL examples: ApplicationName=DMSAgent;prepareThreshold=0
+   #export DBCONFIG_DATABASES_0__JDBCOPTIONS=ApplicationName=DMSAgent
+
+   # You can increase the index to configure more than
+   # one database for the DMS Agent
+   #export DBCONFIG_DATABASES_1__TYPE=POSTGRES
+   #export DBCONFIG_DATABASES_1__HOSTNAME=<localhost/host>
+   #export DBCONFIG_DATABASES_1__PORT=<5432>
+   #export DBCONFIG_DATABASES_1__CATALOG=<source>
+   #export DBCONFIG_DATABASES_1__USERNAME=<postgres>
+   #export DBCONFIG_DATABASES_1__PASSWORD=<password>
+   #export DBCONFIG_DATABASES_1__RESOURCEID=<resource_id>
+
+   ##########################################
+   # Optional Parameters Below              #
+   ##########################################
+
+   # Enables performance metrics reporting to HM. Required for the
+   # Migration details > Metrics tab to populate for this agent.
+   # Recommended for all production migrations.
+   #export METRICS_TASK_ENABLED=true
+
+   # FIPS mode can be enabled by setting the FIPS_MODE env variable to true
+   #export FIPS_MODE=true
+
+   # Postgres sources only, for the Schema and data scope:
+   # copies Postgres large object (pg_largeobject) content when the migration
+   # completes. Set this on the reader agent only — the writer picks it up
+   # automatically. See the parameter reference for the related
+   # LO_SNAPSHOT_* tuning parameters.
+   #export LO_SNAPSHOT_ENABLED=true
+
+   # Configure logging
+   # Loglevel for the entire Quarkus application and underlying components
+   # WARNING: Enabling this loglevel is extremely verbose
+   #export QUARKUS_LOG_LEVEL=DEBUG
+   # Loglevel for the EDB package
+   # Preferred mode for debugging issues related to the logic of the agent
+   #export QUARKUS_LOG_CATEGORY__COM_ENTERPRISEDB__LEVEL=DEBUG
+
+   cd "$(dirname "$0")"
+
+   echo "Starting in mode: $RUN_MODE"
+
+   # JDK-8241239: disable JSSE's TLS 1.3 AES-GCM KeyUpdate (auto-fired ~137GB) that deadlocks a
+   # blocking SSLSocket during a large snapshot read
+   KEYLIMITS_PROPS="$(mktemp)"
+   printf '%s\n' 'jdk.tls.keyLimits=AES/GCM/NoPadding KeyUpdate 2^60, ChaCha20-Poly1305 KeyUpdate 2^60' > "$KEYLIMITS_PROPS"
+
+   case "$RUN_MODE" in
+     reader|writer)
+       # RUN_MODE env var auto-maps to the run.mode config property via MicroProfile
+       # Config's standard env-var-to-property naming rule (RUN_MODE -> run.mode).
+       exec java -Djava.security.properties="$KEYLIMITS_PROPS" -jar ./quarkus-run.jar
+       ;;
+     *)
+       echo "Unknown RUN_MODE: $RUN_MODE (expected: reader|writer)"
+       exit 1
+       ;;
+   esac
+   ```
+
+## Running the reader DMS agent
+
+Navigate to the DMS agent directory and run the configuration script:
+
+```shell
+cd /opt/cdcagent
+./run-cdcagent.sh
+```
+
+The script exports all required environment variables and starts the agent process. Once running, the reader agent registers your Postgres source in HM. Continue to the next section to verify it appears correctly.
+
+## Verifying the source in HM
+
+1. In the HM console, select your project.
+
+2. Select **Migrate > Sources**.
+
+Your database is listed with its name, type, agent ID, and status. For a description of all fields on this page, see [Sources](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrate/sources/).
+
+## Configuring the writer DMS agent
+
+The writer agent connects to your destination Postgres database and applies streamed changes from HM. Configure it on the machine where you installed the writer instance of the DMS agent.
+
+1. Open `/opt/cdcagent/run-cdcagent.sh` on the writer machine with write permissions.
+
+2. Set the required variables. Optional parameters are commented out by default — uncomment and configure any that apply to your environment.
+
+   See the [parameter reference](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/) for details.
+
+   ```shell
+   #!/bin/bash -e
+   # run-cdcagent.sh
+   #
+   # This script provides a convenient place to specify
+   # environment variables used to configure the
+   # EDB Data Migration Service Agent.
+   #
+
+   ##########################################
+   # DMS Agent General Configuration       #
+   ##########################################
+
+   # This ID is used to identify DMS Agent
+   # and is specified by the user.
+   export DBCONFIG_ID=<destination_name_of_choice>
+
+   # Determine the run mode of the DMS Agent
+   # The run mode can be set to either 'reader' or 'writer'
+   # 'reader' mode is used to read changes from a source database
+   # 'writer' mode is used to write changes to a target database
+   export RUN_MODE=writer
+
+   # This is the DMS backend service used by the DMS Agent
+   # Obtain this value from the HM console Sources or Destinations migration pages
+   export RW_SERVICE_HOST=<rw_service_host>
+
+   ##########################################
+   # DMS Agent TLS Configuration           #
+   ##########################################
+
+   # You need to create migration credentials in EDB Postgres AI platform
+   # and set the path of the credentials directory
+   export CREDENTIAL_DIRECTORY_PATH=$HOME/credentials
+
+   ##########################################
+   # DMS Agent DB Configuration            #
+   ##########################################
+
+   # A sample configuration to create a single Postgres database connection:
+   export DBCONFIG_DATABASES_0__TYPE=POSTGRES
+   export DBCONFIG_DATABASES_0__HOSTNAME=<localhost/host>
+   export DBCONFIG_DATABASES_0__PORT=<5432>
+   # The CATALOG is the database name
+   export DBCONFIG_DATABASES_0__CATALOG=<destination_db_name>
+   export DBCONFIG_DATABASES_0__USERNAME=<MIGRATION_ROLE_WRITER>
+   # The password env can be set without specifying it here
+   # but the env structure looks like this
+   export DBCONFIG_DATABASES_0__PASSWORD=<password>
+
+   # SSL mode: STRICT (verify-full), DEFAULT (require), WEAK (prefer/allow plaintext)
+   #export DBCONFIG_DATABASES_0__SSLMODE=DEFAULT
+
+   # TCP connection settings (for dead connection detection)
+   # Socket timeout in seconds (default: 600 for writer, 60 for reader)
+   #export DBCONFIG_DATABASES_0__SOCKETTIMEOUT=600
+   # Enable TCP keepalive probes (default: true)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVE=true
+   # Writer-mode TCP keepalive timing for long-running operations
+   # used during PK application and post-snapshot deduplication
+   # Seconds before first keepalive probe (default: 60)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESIDLE=60
+   # Seconds between keepalive retries (default: 10)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESINTERVAL=10
+   # Max failed probes before connection is dead (default: 6)
+   #export DBCONFIG_DATABASES_0__TCPKEEPALIVESCOUNT=6
+
+   # Escape hatch for arbitrary JDBC driver properties (format: key=value;key=value)
+   # These are applied after defaults but before explicit settings (SSLMODE, SOCKETTIMEOUT, etc.)
+   # PostgreSQL examples: ApplicationName=DMSAgent;prepareThreshold=0
+   #export DBCONFIG_DATABASES_0__JDBCOPTIONS=ApplicationName=DMSAgent
+
+   # You can increase the index to configure more than
+   # one database for the DMS Agent
+   #export DBCONFIG_DATABASES_1__TYPE=POSTGRES
+   #export DBCONFIG_DATABASES_1__HOSTNAME=<localhost/host>
+   #export DBCONFIG_DATABASES_1__PORT=<5432>
+   #export DBCONFIG_DATABASES_1__CATALOG=<destination_db_name>
+   #export DBCONFIG_DATABASES_1__USERNAME=<MIGRATION_ROLE_WRITER>
+   #export DBCONFIG_DATABASES_1__PASSWORD=<password>
+
+   ##########################################
+   # Optional Parameters Below              #
+   ##########################################
+
+   # Enables performance metrics reporting to HM. Required for the
+   # Migration details > Metrics tab to populate for this agent.
+   # Recommended for all production migrations.
+   #export METRICS_TASK_ENABLED=true
+
+   # Optionally migrate roles, ownership, and privileges from the source.
+   #export DBCONFIG_DATABASES_0__ROLE_MIGRATION_ENABLED=true
+   #export DBCONFIG_DATABASES_0__ROLE_MIGRATION_EXCLUDELIST="postgres,enterprisedb,app_ro_.*"
+
+   # FIPS mode can be enabled by setting the FIPS_MODE env variable to true
+   #export FIPS_MODE=true
+
+   # Controls how the writer applies changes to keyed tables on the target:
+   # ENABLED: always use UPSERT (INSERT ... ON CONFLICT DO UPDATE)
+   # DISABLED: use separate INSERT and UPDATE statements
+   # ADAPTIVE (default): dynamically switch based on each table's ratio of inserts to updates
+   #export DBCONFIG_DATABASES_0__UPSERTMODE=ADAPTIVE
+
+   # UPDATE ratio above which adaptive mode switches a table to UPSERT (default: 0.3).
+   # Only applies when UPSERTMODE is ADAPTIVE.
+   #export DBCONFIG_DATABASES_0__ADAPTIVEUPSERTTHRESHOLD=0.3
+
+   # Max INSERT/UPDATE op-type transitions tolerated before switching a table to
+   # UPSERT (default: 3). Only applies when UPSERTMODE is ADAPTIVE.
+   #export DBCONFIG_DATABASES_0__ADAPTIVESWITCHTHRESHOLD=3
+
+   # Configure logging
+   # Loglevel for the entire Quarkus application and underlying components
+   # WARNING: Enabling this loglevel is extremely verbose
+   #export QUARKUS_LOG_LEVEL=DEBUG
+   # Loglevel for the EDB package
+   # Preferred mode for debugging issues related to the logic of the agent
+   #export QUARKUS_LOG_CATEGORY__COM_ENTERPRISEDB__LEVEL=DEBUG
+
+   cd "$(dirname "$0")"
+
+   echo "Starting in mode: $RUN_MODE"
+
+   # JDK-8241239: disable JSSE's TLS 1.3 AES-GCM KeyUpdate (auto-fired ~137GB) that deadlocks a
+   # blocking SSLSocket during a large snapshot read
+   KEYLIMITS_PROPS="$(mktemp)"
+   printf '%s\n' 'jdk.tls.keyLimits=AES/GCM/NoPadding KeyUpdate 2^60, ChaCha20-Poly1305 KeyUpdate 2^60' > "$KEYLIMITS_PROPS"
+
+   case "$RUN_MODE" in
+     reader|writer)
+       # RUN_MODE env var auto-maps to the run.mode config property via MicroProfile
+       # Config's standard env-var-to-property naming rule (RUN_MODE -> run.mode).
+       exec java -Djava.security.properties="$KEYLIMITS_PROPS" -jar ./quarkus-run.jar
+       ;;
+     *)
+       echo "Unknown RUN_MODE: $RUN_MODE (expected: reader|writer)"
+       exit 1
+       ;;
+   esac
+   ```
+
+## Migrating roles, ownership, and privileges
+
+By default, DMS migrates schema objects only — roles, ownership, privileges, and row-level security (RLS) policies stay behind on the source. To also migrate [roles, ownership, and privileges](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/schema_migration/migrating_roles_and_privileges/), configure the following on the writer agent before you run it.
+
+> **Important: Requirements**
+>
+> - Migration scope is **Schema and data** or **Schema only**.
+> - The migration role you set up in [Creating a migration role](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/creating_destination_db/#creating-a-migration-role) — the same `DBCONFIG_DATABASES_0__USERNAME` you're already using for the writer — is a superuser.
+
+1. In the writer agent's `run-cdcagent.sh`, uncomment and set:
+
+   ```shell
+   export DBCONFIG_DATABASES_0__ROLE_MIGRATION_ENABLED=true
+   ```
+
+2. Optional: exclude specific roles from migration — for example, roles that already exist on the destination, or ones you'd rather manage yourself. Set a comma-separated list of regular expression patterns:
+
+   ```shell
+   export DBCONFIG_DATABASES_0__ROLE_MIGRATION_EXCLUDELIST="postgres,enterprisedb,app_ro_.*"
+   ```
+
+   Include the bootstrap superuser (`postgres` or `enterprisedb`) here unless you drop it from the destination first — DMS fails schema migration on any pre-existing, unexcluded role.
+
+For the full parameter definitions, see [DBCONFIG\_DATABASES\_0\_\_ROLE\_MIGRATION\_ENABLED](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/#dbconfig_databases_0__role_migration_enabled) and [DBCONFIG\_DATABASES\_0\_\_ROLE\_MIGRATION\_EXCLUDELIST](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/dms_agent_reference/#dbconfig_databases_0__role_migration_excludelist) in the DMS agent reference.
+
+## Running the writer DMS agent
+
+Navigate to the DMS agent directory and run the configuration script:
+
+```shell
+cd /opt/cdcagent
+./run-cdcagent.sh
+```
+
+Once running, the writer agent registers your Postgres destination in HM. Continue to the next section to verify it appears correctly.
+
+## Verifying the destination in HM
+
+1. In the HM console, select your project.
+
+2. Select **Migrate > Destinations**.
+
+Your database is listed with its name, type, agent ID, and status. For a description of all fields on this page, see [Destinations](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migrate/destinations/).
+
+## Next step
+
+[Migrate your data](https://www.enterprisedb.com/docs/edb-postgres-ai/latest/hybrid-manager/using_hybrid_manager/migration/migration_guides/self_managed_pg_to_self_managed_pg/migrating_data/)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

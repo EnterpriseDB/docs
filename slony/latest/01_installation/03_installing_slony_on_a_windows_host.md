@@ -1,0 +1,65 @@
+---
+title: Installing Slony Replication on a Windows Host
+product: Slony Replication
+version: 2.2.10
+url: https://www.enterprisedb.com/docs/slony/latest/01_installation/03_installing_slony_on_a_windows_host/
+lastModified: 2021-07-06T10:40:59-04:00
+---
+
+# Installing Slony Replication on a Windows Host
+
+<div id="using_the_graphical_installer" class="registered_link"></div>
+
+Graphical installers for Slony Replication are available via StackBuilder Plus (for EDB Postgres Advanced Server hosts) or Stack Builder (on PostgreSQL hosts).
+
+The following steps walk you through installing Slony Replication via StackBuilder Plus. You can access StackBuilder Plus through your Windows start menu.
+
+1. Open StackBuilder Plus and select your EDB Postgres Advanced Server installation from the drop-down list on the `Welcome` window. Click `Next` to continue to the application selection page.
+
+![The StackBuilder Plus Welcome window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/slony/2.2.10/images/slony_welcome1.png)
+
+Fig. 1: The StackBuilder Plus Welcome window
+
+2. Expand the `Replication Solutions` node, and check the box next to the Slony Replication version. Click `Next` to continue.
+
+3. The selected packages and the default download directory are displayed. Change the download directory location if required. Click `Next`.
+
+4. Once you have downloaded the installation files, a confirmation message is displayed. Click `Next` to start the Slony Replication installation.
+
+![Installing Slony](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/slony/2.2.10/images/sbp_start_installation.png)
+
+Fig. 2: Installing Slony
+
+5. Select an installation language and click `OK`.
+
+6. The installer welcomes you to the setup wizard. Click `Next`.
+
+![The Slony Welcome window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/slony/2.2.10/images/slony_setup5.png)
+
+Fig. 3: The Slony Welcome window
+
+7. Use the `Installation Directory` field to specify the directory you wish to install Slony Replication. Then, click `Next` to continue.
+
+![The Installation Directory window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/slony/2.2.10/images/slony_installation_directory.png)
+
+Fig. 4: The Installation Directory window
+
+8. The `Ready to Install` window notifies you when the installer has all of the information needed to install Slony Replication on your system. Click `Next` to install Slony Replication. Progress bars inform you as the installation progresses.
+
+![The Ready to Install window](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/slony/2.2.10/images/slony_ready_to_install.png)
+
+Fig. 5: The Ready to Install window
+
+9. The installer notifies you when the setup wizard has completed the installation. Click `Finish` to exit the installer.
+
+![The installation is complete](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/slony/2.2.10/images/slony_setup_complete9.png)
+
+Fig. 6: The installation is complete
+
+10. Click `Finish` to exit the StackBuilder Plus.
+
+![Exit StackBuilder Plus](https://media.githubusercontent.com/media/EnterpriseDB/docs/180a1761cbd57e7d4de5f955718bf0bc144bc1b7/product_docs/docs/slony/2.2.10/images/sbp_installation_complete.png)
+
+Fig. 7: Exit StackBuilder Plus
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

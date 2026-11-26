@@ -1,0 +1,68 @@
+---
+title: Deciding on an SSL model
+product: Postgres Enterprise Manager
+version: "10.6"
+url: https://www.enterprisedb.com/docs/pem/latest/considerations/ssl_certs/
+lastModified: 2026-06-24T22:34:07+05:30
+---
+
+# Deciding on an SSL model
+
+PEM agents are Postgres clients that connect directly to the PEM backend database using libpq, as detailed in the [PEM architecture](https://www.enterprisedb.com/docs/pem/latest/pem_architecture/).
+
+To securely manage and encrypt communications, PEM leverages the native SSL/TLS capabilities of its Postgres backend.
+
+For this security model to function, the following components must be configured:
+
+- **Agent Authentication**: Every PEM agent must have a client certificate that matches the name of its assigned Postgres user.
+
+- **Root Trust**: The backend Postgres server must be configured with a Root CA file to validate the incoming agent certificates.
+
+- **Server Encryption**: The backend Postgres server requires its own SSL certificate and private key to encrypt the data stream and establish its identity.
+
+There are different models you can use to provide these certificates and keys, depending on your needs and policies.
+The information below will help you decide what model you wish to follow before starting installation.
+
+## Certificate management models
+
+You can configure PEM to handle security certificates in two ways: **Automated (via sslutils)** or **Manual (using either an external CA, or a local CA)**. Choosing the right path depends on your infrastructure complexity and compliance needs.
+
+- **Automated with sslutils**:  By leveraging the sslutils extension, PEM acts as its own Certificate Authority (CA). When an agent registers, PEM automatically generates the required client certificates.
+
+  Best for: Standard, non-HA deployments where speed and convenience are the priority.
+
+  Drawback: Offers less control for organizations with strict external CA policies.
+
+  > **Note: for High Availability (HA) & Connection Pooling**
+  >
+  > - **HA clusters**: PEM will not automatically configure or restart nodes in an HA setup to avoid
+  >   interfering with cluster managers (like EFM or Repmgr). You must configure SSL manually.
+  >
+  > - **pgBouncer**: If using pgBouncer, sslutils is generally not recommended because pooling requires a
+  >   single shared user (see below).
+
+- **External CA (manual)**: Instead of relying on sslutils, you can provide certificates signed by your
+  organization's approved CA. When bringing your own certificates, you have two architectural choices:
+
+  1. **Common Agent User (shared certificate)**: All agents share a single Postgres user and the same
+     client certificate/key pair.
+
+     **Pros**: The only compatible method for pgBouncer (since transactions must come from the same
+     user to be pooled); much easier to manage fewer certificates.
+
+     **Cons**: Harder to audit specific agent connections; revoking the certificate disconnects all agents.
+
+  2. **Unique agent users (individual certificates)**: Every agent has its own unique certificate and a
+     corresponding numbered Postgres user (e.g., agent1, agent2).
+
+     **Pros**: High auditability; revoking one certificate only affects a single agent.
+
+     **Cons**: Significant management overhead due to the large volume of certificates.
+
+- **Local CA (manual)**: Instead of relying on sslutils, you can manually configure a local CA on the PEM host
+  (or elsewhere) and use that to issue certificates for PEM server and agent.
+  You have the same architectural choices as for **External CA** above.
+  This is only recommended if you cannot use sslutils (for example, if you plan to use pgBouncer)
+  and do not have an external/organizational CA.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

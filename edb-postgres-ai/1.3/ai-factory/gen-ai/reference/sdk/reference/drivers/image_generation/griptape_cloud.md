@@ -1,0 +1,218 @@
+---
+title: griptape_cloud
+product: EDB Postgres AI
+version: 1.3.10 (LTS)
+url: https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/drivers/image_generation/griptape_cloud/
+lastModified: 2025-11-07T18:06:05Z
+---
+
+# griptape\_cloud
+
+- `__all__ = ['GriptapeCloudImageGenerationDriver']` <small>module-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.__all__"></span>
+
+<span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver"></span>
+
+Bases:
+[`BaseImageGenerationDriver`](https://www.enterprisedb.com/docs/edb-postgres-ai/1.3/ai-factory/gen-ai/reference/sdk/reference/drivers/image_generation/#griptape.drivers.image_generation.BaseImageGenerationDriver "BaseImageGenerationDriver (griptape.drivers.image_generation.BaseImageGenerationDriver)")
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/image\_generation/griptape\_cloud\_image\_generation\_driver.py</code>
+
+</summary>
+
+```python
+@define
+class GriptapeCloudImageGenerationDriver(BaseImageGenerationDriver):
+    model: Optional[str] = field(default=None, kw_only=True)
+    base_url: str = field(
+        default=Factory(lambda: os.getenv("GT_CLOUD_BASE_URL", "https://cloud.griptape.ai")),
+    )
+    api_key: str = field(default=Factory(lambda: os.environ["GT_CLOUD_API_KEY"]))
+    headers: dict = field(
+        default=Factory(lambda self: {"Authorization": f"Bearer {self.api_key}"}, takes_self=True), kw_only=True
+    )
+    style: Optional[str] = field(default=None, kw_only=True, metadata={"serializable": True})
+    quality: Literal["standard", "hd"] = field(default="standard", kw_only=True, metadata={"serializable": True})
+    image_size: Literal["1024x1024", "1024x1792", "1792x1024"] = field(
+        default="1024x1024", kw_only=True, metadata={"serializable": True}
+    )
+
+    def try_text_to_image(self, prompts: list[str], negative_prompts: Optional[list[str]] = None) -> ImageArtifact:
+        url = griptape_cloud_url(self.base_url, "api/images/generations")
+
+        response = requests.post(
+            url,
+            headers=self.headers,
+            json={
+                "prompts": prompts,
+                "driver_configuration": {
+                    "model": self.model,
+                    "image_size": self.image_size,
+                    "quality": self.quality,
+                    "style": self.style,
+                },
+            },
+        )
+        response.raise_for_status()
+        response = response.json()
+
+        return ImageArtifact.from_dict(response["artifact"])
+
+    def try_image_variation(
+        self,
+        prompts: list[str],
+        image: ImageArtifact,
+        negative_prompts: Optional[list[str]] = None,
+    ) -> ImageArtifact:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support image variation")
+
+    def try_image_inpainting(
+        self,
+        prompts: list[str],
+        image: ImageArtifact,
+        mask: ImageArtifact,
+        negative_prompts: Optional[list[str]] = None,
+    ) -> ImageArtifact:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support inpainting")
+
+    def try_image_outpainting(
+        self,
+        prompts: list[str],
+        image: ImageArtifact,
+        mask: ImageArtifact,
+        negative_prompts: Optional[list[str]] = None,
+    ) -> ImageArtifact:
+        raise NotImplementedError(f"{self.__class__.__name__} does not support outpainting")
+```
+
+</details>
+
+- `api_key = field(default=Factory(lambda: os.environ['GT_CLOUD_API_KEY']))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.api_key"></span>
+
+- `base_url = field(default=Factory(lambda: os.getenv('GT_CLOUD_BASE_URL', 'https://cloud.griptape.ai')))` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.base_url"></span>
+
+- `headers = field(default=Factory(lambda self: {'Authorization': f'Bearer {self.api_key}'}, takes_self=True), kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.headers"></span>
+
+- `image_size = field(default='1024x1024', kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.image_size"></span>
+
+- `model = field(default=None, kw_only=True)` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.model"></span>
+
+- `quality = field(default='standard', kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.quality"></span>
+
+- `style = field(default=None, kw_only=True, metadata={'serializable': True})` <small>class-attribute</small> <small>instance-attribute</small>  <span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.style"></span>
+
+<span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.try_image_inpainting"></span>
+
+### try\_image\_inpainting(prompts, image, mask, negative\_prompts=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/image\_generation/griptape\_cloud\_image\_generation\_driver.py</code>
+
+</summary>
+
+```python
+def try_image_inpainting(
+    self,
+    prompts: list[str],
+    image: ImageArtifact,
+    mask: ImageArtifact,
+    negative_prompts: Optional[list[str]] = None,
+) -> ImageArtifact:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support inpainting")
+```
+
+</details>
+
+<span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.try_image_outpainting"></span>
+
+### try\_image\_outpainting(prompts, image, mask, negative\_prompts=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/image\_generation/griptape\_cloud\_image\_generation\_driver.py</code>
+
+</summary>
+
+```python
+def try_image_outpainting(
+    self,
+    prompts: list[str],
+    image: ImageArtifact,
+    mask: ImageArtifact,
+    negative_prompts: Optional[list[str]] = None,
+) -> ImageArtifact:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support outpainting")
+```
+
+</details>
+
+<span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.try_image_variation"></span>
+
+### try\_image\_variation(prompts, image, negative\_prompts=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/image\_generation/griptape\_cloud\_image\_generation\_driver.py</code>
+
+</summary>
+
+```python
+def try_image_variation(
+    self,
+    prompts: list[str],
+    image: ImageArtifact,
+    negative_prompts: Optional[list[str]] = None,
+) -> ImageArtifact:
+    raise NotImplementedError(f"{self.__class__.__name__} does not support image variation")
+```
+
+</details>
+
+<span id="griptape.drivers.image_generation.griptape_cloud.GriptapeCloudImageGenerationDriver.try_text_to_image"></span>
+
+### try\_text\_to\_image(prompts, negative\_prompts=None)
+
+<details>
+
+<summary>
+
+Source Code in <code>griptape/drivers/image\_generation/griptape\_cloud\_image\_generation\_driver.py</code>
+
+</summary>
+
+```python
+def try_text_to_image(self, prompts: list[str], negative_prompts: Optional[list[str]] = None) -> ImageArtifact:
+    url = griptape_cloud_url(self.base_url, "api/images/generations")
+
+    response = requests.post(
+        url,
+        headers=self.headers,
+        json={
+            "prompts": prompts,
+            "driver_configuration": {
+                "model": self.model,
+                "image_size": self.image_size,
+                "quality": self.quality,
+                "style": self.style,
+            },
+        },
+    )
+    response.raise_for_status()
+    response = response.json()
+
+    return ImageArtifact.from_dict(response["artifact"])
+```
+
+</details>
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

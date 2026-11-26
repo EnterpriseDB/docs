@@ -1,0 +1,73 @@
+---
+title: ALTER SEQUENCE
+product: EDB Postgres Advanced Server
+version: "17"
+url: https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_sql/10_alter_sequence/
+lastModified: 2026-07-16T13:15:06+05:30
+---
+
+# ALTER SEQUENCE
+
+<div id="alter_sequence" class="registered_link"></div>
+
+## Name
+
+`ALTER SEQUENCE` — Change the definition of a sequence generator.
+
+## Synopsis
+
+```sql
+ALTER SEQUENCE <name> [ INCREMENT BY <increment> ]
+  [ MINVALUE <minvalue> ] [ MAXVALUE <maxvalue> ]
+  [ CACHE <cache> | NOCACHE ] [ CYCLE ]
+```
+
+## Description
+
+`ALTER SEQUENCE` changes the parameters of an existing sequence generator. Any parameter not specifically set in the `ALTER SEQUENCE` command retains its prior setting.
+
+## Parameters
+
+`name`
+
+The name (optionally schema-qualified) of a sequence to alter.
+
+`increment`
+
+The clause `INCREMENT BY increment` is optional. A positive value makes an ascending sequence, a negative one a descending sequence. If unspecified, the old increment value is maintained.
+
+`minvalue`
+
+The optional clause `MINVALUE minvalue` determines the minimum value a sequence can generate. If not specified, the current minimum value is maintained. You can use the keywords `NO MINVALUE` to set this behavior back to the defaults of 1 and -2<sup>63</sup>-1 for ascending and descending sequences, respectively. However, this term isn't compatible with Oracle databases.
+
+`maxvalue`
+
+The optional clause `MAXVALUE maxvalue` determines the maximum value for the sequence. If not specified, the current maximum value is maintained. You can use the keywords `NO MAXVALUE` to set this behavior back to the defaults of 2<sup>63</sup>-1 and -1 for ascending and descending sequences, respectively. However, this term isn't compatible with Oracle databases.
+
+`cache`
+
+The optional clause `CACHE cache` specifies how many sequence numbers to preallocate and store in memory for faster access. The minimum value is `1`. Only one value can be generated at a time, i.e., `NOCACHE`. If unspecified, the old cache value is maintained.
+
+`CYCLE`
+
+The `CYCLE` option allows the sequence to wrap around when the `maxvalue` or `minvalue` is reached by an ascending or descending sequence. If the limit is reached, the next number generated is the `minvalue` or `maxvalue`. If not specified, the old cycle behavior is maintained. You can use the keywords `NO CYCLE` to alter the sequence so that it doesn't recycle. However, this term isn't compatible with Oracle databases.
+
+## Notes
+
+To avoid blocking concurrent transactions that obtain numbers from the same sequence, `ALTER SEQUENCE` is never rolled back. The changes take effect immediately and aren't reversible.
+
+A parameter changing `ALTER SEQUENCE` (`INCREMENT BY`, `MINVALUE`/`MAXVALUE`, `CACHE`, `CYCLE`) causes other backends to discard any preallocated (cached) sequence values that haven't yet been issued. On their next `NEXTVAL` call, those backends detect the change and fetch a fresh batch of values under the new parameters, they do not continue issuing from the old cache first. The current backend is affected immediately.
+
+## Examples
+
+Change the increment and cache values of the sequence `serial`:
+
+```sql
+ALTER SEQUENCE serial INCREMENT BY 2 CACHE 5;
+```
+
+## See also
+
+[CREATE SEQUENCE](https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_sql/34_create_sequence/#create_sequence), [DROP SEQUENCE](https://www.enterprisedb.com/docs/epas/17/reference/oracle_compatibility_reference/epas_compat_sql/56_drop_sequence/#drop_sequence)
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

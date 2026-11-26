@@ -1,0 +1,90 @@
+---
+title: Managing system resources
+description: Configure and monitor CPU, memory, and concurrency limits to optimize workload performance for resource groups and resource queues.
+product: WarehousePG Enterprise Manager
+url: https://www.enterprisedb.com/docs/supported-open-source/warehousepg/wem/performance/managing-resources/
+lastModified: 2026-06-10T14:23:47+01:00
+---
+
+# Managing system resources
+
+Govern cluster performance by controlling how system resources are distributed across different workloads using the **Resource Management** panel on the left sidebar. By implementing a resource management strategy, you prevent a single database tenant or poorly optimized query from exhausting cluster capacity and impacting other users.
+
+WarehousePG (WHPG) provides two primary strategies for resource management: resource groups and resource queues. They're controlled by the `gp_resource_manager` server configuration parameter. See [Managing resources](https://www.enterprisedb.com/docs/warehousepg/latest/admin_guide/performance/wlmgmt/) for details on how WHPG provides resource management.
+
+The WarehousePG Enterprise Manager (WEM) interface adapts based on two factors:
+
+1. The value of `gp_resource_manager`:
+   - `group`: Displays the Resource Groups interface.
+   - `queue`: Displays the Resource Queues interface.
+   - `none` (WHPG 7+): Disables resource management.
+
+2. Your WHPG major version:
+   The configuration options differ between WHPG 6 and WHPG 7 to reflect changes in the underlying engine's capabilities.
+
+## Governing workloads with resource groups
+
+To ensure high-priority processes remain isolated from ad-hoc queries, configure limits that match your cluster version and hardware capacity. WEM adjusts the **Configuration** tab to match the capabilities of your WHPG version.
+
+- Map database roles to groups with the **Role Assignments** tab. The **Role → Resource Group Assignments** table shows each role, its superuser flag, and the group it belongs to.
+- View and edit CPU and memory limits in the **Configuration** tab. The **Resource Group Configuration** table shows all groups with their settings. Charts show the **CPU Max % Distribution** (WHPG 7) or **CPU Rate Limit Distribution** (WHPG 6), and a **Concurrency by Group** bar chart:
+  - For WHPG 7, use **CPU Max %** to set a hard ceiling that the group can't exceed. Adjust **CPU Weight** to determine how much relative processing power a group receives during periods of high contention.
+  - For WHPG 6, use **CPU Rate %** and **Memory %** to define the fixed share of resources dedicated to a group.
+- Limit simultaneous activity to prevent too many queries from running at once by adjusting the value of **Concurrency**. If this limit is too high, individual queries may fail due to out-of-memory (OOM) errors.
+- Optimize memory-intensive tasks on a WHPG 6 cluster by adjusting the **Spill Ratio** to control when operations like large joins or sorts begin writing data to disk instead of consuming RAM.
+
+**Example scenario: resolving CPU contention**
+
+Suppose you notice that ad-hoc analytics queries are slowing down nightly production backups:
+
+- Check the **CPU Max % Distribution** or **CPU Rate Limit Distribution** chart. If you see the `analytics` group consuming 90% of the CPU, you must intervene.
+- In the **Configuration** tab, lower the **CPU Max %** (WHPG 7) or **CPU Rate %** (WHPG 6) for the `analytics` group. This action immediately frees up processing cycles for the high-priority backup tasks.
+
+## Governing workloads with resource queues
+
+Resource queues are available on both WHPG 6 and 7, but they use a different management logic centered on query cost rather than OS-level cgroups.
+
+- Review queue settings in the **Queue Configuration** tab. The **Resource Queue Configuration** table shows each queue's **Queue Name**, **Priority**, **Active Statements**, **Max Cost**, **Memory Limit**, **Overcommit**, and **Ignore Cost Limit** settings.
+- Monitor real-time queue activity in the **Queue Activity** tab. The **Total Queues**, **Active Queries**, **Waiting Queries**, and **Total Cost** cards provide a cluster-wide snapshot. The **Queue Activity** table shows current and waiting query counts, cost, and utilization per queue.
+- Use the **Ignore Cost Limit** setting to allow low-cost administrative queries to bypass the queue entirely, ensuring routine maintenance tasks always run without delay.
+
+## Scheduling resource limits
+
+Automatically apply resource group or resource queue settings at defined times using the **Schedules** tab. Each schedule specifies which days of the week and what time it fires, and can target multiple resource groups or queues in a single schedule.
+
+The **Schedules** table shows each schedule's **Name**, **Resources** (the groups or queues it targets), **Schedule** (days and time), and **Status**. Each row includes action buttons:
+
+- **Edit**: modify the schedule definition.
+- **Dry Run (Preview)**: see exactly what will change before applying it: current values compared against what the schedule would set.
+- **Activate Now**: trigger the schedule immediately without waiting for the next scheduled time.
+- **Pause / Resume**: temporarily disable a schedule for 2 hours without deleting it.
+- **Delete**: permanently remove the schedule.
+
+The **Execution History** tab shows a log of every run with its **Time**, **Trigger** (`scheduled` or `manual`), **Status**, and **Duration**, along with per-resource details.
+
+> **Note**
+>
+> There is no automatic revert when the scheduled time passes. Settings stay at their new values until another schedule or a manual change updates them. To restore limits at the end of a period, create a second schedule with the original values.
+>
+> Schedules fire based on the WEM server timezone. Changes apply to new connections and queries only. In-flight queries are not affected.
+>
+> Conflict detection is not yet available. WEM doesn't warn if two schedules target the same resource at overlapping times. Review your schedule list carefully to avoid unintended conflicts.
+
+### Example scenario: reducing analytics capacity during business hours
+
+Suppose your analytics resource group runs batch jobs overnight but competes with transactional workloads during the day:
+
+- Create a schedule targeting the `analytics` group that sets a lower **CPU Max %** on weekdays at 08:00.
+- Create a second schedule for the same group that restores the original limit at 20:00.
+- Use **Dry Run** on each schedule to verify the values before the first automated run.
+
+## Troubleshooting waiting queries
+
+Assess and resolve bottlenecks caused by resource-based delays by comparing real-time consumption against your configured boundaries:
+
+- Check the **Status** tab (resource groups) or **Queue Activity** tab (resource queues) to identify which groups or queues have queries in a waiting state.
+- If many queries are queued, determine if the group or queue is consistently hitting its maximum limit.
+- If a workload consistently requires more power than assigned, navigate to the **Configuration** or **Queue Configuration** tab and increase the relevant limits.
+- If a group is reaching its memory limit with only a few queries, investigate the queries themselves for missing indexes or inefficient joins that are causing excessive resource consumption.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

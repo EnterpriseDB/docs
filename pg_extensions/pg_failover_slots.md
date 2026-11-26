@@ -1,0 +1,31 @@
+---
+title: PG Failover Slots
+product: PG Failover Slots
+url: https://www.enterprisedb.com/docs/pg_extensions/pg_failover_slots/
+lastModified: 2025-12-05T16:08:18-03:00
+---
+
+# PG Failover Slots
+
+PG Failover Slots (pg\_failover\_slots) is an extension released as open source software under the PostgreSQL License. If you have logical replication publications on Postgres databases that are also part of a streaming replication architecture,
+PG Failover Slots avoids the need for you to reseed your logical replication tables when a new standby gets promoted to primary.
+
+Since the replication slot used by logical replication is maintained only on the primary node, downstream subscribers don't receive any new changes from the newly promoted primary until the slot is created on the newly promoted primary. Picking up logical replication changes from the newly promoted standby is unsafe because the following information will be lost:
+
+- The data a subscriber confirmed receiving
+- The log data that still needs to be retained for the subscriber
+
+The result is in an unknown gap in data.
+
+PG Failover Slots makes logical replication slots usable across a physical failover by:
+
+- Copying any missing replication slots from the primary to the standby
+- Removing any slots from the standby that aren't found on the primary
+- Periodically synchronizing the position of slots on the standby based on the primary
+- Ensuring that selected standbys receive data before any of the logical slot walsenders can send data to consumers
+
+> **Important: Deprecation notice**
+>
+> v18 will be the final release for which EDB supports pg\_failover\_slots. This will allow customers time to transition before v19, where we recommend using the native logical failover slot capability introduced in PostgreSQL 17.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

@@ -1,0 +1,23 @@
+---
+title: Migration Toolkit 55.6.0 release notes
+product: Migration Toolkit
+version: "55"
+url: https://www.enterprisedb.com/docs/migration_toolkit/latest/mtk_rel_notes/mtk_556_rel_notes/
+lastModified: 2023-09-28T10:23:28+01:00
+---
+
+# Migration Toolkit 55.6.0 release notes
+
+Released: 25 May 2023
+
+New features, enhancements, bug fixes, and other changes in Migration Toolkit 55.6 include:
+
+| Type        | Description                                                                                                                                                                                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Enhancement | Migration Toolkit now provides two new command options to let you exclude a subset of objects during migration. The `-excludeTables` option skips a subset of tables when all tables are selected for migration, and the `-excludeViews` option skips a subset of views when all views are selected for migration. |
+| Bug fix     | Fixed the issue where a data migration fails when Migration Toolkit attempts to drop a system generated index. Any system generated indexes are now skipped from removal. \[Support ticket: #90282]                                                                                                                |
+| Bug fix     | Fixed the issue where a data migration fails with “Invalid LOB locator specified” error when migrating an Oracle table with an `XMLTYPE` column. \[Support ticket: #92284]                                                                                                                                         |
+| Bug fix     | Fixed the issue where a `TRUNCATE` is always applied on the target database when performing a data only migration from SQL Server if the source table contains a LOB type column. This behavior is now corrected so that `TRUNCATE` will only be applied when the user has specified the `-truncLoad` option.      |
+| Bug fix     | Updated the Migration Toolkit packaging for Debian so that the JDBC drivers are no longer bundled with Migration Toolkit to make it consistent with the packaging for the other OS platforms supported by Migration Toolkit.                                                                                       |
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).

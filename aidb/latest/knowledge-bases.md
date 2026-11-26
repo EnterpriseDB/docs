@@ -1,0 +1,139 @@
+---
+title: Knowledge bases
+description: Query vector-indexed knowledge bases in EDB Postgres AI using semantic search, hybrid search, and retrieval functions.
+product: EDB Postgres AI Database
+version: "7"
+url: https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/
+lastModified: 2026-11-04T13:59:00+05:30
+---
+
+# Knowledge bases
+
+A knowledge base (KB) stores embeddings in a vector table, along with its configuration — the model, distance operator, and vector index. Pipelines write to it, and you query it by name using [`aidb.retrieve_text()`](#aidbretrieve_text) or [`aidb.retrieve_key()`](#aidbretrieve_key).
+
+A knowledge base starts with a single pipeline and a [`KnowledgeBase` step](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/#knowledgebase). You can attach additional pipelines to the same knowledge base — letting different sources or processing chains all contribute embeddings to one queryable vector table.
+
+| Page                                                                                                            | What it covers                                                                  |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [Multi-pipeline knowledge bases](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/multi-pipeline/) | Attach multiple pipelines to one KB; compatibility rules and deletion semantics |
+| [Hybrid search](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/hybrid-search/)                   | Combining semantic search with relational filters and full-text search          |
+| [Examples](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/example/)                              | End-to-end worked examples for table and volume sources                         |
+
+## Retrieval functions
+
+Once a pipeline has run, query the knowledge base using `aidb.retrieve_text()` or `aidb.retrieve_key()`. Both use vector similarity to find results based on meaning rather than exact keywords, and support both `TEXT` and `BYTEA` (image) as the query input.
+
+### Flow of retrieval functions
+
+When a retrieval function is called, the system performs the following steps internally:
+
+- **Embedding**: The input query (text or image) is converted into a vector using the specific embedding model configured for that knowledge base.
+
+- **Similarity search**: A vector similarity search is performed against the knowledge base's internal vector table to find the Top K nearest neighbors.
+
+- **Source lookup (text only)**: For `retrieve_text`, the system identifies the source table and retrieves the raw content corresponding to the matched keys.
+
+### `aidb.retrieve_text()`
+
+Use this function when you need to retrieve the actual source text associated with the closest vector matches.
+
+- **Process**: The function embeds your query, performs a similarity search, and then executes a second phase to look up the source text from the original table using the `pipeline_id`.
+
+- **Returns**: A set of columns including:
+
+  - **key**: The identifier from the source table.
+
+  - **value**: The actual source text.
+
+  - **distance**: The similarity score. A lower value usually indicates a closer match.
+
+  - **part\_ids**: An array of IDs indicating which specific chunks or parts were matched.
+
+  - **pipeline\_name**: The name of the pipeline that supplied the data.
+
+  - **intermediate\_steps**: A JSONB column containing data from steps occurring before the knowledge base, for any step configured with [`intermediate_destination`](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/#intermediate-storage) — for example, ChunkText. Empty if no step in the pipeline has intermediate storage enabled. See [Deduplication and intermediate results](#deduplication-and-intermediate-results) below for how this interacts with `deduplicate`.
+
+### `aidb.retrieve_key()`
+
+Use this function for high-performance searches where you only need the unique identifiers of the matches, rather than the full source content.
+
+- **Returns**: A set of columns including:
+
+  - **key**: The identifier from the source table.
+
+  - **distance**: The similarity score. A lower value usually indicates a closer match.
+
+  - **part\_ids**: An array of IDs indicating which specific chunks or parts were matched.
+
+  - **pipeline\_name**: The name of the pipeline that supplied the data.
+
+## Advanced querying: Joining intermediate steps
+
+For pipelines that include intermediate transformations such as ChunkText or ParseHtml, you can access specific transformed segments by joining retrieval results with intermediate pipeline tables using the `part_ids` column. This is a manual alternative to the `intermediate_steps` column that `aidb.retrieve_text()` already returns automatically for any step with [intermediate storage](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/#intermediate-storage) enabled — reach for a manual join only when you need something `intermediate_steps` doesn't give you, such as joining on additional columns of the intermediate table.
+
+### Example syntax
+
+The following query joins the retrieval results with an intermediate step table to access specific chunked values:
+
+```sql
+SELECT 
+    r.key, 
+    r.value, 
+    r.distance, 
+    r.part_ids, 
+    int_step.value AS chunked_content
+FROM aidb.retrieve_text('public.pipeline_my_pipeline', 'search query', 5) AS r
+JOIN pipeline_my_pipeline_step_1 AS int_step
+  ON int_step.source_id = r.key
+  AND int_step.part_ids = (r.part_ids)[:1];
+```
+
+Like `intermediate_steps`, this join only ever sees the one row `deduplicate` let through — see the next section.
+
+## Deduplication and intermediate results
+
+`deduplicate` (default `true` on both `aidb.retrieve_key()` and `aidb.retrieve_text()`) collapses retrieval results to one row per source record, even when a step like `ChunkText` split that record into several independently embedded parts and more than one of those parts matches the query. Only one part "wins" — whichever is closest to the query — and its `part_ids` and `intermediate_steps` are the only ones returned for that source record.
+
+This matters as soon as you enable [intermediate storage](https://www.enterprisedb.com/docs/aidb/latest/data-pipelines/pipeline-steps/#intermediate-storage) on a chunking or parsing step: with the default `deduplicate => true`, you only ever see **one** matching chunk's intermediate content per source record, even if several of its chunks matched. To see every matching part — and each one's own `intermediate_steps` entry — call retrieval with `deduplicate => false`.
+
+For example, a pipeline chunks a set of short articles about animals, with `intermediate_destination` enabled so each chunk's text is available in `intermediate_steps`. Querying for `'ocean'` with the default deduplication, the `whale` article's best-matching chunk wins and no other `whale` chunk appears, even though a second one also matched:
+
+```sql
+SELECT key, ROUND(distance::numeric, 3) AS distance, part_ids, intermediate_steps
+FROM aidb.retrieve_text('public.pipeline_animal_facts', 'ocean', 3);
+
+```
+
+```output title="Output"
+   key    | distance | part_ids |                                            intermediate_steps
+----------+----------+----------+----------------------------------------------------------------------------------------------
+ whale    |    1.144 | {0,0}    | [{"value": "Whales are massive marine mammals that live in oceans worldwide.", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_animal_facts_step_1"}]
+ elephant |    1.173 | {5,0}    | [{"value": "vegetation and water sources.", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_animal_facts_step_1"}]
+ dolphin  |    1.202 | {1,0}    | [{"value": "They use echolocation to navigate and hunt in murky water.", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_animal_facts_step_1"}]
+(3 rows)
+```
+
+With `deduplicate => false`, the second matching `whale` chunk — a different `part_ids` value, with its own distinct `intermediate_steps` entry — takes the `dolphin` row's place, since it's actually closer to the query than `dolphin` is:
+
+```sql
+SELECT key, ROUND(distance::numeric, 3) AS distance, part_ids, intermediate_steps
+FROM aidb.retrieve_text('public.pipeline_animal_facts', 'ocean', 3, deduplicate => false);
+
+```
+
+```output title="Output"
+   key    | distance | part_ids |                                            intermediate_steps
+----------+----------+----------+----------------------------------------------------------------------------------------------
+ whale    |    1.144 | {0,0}    | [{"value": "Whales are massive marine mammals that live in oceans worldwide.", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_animal_facts_step_1"}]
+ elephant |    1.173 | {5,0}    | [{"value": "vegetation and water sources.", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_animal_facts_step_1"}]
+ whale    |    1.201 | {1,0}    | [{"value": "Blue whales are the largest animals ever to exist on Earth.", "operation": "ChunkText", "step_order": 1, "destination_table": "public.pipeline_animal_facts_step_1"}]
+(3 rows)
+```
+
+As a rule of thumb: keep `deduplicate => true` (the default) when you want one representative result per source record, and use `deduplicate => false` whenever you need every matching chunk or part from the same source record — for example, to show all the passages within a long document that matched a query, not just the single best one.
+
+- [Multi-pipeline KBs](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/multi-pipeline/): Attach multiple pipelines to a single knowledge base — useful for mixing source tables, source formats, or different processing chains under one queryable vector table.
+- [Hybrid search](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/hybrid-search/): Combine semantic vector search with relational predicate filtering and full-text search in EDB Postgres AI knowledge bases.
+- [Examples](https://www.enterprisedb.com/docs/aidb/latest/knowledge-bases/example/): The following examples illustrate how to perform bulk knowledge base (KB) embedding using AI pipelines, including the expected outputs for each stage. These examples cover ingesting data from a standard Postgres table and an external S3 bucket volume.
+
+> For an AI-friendly overview of our documentation, see [llms.txt](https://www.enterprisedb.com/docs/llms.txt).
